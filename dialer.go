@@ -83,11 +83,9 @@ func (d *LocalDialer) dialContext(ctx context.Context, network, address string, 
 		return nil, net.InvalidAddrError("empty dns record: " + host)
 	}
 
-	var ipv6only []netip.Addr
 	if i := slices.IndexFunc(ips, func(a netip.Addr) bool { return a.Is6() }); i > 0 {
 		if d.PerferIPv6 || ctx.Value(DialerPreferIPv6ContextKey) != nil {
-			ips = ips[i:]
-			ipv6only = ips[:len(ips)-i]
+			ips = ips[i : len(ips)-i]
 		} else {
 			ips = ips[:len(ips)-i]
 		}
@@ -108,7 +106,7 @@ func (d *LocalDialer) dialContext(ctx context.Context, network, address string, 
 
 	concurrency := max(d.Concurrency, 1)
 	dial := d.dialParallel
-	if concurrency <= 1 || len(ipv6only) == 1 || len(ips) == 1 {
+	if concurrency <= 1 || len(ips) == 1 {
 		dial = d.dialSerial
 	}
 
