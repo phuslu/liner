@@ -63,7 +63,7 @@ https:
           bypass_auth
         {{else if contains " YaBrowser/" .Request.UserAgent}}
           bypass_auth
-        {{else if infile (domain .Request.Host) "domainblacklist.txt"}}
+        {{else if inFile "domainblacklist.txt" (domain .Request.Host)}}
           reject
         {{else if .Request.Header.Get "proxy-authorization"}}
           verify_auth

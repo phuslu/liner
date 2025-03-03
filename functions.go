@@ -87,10 +87,7 @@ func (f *Functions) Load() error {
 	f.FuncMap["isInNet"] = f.isInNet
 
 	// file related
-	f.FuncMap["infile"] = f.infile
-	f.FuncMap["inFile"] = f.infile
-	f.FuncMap["infile2"] = f.infile2
-	f.FuncMap["inFile2"] = f.infile2
+	f.FuncMap["inFile"] = f.inFile
 	f.FuncMap["readfile"] = f.readfile
 	f.FuncMap["readFile"] = f.readfile
 
@@ -423,7 +420,7 @@ func (f *Functions) wildcardMatch(pattern, s string) bool {
 	return false
 }
 
-func (f *Functions) infile(line, filename string) bool {
+func (f *Functions) inFile(filename, line string) bool {
 	loader, _ := f.FileCache.LoadOrCompute(filename, func() *FileLoader[[]string] {
 		return &FileLoader[[]string]{
 			Filename: filename,
@@ -452,10 +449,6 @@ func (f *Functions) infile(line, filename string) bool {
 	_, found := slices.BinarySearch(*lines, line)
 
 	return found
-}
-
-func (f *Functions) infile2(line, filename1, filename2 string) bool {
-	return f.infile(line, filename1) || f.infile(line, filename2)
 }
 
 func (f *Functions) regexMatch(pattern, s string) bool {
