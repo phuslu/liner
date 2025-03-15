@@ -4,7 +4,7 @@ go 1.24
 
 require (
 	github.com/go-task/slim-sprig/v3 v3.0.0
-	github.com/libp2p/go-yamux/v4 v4.0.2
+	github.com/libp2p/go-yamux/v5 v5.0.0
 	github.com/mileusna/useragent v1.3.5
 	github.com/nathanaelle/password/v2 v2.0.1
 	github.com/oschwald/maxminddb-golang v1.13.1
