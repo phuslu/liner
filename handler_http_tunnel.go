@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/libp2p/go-yamux/v4"
+	"github.com/libp2p/go-yamux/v5"
 	"github.com/phuslu/log"
 )
 
