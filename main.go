@@ -31,6 +31,7 @@ import (
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/robfig/cron/v3"
+	"go4.org/netipx"
 	"golang.org/x/net/http2"
 )
 
@@ -418,6 +419,7 @@ func main() {
 		FetchCache:     lru.NewTTLCache[string, *FetchResponse](8192),
 		RegexpCache:    xsync.NewMapOf[string, *regexp.Regexp](),
 		FileLineCache:  xsync.NewMapOf[string, *FileLoader[[]string]](),
+		FileIPSetCache: xsync.NewMapOf[string, *FileLoader[*netipx.IPSet]](),
 	}
 	if err := functions.Load(); err != nil {
 		log.Fatal().Err(err).Msgf("%T.Load() fatal", functions)

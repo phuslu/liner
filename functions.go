@@ -21,6 +21,7 @@ import (
 	"github.com/phuslu/log"
 	"github.com/phuslu/lru"
 	"github.com/puzpuzpuz/xsync/v3"
+	"go4.org/netipx"
 	"golang.org/x/net/publicsuffix"
 )
 
@@ -37,8 +38,9 @@ type Functions struct {
 	FetchClient    *http.Client
 	FetchCache     *lru.TTLCache[string, *FetchResponse]
 
-	RegexpCache   *xsync.MapOf[string, *regexp.Regexp]
-	FileLineCache *xsync.MapOf[string, *FileLoader[[]string]]
+	RegexpCache    *xsync.MapOf[string, *regexp.Regexp]
+	FileLineCache  *xsync.MapOf[string, *FileLoader[[]string]]
+	FileIPSetCache *xsync.MapOf[string, *FileLoader[*netipx.IPSet]]
 
 	FuncMap template.FuncMap
 }
@@ -88,6 +90,7 @@ func (f *Functions) Load() error {
 
 	// pattern matching with file
 	f.FuncMap["inFileLine"] = f.inFileLine
+	f.FuncMap["inFileIPSet"] = f.inFileIPSet
 
 	// file related
 	f.FuncMap["readFile"] = f.readfile
@@ -451,6 +454,61 @@ func (f *Functions) inFileLine(filename, line string) bool {
 	_, found := slices.BinarySearch(*lines, line)
 
 	return found
+}
+
+func (f *Functions) inFileIPSet(filename, ipstr string) bool {
+	loader, _ := f.FileIPSetCache.LoadOrCompute(filename, func() *FileLoader[*netipx.IPSet] {
+		return &FileLoader[*netipx.IPSet]{
+			Filename: filename,
+			Unmarshal: func(data []byte, v any) error {
+				ipsetp, ok := v.(**netipx.IPSet)
+				if !ok {
+					return fmt.Errorf("**netipx.IPSet required, found %T", v)
+				}
+				var builder netipx.IPSetBuilder
+				for line := range strings.Lines(b2s(data)) {
+					line = strings.TrimSpace(line)
+					switch {
+					case strings.Count(line, "-") == 1:
+						if iprange, err := netipx.ParseIPRange(line); err == nil {
+							builder.AddRange(iprange)
+						}
+					case strings.Contains(line, "/"):
+						if prefix, err := netip.ParsePrefix(line); err == nil {
+							builder.AddPrefix(prefix)
+						}
+					default:
+						if ip, err := netip.ParseAddr(line); err == nil {
+							builder.Add(ip)
+						}
+					}
+				}
+				ipset, err := builder.IPSet()
+				if err != nil {
+					return err
+				}
+				*ipsetp = ipset
+				return nil
+			},
+			PollDuration: 2 * time.Minute,
+			Logger:       log.DefaultLogger.Slog(),
+		}
+	})
+	if loader == nil {
+		return false
+	}
+
+	ip, err := netip.ParseAddr(ipstr)
+	if err != nil {
+		return false
+	}
+
+	ipset := loader.Load()
+	if ipset == nil {
+		return false
+	}
+
+	return (*ipset).Contains(ip)
 }
 
 func (f *Functions) regexMatch(pattern, s string) bool {
