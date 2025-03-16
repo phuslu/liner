@@ -328,5 +328,5 @@ const autoindexTemplate = `
 {{end -}}
 {{end}}</pre><hr></body>
 </html>
-{{ readfile "autoindex.html" }}
+{{ readFile "autoindex.html" }}
 `

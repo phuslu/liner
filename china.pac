@@ -9,7 +9,7 @@ var proxy = 'HTTP {{.Request.Host}}:8080'
 
 var prelude = {
 	{{ .Request.URL.Query.Get "prelude" -}}
-	{{ readfile "prelude.txt" -}}
+	{{ readFile "prelude.txt" -}}
 	// wifi captive portal
 	"asusrouter.com":0,
 	"captive.apple.com":0,
