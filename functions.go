@@ -37,8 +37,8 @@ type Functions struct {
 	FetchClient    *http.Client
 	FetchCache     *lru.TTLCache[string, *FetchResponse]
 
-	RegexpCache *xsync.MapOf[string, *regexp.Regexp]
-	FileCache   *xsync.MapOf[string, *FileLoader[[]string]]
+	RegexpCache   *xsync.MapOf[string, *regexp.Regexp]
+	FileLineCache *xsync.MapOf[string, *FileLoader[[]string]]
 
 	FuncMap template.FuncMap
 }
@@ -86,8 +86,10 @@ func (f *Functions) Load() error {
 	f.FuncMap["ipRange"] = f.ipRange
 	f.FuncMap["isInNet"] = f.isInNet
 
+	// pattern matching with file
+	f.FuncMap["inFileLine"] = f.inFileLine
+
 	// file related
-	f.FuncMap["inFile"] = f.inFile
 	f.FuncMap["readFile"] = f.readfile
 	f.FuncMap["readfile"] = f.readfile
 
@@ -420,8 +422,8 @@ func (f *Functions) wildcardMatch(pattern, s string) bool {
 	return false
 }
 
-func (f *Functions) inFile(filename, line string) bool {
-	loader, _ := f.FileCache.LoadOrCompute(filename, func() *FileLoader[[]string] {
+func (f *Functions) inFileLine(filename, line string) bool {
+	loader, _ := f.FileLineCache.LoadOrCompute(filename, func() *FileLoader[[]string] {
 		return &FileLoader[[]string]{
 			Filename: filename,
 			Unmarshal: func(data []byte, v any) error {
