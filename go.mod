@@ -13,10 +13,11 @@ require (
 	github.com/phuslu/log v1.0.115
 	github.com/phuslu/lru v1.0.18
 	github.com/puzpuzpuz/xsync/v3 v3.5.1
-	github.com/quic-go/quic-go v0.50.0
+	github.com/quic-go/quic-go v0.50.1
 	github.com/robfig/cron/v3 v3.0.1
-	github.com/smallnest/ringbuffer v0.0.0-20241129171057-356c688ba81d
+	github.com/smallnest/ringbuffer v0.0.0-20250317021400-0da97b586904
 	github.com/valyala/bytebufferpool v1.0.0
+	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba
 	golang.org/x/crypto v0.36.0
 	golang.org/x/net v0.37.0
 	golang.org/x/sys v0.31.0
@@ -24,12 +25,11 @@ require (
 )
 
 require (
-	github.com/google/pprof v0.0.0-20250302191652-9094ed2288e7 // indirect
+	github.com/google/pprof v0.0.0-20250317173921-a4b03ec1a45e // indirect
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
-	github.com/onsi/ginkgo/v2 v2.23.0 // indirect
+	github.com/onsi/ginkgo/v2 v2.23.3 // indirect
 	github.com/quic-go/qpack v0.5.1 // indirect
 	go.uber.org/mock v0.5.0 // indirect
-	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba // indirect
 	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394 // indirect
 	golang.org/x/mod v0.24.0 // indirect
 	golang.org/x/sync v0.12.0 // indirect
