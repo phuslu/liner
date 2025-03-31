@@ -23,7 +23,6 @@ import (
 
 	"github.com/mileusna/useragent"
 	"github.com/oschwald/maxminddb-golang"
-	"github.com/phuslu/fastdns"
 	"github.com/phuslu/geosite"
 	"github.com/phuslu/log"
 	"github.com/phuslu/lru"
@@ -112,121 +111,6 @@ func main() {
 
 	slog.SetDefault(log.DefaultLogger.Slog())
 
-	// resolver factory
-	resolvers := map[string]*Resolver{}
-	resolverof := func(addr string) *Resolver {
-		r, _ := resolvers[addr]
-		if r != nil {
-			return r
-		}
-		r = &Resolver{
-			Client: &fastdns.Client{
-				Addr: addr,
-			},
-			CacheDuration: 10 * time.Minute,
-			LRUCache:      lru.NewTTLCache[string, []netip.Addr](max(config.Global.DnsCacheSize, 64*1024)),
-		}
-		if config.Global.DnsCacheDuration != "" {
-			dur, err := time.ParseDuration(config.Global.DnsCacheDuration)
-			if dur == 0 || err != nil {
-				log.Fatal().Err(err).Str("dns_cache_duration", config.Global.DnsCacheDuration).Msg("invalid dns_cache_duration")
-			}
-			r.CacheDuration = dur
-		}
-		switch {
-		case addr == "":
-			log.Fatal().Str("addr", addr).Msg("invalid dns_server addr")
-		case strings.Contains(addr, "://"):
-			u, err := url.Parse(addr)
-			if err != nil {
-				log.Fatal().Err(err).Str("dns_server", addr).Msg("parse dns_server error")
-			}
-			switch u.Scheme {
-			case "tcp":
-				hostport := u.Host
-				if _, _, err := net.SplitHostPort(hostport); err != nil {
-					hostport = net.JoinHostPort(hostport, "53")
-				}
-				r.Client.Dialer = &fastdns.TCPDialer{
-					Addr:     func() (u *net.TCPAddr) { u, _ = net.ResolveTCPAddr("tcp", hostport); return }(),
-					MaxConns: 16,
-				}
-			case "tls", "dot":
-				hostport := u.Host
-				if _, _, err := net.SplitHostPort(hostport); err != nil {
-					hostport = net.JoinHostPort(hostport, "853")
-				}
-				r.Client.Dialer = &fastdns.TCPDialer{
-					Addr: func() (ua *net.TCPAddr) { ua, _ = net.ResolveTCPAddr("tcp", hostport); return }(),
-					TLSConfig: &tls.Config{
-						ServerName:         u.Hostname(),
-						ClientSessionCache: tls.NewLRUClientSessionCache(128),
-					},
-					MaxConns: 16,
-				}
-			case "https", "http2", "h2", "doh":
-				u.Scheme = "https"
-				r.Client.Dialer = &fastdns.HTTPDialer{
-					Endpoint: u,
-					Header: http.Header{
-						"content-type": {"application/dns-message"},
-						"user-agent":   {cmp.Or(u.Query().Get("user_agent"), DefaultUserAgent)},
-					},
-					Transport: &http2.Transport{
-						TLSClientConfig: &tls.Config{
-							ServerName:         u.Hostname(),
-							ClientSessionCache: tls.NewLRUClientSessionCache(128),
-						},
-					},
-				}
-			case "http3", "h3", "doh3":
-				u.Scheme = "https"
-				r.Client.Dialer = &fastdns.HTTPDialer{
-					Endpoint: u,
-					Header: http.Header{
-						"content-type": {"application/dns-message"},
-						"user-agent":   {cmp.Or(u.Query().Get("user_agent"), DefaultUserAgent)},
-					},
-					Transport: &http3.Transport{
-						DisableCompression: false,
-						EnableDatagrams:    true,
-						TLSClientConfig: &tls.Config{
-							NextProtos:         []string{"h3"},
-							InsecureSkipVerify: u.Query().Get("insecure") == "true",
-							ServerName:         u.Hostname(),
-							ClientSessionCache: tls.NewLRUClientSessionCache(128),
-						},
-						QUICConfig: &quic.Config{
-							DisablePathMTUDiscovery: false,
-							EnableDatagrams:         true,
-							MaxIncomingUniStreams:   200,
-							MaxIncomingStreams:      200,
-						},
-					},
-				}
-			default:
-				log.Fatal().Strs("support protocols", []string{"udp", "https", "http2", "http3"}).Msg("parse dns_server error")
-			}
-		default:
-			host := addr
-			if _, _, err := net.SplitHostPort(host); err != nil {
-				host = net.JoinHostPort(host, "53")
-			}
-			u, err := net.ResolveUDPAddr("udp", host)
-			if err != nil {
-				log.Fatal().Str("addr", addr).Msg("invalid dns_server addr")
-			}
-			r.Client.Dialer = &fastdns.UDPDialer{
-				Addr:     u,
-				Timeout:  3 * time.Second,
-				MaxConns: 128,
-			}
-		}
-
-		resolvers[addr] = r
-		return r
-	}
-
 	// global resolver with geo support
 	if config.Global.DnsServer == "" {
 		if data, err := os.ReadFile("/etc/resolv.conf"); err == nil {
@@ -236,7 +120,7 @@ func main() {
 		}
 	}
 	geoResolver := &GeoResolver{
-		Resolver:      resolverof(config.Global.DnsServer),
+		Resolver:      must(GetResolver(config.Global.DnsServer)),
 		LocalizedName: true,
 	}
 	for _, name := range []string{"GeoIP2-City.mmdb", "GeoLite2-City.mmdb"} {
@@ -775,7 +659,7 @@ func main() {
 			Dialers:         config.Dialer,
 		}
 		if tunnel.DnsServer != "" {
-			h.Resolver = resolverof(tunnel.DnsServer)
+			h.Resolver = must(GetResolver(tunnel.DnsServer))
 		}
 
 		go h.Serve(context.Background())
