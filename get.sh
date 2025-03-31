@@ -38,7 +38,7 @@ fi
 tar xvJf $filename
 rm -rf $filename
 
-if test -f production.yaml; then
+if test -s .env; then
   exit 0
 fi
 
