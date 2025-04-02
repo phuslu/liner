@@ -6,7 +6,6 @@ import (
 	"crypto/tls"
 	_ "embed"
 	"encoding/base64"
-	"mime"
 	"net"
 	"net/http"
 	"net/url"
@@ -74,9 +73,6 @@ const (
 )
 
 func (h *HTTPServerHandler) Load() error {
-	for ext, typ := range mimeTypes {
-		mime.AddExtensionType(ext, typ)
-	}
 	return nil
 }
 
