@@ -56,6 +56,8 @@ func main() {
 		return
 	}
 
+	InitMimeTypes()
+
 	filename := ""
 	if len(os.Args) > 1 {
 		filename = os.Args[1]
