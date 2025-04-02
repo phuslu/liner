@@ -8,7 +8,7 @@ require (
 	github.com/mileusna/useragent v1.3.5
 	github.com/nathanaelle/password/v2 v2.0.1
 	github.com/oschwald/maxminddb-golang v1.13.1
-	github.com/phuslu/fastdns v0.12.1
+	github.com/phuslu/fastdns v0.12.2
 	github.com/phuslu/geosite v1.0.20250301
 	github.com/phuslu/log v1.0.115
 	github.com/phuslu/lru v1.0.18

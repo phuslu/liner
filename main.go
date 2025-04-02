@@ -667,6 +667,30 @@ func main() {
 		go h.Serve(context.Background())
 	}
 
+	// dns handler
+	for _, dns := range config.Dns {
+		for _, addr := range dns.Listen {
+			var pc net.PacketConn
+
+			if pc, err = lc.ListenPacket(context.Background(), "udp", addr); err != nil {
+				log.Fatal().Err(err).Str("address", addr).Msg("net.Listen error")
+			}
+
+			log.Info().Str("version", version).Str("address", pc.LocalAddr().String()).Msg("liner listen and serve dns port")
+
+			h := &DnsHandler{
+				Config: dns,
+				Logger: log.DefaultLogger,
+			}
+
+			if err = h.Load(); err != nil {
+				log.Fatal().Err(err).Str("address", addr).Msg("dns hanlder load error")
+			}
+
+			go h.Serve(context.Background(), pc)
+		}
+	}
+
 	var cronOptions = []cron.Option{
 		cron.WithSeconds(),
 		cron.WithLogger(cron.PrintfLogger(&log.DefaultLogger)),
