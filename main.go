@@ -680,6 +680,7 @@ func main() {
 
 			h := &DnsHandler{
 				Config: dns,
+				Functions: functions.FuncMap,
 				Logger: log.DefaultLogger,
 			}
 

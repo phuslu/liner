@@ -14,6 +14,7 @@ import (
 
 	"github.com/phuslu/fastdns"
 	"github.com/phuslu/log"
+	"github.com/valyala/bytebufferpool"
 )
 
 type DnsRequest struct {
@@ -26,9 +27,10 @@ type DnsRequest struct {
 
 type DnsHandler struct {
 	Config    DnsConfig
-	Logger    log.Logger
 	Functions template.FuncMap
+	Logger    log.Logger
 
+	policy *template.Template
 	dialer *fastdns.HTTPDialer
 }
 
@@ -53,11 +55,18 @@ func (h *DnsHandler) Load() error {
 		return fmt.Errorf("invaild dns server: %#v: %w", h.Config.ProxyPass, err)
 	}
 
+	if s := h.Config.Policy; s != "" && s != "proxy_pass" {
+		h.policy, err = template.New(s).Funcs(h.Functions).Parse(s)
+		if err != nil {
+			return fmt.Errorf("invaild dns policy: %#v: %w", s, err)
+		}
+	}
+
 	h.dialer = &fastdns.HTTPDialer{
 		Endpoint: endpoint,
 		Header: http.Header{
 			"content-type": {"application/dns-message"},
-			"user-agent":   {"fastdns/1.0"},
+			"user-agent":   {"liner/" + version},
 		},
 		Transport: &http.Transport{
 			ForceAttemptHTTP2:   true,
@@ -92,6 +101,39 @@ func (h *DnsHandler) Serve(ctx context.Context, pc net.PacketConn) {
 
 		go func(req *DnsRequest, addr net.Addr) {
 			defer drPool.Put(req)
+
+			var msg *fastdns.Message
+			if h.policy != nil {
+				msg = fastdns.AcquireMessage()
+				defer fastdns.ReleaseMessage(msg)
+				err = fastdns.ParseMessage(msg, req.Raw, false)
+				if err != nil {
+					log.Error().Err(err).Stringer("local_addr", pc.LocalAddr()).Str("remote_url", h.Config.ProxyPass).Msg("dns parse message error")
+					return
+				}
+
+				bb := bytebufferpool.Get()
+				defer bytebufferpool.Put(bb)
+
+				bb.Reset()
+				err = h.policy.Execute(bb, struct {
+					Request *DnsRequest
+					Message *fastdns.Message
+				}{req, msg})
+				if err != nil {
+					log.Error().Err(err).Stringer("local_addr", pc.LocalAddr()).Str("remote_url", h.Config.ProxyPass).Msg("dns execute policy error")
+					return
+				}
+
+				policyName := strings.TrimSpace(bb.String())
+				log.Debug().Stringer("local_addr", pc.LocalAddr()).Str("remote_url", h.Config.ProxyPass).Str("forward_policy_name", policyName).Msg("execute forward_policy ok")
+
+				parts := strings.Fields(policyName)
+				switch parts[0] {
+				case "error":
+				case "host":
+				}
+			}
 
 			conn, err := h.dialer.DialContext(ctx, "", "")
 			if err != nil {

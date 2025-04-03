@@ -110,6 +110,7 @@ type TunnelConfig struct {
 
 type DnsConfig struct {
 	Listen    []string `json:"listen" yaml:"listen"`
+	Policy    string   `json:"policy" yaml:"policy"`
 	ProxyPass string   `json:"proxy_pass" yaml:"proxy_pass"`
 	Log       bool     `json:"log" yaml:"log"`
 }
