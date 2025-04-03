@@ -681,7 +681,7 @@ func main() {
 			h := &DnsHandler{
 				Config:    dns,
 				Functions: functions.FuncMap,
-				Logger:    log.DefaultLogger,
+				Logger:    log.DefaultLogger.Categorized("dns_handler"),
 			}
 
 			if err = h.Load(); err != nil {
