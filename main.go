@@ -679,16 +679,16 @@ func main() {
 			log.Info().Str("version", version).Str("address", pc.LocalAddr().String()).Msg("liner listen and serve dns port")
 
 			h := &DnsHandler{
-				Config: dns,
+				Config:    dns,
 				Functions: functions.FuncMap,
-				Logger: log.DefaultLogger,
+				Logger:    log.DefaultLogger,
 			}
 
 			if err = h.Load(); err != nil {
 				log.Fatal().Err(err).Str("address", addr).Msg("dns hanlder load error")
 			}
 
-			go h.Serve(context.Background(), pc)
+			go h.Serve(context.Background(), pc.(*net.UDPConn))
 		}
 	}
 

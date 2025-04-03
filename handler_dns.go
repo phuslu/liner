@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 	"sync"
@@ -18,10 +19,10 @@ import (
 )
 
 type DnsRequest struct {
-	RemoteAddr string
-	RemoteIP   string
-	ServerAddr string
 	TraceID    log.XID
+	LocalAddr  netip.AddrPort
+	RemoteAddr netip.AddrPort
+	Conn       *net.UDPConn
 	Raw        []byte
 }
 
@@ -85,79 +86,85 @@ func (h *DnsHandler) Load() error {
 	return nil
 }
 
-func (h *DnsHandler) Serve(ctx context.Context, pc net.PacketConn) {
-	defer pc.Close()
+func (h *DnsHandler) Serve(ctx context.Context, conn *net.UDPConn) {
+	defer conn.Close()
+
+	laddr, _ := netip.ParseAddrPort(conn.LocalAddr().String())
 
 	for {
 		req := drPool.Get().(*DnsRequest)
-		req.Raw = req.Raw[:cap(req.Raw)]
+		req.LocalAddr = laddr
+		req.Conn = conn
 
-		n, addr, err := pc.ReadFrom(req.Raw)
+		req.Raw = req.Raw[:cap(req.Raw)]
+		n, addr, err := req.Conn.ReadFromUDPAddrPort(req.Raw)
 		if err != nil {
-			log.Error().Err(err).Stringer("local_addr", pc.LocalAddr()).Msg("dns read from error")
+			log.Error().Err(err).Xid("trace_id", req.TraceID).Stringer("local_addr", req.LocalAddr).Msg("dns read from error")
 			continue
 		}
 		req.Raw = req.Raw[:n]
+		req.RemoteAddr = addr
+		req.TraceID = log.NewXID()
 
-		go func(req *DnsRequest, addr net.Addr) {
-			defer drPool.Put(req)
-
-			var msg *fastdns.Message
-			if h.policy != nil {
-				msg = fastdns.AcquireMessage()
-				defer fastdns.ReleaseMessage(msg)
-				err = fastdns.ParseMessage(msg, req.Raw, false)
-				if err != nil {
-					log.Error().Err(err).Stringer("local_addr", pc.LocalAddr()).Str("remote_url", h.Config.ProxyPass).Msg("dns parse message error")
-					return
-				}
-
-				bb := bytebufferpool.Get()
-				defer bytebufferpool.Put(bb)
-
-				bb.Reset()
-				err = h.policy.Execute(bb, struct {
-					Request *DnsRequest
-					Message *fastdns.Message
-				}{req, msg})
-				if err != nil {
-					log.Error().Err(err).Stringer("local_addr", pc.LocalAddr()).Str("remote_url", h.Config.ProxyPass).Msg("dns execute policy error")
-					return
-				}
-
-				policyName := strings.TrimSpace(bb.String())
-				log.Debug().Stringer("local_addr", pc.LocalAddr()).Str("remote_url", h.Config.ProxyPass).Str("forward_policy_name", policyName).Msg("execute forward_policy ok")
-
-				parts := strings.Fields(policyName)
-				switch parts[0] {
-				case "error":
-				case "host":
-				}
-			}
-
-			conn, err := h.dialer.DialContext(ctx, "", "")
-			if err != nil {
-				log.Error().Err(err).Stringer("local_addr", pc.LocalAddr()).Str("remote_url", h.Config.ProxyPass).Msg("dns dial error")
-				return
-			}
-			defer h.dialer.Put(conn)
-
-			_, err = conn.Write(req.Raw)
-			if err != nil {
-				log.Error().Err(err).Stringer("local_addr", pc.LocalAddr()).Str("remote_url", h.Config.ProxyPass).Msg("dns dial error")
-				return
-			}
-
-			req.Raw = req.Raw[:cap(req.Raw)]
-			n, err := conn.Read(req.Raw)
-			if err != nil {
-				log.Error().Err(err).Stringer("local_addr", pc.LocalAddr()).Str("remote_url", h.Config.ProxyPass).Msg("dns read raw data error")
-				return
-			}
-
-			req.Raw = req.Raw[:n]
-
-			pc.WriteTo(req.Raw, addr)
-		}(req, addr)
+		go h.ServeDNS(ctx, req)
 	}
+}
+
+func (h *DnsHandler) ServeDNS(ctx context.Context, req *DnsRequest) {
+	defer drPool.Put(req)
+
+	if h.policy != nil {
+		msg := fastdns.AcquireMessage()
+		defer fastdns.ReleaseMessage(msg)
+		err := fastdns.ParseMessage(msg, req.Raw, false)
+		if err != nil {
+			log.Error().Err(err).Xid("trace_id", req.TraceID).Stringer("local_addr", req.LocalAddr).Str("remote_url", h.Config.ProxyPass).Msg("dns parse message error")
+			return
+		}
+
+		bb := bytebufferpool.Get()
+		defer bytebufferpool.Put(bb)
+
+		bb.Reset()
+		err = h.policy.Execute(bb, struct {
+			Request *DnsRequest
+			Message *fastdns.Message
+		}{req, msg})
+		if err != nil {
+			log.Error().Err(err).Xid("trace_id", req.TraceID).Stringer("local_addr", req.LocalAddr).Str("remote_url", h.Config.ProxyPass).Msg("dns execute policy error")
+			return
+		}
+
+		policyName := strings.TrimSpace(bb.String())
+		log.Debug().Xid("trace_id", req.TraceID).Stringer("local_addr", req.LocalAddr).Str("remote_url", h.Config.ProxyPass).Str("forward_policy_name", policyName).Msg("execute forward_policy ok")
+
+		parts := strings.Fields(policyName)
+		switch parts[0] {
+		case "error":
+		case "host":
+		}
+	}
+
+	conn, err := h.dialer.DialContext(ctx, "", "")
+	if err != nil {
+		log.Error().Err(err).Xid("trace_id", req.TraceID).Stringer("local_addr", req.LocalAddr).Str("remote_url", h.Config.ProxyPass).Msg("dns dial error")
+		return
+	}
+	defer h.dialer.Put(conn)
+
+	_, err = conn.Write(req.Raw)
+	if err != nil {
+		log.Error().Err(err).Xid("trace_id", req.TraceID).Stringer("local_addr", req.LocalAddr).Str("remote_url", h.Config.ProxyPass).Msg("dns dial error")
+		return
+	}
+
+	req.Raw = req.Raw[:cap(req.Raw)]
+	n, err := conn.Read(req.Raw)
+	if err != nil {
+		log.Error().Err(err).Xid("trace_id", req.TraceID).Stringer("local_addr", req.LocalAddr).Str("remote_url", h.Config.ProxyPass).Msg("dns read raw data error")
+		return
+	}
+	req.Raw = req.Raw[:n]
+
+	req.Conn.WriteToUDPAddrPort(req.Raw, req.RemoteAddr)
 }
