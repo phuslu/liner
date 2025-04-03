@@ -29,7 +29,7 @@ type DnsRequest struct {
 type DnsHandler struct {
 	Config    DnsConfig
 	Functions template.FuncMap
-	Logger    log.Logger
+	Logger    *log.CategorizedLogger
 
 	policy *template.Template
 	dialer *fastdns.HTTPDialer
@@ -118,7 +118,7 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, req *DnsRequest) {
 		defer fastdns.ReleaseMessage(msg)
 		err := fastdns.ParseMessage(msg, req.Raw, false)
 		if err != nil {
-			log.Error().Err(err).Xid("trace_id", req.TraceID).Stringer("local_addr", req.LocalAddr).Str("remote_url", h.Config.ProxyPass).Msg("dns parse message error")
+			h.Logger.Error().Err(err).Xid("trace_id", req.TraceID).Stringer("local_addr", req.LocalAddr).Str("remote_url", h.Config.ProxyPass).Msg("dns parse message error")
 			return
 		}
 
@@ -131,12 +131,12 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, req *DnsRequest) {
 			Message *fastdns.Message
 		}{req, msg})
 		if err != nil {
-			log.Error().Err(err).Xid("trace_id", req.TraceID).Stringer("local_addr", req.LocalAddr).Str("remote_url", h.Config.ProxyPass).Msg("dns execute policy error")
+			h.Logger.Error().Err(err).Xid("trace_id", req.TraceID).Stringer("local_addr", req.LocalAddr).Str("remote_url", h.Config.ProxyPass).Msg("dns execute policy error")
 			return
 		}
 
 		policyName := strings.TrimSpace(bb.String())
-		log.Debug().Xid("trace_id", req.TraceID).Stringer("local_addr", req.LocalAddr).Str("remote_url", h.Config.ProxyPass).Str("forward_policy_name", policyName).Msg("execute forward_policy ok")
+		h.Logger.Debug().Xid("trace_id", req.TraceID).Stringer("local_addr", req.LocalAddr).Str("remote_url", h.Config.ProxyPass).Str("forward_policy_name", policyName).Msg("execute forward_policy ok")
 
 		parts := strings.Fields(policyName)
 		switch parts[0] {
@@ -147,21 +147,21 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, req *DnsRequest) {
 
 	conn, err := h.dialer.DialContext(ctx, "", "")
 	if err != nil {
-		log.Error().Err(err).Xid("trace_id", req.TraceID).Stringer("local_addr", req.LocalAddr).Str("remote_url", h.Config.ProxyPass).Msg("dns dial error")
+		h.Logger.Error().Err(err).Xid("trace_id", req.TraceID).Stringer("local_addr", req.LocalAddr).Str("remote_url", h.Config.ProxyPass).Msg("dns dial error")
 		return
 	}
 	defer h.dialer.Put(conn)
 
 	_, err = conn.Write(req.Raw)
 	if err != nil {
-		log.Error().Err(err).Xid("trace_id", req.TraceID).Stringer("local_addr", req.LocalAddr).Str("remote_url", h.Config.ProxyPass).Msg("dns dial error")
+		h.Logger.Error().Err(err).Xid("trace_id", req.TraceID).Stringer("local_addr", req.LocalAddr).Str("remote_url", h.Config.ProxyPass).Msg("dns dial error")
 		return
 	}
 
 	req.Raw = req.Raw[:cap(req.Raw)]
 	n, err := conn.Read(req.Raw)
 	if err != nil {
-		log.Error().Err(err).Xid("trace_id", req.TraceID).Stringer("local_addr", req.LocalAddr).Str("remote_url", h.Config.ProxyPass).Msg("dns read raw data error")
+		h.Logger.Error().Err(err).Xid("trace_id", req.TraceID).Stringer("local_addr", req.LocalAddr).Str("remote_url", h.Config.ProxyPass).Msg("dns read raw data error")
 		return
 	}
 	req.Raw = req.Raw[:n]
