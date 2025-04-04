@@ -8,8 +8,8 @@ require (
 	github.com/mileusna/useragent v1.3.5
 	github.com/nathanaelle/password/v2 v2.0.1
 	github.com/oschwald/maxminddb-golang v1.13.1
-	github.com/phuslu/fastdns v0.12.2
-	github.com/phuslu/geosite v1.0.20250301
+	github.com/phuslu/fastdns v0.12.4
+	github.com/phuslu/geosite v1.0.20250401
 	github.com/phuslu/log v1.0.115
 	github.com/phuslu/lru v1.0.18
 	github.com/puzpuzpuz/xsync/v3 v3.5.1
@@ -19,13 +19,13 @@ require (
 	github.com/valyala/bytebufferpool v1.0.0
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba
 	golang.org/x/crypto v0.36.0
-	golang.org/x/net v0.37.0
+	golang.org/x/net v0.38.0
 	golang.org/x/sys v0.31.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
-	github.com/google/pprof v0.0.0-20250317173921-a4b03ec1a45e // indirect
+	github.com/google/pprof v0.0.0-20250403155104-27863c87afa6 // indirect
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
 	github.com/onsi/ginkgo/v2 v2.23.3 // indirect
 	github.com/quic-go/qpack v0.5.1 // indirect
