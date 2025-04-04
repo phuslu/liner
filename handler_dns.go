@@ -116,7 +116,7 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, req *DnsRequest) {
 	if h.policy != nil {
 		msg := fastdns.AcquireMessage()
 		defer fastdns.ReleaseMessage(msg)
-		err := fastdns.ParseMessage(msg, req.Raw, false)
+		err := fastdns.ParseMessage(msg, req.Raw, true)
 		if err != nil {
 			h.Logger.Error().Err(err).Xid("trace_id", req.TraceID).Stringer("local_addr", req.LocalAddr).Str("remote_url", h.Config.ProxyPass).Msg("dns parse message error")
 			return
@@ -136,12 +136,32 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, req *DnsRequest) {
 		}
 
 		policyName := strings.TrimSpace(bb.String())
-		h.Logger.Debug().Xid("trace_id", req.TraceID).Stringer("local_addr", req.LocalAddr).Str("remote_url", h.Config.ProxyPass).Str("forward_policy_name", policyName).Msg("execute forward_policy ok")
+		h.Logger.Debug().Xid("trace_id", req.TraceID).Stringer("local_addr", req.LocalAddr).Uint16("msg_id", msg.Header.ID).Bytes("msg_domain", msg.Domain).Str("forward_policy_name", policyName).Msg("execute forward_policy ok")
 
 		parts := strings.Fields(policyName)
 		switch parts[0] {
 		case "error":
+			rcode, err := fastdns.ParseRcode(parts[1])
+			if err != nil {
+				h.Logger.Error().Err(err).Xid("trace_id", req.TraceID).Stringer("local_addr", req.LocalAddr).Uint16("msg_id", msg.Header.ID).Bytes("msg_domain", msg.Domain).Msg("dns policy parse rcode error")
+				rcode = fastdns.RcodeRefused
+			}
+			h.Logger.Debug().Xid("trace_id", req.TraceID).Stringer("local_addr", req.LocalAddr).Uint16("msg_id", msg.Header.ID).Bytes("msg_domain", msg.Domain).Stringer("rcode", rcode).Msg("dns policy execute host")
+			msg.SetResponseHeader(rcode, 0)
+			req.Conn.WriteToUDPAddrPort(msg.Raw, req.RemoteAddr)
+			return
 		case "host":
+			addrs := make([]netip.Addr, 0, 4)
+			for _, s := range parts[1:] {
+				if addr, err := netip.ParseAddr(s); err == nil {
+					addrs = append(addrs, addr)
+				}
+			}
+			h.Logger.Debug().Xid("trace_id", req.TraceID).Stringer("local_addr", req.LocalAddr).Uint16("msg_id", msg.Header.ID).Bytes("msg_domain", msg.Domain).NetIPAddrs("hosts", addrs).Msg("dns policy execute host")
+			msg.SetResponseHeader(fastdns.RcodeNoError, uint16(len(addrs)))
+			msg.Raw = fastdns.AppendHOSTRecord(msg.Raw, msg, 300, addrs)
+			req.Conn.WriteToUDPAddrPort(msg.Raw, req.RemoteAddr)
+			return
 		}
 	}
 
