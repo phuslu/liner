@@ -16,6 +16,16 @@ dialer:
   proxy3: http3://foobar:123456@proxy3.example.com:443/?user_agent=liner-1984
   wss: wss://phuslu:123456@www.phus.lu:443/
   ssh: ssh://phuslu:123456@phus.lu:22/?timeout=8&max_clients=4&key=/home/phuslu/.ssh/id_rsa
+dns:
+  - listen: ['127.0.0.53:53']
+    policy: |
+      {{ $domain := toString .Message.Domain }}
+      {{ if all (eq .Message.Question.Type 1) (hasSuffix ".local" $domain) }}
+        host {{ index (splitList "." $domain) 0 | replace "-" "." }}
+      {{ else }}
+        proxy_pass
+      {{ end }}
+    proxy_pass: https://1.1.1.1/dns-query
 https:
   - listen: [':443']
     server_name: ['example.org']
