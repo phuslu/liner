@@ -19,8 +19,8 @@ dialer:
 dns:
   - listen: ['127.0.0.53:53']
     policy: |
-      {{ $domain := toString .Message.Domain }}
-      {{ if all (eq .Message.Question.Type 1) (hasSuffix ".local" $domain) }}
+      {{ $domain := toString .Request.Message.Domain }}
+      {{ if all (eq .Request.Message.Question.Type 1) (hasSuffix ".local" $domain) }}
         host {{ index (splitList "." $domain) 0 | replace "-" "." }}
       {{ else }}
         proxy_pass
