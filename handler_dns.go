@@ -29,7 +29,7 @@ type DnsRequest struct {
 type DnsHandler struct {
 	Config    DnsConfig
 	Functions template.FuncMap
-	Logger    *log.CategorizedLogger
+	Logger    log.Logger
 
 	policy *template.Template
 	dialer *fastdns.HTTPDialer

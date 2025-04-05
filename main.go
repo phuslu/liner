@@ -69,7 +69,7 @@ func main() {
 	}
 
 	// main logger
-	var forwardLogger log.Logger
+	var forwardLogger, dnsLogger log.Logger
 	if log.IsTerminal(os.Stderr.Fd()) {
 		log.DefaultLogger = log.Logger{
 			Level:      log.ParseLevel(cmp.Or(config.Global.LogLevel, "info")),
@@ -81,6 +81,10 @@ func main() {
 			},
 		}
 		forwardLogger = log.Logger{
+			Level:  log.ParseLevel(cmp.Or(config.Global.LogLevel, "info")),
+			Writer: log.DefaultLogger.Writer,
+		}
+		dnsLogger = log.Logger{
 			Level:  log.ParseLevel(cmp.Or(config.Global.LogLevel, "info")),
 			Writer: log.DefaultLogger.Writer,
 		}
@@ -103,6 +107,19 @@ func main() {
 				ChannelSize: 8192,
 				Writer: &log.FileWriter{
 					Filename:   "forward.log",
+					MaxBackups: cmp.Or(config.Global.LogBackups, 2),
+					MaxSize:    cmp.Or(config.Global.LogMaxsize, 20*1024*1024),
+					LocalTime:  config.Global.LogLocaltime,
+				},
+			},
+		}
+		// dns logger
+		dnsLogger = log.Logger{
+			Level: log.ParseLevel(cmp.Or(config.Global.LogLevel, "info")),
+			Writer: &log.AsyncWriter{
+				ChannelSize: 8192,
+				Writer: &log.FileWriter{
+					Filename:   "dns.log",
 					MaxBackups: cmp.Or(config.Global.LogBackups, 2),
 					MaxSize:    cmp.Or(config.Global.LogMaxsize, 20*1024*1024),
 					LocalTime:  config.Global.LogLocaltime,
@@ -681,7 +698,7 @@ func main() {
 			h := &DnsHandler{
 				Config:    dns,
 				Functions: functions.FuncMap,
-				Logger:    log.DefaultLogger.Categorized("dns_handler"),
+				Logger:    dnsLogger,
 			}
 
 			if err = h.Load(); err != nil {
@@ -703,6 +720,7 @@ func main() {
 	if !log.IsTerminal(os.Stderr.Fd()) {
 		runner.AddFunc("0 0 0 * * *", func() { log.DefaultLogger.Writer.(*log.FileWriter).Rotate() })
 		runner.AddFunc("0 0 0 * * *", func() { forwardLogger.Writer.(*log.AsyncWriter).Writer.(*log.FileWriter).Rotate() })
+		runner.AddFunc("0 0 0 * * *", func() { dnsLogger.Writer.(*log.AsyncWriter).Writer.(*log.FileWriter).Rotate() })
 	}
 	for _, job := range config.Cron {
 		spec, command := job.Spec, job.Command
