@@ -155,23 +155,41 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, req *DnsRequest) {
 		parts := strings.Fields(policyName)
 		switch parts[0] {
 		case "ERROR", "error":
+			if len(parts) != 2 {
+				fastdns.Error(DnsResponseWriter{req}, req.Message, fastdns.RcodeServFail)
+				return
+			}
 			rcode, err := fastdns.ParseRcode(parts[1])
 			if err != nil {
 				h.Logger.Error().Err(err).Context(req.LogContext).Str("req_domain", req.Domain).Str("req_qtype", req.QType).Msg("dns policy parse rcode error")
-				rcode = fastdns.RcodeRefused
+				fastdns.Error(DnsResponseWriter{req}, req.Message, fastdns.RcodeServFail)
+				return
 			}
-			h.Logger.Debug().Context(req.LogContext).Str("req_domain", req.Domain).Str("req_qtype", req.QType).Stringer("rcode", rcode).Msg("dns policy execute host")
+			h.Logger.Debug().Context(req.LogContext).Str("req_domain", req.Domain).Str("req_qtype", req.QType).Stringer("rcode", rcode).Msg("dns policy error executed")
 			fastdns.Error(DnsResponseWriter{req}, req.Message, rcode)
 			return
 		case "HOST", "host":
 			addrs := toaddrs(make([]netip.Addr, 0, 4), parts[1:])
-			h.Logger.Debug().Context(req.LogContext).Str("req_domain", req.Domain).Str("req_qtype", req.QType).NetIPAddrs("hosts", addrs).Msg("dns policy execute host")
+			h.Logger.Debug().Context(req.LogContext).Str("req_domain", req.Domain).Str("req_qtype", req.QType).NetIPAddrs("hosts", addrs).Msg("dns policy host executed")
 			fastdns.HOST(DnsResponseWriter{req}, req.Message, 300, addrs)
 			return
 		case "CNAME", "cname":
+			if len(parts) != 2 {
+				fastdns.Error(DnsResponseWriter{req}, req.Message, fastdns.RcodeServFail)
+				return
+			}
 			cnames := strings.Split(parts[1], ",")
-			h.Logger.Debug().Context(req.LogContext).Str("req_domain", req.Domain).Str("req_qtype", req.QType).Strs("cnames", cnames).Msg("dns policy execute cname")
+			h.Logger.Debug().Context(req.LogContext).Str("req_domain", req.Domain).Str("req_qtype", req.QType).Strs("cnames", cnames).Msg("dns policy cname executed")
 			fastdns.CNAME(DnsResponseWriter{req}, req.Message, 300, cnames, nil)
+			return
+		case "TXT", "txt":
+			if len(parts) != 2 {
+				fastdns.Error(DnsResponseWriter{req}, req.Message, fastdns.RcodeServFail)
+				return
+			}
+			txt := parts[1]
+			h.Logger.Debug().Context(req.LogContext).Str("req_domain", req.Domain).Str("req_qtype", req.QType).Str("txt", txt).Msg("dns policy txt executed")
+			fastdns.TXT(DnsResponseWriter{req}, req.Message, 300, txt)
 			return
 		}
 	}
