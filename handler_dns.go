@@ -2,16 +2,12 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"net"
-	"net/http"
 	"net/netip"
-	"net/url"
 	"strings"
 	"sync"
 	"text/template"
-	"time"
 
 	"github.com/phuslu/fastdns"
 	"github.com/phuslu/log"
@@ -33,8 +29,8 @@ type DnsHandler struct {
 	Functions template.FuncMap
 	Logger    log.Logger
 
+	dialer fastdns.Dialer
 	policy *template.Template
-	dialer *fastdns.HTTPDialer
 }
 
 var drPool = sync.Pool{
@@ -49,40 +45,19 @@ func (h *DnsHandler) Load() error {
 	if len(h.Config.Listen) != 1 {
 		return fmt.Errorf("invaild length of listen: %#v", h.Config.Listen)
 	}
-	if !strings.HasPrefix(h.Config.ProxyPass, "https://") {
-		return fmt.Errorf("unsupported proxy_pass scheme: %#v", h.Config.ProxyPass)
+
+	resolver, err := GetResolver(h.Config.ProxyPass)
+	if err != nil {
+		return fmt.Errorf("invaild dns proxy_pass: %#v: %w", h.Config.ProxyPass, err)
 	}
 
-	endpoint, err := url.Parse(h.Config.ProxyPass)
-	if err != nil {
-		return fmt.Errorf("invaild dns server: %#v: %w", h.Config.ProxyPass, err)
-	}
+	h.dialer = resolver.Client.Dialer
 
 	if s := h.Config.Policy; s != "" && s != "proxy_pass" {
 		h.policy, err = template.New(s).Funcs(h.Functions).Parse(s)
 		if err != nil {
 			return fmt.Errorf("invaild dns policy: %#v: %w", s, err)
 		}
-	}
-
-	h.dialer = &fastdns.HTTPDialer{
-		Endpoint: endpoint,
-		Header: http.Header{
-			"content-type": {"application/dns-message"},
-			"user-agent":   {"liner/" + version},
-		},
-		Transport: &http.Transport{
-			ForceAttemptHTTP2:   true,
-			MaxIdleConns:        100,
-			IdleConnTimeout:     90 * time.Second,
-			TLSHandshakeTimeout: 10 * time.Second,
-			TLSClientConfig: &tls.Config{
-				NextProtos:         []string{"h2"},
-				InsecureSkipVerify: false,
-				ServerName:         endpoint.Hostname(),
-				ClientSessionCache: tls.NewLRUClientSessionCache(1024),
-			},
-		},
 	}
 
 	return nil
@@ -118,6 +93,7 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, req *DnsRequest) {
 
 	req.LogContext = log.NewContext(req.LogContext[:0]).Xid("trace_id", log.NewXID()).NetIPAddrPort("local_addr", req.LocalAddr).NetIPAddr("remote_addr", req.RemoteAddr.Addr()).Value()
 
+	proxypass, dialer := h.Config.ProxyPass, h.dialer
 	if h.policy != nil {
 		err := fastdns.ParseMessage(req.Message, req.Message.Raw, false)
 		if err != nil {
@@ -192,26 +168,44 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, req *DnsRequest) {
 			h.Logger.Debug().Context(req.LogContext).Str("req_domain", req.Domain).Str("req_qtype", req.QType).Str("txt", txt).Msg("dns policy txt executed")
 			fastdns.TXT(rw, req.Message, 300, txt)
 			return
+		case "PROXY_PASS", "proxy_pass":
+			if len(parts) == 2 {
+				proxypass = parts[1]
+				resolver, err := GetResolver(proxypass)
+				if err != nil {
+					h.Logger.Error().Err(err).Context(req.LogContext).Str("req_domain", req.Domain).Str("req_qtype", req.QType).Str("proxy_pass", proxypass).Msg("dns policy parse proxy_pass error")
+					fastdns.Error(rw, req.Message, fastdns.RcodeServFail)
+					return
+				}
+				dialer = resolver.Client.Dialer
+				h.Logger.Debug().Context(req.LogContext).Str("req_domain", req.Domain).Str("req_qtype", req.QType).Str("proxy_pass", proxypass).Msg("dns policy proxy_pass executed")
+			}
 		}
 	}
 
-	conn, err := h.dialer.DialContext(ctx, "", "")
+	h.Logger.Debug().Context(req.LogContext).Str("req_domain", req.Domain).Str("req_qtype", req.QType).Str("proxy_pass", proxypass).Msg("dns proxy_pass request")
+
+	conn, err := dialer.DialContext(ctx, "", "")
 	if err != nil {
-		h.Logger.Error().Err(err).Context(req.LogContext).Str("proxy_pass", h.Config.ProxyPass).Msg("dns dial error")
+		h.Logger.Error().Err(err).Context(req.LogContext).Str("proxy_pass", proxypass).Msg("dns dial error")
 		return
 	}
-	defer h.dialer.Put(conn)
+	if d, _ := dialer.(interface {
+		Put(c net.Conn)
+	}); d != nil {
+		defer d.Put(conn)
+	}
 
 	_, err = conn.Write(req.Message.Raw)
 	if err != nil {
-		h.Logger.Error().Err(err).Context(req.LogContext).Str("proxy_pass", h.Config.ProxyPass).Msg("dns dial error")
+		h.Logger.Error().Err(err).Context(req.LogContext).Str("proxy_pass", proxypass).Msg("dns dial error")
 		return
 	}
 
 	req.Message.Raw = req.Message.Raw[:cap(req.Message.Raw)]
 	n, err := conn.Read(req.Message.Raw)
 	if err != nil {
-		h.Logger.Error().Err(err).Context(req.LogContext).Str("proxy_pass", h.Config.ProxyPass).Msg("dns read raw data error")
+		h.Logger.Error().Err(err).Context(req.LogContext).Str("proxy_pass", proxypass).Msg("dns read raw data error")
 		return
 	}
 	req.Message.Raw = req.Message.Raw[:n]
