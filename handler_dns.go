@@ -145,8 +145,7 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, req *DnsRequest) {
 				rcode = fastdns.RcodeRefused
 			}
 			h.Logger.Debug().Context(req.LogContext).Uint16("req_id", req.Message.Header.ID).Bytes("req_domain", req.Message.Domain).Stringer("rcode", rcode).Msg("dns policy execute host")
-			req.Message.SetResponseHeader(rcode, 0)
-			req.Conn.WriteToUDPAddrPort(req.Message.Raw, req.RemoteAddr)
+			fastdns.Error(DnsResponseWriter{req}, req.Message, rcode)
 			return
 		case "host":
 			addrs := make([]netip.Addr, 0, 4)
@@ -156,9 +155,7 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, req *DnsRequest) {
 				}
 			}
 			h.Logger.Debug().Context(req.LogContext).Uint16("req_id", req.Message.Header.ID).Bytes("req_domain", req.Message.Domain).NetIPAddrs("hosts", addrs).Msg("dns policy execute host")
-			req.Message.SetResponseHeader(fastdns.RcodeNoError, uint16(len(addrs)))
-			req.Message.Raw = fastdns.AppendHOSTRecord(req.Message.Raw, req.Message, 300, addrs)
-			req.Conn.WriteToUDPAddrPort(req.Message.Raw, req.RemoteAddr)
+			fastdns.HOST(DnsResponseWriter{req}, req.Message, 300, addrs)
 			return
 		}
 	}
@@ -186,3 +183,21 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, req *DnsRequest) {
 
 	req.Conn.WriteToUDPAddrPort(req.Message.Raw, req.RemoteAddr)
 }
+
+type DnsResponseWriter struct {
+	*DnsRequest
+}
+
+func (w DnsResponseWriter) LocalAddr() netip.AddrPort {
+	return w.DnsRequest.LocalAddr
+}
+
+func (w DnsResponseWriter) RemoteAddr() netip.AddrPort {
+	return w.DnsRequest.RemoteAddr
+}
+
+func (w DnsResponseWriter) Write(b []byte) (int, error) {
+	return w.DnsRequest.Conn.WriteToUDPAddrPort(b, w.DnsRequest.RemoteAddr)
+}
+
+var _ fastdns.ResponseWriter = DnsResponseWriter{}
