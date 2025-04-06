@@ -136,9 +136,18 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, req *DnsRequest) {
 		policyName := strings.TrimSpace(bb.String())
 		h.Logger.Debug().Context(req.LogContext).Bytes("req_domain", req.Message.Domain).Str("forward_policy_name", policyName).Msg("execute forward_policy ok")
 
+		toaddrs := func(dst []netip.Addr, ss []string) []netip.Addr {
+			for _, s := range ss {
+				if addr, err := netip.ParseAddr(s); err == nil {
+					dst = append(dst, addr)
+				}
+			}
+			return dst
+		}
+
 		parts := strings.Fields(policyName)
 		switch parts[0] {
-		case "error":
+		case "ERROR", "error":
 			rcode, err := fastdns.ParseRcode(parts[1])
 			if err != nil {
 				h.Logger.Error().Err(err).Context(req.LogContext).Uint16("req_id", req.Message.Header.ID).Bytes("req_domain", req.Message.Domain).Msg("dns policy parse rcode error")
@@ -147,15 +156,15 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, req *DnsRequest) {
 			h.Logger.Debug().Context(req.LogContext).Uint16("req_id", req.Message.Header.ID).Bytes("req_domain", req.Message.Domain).Stringer("rcode", rcode).Msg("dns policy execute host")
 			fastdns.Error(DnsResponseWriter{req}, req.Message, rcode)
 			return
-		case "host":
-			addrs := make([]netip.Addr, 0, 4)
-			for _, s := range parts[1:] {
-				if addr, err := netip.ParseAddr(s); err == nil {
-					addrs = append(addrs, addr)
-				}
-			}
+		case "HOST", "host":
+			addrs := toaddrs(make([]netip.Addr, 0, 4), parts[1:])
 			h.Logger.Debug().Context(req.LogContext).Uint16("req_id", req.Message.Header.ID).Bytes("req_domain", req.Message.Domain).NetIPAddrs("hosts", addrs).Msg("dns policy execute host")
 			fastdns.HOST(DnsResponseWriter{req}, req.Message, 300, addrs)
+			return
+		case "CNAME", "cname":
+			cnames := strings.Split(parts[1], ",")
+			h.Logger.Debug().Context(req.LogContext).Uint16("req_id", req.Message.Header.ID).Bytes("req_domain", req.Message.Domain).Strs("cnames", cnames).Msg("dns policy execute cname")
+			fastdns.CNAME(DnsResponseWriter{req}, req.Message, 300, cnames, nil)
 			return
 		}
 	}
