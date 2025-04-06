@@ -70,17 +70,18 @@ func (h *DnsHandler) Serve(ctx context.Context, conn *net.UDPConn) {
 
 	for {
 		req := drPool.Get().(*DnsRequest)
-		req.LocalAddr = laddr
-		req.Conn = conn
 
 		req.Message.Raw = req.Message.Raw[:cap(req.Message.Raw)]
-		n, addr, err := req.Conn.ReadFromUDPAddrPort(req.Message.Raw)
+		n, addr, err := conn.ReadFromUDPAddrPort(req.Message.Raw)
 		if err != nil {
-			log.Error().Err(err).NetIPAddrPort("local_addr", req.LocalAddr).NetIPAddr("remote_addr", req.RemoteAddr.Addr()).Msg("dns read from error")
+			log.Error().Err(err).NetIPAddrPort("local_addr", laddr).Msg("dns read from udp error")
 			continue
 		}
-		req.RemoteAddr = addr
 		req.Message.Raw = req.Message.Raw[:n]
+
+		req.LocalAddr = laddr
+		req.RemoteAddr = addr
+		req.Conn = conn
 		req.Domain = ""
 		req.QType = ""
 
