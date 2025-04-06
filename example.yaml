@@ -19,12 +19,15 @@ dialer:
 dns:
   - listen: ['127.0.0.53:53']
     policy: |
-      {{ $domain := toString .Request.Message.Domain | lower }}
-      {{ if hasSuffix ".ip.phus.lu" $domain }}
-        {{ if all (eq .Request.Message.Question.Type 1) (regexMatch `(?i)^\d+\-\d+\-\d+\-\d+\.ip\.phus\.lu$` $domain) }}
-          host {{ index (splitList "." $domain) 0 | replace "-" "." }}
+      {{ if hasSuffix ".ip.phus.lu" .Request.Domain }}
+        {{ if eq "A" .Request.QType }}
+          {{ if regexMatch `(?i)^\d+\-\d+\-\d+\-\d+\.ip\.phus\.lu$` .Request.Domain }}
+            HOST {{ index (splitList "." .Request.Domain) 0 | replace "-" "." }}
+          {{ else }}
+            CNAME phus.lu
+          {{ end }}
         {{ else }}
-          error NXDomain
+          ERROR NoError
         {{ end }}
       {{ else }}
         proxy_pass
