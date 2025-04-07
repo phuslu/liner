@@ -103,13 +103,40 @@ func NewIPInt(ip string) IPInt {
 	return i*256 + j
 }
 
-func AppendLowerBytes(dst []byte, src []byte) []byte {
-	for _, c := range src {
+// AppendToLower appends the ASCII-lowercased version of string s to dst,
+// and returns the resulting slice.
+//
+// This function performs in-place, allocation-free ASCII lowercasing.
+// Only ASCII uppercase letters A–Z are converted to lowercase;
+// all other bytes are copied verbatim.
+//
+// It is optimized for DNS domain names, which are case-insensitive and
+// often arrive in mixed-case (e.g., from Google 8.8.8.8 recursion). This
+// function assumes ASCII-only input and avoids Unicode handling.
+//
+// Example usage:
+//
+//	domain := b2s(AppendToLower(make([]byte, 0, 256), req.Message.Domain))
+//
+// Performance: If dst has sufficient capacity (as above), no heap allocations
+// occur. This makes it suitable for high-performance DNS parsing pipelines.
+//
+// Safety: The returned []byte aliases dst. It is safe to use with b2s for
+// zero-copy conversion only if the buffer is not modified afterward.
+// Behavior is undefined for non-ASCII input.
+func AppendToLower(dst []byte, s string) []byte {
+	n := len(dst)
+	dst = append(dst, s...)
+	m := n + len(s) - 1
+
+	_ = dst[m]
+	for i := n; i <= m; i++ {
+		c := dst[i]
 		if 'A' <= c && c <= 'Z' {
-			c += 'a' - 'A'
+			dst[i] = c + ('a' - 'A')
 		}
-		dst = append(dst, c)
 	}
+
 	return dst
 }
 
@@ -1012,17 +1039,4 @@ func (cm *CachingMap[K, V]) Get(key K) (value V, ok bool, err error) {
 	}
 
 	return
-}
-
-func AppendToLower(dst []byte, s string) []byte {
-	n := len(s) - 1
-	_ = s[n]
-	for i := 0; i <= n; i++ {
-		c := s[i]
-		if 'A' <= c && c <= 'Z' {
-			c += 'a' - 'A'
-		}
-		dst = append(dst, c)
-	}
-	return dst
 }
