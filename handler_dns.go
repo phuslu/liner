@@ -14,6 +14,15 @@ import (
 	"github.com/valyala/bytebufferpool"
 )
 
+type DnsHandler struct {
+	Config    DnsConfig
+	Functions template.FuncMap
+	Logger    log.Logger
+
+	dialer fastdns.Dialer
+	policy *template.Template
+}
+
 type DnsRequest struct {
 	LogContext log.Context
 	LocalAddr  netip.AddrPort
@@ -22,15 +31,6 @@ type DnsRequest struct {
 	Message    *fastdns.Message
 	Domain     string
 	QType      string
-}
-
-type DnsHandler struct {
-	Config    DnsConfig
-	Functions template.FuncMap
-	Logger    log.Logger
-
-	dialer fastdns.Dialer
-	policy *template.Template
 }
 
 var drPool = sync.Pool{
