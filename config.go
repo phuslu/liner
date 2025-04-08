@@ -101,7 +101,7 @@ type StreamConfig struct {
 type TunnelConfig struct {
 	Listen      []string `json:"listen" yaml:"listen"`
 	ProxyPass   string   `json:"proxy_pass" yaml:"proxy_pass"`
-	DnsServer   string   `json:"dns_server" yaml:"dns_server"`
+	Resolver    string   `json:"resolver" yaml:"resolver"`
 	DialTimeout int      `json:"dial_timeout" yaml:"dial_timeout"`
 	Dialer      string   `json:"dialer" yaml:"dialer"`
 	SpeedLimit  int64    `json:"speed_limit" yaml:"speed_limit"`
