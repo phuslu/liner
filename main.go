@@ -677,8 +677,8 @@ func main() {
 			LocalDialer:     dialer,
 			Dialers:         config.Dialer,
 		}
-		if tunnel.DnsServer != "" {
-			h.Resolver = must(GetResolver(tunnel.DnsServer))
+		if tunnel.Resolver != "" {
+			h.Resolver = must(GetResolver(tunnel.Resolver))
 		}
 
 		go h.Serve(context.Background())
