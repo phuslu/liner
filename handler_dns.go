@@ -182,9 +182,17 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, req *DnsRequest) {
 				h.Logger.Debug().Context(req.LogContext).Str("req_domain", req.Domain).Str("req_qtype", req.QType).Str("proxy_pass", proxypass).Msg("dns policy proxy_pass executed")
 			}
 		}
+		defer h.Logger.Info().Context(req.LogContext).Str("req_domain", req.Domain).Str("req_qtype", req.QType).Str("proxy_pass", proxypass).Msg("dns proxy_pass request")
+	} else {
+		defer func() {
+			err := fastdns.ParseMessage(req.Message, req.Message.Raw, false)
+			if err != nil {
+				h.Logger.Error().Err(err).Msg("dns parse message error")
+				return
+			}
+			h.Logger.Info().Context(req.LogContext).Bytes("req_domain", req.Message.Domain).Str("req_qtype", req.Message.Question.Type.String()).Str("proxy_pass", proxypass).Msg("dns proxy_pass request")
+		}()
 	}
-
-	h.Logger.Debug().Context(req.LogContext).Str("req_domain", req.Domain).Str("req_qtype", req.QType).Str("proxy_pass", proxypass).Msg("dns proxy_pass request")
 
 	conn, err := dialer.DialContext(ctx, "", "")
 	if err != nil {
