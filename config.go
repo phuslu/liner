@@ -116,6 +116,13 @@ type DnsConfig struct {
 	Log       bool     `json:"log" yaml:"log"`
 }
 
+type SshConfig struct {
+	Listen    []string `json:"listen" yaml:"listen"`
+	HostKey   string   `json:"host_key" yaml:"host_key"`
+	AuthTable string   `json:"auth_table" yaml:"auth_table"`
+	Log       bool     `json:"log" yaml:"log"`
+}
+
 type Config struct {
 	Global struct {
 		LogLevel         string `json:"log_level" yaml:"log_level"`
