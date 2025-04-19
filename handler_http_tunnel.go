@@ -10,12 +10,14 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/libp2p/go-yamux/v5"
 	"github.com/phuslu/log"
+	"go4.org/netipx"
 )
 
 type HTTPTunnelHandler struct {
@@ -23,6 +25,7 @@ type HTTPTunnelHandler struct {
 	TunnelLogger log.Logger
 
 	csvloader *FileLoader[[]UserInfo]
+	listens   *netipx.IPSet
 }
 
 func (h *HTTPTunnelHandler) Load() error {
@@ -38,6 +41,31 @@ func (h *HTTPTunnelHandler) Load() error {
 			log.Fatal().Strs("server_name", h.Config.ServerName).Str("auth_table", h.Config.Tunnel.AuthTable).Msg("load auth_table failed")
 		}
 		log.Info().Strs("server_name", h.Config.ServerName).Str("auth_table", h.Config.Tunnel.AuthTable).Int("auth_table_size", len(*records)).Msg("load auth_table ok")
+	}
+
+	if len(h.Config.Tunnel.AllowListens) > 0 {
+		var builder netipx.IPSetBuilder
+		for _, listen := range h.Config.Tunnel.AllowListens {
+			switch {
+			case strings.Count(listen, "-") == 1:
+				if iprange, err := netipx.ParseIPRange(listen); err == nil {
+					builder.AddRange(iprange)
+				}
+			case strings.Contains(listen, "/"):
+				if prefix, err := netip.ParsePrefix(listen); err == nil {
+					builder.AddPrefix(prefix)
+				}
+			default:
+				if ip, err := netip.ParseAddr(listen); err == nil {
+					builder.Add(ip)
+				}
+			}
+		}
+		ipset, err := builder.IPSet()
+		if err != nil {
+			return err
+		}
+		h.listens = ipset
 	}
 
 	return nil
@@ -86,7 +114,8 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		log.DefaultLogger.Err(err).Context(ri.LogContext).Int64("tunnel_speedlimit", speedLimit).Msg("set tunnel_speedlimit")
 	}
 
-	if allow, _ := user.Attrs["allow_tunnel"].(string); allow != "1" {
+	allow, _ := user.Attrs["allow_tunnel"].(string)
+	if allow == "0" {
 		log.Error().Context(ri.LogContext).Str("username", user.Username).Str("allow_tunnel", allow).Msg("tunnel user permission denied")
 		http.Error(rw, "permission denied", http.StatusForbidden)
 		return
@@ -96,6 +125,20 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	// see https://www.ietf.org/archive/id/draft-kazuho-httpbis-reverse-tunnel-00.html
 	parts := strings.Split(req.URL.Path, "/")
 	addr := net.JoinHostPort(parts[len(parts)-3], parts[len(parts)-2])
+
+	if h.listens != nil && allow != "-1" {
+		ap, err := netip.ParseAddrPort(addr)
+		if err != nil {
+			log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Msg("tunnel parse tcp listener error")
+			http.Error(rw, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if !h.listens.Contains(ap.Addr()) {
+			log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Msg("tunnel allow tcp listener error")
+			http.Error(rw, "tunnel listen addr is not allow", http.StatusForbidden)
+			return
+		}
+	}
 
 	ln, err := (&net.ListenConfig{
 		KeepAliveConfig: net.KeepAliveConfig{
