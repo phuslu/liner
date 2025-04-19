@@ -98,6 +98,11 @@ https:
       auth_table: authuser.csv
       deny_domains_table: deny_domains.csv
       speed_limit: 10000000
+    tunnel:
+      enabled: true
+      auth_table: authuser.csv
+      allow_listens: ["127.0.0.1"]
+      log: true
     web:
       - location: /dns-query
         proxy:
