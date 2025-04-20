@@ -240,7 +240,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		case n > 0:
 			speedLimit = n
 		case n < 0:
-			speedLimit = 0 // no speed_limit
+			speedLimit = 0 // privileged users has no speed_limit
 		}
 	}
 

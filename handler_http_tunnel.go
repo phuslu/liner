@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/netip"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -109,9 +110,24 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		return
 	}
 
-	if speedLimit := h.Config.Tunnel.SpeedLimit; ri.ClientTCPConn != nil && speedLimit > 0 {
-		err := SetTcpMaxPacingRate(ri.ClientTCPConn, int(speedLimit))
-		log.DefaultLogger.Err(err).Context(ri.LogContext).Int64("tunnel_speedlimit", speedLimit).Msg("set tunnel_speedlimit")
+	speedLimit := h.Config.Tunnel.SpeedLimit
+	if s, _ := ri.ProxyUser.Attrs["speed_limit"].(string); s != "" {
+		n, _ := strconv.ParseInt(s, 10, 64)
+		switch {
+		case n > 0:
+			speedLimit = n
+		case n < 0:
+			speedLimit = 0 // privileged users has no speed_limit
+		}
+	}
+
+	if speedLimit > 0 {
+		if ri.ClientTCPConn != nil {
+			err := SetTcpMaxPacingRate(ri.ClientTCPConn, int(speedLimit))
+			log.DefaultLogger.Err(err).Context(ri.LogContext).Int64("tunnel_speedlimit", speedLimit).Msg("set tunnel_speedlimit")
+		} else {
+			// TODO: speed limiter in user space
+		}
 	}
 
 	allow, _ := user.Attrs["allow_tunnel"].(string)
