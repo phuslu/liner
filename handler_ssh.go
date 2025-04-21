@@ -7,11 +7,11 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
@@ -25,31 +25,61 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-type SSHHandler struct {
+type SshHandler struct {
+	Config SshConfig
+	Logger log.Logger
+
+	sshConfig *ssh.ServerConfig
 	shellPath string
-	config    *ssh.ServerConfig
-	logger    *log.Logger
 	listener  net.Listener
 
 	mu     sync.Mutex
 	closed bool
 }
 
-// ListenAndServe let the server listen and serve.
-func (s *SSHHandler) ListenAndServe(addr string) error {
-	// Once a ServerConfig has been configured, connections can be accepted.
-	listener, err := net.Listen("tcp", addr)
-	if err != nil {
-		return fmt.Errorf("listen on %s: %s", addr, err)
+func (h *SshHandler) Load() error {
+	if len(h.Config.Listen) != 1 {
+		return fmt.Errorf("invalid ssh listen: %v", h.Config.Listen)
 	}
-	return s.Serve(listener)
+	if h.Config.HostKey == "" {
+		return fmt.Errorf("invalid ssh host_key: %v", h.Config.HostKey)
+	}
+
+	h.sshConfig = &ssh.ServerConfig{
+		//Define a function to run when a client attempts a password login
+		PasswordCallback: func(c ssh.ConnMetadata, pass []byte) (*ssh.Permissions, error) {
+			return nil, nil
+		},
+		// You may also explicitly allow anonymous client authentication, though anon bash
+		// sessions may not be a wise idea
+		// NoClientAuth: true,
+	}
+
+	privdata, err := os.ReadFile(h.Config.HostKey)
+	if err != nil {
+		return fmt.Errorf("Failed to load private key (%s): %w", h.Config.HostKey, err)
+	}
+
+	privkey, err := ssh.ParsePrivateKey(privdata)
+	if err != nil {
+		return fmt.Errorf("Failed to parse private key; %w", err)
+	}
+
+	h.sshConfig.AddHostKey(privkey)
+
+	h.shellPath = h.Config.Shell
+	if h.shellPath == "" {
+		h.shellPath = "/bin/sh"
+	}
+
+	return nil
 }
 
-// Serve let the server accept incoming connections and handle them.
-func (s *SSHHandler) Serve(l net.Listener) error {
-	s.listener = l
+// ListenAndServe let the server listen and serve.
+func (s *SshHandler) Serve(ctx context.Context, ln net.Listener) error {
+	s.listener = ln
 	for {
-		tcpConn, err := l.Accept()
+		tcpConn, err := ln.Accept()
 		if err != nil {
 			if s.isClosed() {
 				return nil
@@ -61,9 +91,9 @@ func (s *SSHHandler) Serve(l net.Listener) error {
 	}
 }
 
-func (s *SSHHandler) handleConn(tcpConn net.Conn) {
+func (s *SshHandler) handleConn(tcpConn net.Conn) {
 	// Before use, a handshake must be performed on the incoming net.Conn.
-	sshConn, chans, reqs, err := ssh.NewServerConn(tcpConn, s.config)
+	sshConn, chans, reqs, err := ssh.NewServerConn(tcpConn, s.sshConfig)
 	if err != nil {
 		if err != io.EOF {
 			log.Printf("Failed to handshake (%s)", err)
@@ -78,7 +108,7 @@ func (s *SSHHandler) handleConn(tcpConn net.Conn) {
 }
 
 // Close stops the server.
-func (s *SSHHandler) Close() error {
+func (s *SshHandler) Close() error {
 	s.mu.Lock()
 	s.closed = true
 	s.mu.Unlock()
@@ -88,21 +118,21 @@ func (s *SSHHandler) Close() error {
 	return s.listener.Close()
 }
 
-func (s *SSHHandler) isClosed() bool {
+func (s *SshHandler) isClosed() bool {
 	s.mu.Lock()
 	closed := s.closed
 	s.mu.Unlock()
 	return closed
 }
 
-func (s *SSHHandler) handleChannels(chans <-chan ssh.NewChannel) {
+func (s *SshHandler) handleChannels(chans <-chan ssh.NewChannel) {
 	// Service the incoming Channel channel in go routine
 	for newChannel := range chans {
 		go s.handleChannel(newChannel)
 	}
 }
 
-func (s *SSHHandler) handleChannel(newChannel ssh.NewChannel) {
+func (s *SshHandler) handleChannel(newChannel ssh.NewChannel) {
 	// Since we're handling a shell, we expect a
 	// channel type of "session". The also describes
 	// "x11", "direct-tcpip" and "forwarded-tcpip"
@@ -116,7 +146,7 @@ func (s *SSHHandler) handleChannel(newChannel ssh.NewChannel) {
 	// request for another logical connection
 	connection, requests, err := newChannel.Accept()
 	if err != nil {
-		s.logger.Printf("Could not accept channel (%s)", err)
+		s.Logger.Printf("Could not accept channel (%s)", err)
 		return
 	}
 
@@ -156,26 +186,26 @@ func (s *SSHHandler) handleChannel(newChannel ssh.NewChannel) {
 					binary.Write(&b, binary.BigEndian, exitStatus)
 					connection.SendRequest("exit-status", false, b.Bytes())
 					connection.Close()
-					s.logger.Printf("Session closed")
+					s.Logger.Printf("Session closed")
 				}
 
 				in, err = shell.StdinPipe()
 				if err != nil {
-					s.logger.Printf("Could not get stdin pipe (%s)", err)
+					s.Logger.Printf("Could not get stdin pipe (%s)", err)
 					close()
 					return
 				}
 
 				out, err = shell.StdoutPipe()
 				if err != nil {
-					s.logger.Printf("Could not get stdout pipe (%s)", err)
+					s.Logger.Printf("Could not get stdout pipe (%s)", err)
 					close()
 					return
 				}
 
 				err = shell.Start()
 				if err != nil {
-					s.logger.Printf("Could not start pty (%s)", err)
+					s.Logger.Printf("Could not start pty (%s)", err)
 					close()
 					return
 				}
@@ -215,14 +245,14 @@ func (s *SSHHandler) handleChannel(newChannel ssh.NewChannel) {
 					go func() {
 						server, err := sftp.NewServer(connection)
 						if err != nil {
-							s.logger.Printf("could not start sftp server: %s", err)
+							s.Logger.Printf("could not start sftp server: %s", err)
 							return
 						}
 						if err := server.Serve(); err == io.EOF {
 							server.Close()
-							s.logger.Printf("sftp client exited session.")
+							s.Logger.Printf("sftp client exited session.")
 						} else if err != nil {
-							s.logger.Printf("sftp server exited with error: %s", err)
+							s.Logger.Printf("sftp server exited with error: %s", err)
 						}
 					}()
 				}
@@ -238,7 +268,7 @@ func parseCommand(b []byte) string {
 	l := int(binary.BigEndian.Uint32(b))
 	cmd := string(b[4:])
 	if len(cmd) != l {
-		log.Fatalf("command length unmatch, got=%d, want=%d", len(cmd), l)
+		log.Fatal().Msgf("command length unmatch, got=%d, want=%d", len(cmd), l)
 	}
 	return cmd
 }
@@ -254,7 +284,7 @@ type SSHShellFile struct {
 }
 
 // start shell
-func (s *SSHHandler) startShell(shellPath string, connection ssh.Channel) *SSHShellFile {
+func (s *SshHandler) startShell(shellPath string, connection ssh.Channel) *SSHShellFile {
 	shell := exec.Command(shellPath)
 
 	// Prepare teardown function
@@ -262,16 +292,16 @@ func (s *SSHHandler) startShell(shellPath string, connection ssh.Channel) *SSHSh
 		connection.Close()
 		_, err := shell.Process.Wait()
 		if err != nil {
-			s.logger.Printf("Failed to exit shell (%s)", err)
+			s.Logger.Printf("Failed to exit shell (%s)", err)
 		}
-		s.logger.Printf("Session closed")
+		s.Logger.Printf("Session closed")
 	}
 
 	// Allocate a terminal for this channel
-	s.logger.Print("Creating pty...")
+	s.Logger.Printf("Creating pty...")
 	file, err := pty.Start(shell)
 	if err != nil {
-		s.logger.Printf("Could not start pty (%s)", err)
+		s.Logger.Printf("Could not start pty (%s)", err)
 		close()
 		return nil
 	}
@@ -291,6 +321,7 @@ func (s *SSHHandler) startShell(shellPath string, connection ssh.Channel) *SSHSh
 
 // SetWinsize sets the size of the given pty.
 func (sf *SSHShellFile) setWinsize(w, h uint32) {
+	return
 	ws := &struct {
 		Height uint16
 		Width  uint16

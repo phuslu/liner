@@ -120,6 +120,7 @@ type SshConfig struct {
 	Listen    []string `json:"listen" yaml:"listen"`
 	HostKey   string   `json:"host_key" yaml:"host_key"`
 	AuthTable string   `json:"auth_table" yaml:"auth_table"`
+	Shell     string   `json:"shell" yaml:"shell"`
 	Log       bool     `json:"log" yaml:"log"`
 }
 
@@ -150,6 +151,7 @@ type Config struct {
 	Socks  []SocksConfig     `json:"socks" yaml:"socks"`
 	Tunnel []TunnelConfig    `json:"tunnel" yaml:"tunnel"`
 	Stream []StreamConfig    `json:"stream" yaml:"stream"`
+	Ssh    []SshConfig       `json:"ssh" yaml:"ssh"`
 	Dns    []DnsConfig       `json:"dns" yaml:"dns"`
 }
 

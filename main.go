@@ -684,6 +684,30 @@ func main() {
 		go h.Serve(context.Background())
 	}
 
+	// ssh handler
+	for _, ssh := range config.Ssh {
+		for _, addr := range ssh.Listen {
+			ln, err := lc.Listen(context.Background(), "tcp", addr)
+			if err != nil {
+				log.Fatal().Err(err).Str("address", addr).Msg("net.Listen error")
+			}
+
+			log.Info().Str("version", version).Str("address", ln.Addr().String()).Msg("liner listen and serve dns port")
+
+			h := &SshHandler{
+				Config: ssh,
+				// Functions: functions.FuncMap,
+				Logger: log.DefaultLogger,
+			}
+
+			if err = h.Load(); err != nil {
+				log.Fatal().Err(err).Str("address", addr).Msg("dns hanlder load error")
+			}
+
+			go h.Serve(context.Background(), ln)
+		}
+	}
+
 	// dns handler
 	for _, dns := range config.Dns {
 		for _, addr := range dns.Listen {
