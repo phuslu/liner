@@ -1,6 +1,3 @@
-//go:build !windows
-// +build !windows
-
 // Modified from github.com/hnakamur/go-sshd
 
 package main
@@ -21,7 +18,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-	"unsafe"
 
 	"github.com/creack/pty"
 	"github.com/phuslu/log"
@@ -179,7 +175,8 @@ func (s *SshHandler) handleChannel(newChannel ssh.NewChannel) {
 
 	// Sessions have out-of-band requests such as "shell", "pty-req" and "env"
 	go func() {
-		var shellf *SSHShellFile
+		var shellfile *os.File
+		var width, height uint32
 
 		for req := range requests {
 			//fmt.Printf("req=%+v\n", req)
@@ -254,18 +251,27 @@ func (s *SshHandler) handleChannel(newChannel ssh.NewChannel) {
 					req.Reply(true, nil)
 
 					// Fire up bash for this session
-					shellf = s.startShell(s.shellPath, connection)
+					shellfile = s.startShell(s.shellPath, connection)
+
+					// Set window size
+					if width > 0 && height > 0 {
+						SetTermWindowSize(shellfile.Fd(), uint16(width), uint16(height))
+					}
 				}
 			case "pty-req":
 				termLen := req.Payload[3]
-				w, h := parseDims(req.Payload[termLen+4:])
-				shellf.setWinsize(w, h)
+				width, height = parseDims(req.Payload[termLen+4:])
+				if shellfile != nil {
+					SetTermWindowSize(shellfile.Fd(), uint16(width), uint16(height))
+				}
 				// Responding true (OK) here will let the client
 				// know we have a pty ready for input
 				req.Reply(true, nil)
 			case "window-change":
-				w, h := parseDims(req.Payload)
-				shellf.setWinsize(w, h)
+				width, height = parseDims(req.Payload)
+				if shellfile != nil {
+					SetTermWindowSize(shellfile.Fd(), uint16(width), uint16(height))
+				}
 			case "subsystem":
 				ok := string(req.Payload[4:]) == "sftp"
 				if ok {
@@ -306,12 +312,7 @@ func parseDims(b []byte) (uint32, uint32) {
 	return w, h
 }
 
-type SSHShellFile struct {
-	file *os.File
-}
-
-// start shell
-func (s *SshHandler) startShell(shellPath string, connection ssh.Channel) *SSHShellFile {
+func (s *SshHandler) startShell(shellPath string, connection ssh.Channel) *os.File {
 	shell := exec.Command(shellPath)
 
 	// Prepare teardown function
@@ -343,21 +344,6 @@ func (s *SshHandler) startShell(shellPath string, connection ssh.Channel) *SSHSh
 		io.Copy(file, connection)
 		once.Do(close)
 	}()
-	return &SSHShellFile{file}
-}
 
-// SetWinsize sets the size of the given pty.
-func (sf *SSHShellFile) setWinsize(w, h uint32) {
-	return
-	ws := &struct {
-		Height uint16
-		Width  uint16
-		x      uint16 // unused
-		y      uint16 // unused
-	}{
-		Width:  uint16(w),
-		Height: uint16(h),
-	}
-
-	syscall.Syscall(syscall.SYS_IOCTL, sf.file.Fd(), uintptr(syscall.TIOCSWINSZ), uintptr(unsafe.Pointer(ws)))
+	return file
 }

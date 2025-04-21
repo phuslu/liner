@@ -45,6 +45,10 @@ func SetTcpMaxPacingRate(tc *net.TCPConn, rate int) (err error) {
 	return nil
 }
 
+func SetTermWindowSize(fd uintptr, width, height uint16) error {
+	return nil
+}
+
 func SetProcessName(name string) error {
 	return nil
 }
