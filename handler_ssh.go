@@ -95,6 +95,12 @@ func (h *SshHandler) Load() error {
 			default:
 				user = records[i]
 			}
+			if allow, _ := user.Attrs["allow_ssh"].(string); allow != "" {
+				switch allow {
+				case "0":
+					user.AuthError = fmt.Errorf("wrong permission, allow_ssh is %s: %v", allow, user.Username)
+				}
+			}
 			if user.AuthError != nil {
 				return nil, user.AuthError
 			}
