@@ -7,6 +7,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -15,8 +16,11 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"slices"
+	"strings"
 	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/creack/pty"
@@ -30,8 +34,8 @@ type SshHandler struct {
 	Logger log.Logger
 
 	sshConfig *ssh.ServerConfig
+	csvloader *FileLoader[[]UserInfo]
 	shellPath string
-	listener  net.Listener
 
 	mu     sync.Mutex
 	closed bool
@@ -67,6 +71,41 @@ func (h *SshHandler) Load() error {
 
 	h.sshConfig.AddHostKey(privkey)
 
+	if strings.HasSuffix(h.Config.AuthTable, ".csv") {
+		h.csvloader = &FileLoader[[]UserInfo]{
+			Filename:     h.Config.AuthTable,
+			Unmarshal:    UserCsvUnmarshal,
+			PollDuration: 15 * time.Second,
+			Logger:       log.DefaultLogger.Slog(),
+		}
+		records := h.csvloader.Load()
+		if records == nil {
+			return fmt.Errorf("Failed to load auth_table: %#v", h.Config.AuthTable)
+		}
+		log.Info().Str("auth_table", h.Config.AuthTable).Int("auth_table_size", len(*records)).Msg("load auth_table ok")
+
+		h.sshConfig.PasswordCallback = func(c ssh.ConnMetadata, pass []byte) (*ssh.Permissions, error) {
+			user := UserInfo{
+				Username: c.User(),
+				Password: string(pass),
+			}
+			records := *h.csvloader.Load()
+			i, ok := slices.BinarySearchFunc(records, user, func(a, b UserInfo) int { return cmp.Compare(a.Username, b.Username) })
+			switch {
+			case !ok:
+				user.AuthError = fmt.Errorf("invalid username: %v", user.Username)
+			case user.Password != records[i].Password:
+				user.AuthError = fmt.Errorf("wrong password: %v", user.Username)
+			default:
+				user = records[i]
+			}
+			if user.AuthError != nil {
+				return nil, user.AuthError
+			}
+			return nil, nil
+		}
+	}
+
 	h.shellPath = h.Config.Shell
 	if h.shellPath == "" {
 		h.shellPath = "/bin/sh"
@@ -77,7 +116,6 @@ func (h *SshHandler) Load() error {
 
 // ListenAndServe let the server listen and serve.
 func (s *SshHandler) Serve(ctx context.Context, ln net.Listener) error {
-	s.listener = ln
 	for {
 		tcpConn, err := ln.Accept()
 		if err != nil {
@@ -105,17 +143,6 @@ func (s *SshHandler) handleConn(tcpConn net.Conn) {
 	go ssh.DiscardRequests(reqs)
 	// Accept all channels
 	go s.handleChannels(chans)
-}
-
-// Close stops the server.
-func (s *SshHandler) Close() error {
-	s.mu.Lock()
-	s.closed = true
-	s.mu.Unlock()
-	if s.listener == nil {
-		return nil
-	}
-	return s.listener.Close()
 }
 
 func (s *SshHandler) isClosed() bool {
