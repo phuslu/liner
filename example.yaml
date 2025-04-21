@@ -33,6 +33,12 @@ dns:
         proxy_pass
       {{ end }}
     proxy_pass: https://1.1.1.1/dns-query
+ssh:
+  - listen: ['127.0.0.1:2022']
+    host_key: ssh_host_ed25519_key
+    auth_table: authuser.csv
+    shell: /bin/bash
+    log: true
 https:
   - listen: [':443']
     server_name: ['example.org']
