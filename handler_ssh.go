@@ -31,6 +31,7 @@ type SshHandler struct {
 
 	sshConfig *ssh.ServerConfig
 	csvloader *FileLoader[[]UserInfo]
+	keyloader *FileLoader[[]string]
 	shellPath string
 
 	mu     sync.Mutex
@@ -46,32 +47,26 @@ func (h *SshHandler) Load() error {
 	}
 
 	h.sshConfig = &ssh.ServerConfig{
-		//Define a function to run when a client attempts a password login
-		PasswordCallback: func(c ssh.ConnMetadata, pass []byte) (*ssh.Permissions, error) {
-			return nil, nil
-		},
-		// You may also explicitly allow anonymous client authentication, though anon bash
-		// sessions may not be a wise idea
-		// NoClientAuth: true,
+		ServerVersion: fmt.Sprintf("SSH-2.0-liner-%s", version),
+		MaxAuthTries:  3,
 	}
 
 	privdata, err := os.ReadFile(h.Config.HostKey)
 	if err != nil {
 		return fmt.Errorf("Failed to load private key (%s): %w", h.Config.HostKey, err)
 	}
-
 	privkey, err := ssh.ParsePrivateKey(privdata)
 	if err != nil {
 		return fmt.Errorf("Failed to parse private key; %w", err)
 	}
-
 	h.sshConfig.AddHostKey(privkey)
 
 	if strings.HasSuffix(h.Config.AuthTable, ".csv") {
+		h.Config.AuthTable = os.ExpandEnv(h.Config.AuthTable)
 		h.csvloader = &FileLoader[[]UserInfo]{
 			Filename:     h.Config.AuthTable,
 			Unmarshal:    UserCsvUnmarshal,
-			PollDuration: 15 * time.Second,
+			PollDuration: 30 * time.Second,
 			Logger:       log.DefaultLogger.Slog(),
 		}
 		records := h.csvloader.Load()
@@ -105,6 +100,50 @@ func (h *SshHandler) Load() error {
 				return nil, user.AuthError
 			}
 			return nil, nil
+		}
+	}
+
+	if h.Config.AuthorizedKeys != "" {
+		h.Config.AuthorizedKeys = os.ExpandEnv(h.Config.AuthorizedKeys)
+		h.keyloader = &FileLoader[[]string]{
+			Filename: h.Config.AuthorizedKeys,
+			Unmarshal: func(data []byte, v any) error {
+				keys, ok := v.(*[]string)
+				if !ok {
+					return fmt.Errorf("*[]string required, found %T", v)
+				}
+
+				for len(data) > 0 {
+					pub, _, _, rest, err := ssh.ParseAuthorizedKey(data)
+					if err != nil {
+						h.Logger.Printf("parse authorized_keys %#v error: %+v", h.Config.AuthorizedKeys, err)
+					}
+					if pub != nil {
+						*keys = AppendSplitLines(*keys, string(pub.Marshal()))
+					}
+					data = rest
+				}
+				slices.Sort(*keys)
+				return nil
+			},
+			PollDuration: 30 * time.Second,
+			Logger:       log.DefaultLogger.Slog(),
+		}
+		h.sshConfig.PublicKeyCallback = func(c ssh.ConnMetadata, pub ssh.PublicKey) (*ssh.Permissions, error) {
+			records := *h.keyloader.Load()
+			if len(records) == 0 {
+				return nil, fmt.Errorf("empty authorized_keys in ssh host")
+			}
+			_, ok := slices.BinarySearchFunc(records, b2s(pub.Marshal()), func(a, b string) int { return cmp.Compare(a, b) })
+			if !ok {
+				return nil, fmt.Errorf("invalid pub key: %s", pub.Marshal())
+			}
+			return &ssh.Permissions{
+				// Record the public key used for authentication.
+				Extensions: map[string]string{
+					"pubkey-fp": ssh.FingerprintSHA256(pub),
+				},
+			}, nil
 		}
 	}
 
