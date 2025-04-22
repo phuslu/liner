@@ -311,8 +311,13 @@ func (s *SshHandler) handleChannel(ctx context.Context, newChannel ssh.NewChanne
 				if len(req.Payload) == 0 {
 					req.Reply(true, nil)
 
+					var err error
 					// Fire up bash for this session
-					shellfile = s.startShell(ctx, s.shellPath, envs, connection)
+					shellfile, err = s.startShell(ctx, s.shellPath, envs, connection)
+					if err != nil {
+						s.Logger.Error().Err(err).Str("req_type", req.Type).Str("shell", s.shellPath).Any("envs", envs).Msg("handle ssh request")
+						req.Reply(false, nil)
+					}
 
 					// Set window size
 					if width > 0 && height > 0 {
@@ -364,7 +369,7 @@ func (s *SshHandler) handleChannel(ctx context.Context, newChannel ssh.NewChanne
 	}()
 }
 
-func (s *SshHandler) startShell(ctx context.Context, shellPath string, envs map[string]string, connection ssh.Channel) *os.File {
+func (s *SshHandler) startShell(ctx context.Context, shellPath string, envs map[string]string, connection ssh.Channel) (*os.File, error) {
 	shellArgs := []string{}
 	if strings.HasSuffix(shellPath, "/bash") {
 		shellArgs = []string{"--login"}
@@ -383,6 +388,11 @@ func (s *SshHandler) startShell(ctx context.Context, shellPath string, envs map[
 
 	// Prepare teardown function
 	close := func() {
+		if shell.Process != nil {
+			KillPid(shell.Process.Pid, 15)
+			timer := time.AfterFunc(time.Minute, func() { KillPid(shell.Process.Pid, 9) })
+			defer timer.Stop()
+		}
 		connection.Close()
 		_, err := shell.Process.Wait()
 		if err != nil {
@@ -397,7 +407,7 @@ func (s *SshHandler) startShell(ctx context.Context, shellPath string, envs map[
 	if err != nil {
 		s.Logger.Printf("Could not start pty (%s)", err)
 		close()
-		return nil
+		return nil, err
 	}
 
 	//pipe session to shell and visa-versa
@@ -411,5 +421,5 @@ func (s *SshHandler) startShell(ctx context.Context, shellPath string, envs map[
 		once.Do(close)
 	}()
 
-	return file
+	return file, nil
 }

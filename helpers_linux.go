@@ -193,6 +193,10 @@ func SetTermWindowSize(fd uintptr, width, height uint16) error {
 	return nil
 }
 
+func KillPid(pid int, sig syscall.Signal) error {
+	return syscall.Kill(pid, sig)
+}
+
 func RedirectStderrTo(file *os.File) error {
 	return syscall.Dup3(int(file.Fd()), 2, 0)
 }

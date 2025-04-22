@@ -53,6 +53,10 @@ func SetProcessName(name string) error {
 	return nil
 }
 
+func KillPid(pid int, sig syscall.Signal) error {
+	return nil
+}
+
 func ReadHTTPHeader(conn *net.TCPConn) ([]byte, *net.TCPConn, error) {
 	return nil, conn, errors.New("not implemented")
 }
