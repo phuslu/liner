@@ -166,11 +166,11 @@ func (s *SshHandler) Serve(ctx context.Context, ln net.Listener) error {
 			return fmt.Errorf("accept incoming connection: %s", err)
 		}
 		// Before use, a handshake must be performed on the incoming net.Conn.
-		go s.handleConn(tcpConn)
+		go s.handleConn(ctx, tcpConn)
 	}
 }
 
-func (s *SshHandler) handleConn(tcpConn net.Conn) {
+func (s *SshHandler) handleConn(ctx context.Context, tcpConn net.Conn) {
 	// Before use, a handshake must be performed on the incoming net.Conn.
 	sshConn, chans, reqs, err := ssh.NewServerConn(tcpConn, s.sshConfig)
 	if err != nil {
@@ -183,7 +183,7 @@ func (s *SshHandler) handleConn(tcpConn net.Conn) {
 	// Discard all global out-of-band Requests
 	go ssh.DiscardRequests(reqs)
 	// Accept all channels
-	go s.handleChannels(chans)
+	go s.handleChannels(ctx, chans)
 }
 
 func (s *SshHandler) isClosed() bool {
@@ -193,14 +193,14 @@ func (s *SshHandler) isClosed() bool {
 	return closed
 }
 
-func (s *SshHandler) handleChannels(chans <-chan ssh.NewChannel) {
+func (s *SshHandler) handleChannels(ctx context.Context, chans <-chan ssh.NewChannel) {
 	// Service the incoming Channel channel in go routine
 	for newChannel := range chans {
-		go s.handleChannel(newChannel)
+		go s.handleChannel(ctx, newChannel)
 	}
 }
 
-func (s *SshHandler) handleChannel(newChannel ssh.NewChannel) {
+func (s *SshHandler) handleChannel(ctx context.Context, newChannel ssh.NewChannel) {
 	// Since we're handling a shell, we expect a
 	// channel type of "session". The also describes
 	// "x11", "direct-tcpip" and "forwarded-tcpip"
@@ -222,6 +222,7 @@ func (s *SshHandler) handleChannel(newChannel ssh.NewChannel) {
 	go func() {
 		var shellfile *os.File
 		var width, height uint32
+		envs := map[string]string{}
 
 		for req := range requests {
 			//fmt.Printf("req=%+v\n", req)
@@ -229,8 +230,13 @@ func (s *SshHandler) handleChannel(newChannel ssh.NewChannel) {
 			case "exec":
 				req.Reply(true, nil)
 
-				cmd := parseCommand(req.Payload)
-				shell := exec.Command(s.shellPath, "-c", cmd)
+				length := int(binary.BigEndian.Uint32(req.Payload))
+				command := string(req.Payload[4:])
+				if len(command) != length {
+					log.Fatal().Msgf("command length unmatch, got=%d, want=%d", len(command), length)
+				}
+
+				shellcmd := exec.CommandContext(ctx, s.shellPath, "-c", command)
 
 				var err error
 				var in io.WriteCloser
@@ -240,7 +246,7 @@ func (s *SshHandler) handleChannel(newChannel ssh.NewChannel) {
 				close := func() {
 					in.Close()
 
-					err := shell.Wait()
+					err := shellcmd.Wait()
 					var exitStatus int32
 					if err != nil {
 						if e2, ok := err.(*exec.ExitError); ok {
@@ -258,21 +264,21 @@ func (s *SshHandler) handleChannel(newChannel ssh.NewChannel) {
 					s.Logger.Printf("Session closed")
 				}
 
-				in, err = shell.StdinPipe()
+				in, err = shellcmd.StdinPipe()
 				if err != nil {
 					s.Logger.Printf("Could not get stdin pipe (%s)", err)
 					close()
 					return
 				}
 
-				out, err = shell.StdoutPipe()
+				out, err = shellcmd.StdoutPipe()
 				if err != nil {
 					s.Logger.Printf("Could not get stdout pipe (%s)", err)
 					close()
 					return
 				}
 
-				err = shell.Start()
+				err = shellcmd.Start()
 				if err != nil {
 					s.Logger.Printf("Could not start pty (%s)", err)
 					close()
@@ -289,6 +295,16 @@ func (s *SshHandler) handleChannel(newChannel ssh.NewChannel) {
 					io.Copy(in, connection)
 					once.Do(close)
 				}()
+			case "env":
+				if len(req.Payload) == 0 {
+					keylen := binary.BigEndian.Uint32(req.Payload[0:])
+					key := string(req.Payload[4 : 4+keylen])
+					valuelen := binary.BigEndian.Uint32(req.Payload[4+keylen:])
+					value := string(req.Payload[4+keylen+4 : 4+keylen+4+valuelen])
+					envs[key] = value
+					s.Logger.Info().Str("req_type", req.Type).Str("key", key).Str("value", value).Msg("handle ssh request")
+				}
+				req.Reply(true, nil)
 			case "shell":
 				// We only accept the default shell
 				// (i.e. no command in the Payload)
@@ -296,7 +312,7 @@ func (s *SshHandler) handleChannel(newChannel ssh.NewChannel) {
 					req.Reply(true, nil)
 
 					// Fire up bash for this session
-					shellfile = s.startShell(s.shellPath, connection)
+					shellfile = s.startShell(ctx, s.shellPath, envs, connection)
 
 					// Set window size
 					if width > 0 && height > 0 {
@@ -304,8 +320,10 @@ func (s *SshHandler) handleChannel(newChannel ssh.NewChannel) {
 					}
 				}
 			case "pty-req":
-				termLen := req.Payload[3]
-				width, height = parseDims(req.Payload[termLen+4:])
+				length := req.Payload[3]
+				width = binary.BigEndian.Uint32(req.Payload[length+4:])
+				height = binary.BigEndian.Uint32(req.Payload[length+8:])
+				s.Logger.Info().Str("req_type", req.Type).Uint32("width", width).Uint32("height", height).Msg("handle ssh request")
 				if shellfile != nil {
 					SetTermWindowSize(shellfile.Fd(), uint16(width), uint16(height))
 				}
@@ -313,7 +331,9 @@ func (s *SshHandler) handleChannel(newChannel ssh.NewChannel) {
 				// know we have a pty ready for input
 				req.Reply(true, nil)
 			case "window-change":
-				width, height = parseDims(req.Payload)
+				width = binary.BigEndian.Uint32(req.Payload[0:])
+				height = binary.BigEndian.Uint32(req.Payload[4:])
+				s.Logger.Info().Str("req_type", req.Type).Uint32("width", width).Uint32("height", height).Msg("handle ssh request")
 				if shellfile != nil {
 					SetTermWindowSize(shellfile.Fd(), uint16(width), uint16(height))
 				}
@@ -335,6 +355,8 @@ func (s *SshHandler) handleChannel(newChannel ssh.NewChannel) {
 					}()
 				}
 				req.Reply(ok, nil)
+			case "keepalive@openssh.com":
+				req.Reply(true, nil)
 			default:
 				req.Reply(false, nil)
 			}
@@ -342,23 +364,22 @@ func (s *SshHandler) handleChannel(newChannel ssh.NewChannel) {
 	}()
 }
 
-func parseCommand(b []byte) string {
-	l := int(binary.BigEndian.Uint32(b))
-	cmd := string(b[4:])
-	if len(cmd) != l {
-		log.Fatal().Msgf("command length unmatch, got=%d, want=%d", len(cmd), l)
+func (s *SshHandler) startShell(ctx context.Context, shellPath string, envs map[string]string, connection ssh.Channel) *os.File {
+	shellArgs := []string{}
+	if strings.HasSuffix(shellPath, "/bash") {
+		shellArgs = []string{"--login"}
 	}
-	return cmd
-}
 
-func parseDims(b []byte) (uint32, uint32) {
-	w := binary.BigEndian.Uint32(b)
-	h := binary.BigEndian.Uint32(b[4:])
-	return w, h
-}
+	shell := exec.CommandContext(ctx, shellPath, shellArgs...)
 
-func (s *SshHandler) startShell(shellPath string, connection ssh.Channel) *os.File {
-	shell := exec.Command(shellPath)
+	shell.Env = []string{
+		"SHELL=" + shellPath,
+		"HOME=" + cmp.Or(os.Getenv("HOME"), "/"),
+		"TERM=" + "linux",
+	}
+	for key, value := range envs {
+		shell.Env = append(shell.Env, key+"="+value)
+	}
 
 	// Prepare teardown function
 	close := func() {
