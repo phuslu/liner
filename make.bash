@@ -61,7 +61,7 @@ build () {
 
 dist () {
     pushd ${BUILDDIR}
-    env XZ_OPT=-9 tar cvJpf ../${DISTFILE}.tar.xz *
+    tar cv * | gzip -9 >../${DISTFILE}.tar.xz
     popd
 }
 

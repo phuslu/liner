@@ -35,7 +35,7 @@ if test "$(sha1sum $filename)" != "$checksum"; then
   exit 1
 fi
 
-tar xvJf $filename
+tar xvzf $filename
 rm -rf $filename
 
 if test -s .env; then
