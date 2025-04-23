@@ -38,6 +38,7 @@ ssh:
     host_key: ssh_host_ed25519_key
     auth_table: authuser.csv
     shell: /bin/bash
+    home: $HOME
     log: true
 https:
   - listen: [':443']

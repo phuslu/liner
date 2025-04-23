@@ -117,12 +117,14 @@ type DnsConfig struct {
 }
 
 type SshConfig struct {
-	Listen         []string `json:"listen" yaml:"listen"`
-	HostKey        string   `json:"host_key" yaml:"host_key"`
-	AuthTable      string   `json:"auth_table" yaml:"auth_table"`
-	AuthorizedKeys string   `json:"authorized_keys" yaml:"authorized_keys"`
-	Shell          string   `json:"shell" yaml:"shell"`
-	Log            bool     `json:"log" yaml:"log"`
+	Listen           []string `json:"listen" yaml:"listen"`
+	DisableKeepalive bool     `json:"disable_keepalive" yaml:"disable_keepalive"`
+	HostKey          string   `json:"host_key" yaml:"host_key"`
+	AuthTable        string   `json:"auth_table" yaml:"auth_table"`
+	AuthorizedKeys   string   `json:"authorized_keys" yaml:"authorized_keys"`
+	Shell            string   `json:"shell" yaml:"shell"`
+	Home             string   `json:"home" yaml:"home"`
+	Log              bool     `json:"log" yaml:"log"`
 }
 
 type Config struct {

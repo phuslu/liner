@@ -165,6 +165,14 @@ func (s *SshHandler) Serve(ctx context.Context, ln net.Listener) error {
 			}
 			return fmt.Errorf("accept incoming connection: %s", err)
 		}
+		if !s.Config.DisableKeepalive {
+			tcpConn.(*net.TCPConn).SetKeepAliveConfig(net.KeepAliveConfig{
+				Enable:   true,
+				Idle:     15 * time.Second,
+				Interval: 15 * time.Second,
+				Count:    9,
+			})
+		}
 		// Before use, a handshake must be performed on the incoming net.Conn.
 		go s.handleConn(ctx, tcpConn)
 	}
@@ -376,7 +384,7 @@ func (s *SshHandler) startShell(ctx context.Context, shellPath string, envs map[
 	}
 
 	shell := exec.CommandContext(ctx, shellPath, shellArgs...)
-
+	shell.Dir = os.ExpandEnv(cmp.Or(s.Config.Home, "$HOME"))
 	shell.Env = []string{
 		"SHELL=" + shellPath,
 		"HOME=" + cmp.Or(os.Getenv("HOME"), "/"),
