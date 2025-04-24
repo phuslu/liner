@@ -397,8 +397,8 @@ func (s *SshHandler) startShell(ctx context.Context, shellPath string, envs map[
 	// Prepare teardown function
 	close := func() {
 		if shell.Process != nil {
-			KillPid(shell.Process.Pid, 15)
-			timer := time.AfterFunc(time.Minute, func() { KillPid(shell.Process.Pid, 9) })
+			shell.Process.Signal(os.Interrupt)
+			timer := time.AfterFunc(time.Minute, func() { shell.Process.Signal(os.Kill) })
 			defer timer.Stop()
 		}
 		connection.Close()
