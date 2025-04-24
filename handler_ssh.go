@@ -151,6 +151,9 @@ func (h *SshHandler) Load() error {
 	if h.shellPath == "" {
 		h.shellPath = "/bin/sh"
 	}
+	if _, err := exec.LookPath(h.shellPath); err != nil {
+		return fmt.Errorf("invalid shell path: %w", err)
+	}
 
 	return nil
 }
@@ -305,7 +308,17 @@ func (s *SshHandler) handleChannel(ctx context.Context, newChannel ssh.NewChanne
 				}()
 			case "env":
 				if len(req.Payload) == 0 {
-					keylen := binary.BigEndian.Uint32(req.Payload[0:])
+					if len(req.Payload) < 8 {
+						s.Logger.Warn().Msg("Invalid env request payload")
+						req.Reply(false, nil)
+						continue
+					}
+					keylen := binary.BigEndian.Uint32(req.Payload[0:4])
+					if len(req.Payload) < 4+int(keylen)+4 {
+						s.Logger.Warn().Msg("Invalid env request payload")
+						req.Reply(false, nil)
+						continue
+					}
 					key := string(req.Payload[4 : 4+keylen])
 					valuelen := binary.BigEndian.Uint32(req.Payload[4+keylen:])
 					value := string(req.Payload[4+keylen+4 : 4+keylen+4+valuelen])
