@@ -391,12 +391,7 @@ func (s *SshHandler) handleChannel(ctx context.Context, newChannel ssh.NewChanne
 }
 
 func (s *SshHandler) startShell(ctx context.Context, shellPath string, envs map[string]string, connection ssh.Channel) (*os.File, error) {
-	shellArgs := []string{}
-	if strings.HasSuffix(shellPath, "/bash") {
-		shellArgs = []string{"--login"}
-	}
-
-	shell := exec.CommandContext(ctx, shellPath, shellArgs...)
+	shell := exec.CommandContext(ctx, shellPath)
 	shell.Dir = os.ExpandEnv(cmp.Or(s.Config.Home, "$HOME"))
 	shell.Env = []string{
 		"SHELL=" + shellPath,
