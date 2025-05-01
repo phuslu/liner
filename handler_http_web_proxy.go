@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"crypto/tls"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/netip"
@@ -89,6 +92,91 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		return
 	}
 
+	if req.ProtoMajor == 2 && req.Method == http.MethodConnect && req.RequestURI[0] == '/' && req.Header.Get(":protocol") != "" {
+		hostport := u.Host
+		if _, _, err := net.SplitHostPort(hostport); err != nil {
+			port := "80"
+			if u.Scheme == "https" {
+				port = "443"
+			}
+			hostport = net.JoinHostPort(hostport, port)
+		}
+
+		// conn, err := net.DialTimeout("tcp", hostport, time.Duration(cmp.Or(h.DialTimeout, 5))*time.Second)
+		conn, err := h.Transport.DialContext(req.Context(), "tcp", hostport)
+		if err != nil {
+			log.Error().Context(ri.LogContext).Err(err).Str("proxypass", proxypass).Str("hostport", hostport).Msg("http2 connect proxypass error")
+			http.Error(rw, err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer conn.Close()
+
+		if u.Scheme == "https" {
+			tlsConn := tls.Client(conn, h.Transport.TLSClientConfig)
+			err := tlsConn.HandshakeContext(req.Context())
+			if err != nil {
+				http.Error(rw, err.Error(), http.StatusBadGateway)
+				return
+			}
+			conn = tlsConn
+		}
+
+		b := make([]byte, 0, 1024)
+		b = fmt.Appendf(b, "GET %s HTTP/1.1\r\n", req.RequestURI)
+		for key, values := range req.Header {
+			for _, value := range values {
+				if strings.HasPrefix(key, ":") {
+					continue
+				}
+				b = fmt.Appendf(b, "%s: %s\n", key, value)
+			}
+		}
+		wskey := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%x%x\n", fastrandn(1<<32-1), fastrandn(1<<32-1))))
+		b = fmt.Appendf(b, "Sec-WebSocket-Key: %s\r\n", wskey)
+		b = fmt.Appendf(b, "Connection: Upgrade\r\n")
+		b = fmt.Appendf(b, "Upgrade: %s\r\n", req.Header.Get(":protocol"))
+		b = fmt.Appendf(b, "Host: %s\r\n", req.Host)
+		b = fmt.Appendf(b, "\r\n")
+
+		_, err = conn.Write(b)
+		if err != nil {
+			log.Error().Context(ri.LogContext).Err(err).Str("proxypass", proxypass).Str("hostport", hostport).Msg("http2 write to proxypass error")
+			http.Error(rw, err.Error(), http.StatusBadGateway)
+			return
+		}
+
+		br := bufio.NewReader(conn)
+		resp, err := http.ReadResponse(br, req)
+		if err != nil {
+			log.Error().Context(ri.LogContext).Err(err).Str("proxypass", proxypass).Str("hostport", hostport).Msg("http2 read from proxypass error")
+			http.Error(rw, err.Error(), http.StatusBadGateway)
+			return
+		}
+
+		log.Info().Context(ri.LogContext).Str("proxypass", proxypass).Str("hostport", hostport).Int("resp_statuscode", resp.StatusCode).Interface("resp_header", resp.Header).Msg("http2 get response ok")
+
+		if resp.StatusCode != http.StatusSwitchingProtocols {
+			log.Error().Context(ri.LogContext).Err(err).Str("proxypass", proxypass).Str("hostport", hostport).Int("resp_statuscode", resp.StatusCode).Msg("http2 swtich 101 from proxypass error")
+			http.Error(rw, "switch protocols failed, resp statuscode: "+strconv.Itoa(resp.StatusCode), http.StatusBadGateway)
+			return
+		}
+
+		for key, values := range resp.Header {
+			for _, value := range values {
+				rw.Header().Add(key, value)
+			}
+		}
+		rw.WriteHeader(http.StatusOK)
+
+		rwc := HTTP2ReadWriteCloser{req.Body, rw}
+		defer rwc.Close()
+
+		go io.Copy(rwc, br)
+		io.Copy(conn, rwc)
+
+		return
+	}
+
 	var tr http.RoundTripper = h.Transport
 
 	req.URL.Scheme = u.Scheme
@@ -118,18 +206,10 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		req.Body, req.ContentLength = nil, 0
 	}
 
-	if req.Header.Get(":protocol") == "websocket" {
-		req.Header.Set("Upgrade", "websocket")
-		req.Header.Del(":protocol")
-		if req.Method == http.MethodConnect {
-			req.Method = http.MethodGet
-		}
-	}
-
 	resp, err := tr.RoundTrip(req)
 	if err != nil {
 		if h.proxypass != nil {
-			log.Warn().Err(err).Context(ri.LogContext).Msg("proxypass error")
+			log.Warn().Err(err).Context(ri.LogContext).Str("req_host", req.Host).Str("req_url", req.URL.String()).Msg("proxypass error")
 			if IsTimeout(err) {
 				http.Error(rw, "504 Gateway Timeout", http.StatusGatewayTimeout)
 			} else {
@@ -158,9 +238,6 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	}
 
 	if resp.StatusCode == http.StatusSwitchingProtocols {
-		var w io.Writer
-		var r io.Reader
-
 		conn, ok := resp.Body.(io.ReadWriteCloser)
 		if !ok {
 			http.Error(rw, fmt.Sprintf("internal error: 101 switching protocols response with non-writable body"), 500)
@@ -175,40 +252,24 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		}
 		rw.WriteHeader(resp.StatusCode)
 
-		if req.ProtoAtLeast(2, 0) {
-			flusher, ok := rw.(http.Flusher)
-			if !ok {
-				http.Error(rw, fmt.Sprintf("%#v is not http.Flusher", rw), http.StatusBadGateway)
-				return
-			}
-			flusher.Flush()
-
-			w = FlushWriter{rw}
-			r = req.Body
-
-		} else {
-			hijacker, ok := rw.(http.Hijacker)
-			if !ok {
-				http.Error(rw, fmt.Sprintf("%#v is not http.Hijacker", rw), http.StatusBadGateway)
-				return
-			}
-			lconn, flusher, err := hijacker.Hijack()
-			if err != nil {
-				http.Error(rw, err.Error(), http.StatusBadGateway)
-				return
-			}
-			defer lconn.Close()
-			if err := flusher.Flush(); err != nil {
-				http.Error(rw, fmt.Sprintf("response flush: %v", err), 500)
-				return
-			}
-
-			w = lconn
-			r = lconn
+		hijacker, ok := rw.(http.Hijacker)
+		if !ok {
+			http.Error(rw, fmt.Sprintf("%#v is not http.Hijacker", rw), http.StatusBadGateway)
+			return
+		}
+		lconn, flusher, err := hijacker.Hijack()
+		if err != nil {
+			http.Error(rw, err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer lconn.Close()
+		if err := flusher.Flush(); err != nil {
+			http.Error(rw, fmt.Sprintf("response flush: %v", err), 500)
+			return
 		}
 
-		go io.Copy(w, conn)
-		io.Copy(conn, r)
+		go io.Copy(lconn, conn)
+		io.Copy(conn, lconn)
 	} else {
 		if location := resp.Header.Get("location"); location != "" {
 			prefix := "http://" + req.Host + "/"

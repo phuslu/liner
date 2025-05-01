@@ -311,6 +311,25 @@ func (fw FlushWriter) Write(p []byte) (n int, err error) {
 	return
 }
 
+type HTTP2ReadWriteCloser struct {
+	io.ReadCloser
+	http.ResponseWriter
+}
+
+func (rwc HTTP2ReadWriteCloser) Write(p []byte) (n int, err error) {
+	n, err = rwc.ResponseWriter.Write(p)
+	if err != nil {
+		return 0, err
+	}
+
+	//nolint:bodyclose
+	err = http.NewResponseController(rwc.ResponseWriter).Flush()
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
 type TCPListener struct {
 	*net.TCPListener
 	KeepAlivePeriod time.Duration
