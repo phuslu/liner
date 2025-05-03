@@ -162,7 +162,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		Str("http_method", req.Method).
 		Str("http_proto", req.Proto).
 		Str("http_host", req.Host).
-		Str("http_url", req.URL.String()).
+		Str("http_request_uri", req.RequestURI).
 		Str("http_x_forwarded_for", req.Header.Get("x-forwarded-for")).
 		Str("http_x_forwarded_user", req.Header.Get("x-forwarded-user")).
 		Str("useragent_os", ri.UserAgent.OS+" "+ri.UserAgent.OSVersion).
