@@ -92,7 +92,14 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	if req.ProtoMajor == 2 && req.Method == http.MethodConnect && req.RequestURI[0] == '/' && req.Header.Get(":protocol") != "" {
+	if protocol := req.Header.Get(":protocol"); protocol != "" && req.ProtoMajor == 2 && req.Method == http.MethodConnect && req.RequestURI[0] == '/' {
+		switch protocol {
+		case "websocket":
+			break
+		default:
+			http.Error(rw, "pesudo protocol "+protocol+" is not supportted", http.StatusBadGateway)
+			return
+		}
 		hostport := u.Host
 		if _, _, err := net.SplitHostPort(hostport); err != nil {
 			port := "80"
