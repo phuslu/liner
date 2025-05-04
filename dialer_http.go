@@ -114,42 +114,42 @@ func (d *HTTPDialer) DialContext(ctx context.Context, network, addr string) (net
 		conn = tlsConn
 	}
 
-	buf := make([]byte, 0, 2048)
+	buf := AppendableBytes(make([]byte, 0, 2048))
 
 	if !d.Websocket {
-		buf = fmt.Appendf(buf, "CONNECT %s HTTP/1.1\r\n", addr)
-		buf = fmt.Appendf(buf, "Host: %s\r\n", addr)
+		buf = buf.Str("CONNECT ").Str(addr).Str(" HTTP/1.1\r\n")
+		buf = buf.Str("Host: ").Str(addr).Str("\r\n")
 	} else {
 		// see https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-connect-tcp-05
 		host, port, _ := net.SplitHostPort(addr)
 		key := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%x%x\n", fastrandn(1<<32-1), fastrandn(1<<32-1))))
 		if d.TLS {
-			buf = fmt.Appendf(buf, "GET "+HTTPTunnelConnectTCPPathPrefix+"%s/%s/ HTTP/1.1\r\n", host, port)
+			buf = buf.Str("GET ").Str(HTTPTunnelConnectTCPPathPrefix).Str(host).Byte('/').Str(port).Str("/ HTTP/1.1\r\n")
 		} else {
-			payload := fmt.Appendf(make([]byte, 0, 1024), HTTPTunnelConnectTCPPathPrefix+"%s/%s/", host, port)
+			payload := AppendableBytes(make([]byte, 0, 1024)).Str(HTTPTunnelConnectTCPPathPrefix).Str(host).Byte('/').Str(port).Byte('/')
 			cipher, _ := rc4.NewCipher(s2b(HTTPTunnelEncryptedPathPrefix[3 : len(HTTPTunnelEncryptedPathPrefix)-1]))
 			cipher.XORKeyStream(payload, payload)
 			payload = base64.StdEncoding.AppendEncode(make([]byte, 0, 1024), payload)
-			buf = fmt.Appendf(buf, "GET %s%s HTTP/1.1\r\n", HTTPTunnelEncryptedPathPrefix, payload)
+			buf = buf.Str("GET ").Str(HTTPTunnelEncryptedPathPrefix).Base64(payload).Str(" HTTP/1.1\r\n")
 		}
-		buf = fmt.Appendf(buf, "Host: %s\r\n", d.Host)
-		buf = fmt.Appendf(buf, "Connection: Upgrade\r\n")
-		buf = fmt.Appendf(buf, "Upgrade: websocket\r\n")
-		buf = fmt.Appendf(buf, "Sec-WebSocket-Version: 13\r\n")
-		buf = fmt.Appendf(buf, "Sec-WebSocket-Key: %s\r\n", key)
+		buf = buf.Str("Host: ").Str(d.Host).Str("\r\n")
+		buf = buf.Str("Connection: Upgrade\r\n")
+		buf = buf.Str("Upgrade: websocket\r\n")
+		buf = buf.Str("Sec-WebSocket-Version: 13\r\n")
+		buf = buf.Str("Sec-WebSocket-Key: ").Str(key).Str("\r\n")
 	}
 	if d.Username != "" {
-		buf = fmt.Appendf(buf, "Proxy-Authorization: Basic %s\r\n", base64.StdEncoding.EncodeToString([]byte(d.Username+":"+d.Password)))
+		buf = buf.Str("Proxy-Authorization: Basic ").Base64(s2b(d.Username + ":" + d.Password)).Str("\r\n")
 	}
 	if header, _ := ctx.Value(DialerHTTPHeaderContextKey).(http.Header); header != nil {
 		for key, values := range header {
 			for _, value := range values {
-				buf = fmt.Appendf(buf, "%s: %s\r\n", key, value)
+				buf = buf.Str(key).Str(": ").Str(value).Str("\r\n")
 			}
 		}
 	}
-	buf = fmt.Appendf(buf, "User-Agent: %s\r\n", cmp.Or(d.UserAgent, DefaultUserAgent))
-	buf = fmt.Appendf(buf, "\r\n")
+	buf = buf.Str("User-Agent: ").Str(cmp.Or(d.UserAgent, DefaultUserAgent)).Str("\r\n")
+	buf = buf.Str("\r\n")
 
 	if _, err := conn.Write(buf); err != nil {
 		return nil, errors.New("httpdialer: failed to write greeting to HTTP proxy at " + d.Host + ": " + err.Error())

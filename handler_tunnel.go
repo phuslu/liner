@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
@@ -260,22 +260,22 @@ func (h *TunnelHandler) wstunnel(ctx context.Context, dialer string) (net.Listen
 	}
 
 	// see https://www.ietf.org/archive/id/draft-kazuho-httpbis-reverse-tunnel-00.html
-	buf := make([]byte, 0, 2048)
-	buf = fmt.Appendf(buf, "GET "+HTTPTunnelReverseTCPPathPrefix+"%s/%s/ HTTP/1.1\r\n", targetHost, targetPort)
-	buf = fmt.Appendf(buf, "Host: %s\r\n", u.Hostname())
-	buf = fmt.Appendf(buf, "Authorization: Basic %s\r\n", base64.StdEncoding.EncodeToString([]byte(u.User.Username()+":"+first(u.User.Password()))))
-	buf = fmt.Appendf(buf, "User-Agent: %s\r\n", DefaultUserAgent)
+	buf := AppendableBytes(make([]byte, 0, 2048))
+	buf = buf.Str("GET ").Str(HTTPTunnelReverseTCPPathPrefix).Str(targetHost).Byte('/').Str(targetPort).Str("/ HTTP/1.1\r\n")
+	buf = buf.Str("Host: ").Str(u.Hostname()).Str("\r\n")
+	buf = buf.Str("Authorization: Basic ").Base64(AppendableBytes(make([]byte, 0, 128)).Str(u.User.Username()).Byte(':').Str(first(u.User.Password()))).Str("\r\n")
+	buf = buf.Str("User-Agent: ").Str(DefaultUserAgent).Str("\r\n")
 	switch u.Scheme {
 	case "ws", "wss":
-		buf = fmt.Appendf(buf, "Connection: Upgrade\r\n")
-		buf = fmt.Appendf(buf, "Upgrade: websocket\r\n")
-		buf = fmt.Appendf(buf, "Sec-WebSocket-Version: 13\r\n")
-		buf = fmt.Appendf(buf, "Sec-WebSocket-Key: %s\r\n", base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%x%x\n", fastrandn(1<<32-1), fastrandn(1<<32-1)))))
+		buf = buf.Str("Connection: Upgrade\r\n")
+		buf = buf.Str("Upgrade: websocket\r\n")
+		buf = buf.Str("Sec-WebSocket-Version: 13\r\n")
+		buf = buf.Str("Sec-WebSocket-Key: ").Base64(strconv.AppendUint(make([]byte, 0, 64), uint64(fastrandn(1<<32-1)), 10)).Str("\r\n")
 	default:
-		buf = fmt.Appendf(buf, "Connection: Upgrade\r\n")
-		buf = fmt.Appendf(buf, "Upgrade: reverse\r\n")
+		buf = buf.Str("Connection: Upgrade\r\n")
+		buf = buf.Str("Upgrade: reverse\r\n")
 	}
-	buf = fmt.Appendf(buf, "\r\n")
+	buf = buf.Str("\r\n")
 
 	log.Info().Stringer("tunnel_conn_addr", conn.RemoteAddr()).Bytes("request_body", buf).Msg("send tunnel request")
 

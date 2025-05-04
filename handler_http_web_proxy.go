@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"crypto/tls"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -128,22 +127,23 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 			conn = tlsConn
 		}
 
-		b := make([]byte, 0, 1024)
-		b = fmt.Appendf(b, "GET %s HTTP/1.1\r\n", req.RequestURI)
+		wskey := AppendableBytes(make([]byte, 0, 128)).Uint64(uint64(fastrandn(1<<32-1)), 16).Uint64(uint64(fastrandn(1<<32-1)), 16)
+
+		b := AppendableBytes(make([]byte, 0, 1024))
+		b = b.Str("GET ").Str(req.RequestURI).Str(" HTTP/1.1\r\n")
 		for key, values := range req.Header {
 			for _, value := range values {
 				if strings.HasPrefix(key, ":") {
 					continue
 				}
-				b = fmt.Appendf(b, "%s: %s\n", key, value)
+				b = b.Str(key).Str(": ").Str(value).Str("\r\n")
 			}
 		}
-		wskey := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%x%x\n", fastrandn(1<<32-1), fastrandn(1<<32-1))))
-		b = fmt.Appendf(b, "Sec-WebSocket-Key: %s\r\n", wskey)
-		b = fmt.Appendf(b, "Connection: Upgrade\r\n")
-		b = fmt.Appendf(b, "Upgrade: %s\r\n", req.Header.Get(":protocol"))
-		b = fmt.Appendf(b, "Host: %s\r\n", req.Host)
-		b = fmt.Appendf(b, "\r\n")
+		b = b.Str("Sec-WebSocket-Key: ").Base64(wskey).Str("\r\n")
+		b = b.Str("Upgrade: ").Str(req.Header.Get(":protocol")).Str("\r\n")
+		b = b.Str("Host: ").Str(req.Host).Str("\r\n")
+		b = b.Str("Connection: Upgrade\r\n")
+		b = b.Str("\r\n")
 
 		_, err = conn.Write(b)
 		if err != nil {
