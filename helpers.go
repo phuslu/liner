@@ -9,6 +9,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -920,6 +921,46 @@ func (w SlogWriter) Write(b []byte) (int, error) {
 		w.Logger.Info(b2s(b))
 	}
 	return len(b), nil
+}
+
+/*
+	  b := AppendableBytes(make([]byte, 0, 1024))
+	  b = b.Str("GET ").Str(req.RequestURI).Str(" HTTP/1.1\r\n")
+	  for key, values := range req.Header {
+		for _, value := range values {
+			b = b.Str(key).Str(": ").Str(value).Str("\r\n")
+	  	}
+	  }
+	  b = b.Str("\r\n")
+*/
+type AppendableBytes []byte
+
+func (b AppendableBytes) Str(s string) AppendableBytes {
+	return append(b, s...)
+}
+
+func (b AppendableBytes) Bytes(s []byte) AppendableBytes {
+	return append(b, s...)
+}
+
+func (b AppendableBytes) Byte(c byte) AppendableBytes {
+	return append(b, c)
+}
+
+func (b AppendableBytes) Base64(data []byte) AppendableBytes {
+	return base64.StdEncoding.AppendEncode(b, data)
+}
+
+func (b AppendableBytes) Hex(data []byte) AppendableBytes {
+	return hex.AppendEncode(b, data)
+}
+
+func (b AppendableBytes) Uint64(i uint64, base int) AppendableBytes {
+	return strconv.AppendUint(b, i, base)
+}
+
+func (b AppendableBytes) Int64(i int64, base int) AppendableBytes {
+	return strconv.AppendInt(b, i, base)
 }
 
 type FileLoader[T any] struct {
