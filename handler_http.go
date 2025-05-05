@@ -114,7 +114,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	}
 
 	if ri.ClientHelloInfo != nil {
-		ri.TLSFingerprint = AppendJA3Fingerprint(ri.TLSFingerprint[:0], ri.TLSVersion, ri.ClientHelloInfo)
+		ri.TLSFingerprint = AppendJA4Fingerprint(ri.TLSFingerprint[:0], ri.TLSVersion, ri.ClientHelloInfo, req.ProtoMajor == 3)
 	} else {
 		ri.TLSFingerprint = ri.TLSFingerprint[:0]
 	}

@@ -115,12 +115,13 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		}
 
 		err := tmpl.Execute(w, struct {
-			ServerVersion string
-			ServerAddr    string
-			Request       *http.Request
-			UserAgent     *useragent.UserAgent
-			FileInfo      fs.FileInfo
-		}{version, ri.ServerAddr, req, &ri.UserAgent, fi})
+			ServerVersion  string
+			ServerAddr     string
+			Request        *http.Request
+			UserAgent      *useragent.UserAgent
+			TLSFingerprint string
+			FileInfo       fs.FileInfo
+		}{version, ri.ServerAddr, req, &ri.UserAgent, b2s(ri.TLSFingerprint), fi})
 		if err != nil {
 			log.Error().Context(ri.LogContext).Err(err).Str("index_file", h.File).Msg("execute index file error")
 			http.Error(rw, err.Error(), http.StatusInternalServerError)
