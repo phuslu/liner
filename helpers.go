@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
@@ -20,6 +21,7 @@ import (
 	"net/url"
 	"os"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -637,6 +639,91 @@ func AppendJA3Fingerprint(dst []byte, version TLSVersion, info *tls.ClientHelloI
 			b = b.Byte('-')
 		}
 		b = b.Uint64(uint64(c), 10)
+	}
+
+	return b
+}
+
+func AppendJA4Fingerprint(dst []byte, version TLSVersion, info *tls.ClientHelloInfo, isquic bool) []byte {
+	b := AppendableBytes(dst)
+
+	ciphers := make([]uint16, 0, 32)
+	for _, c := range info.CipherSuites {
+		if !IsTLSGreaseCode(c) {
+			ciphers = append(ciphers, c)
+		}
+	}
+
+	extensions := make([]uint16, 0, 32)
+	for _, e := range info.Extensions {
+		if !IsTLSGreaseCode(e) {
+			extensions = append(extensions, e)
+		}
+	}
+
+	if isquic {
+		b = b.Byte('q')
+	} else {
+		b = b.Byte('t')
+	}
+	switch version {
+	case TLSVersion13:
+		b = b.Str("13")
+	case TLSVersion12:
+		b = b.Str("12")
+	case TLSVersion11:
+		b = b.Str("11")
+	case TLSVersion10:
+		b = b.Str("10")
+	default:
+		b = b.Str("00")
+	}
+	if info.ServerName != "" {
+		b = b.Byte('d')
+	} else {
+		b = b.Byte('i')
+	}
+	if i := uint64(len(ciphers)); i < 10 {
+		b = b.Byte('0').Uint64(i, 10)
+	} else {
+		b = b.Uint64(i, 10)
+	}
+	if i := uint64(len(extensions)); i < 10 {
+		b = b.Byte('0').Uint64(i, 10)
+	} else {
+		b = b.Uint64(i, 10)
+	}
+	if len(info.SupportedProtos) != 0 {
+		b = b.Str(info.SupportedProtos[0][:2])
+	} else {
+		b = b.Str("00")
+	}
+
+	b = b.Byte('_')
+
+	if len(ciphers) != 0 {
+		slices.Sort(ciphers)
+		sum := sha256.Sum256(*(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{
+			Data: uintptr(unsafe.Pointer(&ciphers[0])), Len: len(ciphers) * 2, Cap: len(ciphers) * 2,
+		})))
+		b = b.Hex(sum[:6])
+	}
+
+	b = b.Byte('_')
+
+	if len(extensions) != 0 {
+		slices.Sort(extensions)
+		if len(info.SupportedCurves) != 0 {
+			for _, c := range info.SupportedCurves {
+				if c := uint16(c); !IsTLSGreaseCode(c) {
+					extensions = append(extensions, c)
+				}
+			}
+		}
+		sum := sha256.Sum256(*(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{
+			Data: uintptr(unsafe.Pointer(&extensions[0])), Len: len(extensions) * 2, Cap: len(extensions) * 2,
+		})))
+		b = b.Hex(sum[:6])
 	}
 
 	return b
