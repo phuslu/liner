@@ -289,8 +289,11 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 }
 
 func (h *HTTPWebIndexHandler) addHeaders(rw http.ResponseWriter, req *http.Request, ri *RequestInfo) {
-	var sb strings.Builder
-	h.headers.Execute(&sb, struct {
+	bb := bytebufferpool.Get()
+	defer bytebufferpool.Put(bb)
+	bb.Reset()
+
+	h.headers.Execute(bb, struct {
 		WebRoot    string
 		Request    *http.Request
 		UserAgent  *useragent.UserAgent
@@ -299,7 +302,7 @@ func (h *HTTPWebIndexHandler) addHeaders(rw http.ResponseWriter, req *http.Reque
 	}{h.Root, req, &ri.UserAgent, ri.ServerAddr, nil})
 
 	var statusCode int
-	for _, line := range strings.Split(sb.String(), "\n") {
+	for line := range strings.Lines(bb.String()) {
 		parts := strings.SplitN(line, ":", 2)
 		if len(parts) != 2 {
 			continue
