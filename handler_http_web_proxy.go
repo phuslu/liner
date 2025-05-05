@@ -18,6 +18,7 @@ import (
 
 	"github.com/mileusna/useragent"
 	"github.com/phuslu/log"
+	"github.com/valyala/bytebufferpool"
 )
 
 type HTTPWebProxyHandler struct {
@@ -67,14 +68,17 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		}
 	}
 
-	var sb strings.Builder
-	h.proxypass.Execute(&sb, struct {
+	bb := bytebufferpool.Get()
+	defer bytebufferpool.Put(bb)
+
+	bb.Reset()
+	h.proxypass.Execute(bb, struct {
 		Request    *http.Request
 		UserAgent  *useragent.UserAgent
 		ServerAddr string
 	}{req, &ri.UserAgent, ri.ServerAddr})
 
-	proxypass := strings.TrimSpace(sb.String())
+	proxypass := strings.TrimSpace(bb.String())
 	if code, _ := strconv.Atoi(proxypass); 100 <= code && code <= 999 {
 		http.Error(rw, fmt.Sprintf("%d %s", code, http.StatusText(code)), code)
 		return
@@ -300,14 +304,17 @@ func (h *HTTPWebProxyHandler) setHeaders(req *http.Request, ri *RequestInfo) {
 		return
 	}
 
-	var sb strings.Builder
-	h.headers.Execute(&sb, struct {
+	bb := bytebufferpool.Get()
+	defer bytebufferpool.Put(bb)
+
+	bb.Reset()
+	h.headers.Execute(bb, struct {
 		Request    *http.Request
 		UserAgent  *useragent.UserAgent
 		ServerAddr string
 	}{req, &ri.UserAgent, ri.ServerAddr})
 
-	for _, line := range strings.Split(sb.String(), "\n") {
+	for line := range strings.Lines(bb.String()) {
 		parts := strings.Split(line, ":")
 		if len(parts) != 2 {
 			continue
