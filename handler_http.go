@@ -46,6 +46,7 @@ type RequestInfo struct {
 	ServerAddr      string
 	ServerName      string
 	TLSVersion      TLSVersion
+	TLSFingerprint  []byte
 	ClientHelloInfo *tls.ClientHelloInfo
 	ClientHelloRaw  []byte
 	ClientTCPConn   *net.TCPConn
@@ -112,6 +113,12 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		}
 	}
 
+	if ri.ClientHelloInfo != nil {
+		ri.TLSFingerprint = AppendJA3Fingerprint(ri.TLSFingerprint[:0], ri.TLSVersion, ri.ClientHelloInfo)
+	} else {
+		ri.TLSFingerprint = ri.TLSFingerprint[:0]
+	}
+
 	// fix http3 request
 	if req.Proto == "" && ri.ClientHelloInfo != nil && len(ri.ClientHelloInfo.SupportedProtos) > 0 && ri.ClientHelloInfo.SupportedProtos[0] == "h3" {
 		req.Proto, req.ProtoMajor, req.ProtoMinor = "HTTP/3.0", 3, 0
@@ -157,6 +164,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		Str("server_name", ri.ServerName).
 		Str("server_addr", ri.ServerAddr).
 		Str("tls_version", ri.TLSVersion.String()).
+		Bytes("tls_fingerprint", ri.TLSFingerprint).
 		Str("remote_ip", ri.RemoteIP).
 		Str("user_agent", req.UserAgent()).
 		Str("http_method", req.Method).

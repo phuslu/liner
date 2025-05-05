@@ -584,6 +584,64 @@ func IsTLSGreaseCode(c uint16) bool {
 	return c&0x0f0f == 0x0a0a && c&0xff == c>>8
 }
 
+func AppendJA3Fingerprint(dst []byte, version TLSVersion, info *tls.ClientHelloInfo) []byte {
+	b := AppendableBytes(dst)
+
+	// version
+	b = b.Uint64(uint64(version), 10)
+
+	// ciphers
+	i := 0
+	for _, c := range info.CipherSuites {
+		if IsTLSGreaseCode(c) {
+			continue
+		}
+		if i > 0 {
+			b = b.Byte('-')
+		}
+		b = b.Uint64(uint64(c), 10)
+		i++
+	}
+	b = b.Byte(',')
+
+	i = 0
+	for _, c := range info.Extensions {
+		if IsTLSGreaseCode(c) || c == 0x0015 {
+			continue
+		}
+		if i > 0 {
+			b = b.Byte('-')
+		}
+		b = b.Uint64(uint64(c), 10)
+		i++
+	}
+	b = b.Byte(',')
+
+	// groups
+	i = 0
+	for _, c := range info.SupportedCurves {
+		if IsTLSGreaseCode(uint16(c)) {
+			continue
+		}
+		if i > 0 {
+			b = b.Byte('-')
+		}
+		b = b.Uint64(uint64(c), 10)
+		i++
+	}
+	b = b.Byte(',')
+
+	// formats
+	for i, c := range info.SupportedPoints {
+		if i > 0 {
+			b = b.Byte('-')
+		}
+		b = b.Uint64(uint64(c), 10)
+	}
+
+	return b
+}
+
 func GetPreferedLocalIP() (net.IP, error) {
 	conn, err := net.Dial("udp", "8.8.8.8:53")
 	if err != nil {
