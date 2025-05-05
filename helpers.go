@@ -654,10 +654,14 @@ func AppendJA4Fingerprint(dst []byte, version TLSVersion, info *tls.ClientHelloI
 		}
 	}
 
-	extensions := make([]uint16, 0, 32)
+	extensions, extensionsLength := make([]uint16, 0, 32), 0
 	for _, e := range info.Extensions {
 		if !IsTLSGreaseCode(e) {
-			extensions = append(extensions, e)
+			// now remove SNI and ALPN values
+			if e != 0x0000 && e != 0x0010 {
+				extensions = append(extensions, e)
+			}
+			extensionsLength++
 		}
 	}
 
@@ -688,12 +692,12 @@ func AppendJA4Fingerprint(dst []byte, version TLSVersion, info *tls.ClientHelloI
 	} else {
 		b = b.Uint64(i, 10)
 	}
-	if i := uint64(len(extensions)); i < 10 {
+	if i := uint64(extensionsLength); i < 10 {
 		b = b.Byte('0').Uint64(i, 10)
 	} else {
 		b = b.Uint64(i, 10)
 	}
-	if len(info.SupportedProtos) != 0 {
+	if len(info.SupportedProtos) != 0 && len(info.SupportedProtos[0]) >= 2 {
 		b = b.Str(info.SupportedProtos[0][:2])
 	} else {
 		b = b.Str("00")
@@ -701,29 +705,70 @@ func AppendJA4Fingerprint(dst []byte, version TLSVersion, info *tls.ClientHelloI
 
 	b = b.Byte('_')
 
+	buf := AppendableBytes(make([]byte, 0, 128))
+
 	if len(ciphers) != 0 {
 		slices.Sort(ciphers)
-		sum := sha256.Sum256(*(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{
-			Data: uintptr(unsafe.Pointer(&ciphers[0])), Len: len(ciphers) * 2, Cap: len(ciphers) * 2,
-		})))
+		buf = buf[:0]
+		for _, c := range ciphers {
+			switch {
+			case c < 0x10:
+				buf = buf.Str("000").Uint64(uint64(c), 16)
+			case c < 0x100:
+				buf = buf.Str("00").Uint64(uint64(c), 16)
+			case c < 0x1000:
+				buf = buf.Str("0").Uint64(uint64(c), 16)
+			default:
+				buf = buf.Uint64(uint64(c), 16)
+			}
+			buf = buf.Byte(',')
+		}
+		sum := sha256.Sum256(buf[:len(buf)-1])
 		b = b.Hex(sum[:6])
+	} else {
+		b = b.Str("000000000000")
 	}
 
 	b = b.Byte('_')
 
 	if len(extensions) != 0 {
 		slices.Sort(extensions)
-		if len(info.SupportedCurves) != 0 {
-			for _, c := range info.SupportedCurves {
-				if c := uint16(c); !IsTLSGreaseCode(c) {
-					extensions = append(extensions, c)
+		buf = buf[:0]
+		for _, c := range extensions {
+			switch {
+			case c < 0x10:
+				buf = buf.Str("000").Uint64(uint64(c), 16)
+			case c < 0x100:
+				buf = buf.Str("00").Uint64(uint64(c), 16)
+			case c < 0x1000:
+				buf = buf.Str("0").Uint64(uint64(c), 16)
+			default:
+				buf = buf.Uint64(uint64(c), 16)
+			}
+			buf = buf.Byte(',')
+		}
+		if len(info.SignatureSchemes) != 0 {
+			buf[len(buf)-1] = '_'
+			for _, c := range info.SignatureSchemes {
+				switch {
+				case IsTLSGreaseCode(uint16(c)):
+					continue
+				case c < 0x10:
+					buf = buf.Str("000").Uint64(uint64(c), 16)
+				case c < 0x100:
+					buf = buf.Str("00").Uint64(uint64(c), 16)
+				case c < 0x1000:
+					buf = buf.Str("0").Uint64(uint64(c), 16)
+				default:
+					buf = buf.Uint64(uint64(c), 16)
 				}
+				buf = buf.Byte(',')
 			}
 		}
-		sum := sha256.Sum256(*(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{
-			Data: uintptr(unsafe.Pointer(&extensions[0])), Len: len(extensions) * 2, Cap: len(extensions) * 2,
-		})))
+		sum := sha256.Sum256(buf[:len(buf)-1])
 		b = b.Hex(sum[:6])
+	} else {
+		b = b.Str("000000000000")
 	}
 
 	return b
