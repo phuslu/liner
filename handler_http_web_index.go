@@ -121,7 +121,7 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 			UserAgent      *useragent.UserAgent
 			TLSFingerprint string
 			FileInfo       fs.FileInfo
-		}{version, ri.ServerAddr, req, &ri.UserAgent, b2s(ri.TLSFingerprint), fi})
+		}{version, ri.ServerAddr, req, &ri.UserAgent, ri.TLSFingerprint, fi})
 		if err != nil {
 			log.Error().Context(ri.LogContext).Err(err).Str("index_file", h.File).Msg("execute index file error")
 			http.Error(rw, err.Error(), http.StatusInternalServerError)

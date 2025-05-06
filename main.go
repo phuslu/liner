@@ -344,7 +344,7 @@ func main() {
 
 	// listen and serve https
 	tlsConfigurator := &TLSInspector{
-		ClientHelloMap: xsync.NewMapOf[string, *tls.ClientHelloInfo](),
+		ClientHelloMap: xsync.NewMapOf[string, *TLSClientHelloInfo](),
 	}
 	h2handlers := map[string]map[string]HTTPHandler{}
 	for _, server := range config.Https {

@@ -26,7 +26,7 @@ type HTTPHandler interface {
 type HTTPServerHandler struct {
 	Config         HTTPConfig
 	ServerNames    []string
-	ClientHelloMap *xsync.MapOf[string, *tls.ClientHelloInfo]
+	ClientHelloMap *xsync.MapOf[string, *TLSClientHelloInfo]
 	UserAgentMap   *CachingMap[string, useragent.UserAgent]
 	GeoResolver    *GeoResolver
 	ForwardHandler HTTPHandler
@@ -46,7 +46,7 @@ type RequestInfo struct {
 	ServerAddr      string
 	ServerName      string
 	TLSVersion      TLSVersion
-	TLSFingerprint  []byte
+	TLSFingerprint  string
 	ClientHelloInfo *tls.ClientHelloInfo
 	ClientHelloRaw  []byte
 	ClientTCPConn   *net.TCPConn
@@ -94,7 +94,13 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	ri.ClientHelloInfo, ri.ClientHelloRaw, ri.ClientTCPConn = nil, nil, nil
 	if h.ClientHelloMap != nil {
 		if v, ok := h.ClientHelloMap.Load(req.RemoteAddr); ok {
-			ri.ClientHelloInfo = v
+			ri.ClientHelloInfo = v.ClientHelloInfo
+			ri.TLSFingerprint, ok = v.Fingerprint.Load().(string)
+			if !ok {
+				ja4 := string(AppendJA4Fingerprint(make([]byte, 0, 36), ri.TLSVersion, v.ClientHelloInfo, req.ProtoMajor == 3))
+				v.Fingerprint.Store(ja4)
+				ri.TLSFingerprint = ja4
+			}
 			if header := GetMirrorHeader(ri.ClientHelloInfo.Conn); header != nil {
 				ri.ClientHelloRaw = header.B
 			}
@@ -111,12 +117,6 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 				}
 			}
 		}
-	}
-
-	if ri.ClientHelloInfo != nil {
-		ri.TLSFingerprint = AppendJA4Fingerprint(ri.TLSFingerprint[:0], ri.TLSVersion, ri.ClientHelloInfo, req.ProtoMajor == 3)
-	} else {
-		ri.TLSFingerprint = ri.TLSFingerprint[:0]
 	}
 
 	// fix http3 request
@@ -164,7 +164,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		Str("server_name", ri.ServerName).
 		Str("server_addr", ri.ServerAddr).
 		Str("tls_version", ri.TLSVersion.String()).
-		Bytes("tls_fingerprint", ri.TLSFingerprint).
+		Str("tls_fingerprint", ri.TLSFingerprint).
 		Str("remote_ip", ri.RemoteIP).
 		Str("user_agent", req.UserAgent()).
 		Str("http_method", req.Method).

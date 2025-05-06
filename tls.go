@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/phuslu/log"
@@ -78,6 +79,11 @@ type TLSInspectorCacheValue[T any] struct {
 	CreatedAt int64
 }
 
+type TLSClientHelloInfo struct {
+	*tls.ClientHelloInfo
+	Fingerprint atomic.Value // ja4 stirng
+}
+
 type TLSInspector struct {
 	DefaultServername string
 
@@ -87,7 +93,7 @@ type TLSInspector struct {
 	RootCA           *RootCA
 	TLSConfigCache   *xsync.MapOf[TLSInspectorCacheKey, TLSInspectorCacheValue[*tls.Config]]
 	CertificateCache *xsync.MapOf[TLSInspectorCacheKey, TLSInspectorCacheValue[*tls.Certificate]]
-	ClientHelloMap   *xsync.MapOf[string, *tls.ClientHelloInfo]
+	ClientHelloMap   *xsync.MapOf[string, *TLSClientHelloInfo]
 }
 
 func (m *TLSInspector) AddCertEntry(entry TLSInspectorEntry) error {
@@ -195,7 +201,7 @@ func (m *TLSInspector) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certific
 }
 
 func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Config, error) {
-	m.ClientHelloMap.Store(hello.Conn.RemoteAddr().String(), hello)
+	m.ClientHelloMap.Store(hello.Conn.RemoteAddr().String(), &TLSClientHelloInfo{ClientHelloInfo: hello})
 
 	if host, _, err := net.SplitHostPort(hello.ServerName); err == nil {
 		hello.ServerName = host
