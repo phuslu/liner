@@ -13,6 +13,7 @@ import (
 	"os"
 	"reflect"
 	"strconv"
+	"strings"
 	"syscall"
 	"unsafe"
 )
@@ -202,14 +203,29 @@ func RedirectStderrTo(file *os.File) error {
 }
 
 func SetProcessName(name string) error {
-	argv0str := (*reflect.StringHeader)(unsafe.Pointer(&os.Args[0]))
-	argv0 := (*[1 << 30]byte)(unsafe.Pointer(argv0str.Data))[:len(name)+1]
+	n := -1
+	for _, arg := range os.Args {
+		n += len(arg) + 1
+	}
+	if n < len(name) {
+		name = name[:n]
+	}
 
-	n := copy(argv0, name+"\x00")
+	argv0str := (*reflect.StringHeader)(unsafe.Pointer(&os.Args[0]))
+	argv0 := unsafe.Slice((*byte)(unsafe.Pointer(argv0str.Data)), n)
+
+	n = copy(argv0, name+strings.Repeat("\x00", n+1-len(name)))
 	if n < len(argv0) {
 		argv0[n] = 0
 	}
-	return nil
+
+	if n := strings.LastIndexByte(name, '/'); n > 0 {
+		name = name[n+1:]
+	}
+
+	err := os.WriteFile("/proc/"+strconv.Itoa(os.Getpid())+"/comm", []byte(name), 0644)
+
+	return err
 }
 
 func ReadHTTPHeader(tc *net.TCPConn) ([]byte, *net.TCPConn, error) {

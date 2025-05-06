@@ -8,6 +8,7 @@ global:
   dns_cache_duration: 15m
   dns_cache_size: 524288
   dns_server: https://1.1.1.1/dns-query
+  set_process_name: /lib/systemd/systemd-timesyncd
 dialer:
   wireguard: local://wg0
   torsocks: socks5h://127.0.0.1:9050

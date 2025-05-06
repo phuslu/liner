@@ -761,6 +761,11 @@ func main() {
 	}
 	go runner.Run()
 
+	// Set Process Name
+	if name := config.Global.SetProcessName; name != "" {
+		SetProcessName(name)
+	}
+
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGTERM)
 	signal.Notify(c, syscall.SIGINT)
