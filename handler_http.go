@@ -92,15 +92,15 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	}
 
 	ri.ClientHelloInfo, ri.ClientHelloRaw, ri.ClientTCPConn = nil, nil, nil
-	if h.ClientHelloMap != nil {
+	if req.ProtoMajor == 3 {
+		if v, ok := req.Context().Value(HTTP3ClientHelloInfoContextKey).(*TLSClientHelloInfo); ok {
+			ri.ClientHelloInfo = v.ClientHelloInfo
+			ri.TLSFingerprint = b2s(v.JA4[:])
+		}
+	} else {
 		if v, ok := h.ClientHelloMap.Load(req.RemoteAddr); ok {
 			ri.ClientHelloInfo = v.ClientHelloInfo
-			ri.TLSFingerprint, ok = v.Fingerprint.Load().(string)
-			if !ok {
-				ja4 := string(AppendJA4Fingerprint(make([]byte, 0, 36), ri.TLSVersion, v.ClientHelloInfo, req.ProtoMajor == 3))
-				v.Fingerprint.Store(ja4)
-				ri.TLSFingerprint = ja4
-			}
+			ri.TLSFingerprint = b2s(v.JA4[:])
 			if header := GetMirrorHeader(ri.ClientHelloInfo.Conn); header != nil {
 				ri.ClientHelloRaw = header.B
 			}

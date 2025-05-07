@@ -13,11 +13,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/phuslu/log"
 	"github.com/puzpuzpuz/xsync/v3"
+	"github.com/quic-go/quic-go"
 	"github.com/valyala/bytebufferpool"
 	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/sys/cpu"
@@ -81,7 +81,7 @@ type TLSInspectorCacheValue[T any] struct {
 
 type TLSClientHelloInfo struct {
 	*tls.ClientHelloInfo
-	Fingerprint atomic.Value // ja4 stirng
+	JA4 [36]byte
 }
 
 type TLSInspector struct {
@@ -343,8 +343,30 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 	return config, nil
 }
 
-func (m *TLSInspector) ConnState(c net.Conn, cs http.ConnState) {
+var HTTP3ClientHelloInfoContextKey = struct{}{}
+
+func (m *TLSInspector) HTTP3ConnContext(ctx context.Context, conn quic.Connection) context.Context {
+	addr := conn.RemoteAddr().String()
+	if info, ok := m.ClientHelloMap.Load(addr); ok {
+		AppendJA4Fingerprint(info.JA4[:0], TLSVersion(conn.ConnectionState().TLS.Version), info.ClientHelloInfo, true)
+		ctx = context.WithValue(ctx, HTTP3ClientHelloInfoContextKey, info)
+		m.ClientHelloMap.Delete(addr)
+	}
+
+	return ctx
+}
+
+func (m *TLSInspector) HTTPConnState(c net.Conn, cs http.ConnState) {
 	switch cs {
+	case http.StateActive:
+		if info, ok := m.ClientHelloMap.Load(c.RemoteAddr().String()); ok {
+			if tc, ok := c.(interface {
+				ConnectionState() tls.ConnectionState
+			}); ok {
+				cs := tc.ConnectionState()
+				AppendJA4Fingerprint(info.JA4[:0], TLSVersion(cs.Version), info.ClientHelloInfo, false)
+			}
+		}
 	case http.StateHijacked, http.StateClosed:
 		if header := GetMirrorHeader(c); header != nil {
 			bytebufferpool.Put(header)

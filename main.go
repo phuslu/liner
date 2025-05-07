@@ -467,7 +467,7 @@ func main() {
 			TLSConfig: &tls.Config{
 				GetConfigForClient: tlsConfigurator.GetConfigForClient,
 			},
-			ConnState: tlsConfigurator.ConnState,
+			ConnState: tlsConfigurator.HTTPConnState,
 			ErrorLog:  log.DefaultLogger.Std("", 0),
 		}
 
@@ -495,7 +495,6 @@ func main() {
 				Addr:      addr,
 				Handler:   server.Handler,
 				TLSConfig: server.TLSConfig,
-				Logger:    log.DefaultLogger.Slog().With("logger", "http3_server"),
 				QUICConfig: &quic.Config{
 					Allow0RTT:                  true,
 					DisablePathMTUDiscovery:    false,
@@ -504,6 +503,8 @@ func main() {
 					MaxStreamReceiveWindow:     6 * 1024 * 1024,
 					MaxConnectionReceiveWindow: 100 * 6 * 1024 * 1024,
 				},
+				ConnContext: tlsConfigurator.HTTP3ConnContext,
+				Logger:      log.DefaultLogger.Slog().With("logger", "http3_server"),
 			}).ListenAndServe()
 		}
 	}
