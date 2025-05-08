@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	"github.com/libp2p/go-yamux/v5"
 	"github.com/phuslu/log"
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
@@ -169,12 +170,17 @@ func (s *SshHandler) Serve(ctx context.Context, ln net.Listener) error {
 			return fmt.Errorf("accept incoming connection: %s", err)
 		}
 		if !s.Config.DisableKeepalive {
-			tcpConn.(*net.TCPConn).SetKeepAliveConfig(net.KeepAliveConfig{
-				Enable:   true,
-				Idle:     15 * time.Second,
-				Interval: 15 * time.Second,
-				Count:    9,
-			})
+			switch c := tcpConn.(type) {
+			case *net.TCPConn:
+				c.SetKeepAliveConfig(net.KeepAliveConfig{
+					Enable:   true,
+					Idle:     15 * time.Second,
+					Interval: 15 * time.Second,
+					Count:    9,
+				})
+			case *yamux.Stream:
+				break
+			}
 		}
 		// Before use, a handshake must be performed on the incoming net.Conn.
 		go s.handleConn(ctx, tcpConn)

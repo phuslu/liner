@@ -677,6 +677,45 @@ func main() {
 		}
 	}
 
+	// ssh handler
+	for _, ssh := range config.Ssh {
+		for _, addr := range ssh.Listen {
+			h := &SshHandler{
+				Config: ssh,
+				// Functions: functions.FuncMap,
+				Logger: log.DefaultLogger,
+			}
+
+			var ln net.Listener
+
+			if _, ok := memoryListeners.Load(addr); ok && strings.HasPrefix(addr, "@") {
+				log.Info().Str("version", version).Str("address", addr).Msg("liner listen and serve ssh")
+				mln := &MemoryListener{}
+				memoryListeners.Store(addr, mln)
+
+				ln = mln
+			} else {
+				if ln, err = lc.Listen(context.Background(), "tcp", addr); err != nil {
+					log.Fatal().Err(err).Str("address", addr).Msg("net.Listen error")
+				}
+
+				log.Info().Str("version", version).Str("address", ln.Addr().String()).Msg("liner listen and serve ssh")
+
+				if _, ok := memoryListeners.Load(addr); ok {
+					newln := &MemoryListener{Listener: ln}
+					memoryListeners.Store(addr, newln)
+					ln = newln
+				}
+			}
+
+			if err = h.Load(); err != nil {
+				log.Fatal().Err(err).Str("address", addr).Msg("dns hanlder load error")
+			}
+
+			go h.Serve(context.Background(), ln)
+		}
+	}
+
 	// tunnel handler
 	for _, tunnel := range config.Tunnel {
 		h := &TunnelHandler{
@@ -691,30 +730,6 @@ func main() {
 		}
 
 		go h.Serve(context.Background())
-	}
-
-	// ssh handler
-	for _, ssh := range config.Ssh {
-		for _, addr := range ssh.Listen {
-			ln, err := lc.Listen(context.Background(), "tcp", addr)
-			if err != nil {
-				log.Fatal().Err(err).Str("address", addr).Msg("net.Listen error")
-			}
-
-			log.Info().Str("version", version).Str("address", ln.Addr().String()).Msg("liner listen and serve dns port")
-
-			h := &SshHandler{
-				Config: ssh,
-				// Functions: functions.FuncMap,
-				Logger: log.DefaultLogger,
-			}
-
-			if err = h.Load(); err != nil {
-				log.Fatal().Err(err).Str("address", addr).Msg("dns hanlder load error")
-			}
-
-			go h.Serve(context.Background(), ln)
-		}
 	}
 
 	// dns handler
