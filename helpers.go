@@ -458,7 +458,7 @@ func (ln *MemoryListener) Close() (err error) {
 	return
 }
 
-func (ln *MemoryListener) Add(c net.Conn) {
+func (ln *MemoryListener) SendConn(c net.Conn) {
 	ln.once.Do(ln.init)
 	ln.queue <- struct {
 		conn net.Conn
