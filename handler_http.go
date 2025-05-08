@@ -102,7 +102,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 			ri.ClientHelloInfo = v.ClientHelloInfo
 			ri.TLSFingerprint = b2s(v.JA4[:])
 			if header := GetMirrorHeader(ri.ClientHelloInfo.Conn); header != nil {
-				ri.ClientHelloRaw = header.B
+				ri.ClientHelloRaw = header
 			}
 			if req.ProtoMajor <= 2 {
 				conn := ri.ClientHelloInfo.Conn

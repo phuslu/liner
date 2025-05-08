@@ -18,7 +18,6 @@ import (
 	"github.com/phuslu/log"
 	"github.com/puzpuzpuz/xsync/v3"
 	"github.com/quic-go/quic-go"
-	"github.com/valyala/bytebufferpool"
 	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/sys/cpu"
 )
@@ -232,7 +231,7 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 			if err != nil {
 				return nil, fmt.Errorf("sniproxy: proxy_pass %s error: %w", sni.ProxyPass, err)
 			}
-			_, err = rconn.Write(mc.Header.B)
+			_, err = rconn.Write(mc.Header)
 			if err != nil {
 				return nil, fmt.Errorf("sniproxy: proxy_pass %s error: %w", sni.ProxyPass, err)
 			}
@@ -368,9 +367,6 @@ func (m *TLSInspector) HTTPConnState(c net.Conn, cs http.ConnState) {
 			}
 		}
 	case http.StateHijacked, http.StateClosed:
-		if header := GetMirrorHeader(c); header != nil {
-			bytebufferpool.Put(header)
-		}
 		m.ClientHelloMap.Delete(c.RemoteAddr().String())
 	}
 }

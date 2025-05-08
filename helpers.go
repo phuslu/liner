@@ -31,7 +31,6 @@ import (
 	"unsafe"
 
 	"github.com/nathanaelle/password/v2"
-	"github.com/valyala/bytebufferpool"
 	"golang.org/x/crypto/ocsp"
 )
 
@@ -373,28 +372,27 @@ func (ln TCPListener) Accept() (c net.Conn, err error) {
 
 type MirrorHeaderConn struct {
 	net.Conn
-	Header *bytebufferpool.ByteBuffer
+	Header []byte
 }
 
 func (c *MirrorHeaderConn) Read(b []byte) (n int, err error) {
 	n, err = c.Conn.Read(b)
 	if c.Header == nil {
-		c.Header = bytebufferpool.Get()
-		c.Header.Reset()
+		c.Header = make([]byte, 0, 1500)
 	}
-	if err == nil && n > 0 && c.Header.Len() < 1500 {
-		c.Header.Write(b[:n])
+	if err == nil && n > 0 && len(c.Header) < 1500 {
+		c.Header = append(c.Header, b[:n]...)
 	}
 
 	return
 }
 
-func GetMirrorHeader(conn net.Conn) *bytebufferpool.ByteBuffer {
+func GetMirrorHeader(conn net.Conn) []byte {
 	if c, ok := conn.(*tls.Conn); ok && c != nil {
 		// conn = (*struct{ conn net.Conn })(unsafe.Pointer(c)).conn
 		conn = c.NetConn()
 	}
-	if c, ok := conn.(*MirrorHeaderConn); ok && c.Header != nil && len(c.Header.B) > 0 {
+	if c, ok := conn.(*MirrorHeaderConn); ok && c.Header != nil && len(c.Header) > 0 {
 		return c.Header
 	}
 	return nil
