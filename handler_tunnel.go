@@ -353,7 +353,7 @@ func (h *TunnelHandler) wstunnel(ctx context.Context, dialer string) (net.Listen
 
 func (h *TunnelHandler) handle(ctx context.Context, rconn net.Conn, laddr string) {
 	if h.MemoryListeners != nil {
-		if ln, ok := h.MemoryListeners.Load(h.Config.Listen[0]); ok && ln != nil {
+		if ln, ok := h.MemoryListeners.Load(h.Config.ProxyPass); ok && ln != nil {
 			log.Info().Str("remote_host", rconn.RemoteAddr().String()).Str("local_addr", ln.Addr().String()).Msg("tunnel handler memory listener local addr")
 			ln.Add(rconn)
 			return

@@ -414,6 +414,9 @@ func (ln *MemoryListener) init() {
 		err  error
 	}, 2048)
 	go func() {
+		if ln.Listener == nil {
+			return
+		}
 		for {
 			c, err := ln.Listener.Accept()
 			if err != nil {
@@ -436,6 +439,13 @@ func (ln *MemoryListener) Accept() (c net.Conn, err error) {
 	item := <-ln.queue
 	c, err = item.conn, item.err
 	return
+}
+
+func (ln *MemoryListener) Addr() net.Addr {
+	if ln.Listener == nil {
+		return &net.TCPAddr{}
+	}
+	return ln.Listener.Addr()
 }
 
 func (ln *MemoryListener) Close() (err error) {

@@ -337,7 +337,7 @@ func main() {
 
 	memoryListeners := xsync.NewMapOf[string, *MemoryListener]()
 	for _, tunnel := range config.Tunnel {
-		memoryListeners.Store(tunnel.Listen[0], nil)
+		memoryListeners.Store(tunnel.ProxyPass, nil)
 	}
 
 	servers := make([]*http.Server, 0)
@@ -564,29 +564,37 @@ func main() {
 	for addr, handler := range h1handlers {
 		addr, handler := addr, handler
 
-		var ln net.Listener
-
-		if ln, err = lc.Listen(context.Background(), "tcp", addr); err != nil {
-			log.Fatal().Err(err).Str("address", addr).Msg("net.Listen error")
-		}
-
-		log.Info().Str("version", version).Str("address", ln.Addr().String()).Msg("liner listen and serve")
-
 		server := &http.Server{
 			Handler:  handler,
 			ErrorLog: log.DefaultLogger.Std("", 0),
 		}
 
-		ln = TCPListener{
-			TCPListener:     ln.(*net.TCPListener),
-			KeepAlivePeriod: 3 * time.Minute,
-			ReadBufferSize:  32 * 1024,
-			WriteBufferSize: 32 * 1024,
-		}
-		if _, ok := memoryListeners.Load(addr); ok {
-			newln := &MemoryListener{Listener: ln}
-			memoryListeners.Store(addr, newln)
-			ln = newln
+		var ln net.Listener
+
+		if _, ok := memoryListeners.Load(addr); ok && strings.HasPrefix(addr, "@") {
+			log.Info().Str("version", version).Str("address", addr).Msg("liner listen and serve")
+			mln := &MemoryListener{}
+			memoryListeners.Store(addr, mln)
+
+			ln = mln
+		} else {
+			if ln, err = lc.Listen(context.Background(), "tcp", addr); err != nil {
+				log.Fatal().Err(err).Str("address", addr).Msg("net.Listen error")
+			}
+
+			log.Info().Str("version", version).Str("address", ln.Addr().String()).Msg("liner listen and serve")
+
+			ln = TCPListener{
+				TCPListener:     ln.(*net.TCPListener),
+				KeepAlivePeriod: 3 * time.Minute,
+				ReadBufferSize:  32 * 1024,
+				WriteBufferSize: 32 * 1024,
+			}
+			if _, ok := memoryListeners.Load(addr); ok {
+				newln := &MemoryListener{Listener: ln}
+				memoryListeners.Store(addr, newln)
+				ln = newln
+			}
 		}
 
 		go server.Serve(ln)
