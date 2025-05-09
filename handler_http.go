@@ -46,7 +46,7 @@ type RequestInfo struct {
 	ServerAddr      string
 	ServerName      string
 	TLSVersion      TLSVersion
-	TLSFingerprint  string
+	JA4             string
 	ClientHelloInfo *tls.ClientHelloInfo
 	ClientHelloRaw  []byte
 	ClientTCPConn   *net.TCPConn
@@ -95,12 +95,12 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	if req.ProtoMajor == 3 {
 		if v, ok := req.Context().Value(HTTP3ClientHelloInfoContextKey).(*TLSClientHelloInfo); ok {
 			ri.ClientHelloInfo = v.ClientHelloInfo
-			ri.TLSFingerprint = b2s(v.JA4[:])
+			ri.JA4 = b2s(v.JA4[:])
 		}
 	} else {
 		if v, ok := h.ClientHelloMap.Load(req.RemoteAddr); ok {
 			ri.ClientHelloInfo = v.ClientHelloInfo
-			ri.TLSFingerprint = b2s(v.JA4[:])
+			ri.JA4 = b2s(v.JA4[:])
 			if header := GetMirrorHeader(ri.ClientHelloInfo.Conn); header != nil {
 				ri.ClientHelloRaw = header
 			}
@@ -164,7 +164,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		Str("server_name", ri.ServerName).
 		Str("server_addr", ri.ServerAddr).
 		Str("tls_version", ri.TLSVersion.String()).
-		Str("tls_fingerprint", ri.TLSFingerprint).
+		Str("ja4", ri.JA4).
 		Str("remote_ip", ri.RemoteIP).
 		Str("user_agent", req.UserAgent()).
 		Str("http_method", req.Method).

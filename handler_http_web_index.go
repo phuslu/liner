@@ -115,13 +115,13 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		}
 
 		err := tmpl.Execute(w, struct {
-			ServerVersion  string
-			ServerAddr     string
-			Request        *http.Request
-			UserAgent      *useragent.UserAgent
-			TLSFingerprint string
-			FileInfo       fs.FileInfo
-		}{version, ri.ServerAddr, req, &ri.UserAgent, ri.TLSFingerprint, fi})
+			ServerVersion string
+			ServerAddr    string
+			Request       *http.Request
+			UserAgent     *useragent.UserAgent
+			JA4           string
+			FileInfo      fs.FileInfo
+		}{version, ri.ServerAddr, req, &ri.UserAgent, ri.JA4, fi})
 		if err != nil {
 			log.Error().Context(ri.LogContext).Err(err).Str("index_file", h.File).Msg("execute index file error")
 			http.Error(rw, err.Error(), http.StatusInternalServerError)
@@ -274,10 +274,11 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	err = h.body.Execute(b, struct {
 		WebRoot    string
 		Request    *http.Request
+		JA4        string
 		UserAgent  *useragent.UserAgent
 		ServerAddr string
 		FileInfos  []fs.FileInfo
-	}{h.Root, req, &ri.UserAgent, ri.ServerAddr, infos})
+	}{h.Root, req, ri.JA4, &ri.UserAgent, ri.ServerAddr, infos})
 	if err != nil {
 		http.Error(rw, "500 internal server error", http.StatusInternalServerError)
 		return
@@ -296,10 +297,11 @@ func (h *HTTPWebIndexHandler) addHeaders(rw http.ResponseWriter, req *http.Reque
 	h.headers.Execute(bb, struct {
 		WebRoot    string
 		Request    *http.Request
+		JA4        string
 		UserAgent  *useragent.UserAgent
 		ServerAddr string
 		FileInfos  []fs.FileInfo
-	}{h.Root, req, &ri.UserAgent, ri.ServerAddr, nil})
+	}{h.Root, req, ri.JA4, &ri.UserAgent, ri.ServerAddr, nil})
 
 	var statusCode int
 	for line := range strings.Lines(bb.String()) {

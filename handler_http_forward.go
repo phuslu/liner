@@ -153,10 +153,11 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		err = h.policy.Execute(bb, struct {
 			Request         *http.Request
 			ClientHelloInfo *tls.ClientHelloInfo
+			JA4             string
 			UserInfo        UserInfo
 			UserAgent       *useragent.UserAgent
 			ServerAddr      string
-		}{req, ri.ClientHelloInfo, ri.ProxyUser, &ri.UserAgent, ri.ServerAddr})
+		}{req, ri.ClientHelloInfo, ri.JA4, ri.ProxyUser, &ri.UserAgent, ri.ServerAddr})
 		if err != nil {
 			log.Error().Err(err).Context(ri.LogContext).Str("forward_policy", h.Config.Forward.Policy).Interface("client_hello_info", ri.ClientHelloInfo).Interface("tls_connection_state", req.TLS).Msg("execute forward_policy error")
 			http.NotFound(rw, req)
@@ -252,10 +253,11 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			err := h.tcpcongestion.Execute(bb, struct {
 				Request         *http.Request
 				ClientHelloInfo *tls.ClientHelloInfo
+				JA4             string
 				UserAgent       *useragent.UserAgent
 				ServerAddr      string
 				User            UserInfo
-			}{req, ri.ClientHelloInfo, &ri.UserAgent, ri.ServerAddr, ri.ProxyUser})
+			}{req, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr, ri.ProxyUser})
 			if err != nil {
 				log.Error().Err(err).Context(ri.LogContext).Str("forward_tcp_congestion", h.Config.Forward.TcpCongestion).Msg("execute forward_tcp_congestion error")
 				http.Error(rw, err.Error(), http.StatusBadGateway)
@@ -306,10 +308,11 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		err := h.dialer.Execute(bb, struct {
 			Request         *http.Request
 			ClientHelloInfo *tls.ClientHelloInfo
+			JA4             string
 			UserAgent       *useragent.UserAgent
 			ServerAddr      string
 			User            UserInfo
-		}{req, ri.ClientHelloInfo, &ri.UserAgent, ri.ServerAddr, ri.ProxyUser})
+		}{req, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr, ri.ProxyUser})
 		if err != nil {
 			log.Error().Err(err).Context(ri.LogContext).Str("forward_dialer_name", h.Config.Forward.Dialer).Msg("execute forward_dialer error")
 			http.NotFound(rw, req)
@@ -449,6 +452,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 					Str("server_name", ri.ServerName).
 					Str("server_addr", ri.ServerAddr).
 					Str("tls_version", ri.TLSVersion.String()).
+					Str("ja4", ri.JA4).
 					Str("username", ri.ProxyUser.Username).
 					Str("remote_ip", ri.RemoteIP).
 					Str("remote_country", ri.GeoipInfo.Country).
@@ -545,6 +549,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 					Str("server_name", ri.ServerName).
 					Str("server_addr", ri.ServerAddr).
 					Str("tls_version", ri.TLSVersion.String()).
+					Str("ja4", ri.JA4).
 					Str("username", ri.ProxyUser.Username).
 					Str("remote_ip", ri.RemoteIP).
 					Str("remote_country", ri.GeoipInfo.Country).

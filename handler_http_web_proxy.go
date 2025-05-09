@@ -75,9 +75,10 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	bb.Reset()
 	h.proxypass.Execute(bb, struct {
 		Request    *http.Request
+		JA4        string
 		UserAgent  *useragent.UserAgent
 		ServerAddr string
-	}{req, &ri.UserAgent, ri.ServerAddr})
+	}{req, ri.JA4, &ri.UserAgent, ri.ServerAddr})
 
 	proxypass := strings.TrimSpace(bb.String())
 	if code, _ := strconv.Atoi(proxypass); 100 <= code && code <= 999 {
@@ -210,7 +211,7 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		// req.Header.Set("x-forwarded-ssl", "on")
 		// req.Header.Set("x-url-scheme", "https")
 		// req.Header.Set("x-http-proto", req.Proto)
-		req.Header.Set("x-tls-fingerprint", string(ri.TLSFingerprint))
+		req.Header.Set("x-ja4", string(ri.JA4))
 	}
 	h.setHeaders(req, ri)
 
@@ -311,9 +312,10 @@ func (h *HTTPWebProxyHandler) setHeaders(req *http.Request, ri *RequestInfo) {
 	bb.Reset()
 	h.headers.Execute(bb, struct {
 		Request    *http.Request
+		JA4        string
 		UserAgent  *useragent.UserAgent
 		ServerAddr string
-	}{req, &ri.UserAgent, ri.ServerAddr})
+	}{req, ri.JA4, &ri.UserAgent, ri.ServerAddr})
 
 	for line := range strings.Lines(bb.String()) {
 		parts := strings.Split(line, ":")
