@@ -15,15 +15,13 @@ case $(uname -m) in
     ;;
 esac
 
-domain=$(curl -sS whatismyip.akamai.com | tr . -).nip.io
+domain=$(curl -sS whatismyip.akamai.com | tr . -).sslip.io
 checksum=$(curl -L https://github.com/phuslu/liner/releases/download/v0.0.0/checksums.txt | grep -E "liner_linux_${arch}-[0-9]+.tar.xz")
 filename=$(echo $checksum | awk '{print $2}')
 pacfile=$(head /dev/urandom | tr -dc '1-9' | head -c 6).pac
 
 if test -d liner; then
   cd liner
-elif test -x liner.sh; then
-  true
 else
   mkdir liner && cd liner
 fi
@@ -97,12 +95,12 @@ EOF
 echo ENV=production > .env
 
 if hash systemctl; then
-  rm -f liner.sh
   sudo systemctl enable $(pwd)/liner.service
   sudo systemctl restart liner
 else
-  rm -f liner.service
-  sudo ./liner.sh restart
+  pgrep liner && pkill -9 liner
+  echo 'while :; do "$@"; sleep 2; done' >keepalive
+  (/bin/sh keepalive $(pwd)/liner production.yaml &) </dev/null &>/dev/null
 fi
 
 echo "https://$domain/$pacfile"
