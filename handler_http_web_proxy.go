@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -221,7 +222,7 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	if err != nil {
 		if h.proxypass != nil {
 			log.Warn().Err(err).Context(ri.LogContext).Str("req_host", req.Host).Str("req_url", req.URL.String()).Msg("proxypass error")
-			if IsTimeout(err) {
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) || os.IsTimeout(err) {
 				http.Error(rw, "504 Gateway Timeout", http.StatusGatewayTimeout)
 			} else {
 				http.Error(rw, "502 Bad Gateway", http.StatusBadGateway)

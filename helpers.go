@@ -797,23 +797,6 @@ func GetPreferedLocalIP() (net.IP, error) {
 	return net.ParseIP(s), nil
 }
 
-func IsTimeout(err error) bool {
-	switch err {
-	case nil:
-		return false
-	case context.Canceled:
-		return true
-	}
-
-	if terr, ok := err.(interface {
-		Timeout() bool
-	}); ok {
-		return terr.Timeout()
-	}
-
-	return false
-}
-
 // see https://en.wikipedia.org/wiki/Reserved_IP_addresses
 func IsReservedIP(ip net.IP) bool {
 	if ip == nil {
