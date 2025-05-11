@@ -18,12 +18,14 @@ import (
 
 	"github.com/libp2p/go-yamux/v5"
 	"github.com/phuslu/log"
+	"github.com/puzpuzpuz/xsync/v3"
 	"go4.org/netipx"
 )
 
 type HTTPTunnelHandler struct {
-	Config       HTTPConfig
-	TunnelLogger log.Logger
+	Config          HTTPConfig
+	TunnelLogger    log.Logger
+	MemoryListeners *xsync.MapOf[string, *MemoryListener]
 
 	csvloader *FileLoader[[]UserInfo]
 	listens   *netipx.IPSet
@@ -300,6 +302,9 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		}
 	}(req.Context())
 
+	h.MemoryListeners.Store(addr, &MemoryListener{Listener: ln})
 	err = <-exit
+	h.MemoryListeners.Delete(addr)
+
 	log.Info().Err(err).Msg("tunnel forwarding exit.")
 }
