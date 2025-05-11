@@ -352,7 +352,8 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 
 		if h.MemoryListeners != nil {
 			if ln, ok := h.MemoryListeners.Load(req.Host); ok && ln != nil {
-				if req.ProtoMajor == 1 {
+				switch req.ProtoMajor {
+				case 1:
 					hijacker, ok := rw.(http.Hijacker)
 					if !ok {
 						http.Error(rw, fmt.Sprintf("%#v is not http.Hijacker", rw), http.StatusBadGateway)
@@ -365,6 +366,13 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 					}
 					io.WriteString(lconn, "HTTP/1.1 200 OK\r\n\r\n")
 					ln.SendConn(lconn)
+					log.Info().Context(ri.LogContext).Str("memory_listener_addr", ln.Addr().String()).Msg("http forward handler memory listener local addr")
+					return
+				case 2:
+					raddr, laddr := first(net.ResolveTCPAddr("tcp", req.RemoteAddr)), first(net.ResolveTCPAddr("tcp", ri.ServerAddr))
+					rw.WriteHeader(http.StatusOK)
+					ln.SendConn(HTTP2RequestStream{req.Body, rw, raddr, laddr})
+					log.Info().Context(ri.LogContext).Str("memory_listener_addr", ln.Addr().String()).Msg("http2 forward handler memory listener local addr")
 					return
 				}
 			}

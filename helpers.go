@@ -332,6 +332,52 @@ func (rwc HTTP2ReadWriteCloser) Write(p []byte) (n int, err error) {
 	return n, nil
 }
 
+type HTTP2RequestStream struct {
+	io.ReadCloser
+	http.ResponseWriter
+	raddr *net.TCPAddr
+	laddr *net.TCPAddr
+}
+
+func (stream HTTP2RequestStream) Write(p []byte) (n int, err error) {
+	n, err = stream.ResponseWriter.Write(p)
+	if err != nil {
+		return 0, err
+	}
+
+	//nolint:bodyclose
+	err = http.NewResponseController(stream.ResponseWriter).Flush()
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+func (stream HTTP2RequestStream) RemoteAddr() net.Addr {
+	if stream.raddr == nil {
+		return &net.TCPAddr{}
+	}
+	return stream.raddr
+}
+
+func (stream HTTP2RequestStream) LocalAddr() net.Addr {
+	if stream.laddr == nil {
+		return &net.TCPAddr{}
+	}
+	return stream.laddr
+}
+
+func (stream HTTP2RequestStream) SetDeadline(t time.Time) error {
+	return &net.OpError{Op: "set", Net: "http2", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
+}
+
+func (stream HTTP2RequestStream) SetReadDeadline(t time.Time) error {
+	return &net.OpError{Op: "set", Net: "http2", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
+}
+
+func (stream HTTP2RequestStream) SetWriteDeadline(t time.Time) error {
+	return &net.OpError{Op: "set", Net: "http2", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
+}
+
 type TCPListener struct {
 	*net.TCPListener
 	KeepAlivePeriod time.Duration
