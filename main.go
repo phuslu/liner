@@ -581,25 +581,17 @@ func main() {
 			log.Info().Str("version", version).Str("address", addr).Msg("liner listen and serve")
 			mln := &MemoryListener{}
 			memoryListeners.Store(addr, mln)
-
 			ln = mln
 		} else {
 			if ln, err = lc.Listen(context.Background(), "tcp", addr); err != nil {
 				log.Fatal().Err(err).Str("address", addr).Msg("net.Listen error")
 			}
-
 			log.Info().Str("version", version).Str("address", ln.Addr().String()).Msg("liner listen and serve")
-
 			ln = TCPListener{
 				TCPListener:     ln.(*net.TCPListener),
 				KeepAlivePeriod: 3 * time.Minute,
 				ReadBufferSize:  32 * 1024,
 				WriteBufferSize: 32 * 1024,
-			}
-			if _, ok := memoryListeners.Load(addr); ok {
-				newln := &MemoryListener{Listener: ln}
-				memoryListeners.Store(addr, newln)
-				ln = newln
 			}
 		}
 
@@ -698,20 +690,12 @@ func main() {
 				log.Info().Str("version", version).Str("address", addr).Msg("liner listen and serve ssh")
 				mln := &MemoryListener{}
 				memoryListeners.Store(addr, mln)
-
 				ln = mln
 			} else {
 				if ln, err = lc.Listen(context.Background(), "tcp", addr); err != nil {
 					log.Fatal().Err(err).Str("address", addr).Msg("net.Listen error")
 				}
-
 				log.Info().Str("version", version).Str("address", ln.Addr().String()).Msg("liner listen and serve ssh")
-
-				if _, ok := memoryListeners.Load(addr); ok {
-					newln := &MemoryListener{Listener: ln}
-					memoryListeners.Store(addr, newln)
-					ln = newln
-				}
 			}
 
 			if err = h.Load(); err != nil {
