@@ -356,6 +356,7 @@ func main() {
 				LocalDialer:     dialer,
 				LocalTransport:  transport,
 				Dialers:         dialers,
+				DialerURLs:      config.Dialer,
 				Functions:       functions.FuncMap,
 			},
 			TunnelHandler: &HTTPTunnelHandler{
@@ -529,6 +530,7 @@ func main() {
 				LocalDialer:     dialer,
 				LocalTransport:  transport,
 				Dialers:         dialers,
+				DialerURLs:      config.Dialer,
 				Functions:       functions.FuncMap,
 			},
 			TunnelHandler: &HTTPTunnelHandler{
