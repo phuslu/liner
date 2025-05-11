@@ -19,17 +19,19 @@ import (
 
 	"github.com/mileusna/useragent"
 	"github.com/phuslu/log"
+	"github.com/puzpuzpuz/xsync/v3"
 	"github.com/valyala/bytebufferpool"
 	"golang.org/x/net/publicsuffix"
 )
 
 type HTTPForwardHandler struct {
-	Config         HTTPConfig
-	ForwardLogger  log.Logger
-	LocalDialer    *LocalDialer
-	LocalTransport *http.Transport
-	Dialers        map[string]Dialer
-	Functions      template.FuncMap
+	Config          HTTPConfig
+	ForwardLogger   log.Logger
+	MemoryListeners *xsync.MapOf[string, *MemoryListener]
+	LocalDialer     *LocalDialer
+	LocalTransport  *http.Transport
+	Dialers         map[string]Dialer
+	Functions       template.FuncMap
 
 	policy        *template.Template
 	tcpcongestion *template.Template
@@ -346,6 +348,26 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 	case http.MethodConnect:
 		if req.URL.Host == ri.ServerName {
 			// FIXME: handle self-connect clients
+		}
+
+		if h.MemoryListeners != nil {
+			if ln, ok := h.MemoryListeners.Load(req.Host); ok && ln != nil {
+				if req.ProtoMajor == 1 {
+					hijacker, ok := rw.(http.Hijacker)
+					if !ok {
+						http.Error(rw, fmt.Sprintf("%#v is not http.Hijacker", rw), http.StatusBadGateway)
+						return
+					}
+					lconn, _, err := hijacker.Hijack()
+					if err != nil {
+						http.Error(rw, err.Error(), http.StatusBadGateway)
+						return
+					}
+					io.WriteString(lconn, "HTTP/1.1 200 OK\r\n\r\n")
+					ln.SendConn(lconn)
+					return
+				}
+			}
 		}
 
 		var dialer Dialer

@@ -329,8 +329,15 @@ func main() {
 	}
 
 	memoryListeners := xsync.NewMapOf[string, *MemoryListener]()
-	for _, tunnel := range config.Tunnel {
-		memoryListeners.Store(tunnel.ProxyPass, nil)
+	for _, sshConfig := range config.Ssh {
+		for _, listen := range sshConfig.Listen {
+			memoryListeners.Store(listen, nil)
+		}
+	}
+	for _, httpConfig := range config.Http {
+		for _, listen := range httpConfig.Listen {
+			memoryListeners.Store(listen, nil)
+		}
 	}
 
 	servers := make([]*http.Server, 0)
@@ -343,12 +350,13 @@ func main() {
 	for _, server := range config.Https {
 		handler := &HTTPServerHandler{
 			ForwardHandler: &HTTPForwardHandler{
-				Config:         server,
-				ForwardLogger:  forwardLogger,
-				LocalDialer:    dialer,
-				LocalTransport: transport,
-				Dialers:        dialers,
-				Functions:      functions.FuncMap,
+				Config:          server,
+				ForwardLogger:   forwardLogger,
+				MemoryListeners: memoryListeners,
+				LocalDialer:     dialer,
+				LocalTransport:  transport,
+				Dialers:         dialers,
+				Functions:       functions.FuncMap,
 			},
 			TunnelHandler: &HTTPTunnelHandler{
 				Config: server,
@@ -514,12 +522,13 @@ func main() {
 		}
 		handler := &HTTPServerHandler{
 			ForwardHandler: &HTTPForwardHandler{
-				Config:         httpConfig,
-				ForwardLogger:  forwardLogger,
-				LocalDialer:    dialer,
-				LocalTransport: transport,
-				Dialers:        dialers,
-				Functions:      functions.FuncMap,
+				Config:          httpConfig,
+				ForwardLogger:   forwardLogger,
+				MemoryListeners: memoryListeners,
+				LocalDialer:     dialer,
+				LocalTransport:  transport,
+				Dialers:         dialers,
+				Functions:       functions.FuncMap,
 			},
 			TunnelHandler: &HTTPTunnelHandler{
 				Config: httpConfig,
