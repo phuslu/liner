@@ -370,9 +370,10 @@ func (s *SshHandler) handleChannel(ctx context.Context, newChannel ssh.NewChanne
 					SetTermWindowSize(shellfile.Fd(), uint16(width), uint16(height))
 				}
 			case "subsystem":
-				ok := string(req.Payload[4:]) == "sftp"
-				if ok {
+				switch {
+				case strings.HasPrefix(b2s(req.Payload), "sftp"):
 					go func() {
+						defer connection.Close()
 						server, err := sftp.NewServer(connection)
 						if err != nil {
 							s.Logger.Printf("could not start sftp server: %s", err)
@@ -385,8 +386,10 @@ func (s *SshHandler) handleChannel(ctx context.Context, newChannel ssh.NewChanne
 							s.Logger.Printf("sftp server exited with error: %s", err)
 						}
 					}()
+					req.Reply(true, nil)
+				default:
+					req.Reply(false, append([]byte("ssh subsystem is not supportted: "), req.Payload...))
 				}
-				req.Reply(ok, nil)
 			case "keepalive@openssh.com":
 				req.Reply(true, nil)
 			default:
