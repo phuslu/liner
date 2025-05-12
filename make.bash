@@ -61,7 +61,8 @@ build () {
 
 dist () {
     pushd ${BUILDDIR}
-    tar cv * | gzip -9 >../${DISTFILE}.tar.xz
+    tar cv * | gzip -9 >../${DISTFILE}.tar.gz
+    # test ${GOOS}_${GOARCH} = linux_amd64 && tar cv * | xz -9 >../${DISTFILE}.tar.xz
     popd
 }
 
