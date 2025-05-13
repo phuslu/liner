@@ -179,7 +179,7 @@ func NewConfig(filename string) (*Config, error) {
 	}
 
 	datas := [][]byte{}
-	if data, err := os.ReadFile(filename); err == nil {
+	if data, err := ReadFile(filename); err == nil {
 		data = regexp.MustCompilePOSIX(`^( *)upstream:`).ReplaceAll(data, []byte("${1}dialer:"))
 		datas = append(datas, data)
 	}
