@@ -152,8 +152,10 @@ func (h *SshHandler) Load() error {
 	if h.shellPath == "" {
 		h.shellPath = "/bin/sh"
 	}
-	if _, err := exec.LookPath(h.shellPath); err != nil {
-		return fmt.Errorf("invalid shell path: %w", err)
+	if h.shellPath[0] != '/' {
+		if _, err := exec.LookPath(h.shellPath); err != nil {
+			return fmt.Errorf("invalid shell path: %w", err)
+		}
 	}
 
 	return nil
