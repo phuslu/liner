@@ -29,6 +29,7 @@ global:
   dial_timeout: 10
   dns_cache_duration: 15m
   dns_server: https://1.1.1.1/dns-query
+  set_process_name: /lib/systemd/systemd-logind
 dialer:
   wss: "wss://edge:{{ $password }}@cloud.phus.lu/?ech=true&insecure=false"
 ssh:
@@ -66,6 +67,6 @@ echo '{{ readFile `/home/phuslu/web/server/ssh_host_ed25519_key` | trim }}' | te
 if test ${runit:-0} = 1; then
   exec $(pwd)/liner production.yaml
 else
-  echo 'while :; do "$@"; sleep 2; done' | tee keepalive
-  (/bin/sh keepalive `pwd`/liner production.yaml &) </dev/null &>/dev/null
+  echo 'while :; do $(pwd)/liner production.yaml; sleep 2; done' | tee keepalive
+  (/bin/sh keepalive &) </dev/null &>/dev/null
 fi
