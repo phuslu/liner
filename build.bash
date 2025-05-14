@@ -42,10 +42,12 @@ function build() {
 	go test -v .
 
 	cat <<EOF |
+CGO_ENABLED=0 GOOS=android GOARCH=arm64 ./make.bash build dist
 CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 ./make.bash build dist
+CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 ./make.bash build dist
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 ./make.bash build dist
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 ./make.bash build dist
 CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 ./make.bash build dist
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 ./make.bash build dist
 CGO_ENABLED=0 GOOS=windows GOARCH=amd64 ./make.bash build dist
 EOF
 	xargs --max-procs=8 -n1 -i bash -c {}
