@@ -1,0 +1,34 @@
+sources:
+  liner:
+    type: file
+    include:
+      - ./forward.*.log
+transforms:
+  transforms:
+    type: remap
+    inputs:
+      - liner
+    source: |
+      . = parse_json!(.message)
+      .timestamp = del(.time)
+      .app = "liner"
+sinks:
+  vlogs:
+    inputs:
+      - transforms
+    type: elasticsearch
+    endpoints:
+      #- http://vlogs.phus.lu/insert/elasticsearch/
+      - ${ELASTICSEARCH_URL}
+    auth:
+      strategy: basic
+      user: "${ELASTICSEARCH_USERNAME}"
+      password: "${ELASTICSEARCH_PASSWORD}"
+    mode: bulk
+    api_version: v8
+    healthcheck:
+      enabled: false
+    query:
+      _msg_field: message
+      _time_field: timestamp
+      _stream_fields: app,server_name,server_addr,tls_version,ja4,username,remote_ip,remote_country,remote_region,remote_city,http_method,http_host,http_domain,http_proto,user_agent,user_agent_os,user_agent_os_version,user_agent_name,user_agent_version

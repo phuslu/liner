@@ -8,7 +8,7 @@ BUILDROOT=build
 
 REVSION=$(git rev-list --count HEAD)
 LDFLAGS="-s -w -X main.version=${REVSION}"
-SOURCES="README.md china.pac autoindex.html example.yaml"
+SOURCES="README.md china.pac autoindex.html example.yaml liner-vector.yaml liner-vector.service"
 
 GOOS=${GOOS:-$(go env GOOS)}
 GOARCH=${GOARCH:-$(go env GOARCH)}
