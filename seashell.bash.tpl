@@ -3,6 +3,15 @@
 # A seashell buried in the sand, meant only to hear the sea at night.
 # see https://hub.docker.com/r/phuslu/seashell/
 
+seashell() {
+  if test ${runit:-0} = 1; then
+    exec $(pwd)/liner production.yaml
+  else
+    echo 'while :; do $(pwd)/liner production.yaml; sleep 2; done' | tee keepalive
+    (/bin/sh keepalive &) </dev/null &>/dev/null
+  fi
+}
+
 set -ex
 
 for mountpoint in $(awk '$2 ~ /^(\/data|\/root\/.+)$/ { print $2 }' /proc/mounts); do
@@ -13,9 +22,13 @@ done
 
 cd && mkdir -p liner && cd liner
 
-goosarch=$(grep -q 'CPU architecture: 8' /proc/cpuinfo && echo linux_arm64 || echo linux_amd64)
+test -f production.yaml && seashell && exit
 
+goosarch=$(grep -q 'CPU architecture: 8' /proc/cpuinfo && echo linux_arm64 || echo linux_amd64)
 curl -sSLf $(curl -s https://api.github.com/repos/phuslu/liner/releases/tags/v0.0.0 | awk -v goosarch="$goosarch" '$0 ~ goosarch {f=1} f && /browser_download_url/ {gsub(/.*: "|",?/, ""); print; exit}') | tar xvz -C .
+
+echo '{{ readFile `/home/phuslu/.ssh/id_ed25519.pub` | trim }}' | tee authorized_keys
+echo '{{ readFile `/home/phuslu/web/server/ssh_host_ed25519_key` | trim }}' | tee ssh_host_ed25519_key
 
 # see https://cloud.phus.lu/seashell-sg-99-123456.bash
 {{ $name := (split "-" .Request.URL.Path)._1 }}
@@ -61,12 +74,4 @@ tunnel:
     dial_timeout: 5
 EOF
 
-echo '{{ readFile `/home/phuslu/.ssh/id_ed25519.pub` | trim }}' | tee authorized_keys
-echo '{{ readFile `/home/phuslu/web/server/ssh_host_ed25519_key` | trim }}' | tee ssh_host_ed25519_key
-
-if test ${runit:-0} = 1; then
-  exec $(pwd)/liner production.yaml
-else
-  echo 'while :; do $(pwd)/liner production.yaml; sleep 2; done' | tee keepalive
-  (/bin/sh keepalive &) </dev/null &>/dev/null
-fi
+seashell

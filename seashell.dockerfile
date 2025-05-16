@@ -38,24 +38,14 @@ RUN \
   echo '. $HOME/.bashrc' >/root/.bash_profile && \
   curl -sSlf https://phus.lu/bashrc >/root/.bashrc && \
   # modify other configs
-  echo 'Welcome to Alpine Container Environment!' | tee /etc/motd && \
   sed -i '/^for _cmd; do$/,/^done$/d' /usr/libexec/rc/sh/openrc-run.sh && \
   sed -i 's/mount -t tmpfs/true/g' /usr/libexec/rc/sh/init.sh && \
   sed -i 's/hostname $opts/# hostname $opts/g' /etc/init.d/hostname && \
   sed -i 's/^DROPBEAR_OPTS=.*/DROPBEAR_OPTS="-p 127.0.0.1:2022"/' /etc/conf.d/dropbear && \
   sed -i '/tty/d' /etc/inittab && \
-  rm -f /etc/init.d/hwclock \
-        /etc/init.d/hwdrivers \
-        /etc/init.d/modules \
-        /etc/init.d/modules-load \
-        /etc/init.d/modloop && \
-  # modify openrc config for docker
-  echo $'\n\
-rc_env_allow="*"\n\
-rc_logger="YES"\n\
-rc_provide="loopback net"\n\
-rc_sys="docker"\n'\
->> /etc/rc.conf && \
+  rm -f /etc/init.d/hwclock /etc/init.d/hwdrivers /etc/init.d/modules /etc/init.d/modloop && \
+  echo $'\nrc_env_allow="*"\nrc_logger="YES"\nrc_provide="loopback net"\nrc_sys="docker"\n' >> /etc/rc.conf && \
+  echo 'Welcome to Alpine Container Environment!' | tee /etc/motd && \
   # add cloudinit to openrc services
   echo $'#!/sbin/openrc-run\n\
 description="start cloudinit"\n\
