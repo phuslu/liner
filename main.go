@@ -103,21 +103,27 @@ func main() {
 		// forward logger
 		forwardLogger = log.Logger{
 			Level: log.ParseLevel(cmp.Or(config.Global.LogLevel, "info")),
-			Writer: &log.FileWriter{
-				Filename:   "forward.log",
-				MaxBackups: cmp.Or(config.Global.LogBackups, 2),
-				MaxSize:    cmp.Or(config.Global.LogMaxsize, 20*1024*1024),
-				LocalTime:  config.Global.LogLocaltime,
+			Writer: &log.AsyncWriter{
+				ChannelSize: 8192,
+				Writer: &log.FileWriter{
+					Filename:   "forward.log",
+					MaxBackups: cmp.Or(config.Global.LogBackups, 2),
+					MaxSize:    cmp.Or(config.Global.LogMaxsize, 20*1024*1024),
+					LocalTime:  config.Global.LogLocaltime,
+				},
 			},
 		}
 		// dns logger
 		dnsLogger = log.Logger{
 			Level: log.ParseLevel(cmp.Or(config.Global.LogLevel, "info")),
-			Writer: &log.FileWriter{
-				Filename:   "dns.log",
-				MaxBackups: cmp.Or(config.Global.LogBackups, 2),
-				MaxSize:    cmp.Or(config.Global.LogMaxsize, 20*1024*1024),
-				LocalTime:  config.Global.LogLocaltime,
+			Writer: &log.AsyncWriter{
+				ChannelSize: 8192,
+				Writer: &log.FileWriter{
+					Filename:   "dns.log",
+					MaxBackups: cmp.Or(config.Global.LogBackups, 2),
+					MaxSize:    cmp.Or(config.Global.LogMaxsize, 20*1024*1024),
+					LocalTime:  config.Global.LogLocaltime,
+				},
 			},
 		}
 	}
@@ -757,9 +763,9 @@ func main() {
 	runner := cron.New(cronOptions...)
 	if !log.IsTerminal(os.Stderr.Fd()) {
 		runner.AddFunc("0 0 0 * * *", func() { log.DefaultLogger.Writer.(*log.FileWriter).Rotate() })
-		runner.AddFunc("0 0 0 * * *", func() { forwardLogger.Writer.(*log.FileWriter).Rotate() })
+		runner.AddFunc("0 0 0 * * *", func() { forwardLogger.Writer.(*log.AsyncWriter).Writer.(*log.FileWriter).Rotate() })
 		if len(config.Dns) > 0 {
-			runner.AddFunc("0 0 0 * * *", func() { dnsLogger.Writer.(*log.FileWriter).Rotate() })
+			runner.AddFunc("0 0 0 * * *", func() { dnsLogger.Writer.(*log.AsyncWriter).Writer.(*log.FileWriter).Rotate() })
 		}
 	}
 	for _, job := range config.Cron {
