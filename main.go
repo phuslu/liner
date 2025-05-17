@@ -16,6 +16,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -763,7 +764,10 @@ func main() {
 	runner := cron.New(cronOptions...)
 	if !log.IsTerminal(os.Stderr.Fd()) {
 		runner.AddFunc("0 0 0 * * *", func() { log.DefaultLogger.Writer.(*log.FileWriter).Rotate() })
-		runner.AddFunc("0 0 0 * * *", func() { forwardLogger.Writer.(*log.AsyncWriter).Writer.(*log.FileWriter).Rotate() })
+		if slices.ContainsFunc(config.Http, func(c HTTPConfig) bool { return c.Forward.Log }) ||
+			slices.ContainsFunc(config.Https, func(c HTTPConfig) bool { return c.Forward.Log }) {
+			runner.AddFunc("0 0 0 * * *", func() { forwardLogger.Writer.(*log.AsyncWriter).Writer.(*log.FileWriter).Rotate() })
+		}
 		if len(config.Dns) > 0 {
 			runner.AddFunc("0 0 0 * * *", func() { dnsLogger.Writer.(*log.AsyncWriter).Writer.(*log.FileWriter).Rotate() })
 		}
