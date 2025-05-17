@@ -48,11 +48,19 @@ func (d *HTTP2Dialer) DialContext(ctx context.Context, network, addr string) (ne
 			MaxReadFrameSize:   1024 * 1024, // 1MB read frame, https://github.com/golang/go/issues/47840
 			DisableCompression: false,
 			DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
+				hostport := net.JoinHostPort(d.Host, cmp.Or(d.Port, "443"))
 				dialer := d.Dialer
+				if m, ok := ctx.Value(DialerMemoryDialersContextKey).(*sync.Map); ok && m != nil {
+					if d, ok := m.Load(hostport); ok && d != nil {
+						if md, ok := d.(*MemoryDialer); ok && md != nil {
+							dialer = md
+						}
+					}
+				}
 				if dialer == nil {
 					dialer = &net.Dialer{}
 				}
-				conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(d.Host, cmp.Or(d.Port, "443")))
+				conn, err := dialer.DialContext(ctx, "tcp", hostport)
 				if err != nil {
 					return nil, err
 				}
