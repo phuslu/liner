@@ -91,7 +91,16 @@ func (d *HTTPDialer) DialContext(ctx context.Context, network, addr string) (net
 		}
 	}
 
-	conn, err := d.Dialer.DialContext(ctx, network, hostport)
+	dialer := d.Dialer
+	if m, ok := ctx.Value(DialerMemoryDialersContextKey).(*sync.Map); ok && m != nil {
+		if d, ok := m.Load(hostport); ok && d != nil {
+			if md, ok := d.(*MemoryDialer); ok && md != nil {
+				dialer = md
+			}
+		}
+	}
+
+	conn, err := dialer.DialContext(ctx, network, hostport)
 	if err != nil {
 		return nil, err
 	}
