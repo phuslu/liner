@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/netip"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -23,7 +24,16 @@ type Socks5Dialer struct {
 }
 
 func (d *Socks5Dialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
-	conn, err := d.Dialer.DialContext(ctx, network, net.JoinHostPort(d.Host, d.Port))
+	dialer := d.Dialer
+	if m, ok := ctx.Value(DialerMemoryDialersContextKey).(*sync.Map); ok && m != nil {
+		if d, ok := m.Load(addr); ok && d != nil {
+			if md, ok := d.(*MemoryDialer); ok && md != nil {
+				dialer = md
+			}
+		}
+	}
+
+	conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(d.Host, d.Port))
 	if err != nil {
 		return nil, err
 	}
