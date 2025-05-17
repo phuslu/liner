@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"text/template"
 	"time"
 
@@ -28,6 +29,7 @@ type HTTPForwardHandler struct {
 	Config          HTTPConfig
 	ForwardLogger   log.Logger
 	MemoryListeners *xsync.MapOf[string, *MemoryListener]
+	MemoryDialers   *sync.Map // map[string]*MemoryDialer
 	LocalDialer     *LocalDialer
 	LocalTransport  *http.Transport
 	Dialers         map[string]Dialer
@@ -377,43 +379,6 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 					return
 				}
 			}
-			// if dialerURL := h.DialerURLs[dialerName]; strings.HasPrefix(dialerURL, "http://127.") {
-			// 	if u, err := url.Parse(dialerURL); err == nil {
-			// 		if ln, ok := h.MemoryListeners.Load(u.Host); ok && ln != nil {
-			// 			header := AppendableBytes(make([]byte, 0, 1024))
-			// 			header = header.Str("CONNECT ").Str(req.Host).Str(" HTTP/1.1\r\n")
-			// 			for key, values := range req.Header {
-			// 				for _, value := range values {
-			// 					header = header.Str(key).Str(": ").Str(value).Str("\r\n")
-			// 				}
-			// 			}
-			// 			header = header.Str("Host: ").Str(req.Host).Str("\r\n")
-			// 			header = header.Str("\r\n")
-			// 			switch req.ProtoMajor {
-			// 			case 1:
-			// 				hijacker, ok := rw.(http.Hijacker)
-			// 				if !ok {
-			// 					http.Error(rw, fmt.Sprintf("%#v is not http.Hijacker", rw), http.StatusBadGateway)
-			// 					return
-			// 				}
-			// 				lconn, _, err := hijacker.Hijack()
-			// 				if err != nil {
-			// 					http.Error(rw, err.Error(), http.StatusBadGateway)
-			// 					return
-			// 				}
-			// 				ln.SendConn(&ConnWithData{lconn, header})
-			// 				log.Info().Context(ri.LogContext).Str("memory_listener_addr", ln.Addr().String()).Bytes("memory_conn_header", header).Msg("http forward handler memory listener dial addr")
-			// 				return
-			// 			case 2:
-			// 				raddr, laddr := first(net.ResolveTCPAddr("tcp", req.RemoteAddr)), first(net.ResolveTCPAddr("tcp", ri.ServerAddr))
-			// 				h2conn := HTTP2RequestStream{req.Body, rw, raddr, laddr}
-			// 				ln.SendConn(&ConnWithData{h2conn, header})
-			// 				log.Info().Context(ri.LogContext).Str("memory_listener_addr", ln.Addr().String()).Bytes("memory_conn_header", header).Msg("http2 forward handler memory listener dial addr")
-			// 				return
-			// 			}
-			// 		}
-			// 	}
-			// }
 		}
 
 		var dialer Dialer
@@ -432,6 +397,9 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		ctx := req.Context()
 		if preferIPv6 {
 			ctx = context.WithValue(ctx, DialerPreferIPv6ContextKey, struct{}{})
+		}
+		if h.MemoryDialers != nil {
+			ctx = context.WithValue(ctx, DialerMemoryDialersContextKey, h.MemoryDialers)
 		}
 		if header, _ := ctx.Value(DialerHTTPHeaderContextKey).(http.Header); header != nil {
 			if s := header.Get("x-forwarded-for"); s != "" {

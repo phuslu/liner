@@ -19,6 +19,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -347,6 +348,8 @@ func main() {
 		}
 	}
 
+	memoryDialers := new(sync.Map)
+
 	servers := make([]*http.Server, 0)
 
 	// listen and serve https
@@ -360,6 +363,7 @@ func main() {
 				Config:          server,
 				ForwardLogger:   forwardLogger,
 				MemoryListeners: memoryListeners,
+				MemoryDialers:   memoryDialers,
 				LocalDialer:     dialer,
 				LocalTransport:  transport,
 				Dialers:         dialers,
@@ -367,8 +371,8 @@ func main() {
 				Functions:       functions.FuncMap,
 			},
 			TunnelHandler: &HTTPTunnelHandler{
-				Config:          server,
-				MemoryListeners: memoryListeners,
+				Config:        server,
+				MemoryDialers: memoryDialers,
 			},
 			WebHandler: &HTTPWebHandler{
 				Config:    server,
@@ -534,6 +538,7 @@ func main() {
 				Config:          httpConfig,
 				ForwardLogger:   forwardLogger,
 				MemoryListeners: memoryListeners,
+				MemoryDialers:   memoryDialers,
 				LocalDialer:     dialer,
 				LocalTransport:  transport,
 				Dialers:         dialers,
@@ -541,8 +546,8 @@ func main() {
 				Functions:       functions.FuncMap,
 			},
 			TunnelHandler: &HTTPTunnelHandler{
-				Config:          httpConfig,
-				MemoryListeners: memoryListeners,
+				Config:        httpConfig,
+				MemoryDialers: memoryDialers,
 			},
 			WebHandler: &HTTPWebHandler{
 				Config:    httpConfig,

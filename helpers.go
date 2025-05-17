@@ -30,6 +30,7 @@ import (
 	"unicode"
 	"unsafe"
 
+	"github.com/libp2p/go-yamux/v5"
 	"github.com/nathanaelle/password/v2"
 	"golang.org/x/crypto/ocsp"
 )
@@ -442,6 +443,28 @@ func GetMirrorHeader(conn net.Conn) []byte {
 		return c.Header
 	}
 	return nil
+}
+
+var _ Dialer = (*MemoryDialer)(nil)
+
+type MemoryDialer struct {
+	Session *yamux.Session
+	Address string
+}
+
+func (d *MemoryDialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	switch network {
+	case "tcp", "tcp4", "tcp6":
+		break
+	default:
+		return nil, net.InvalidAddrError("memory dialer network mismatched: " + network)
+	}
+
+	if address != d.Address {
+		return nil, net.InvalidAddrError("memory dialer network mismatched: " + address + " != " + d.Address)
+	}
+
+	return d.Session.Open(ctx)
 }
 
 type MemoryListener struct {

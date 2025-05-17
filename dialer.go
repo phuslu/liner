@@ -26,8 +26,9 @@ type DialerContextKey struct {
 func (k *DialerContextKey) String() string { return "dialer context value " + k.name }
 
 var (
-	DialerHTTPHeaderContextKey = &DialerContextKey{"dailer-http-header"}
-	DialerPreferIPv6ContextKey = &DialerContextKey{"dailer-prefer-ipv6"}
+	DialerHTTPHeaderContextKey    = &DialerContextKey{"dailer-http-header"}
+	DialerPreferIPv6ContextKey    = &DialerContextKey{"dailer-prefer-ipv6"}
+	DialerMemoryDialersContextKey = &DialerContextKey{"dailer-memory-dialers"}
 )
 
 var _ Dialer = (*LocalDialer)(nil)
