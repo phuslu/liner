@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -29,7 +30,16 @@ func (d *Socks4Dialer) DialContext(ctx context.Context, network, addr string) (n
 		return nil, errors.New("proxy: no support for SOCKS4 proxy connections of type " + network)
 	}
 
-	conn, err := d.Dialer.DialContext(ctx, "tcp", net.JoinHostPort(d.Host, d.Port))
+	dialer := d.Dialer
+	if m, ok := ctx.Value(DialerMemoryDialersContextKey).(*sync.Map); ok && m != nil {
+		if d, ok := m.Load(addr); ok && d != nil {
+			if md, ok := d.(*MemoryDialer); ok && md != nil {
+				dialer = md
+			}
+		}
+	}
+
+	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(d.Host, d.Port))
 	if err != nil {
 		return nil, err
 	}
