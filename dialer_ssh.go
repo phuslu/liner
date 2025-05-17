@@ -60,13 +60,21 @@ func (d *SSHDialer) DialContext(ctx context.Context, network, addr string) (net.
 			}
 			config.HostKeyCallback = cb
 		}
+		hostport := net.JoinHostPort(d.Host, cmp.Or(d.Port, "22"))
 		dialer := d.Dialer
+		if m, ok := ctx.Value(DialerMemoryDialersContextKey).(*sync.Map); ok && m != nil {
+			if d, ok := m.Load(hostport); ok && d != nil {
+				if md, ok := d.(*MemoryDialer); ok && md != nil {
+					dialer = md
+				}
+			}
+		}
 		if dialer == nil {
 			dialer = &net.Dialer{Timeout: config.Timeout}
 		}
 		ctx, cancel := context.WithTimeout(ctx, config.Timeout)
 		defer cancel()
-		conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(d.Host, cmp.Or(d.Port, "22")))
+		conn, err := dialer.DialContext(ctx, "tcp", hostport)
 		if err != nil {
 			return nil, err
 		}
