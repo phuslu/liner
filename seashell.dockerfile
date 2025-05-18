@@ -5,60 +5,43 @@
 # curl -sSLf https://github.com/moby/buildkit/releases/download/v0.21.0/buildkit-v0.21.0.linux-arm64.tar.gz | sudo tar xvz -C /usr/local/bin/ --strip-components=1 --wildcards bin/buildctl
 # sudo nerdctl build --no-cache -f seashell.dockerfile -t phuslu/seashell --platform linux/amd64,linux/arm64 --output type=image,oci-mediatypes=true,compression=zstd,compression-level=19,push=true,name=docker.io/phuslu/seashell .
 
-FROM alpine:3.21
+FROM debian:stable-slim
 RUN \
-  apk update && \
-  apk upgrade && \
-  apk add --update --no-cache \
-    bash \
-    bind-tools \
-    busybox-openrc \
+  export DEBIAN_FRONTEND=noninteractive && \
+  apt update -y && \
+  apt upgrade -y && \
+  apt install -y \
+    bind9-dnsutils \
     curl \
     dropbear \
-    fastfetch \
-    gcompat \
     htop \
     iproute2 \
+    iputils-ping \
     jq \
-    logrotate \
-    lsblk \
-    lscpu \
-    openrc \
+    locales \
+    lsb-release \
+    net-tools \
     openssh-client \
-    openssl \
     procps \
     rsync \
     runit \
-    runit-openrc \
+    sudo \
     tmux \
-    xz && \
-  rm -rf /var/cache/apk/* && \
-  # set bash for root
-  sed -i 's#root:x:0:0:root:/root:/bin/sh#root:x:0:0:root:/root:/bin/bash#g' /etc/passwd && \
+    util-linux \
+    vim-tiny \
+    wget && \
+  rm -rf /var/cache/apt/* /var/lib/apt/lists/* && \
+  # set locale
+  echo "LC_ALL=en_US.UTF-8" >> /etc/environment && \
+  echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen && \
+  echo "LANG=en_US.UTF-8" > /etc/locale.conf && \
+  locale-gen en_US.UTF-8 && \
+  # set bash profile for root
   echo '. $HOME/.bashrc' >/root/.bash_profile && \
   curl -sSlf https://phus.lu/bashrc >/root/.bashrc && \
-  # modify other configs
-  sed -i '/^for _cmd; do$/,/^done$/d' /usr/libexec/rc/sh/openrc-run.sh && \
-  sed -i 's/mount -t tmpfs/true/g' /usr/libexec/rc/sh/init.sh && \
-  sed -i 's/hostname $opts/# hostname $opts/g' /etc/init.d/hostname && \
-  sed -i 's/^DROPBEAR_OPTS=.*/DROPBEAR_OPTS="-p 127.0.0.1:2022"/' /etc/conf.d/dropbear && \
-  sed -i '/tty/d' /etc/inittab && \
-  rm -f /etc/init.d/hwclock /etc/init.d/hwdrivers /etc/init.d/modules /etc/init.d/modloop && \
-  echo $'\nrc_env_allow="*"\nrc_logger="YES"\nrc_provide="loopback net"\nrc_sys="docker"\n' >> /etc/rc.conf && \
-  echo 'Welcome to Alpine Container Environment!' | tee /etc/motd && \
-  # add cloudinit to openrc services
-  echo $'#!/sbin/openrc-run\n\
-description="start cloudinit"\n\
-start()\n\
-{\n\
-  test -n "$cloudinit" && exec bash <(curl -sSlf "$cloudinit")\n\
-}\n'\
-> /etc/init.d/cloudinit && \
-  chmod +x /etc/init.d/cloudinit && \
-  rc-update add cloudinit default && \
   # add cloudinit to runit services
   mkdir /etc/service/cloudinit && \
-  echo -e '#!/bin/sh\ntest -n "$cloudinit" && exec bash <(curl -sSlf "$cloudinit")' >/etc/service/cloudinit/run && \
+  echo '#!/bin/bash\ntest -n "$cloudinit" && exec bash <(curl -sSlf "$cloudinit")' >/etc/service/cloudinit/run && \
   chmod +x /etc/service/cloudinit/run
 
-ENTRYPOINT ["/bin/sh", "-c", "test ${runit:-0} = 1 && exec runsvdir -P /etc/service || exec init"]
+ENTRYPOINT ["/usr/bin/runsvdir", "-P ", "/etc/service"]

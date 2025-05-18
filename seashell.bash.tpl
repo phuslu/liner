@@ -3,15 +3,6 @@
 # A seashell buried in the sand, meant only to hear the sea at night.
 # see https://hub.docker.com/r/phuslu/seashell/
 
-seashell() {
-  if test ${runit:-0} = 1; then
-    exec $(pwd)/liner production.yaml
-  else
-    echo 'while :; do $(pwd)/liner production.yaml; sleep 2; done' | tee keepalive
-    (/bin/sh keepalive &) </dev/null &>/dev/null
-  fi
-}
-
 set -ex
 
 for mountpoint in $(awk '$2 ~ /^(\/data|\/root\/.+)$/ { print $2 }' /proc/mounts); do
@@ -22,7 +13,7 @@ done
 
 cd && mkdir -p liner && cd liner
 
-test -f production.yaml && seashell && exit
+test -f production.yaml && exec $(pwd)/liner production.yaml
 
 goosarch=$(grep -q 'CPU architecture: 8' /proc/cpuinfo && echo linux_arm64 || echo linux_amd64)
 curl -sSLf $(curl -s https://api.github.com/repos/phuslu/liner/releases/tags/v0.0.0 | awk -v goosarch="$goosarch" '$0 ~ goosarch {f=1} f && /browser_download_url/ {gsub(/.*: "|",?/, ""); print; exit}') | tar xvz -C .
@@ -74,4 +65,4 @@ tunnel:
     dial_timeout: 5
 EOF
 
-seashell
+exec $(pwd)/liner production.yaml
