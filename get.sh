@@ -22,6 +22,8 @@ pacfile=$(head /dev/urandom | tr -dc '1-9' | head -c 6).pac
 
 if test -d liner; then
   cd liner
+elif test -x liner; then
+  true
 else
   mkdir liner && cd liner
 fi
@@ -94,7 +96,7 @@ EOF
 
 echo ENV=production > .env
 
-if hash systemctl; then
+if type -p systemctl; then
   sudo systemctl enable $(pwd)/liner.service
   sudo systemctl restart liner
 else
