@@ -5,6 +5,13 @@
 
 set -ex
 
+if [ -z "$GOMAXPROCS" ] && [ -f /sys/fs/cgroup/cpu.max ]; then
+  read q p < /sys/fs/cgroup/cpu.max
+  if [ "$q" != max ]; then
+    export GOMAXPROCS=$(((q + p - 1) / p))
+  fi
+fi
+
 for mountpoint in $(awk '$2 ~ /^(\/data|\/root\/.+)$/ { print $2 }' /proc/mounts); do
   for startfile in $(ls $mountpoint/*.start); do
     $startfile
