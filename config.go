@@ -133,6 +133,7 @@ type Config struct {
 		LogBackups       int    `json:"log_backups" yaml:"log_backups"`
 		LogMaxsize       int64  `json:"log_maxsize" yaml:"log_maxsize"`
 		LogLocaltime     bool   `json:"log_localtime" yaml:"log_localtime"`
+		LogChannelSize   uint   `json:"log_channel_size" yaml:"log_channel_size"`
 		ForbidLocalAddr  bool   `json:"forbid_local_addr" yaml:"forbid_local_addr"`
 		DialTimeout      int    `json:"dial_timeout" yaml:"dial_timeout"`
 		DialReadBuffer   int    `json:"dial_read_buffer" yaml:"dial_read_buffer"` // Danger, see https://issues.apache.org/jira/browse/KAFKA-16496
@@ -140,6 +141,8 @@ type Config struct {
 		DnsServer        string `json:"dns_server" yaml:"dns_server"`
 		DnsCacheDuration string `json:"dns_cache_duration" yaml:"dns_cache_duration"`
 		DnsCacheSize     int    `json:"dns_cache_size" yaml:"dns_cache_size"`
+		GeoCacheSize     int    `json:"geo_cache_size" yaml:"geo_cache_size"`
+		GeositeCacheSize int    `json:"geosite_cache_size" yaml:"geosite_cache_size"`
 		IdleConnTimeout  int    `json:"idle_conn_timeout" yaml:"idle_conn_timeout"`
 		MaxIdleConns     int    `json:"max_idle_conns" yaml:"max_idle_conns"`
 		DisableHttp3     bool   `json:"disable_http3" yaml:"disable_http3"`

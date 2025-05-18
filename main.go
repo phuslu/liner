@@ -106,7 +106,7 @@ func main() {
 		forwardLogger = log.Logger{
 			Level: log.ParseLevel(cmp.Or(config.Global.LogLevel, "info")),
 			Writer: &log.AsyncWriter{
-				ChannelSize: 8192,
+				ChannelSize: cmp.Or(config.Global.LogChannelSize, 8192),
 				Writer: &log.FileWriter{
 					Filename:   "forward.log",
 					MaxBackups: cmp.Or(config.Global.LogBackups, 2),
@@ -119,7 +119,7 @@ func main() {
 		dnsLogger = log.Logger{
 			Level: log.ParseLevel(cmp.Or(config.Global.LogLevel, "info")),
 			Writer: &log.AsyncWriter{
-				ChannelSize: 8192,
+				ChannelSize: cmp.Or(config.Global.LogChannelSize, 8192),
 				Writer: &log.FileWriter{
 					Filename:   "dns.log",
 					MaxBackups: cmp.Or(config.Global.LogBackups, 2),
@@ -176,7 +176,7 @@ func main() {
 	// global dialer
 	dialer := &LocalDialer{
 		Resolver:        geoResolver.Resolver,
-		ResolveCache:    lru.NewTTLCache[string, []netip.Addr](8192),
+		ResolveCache:    lru.NewTTLCache[string, []netip.Addr](cmp.Or(config.Global.DnsCacheSize, 8192)),
 		Concurrency:     2,
 		PerferIPv6:      false,
 		ForbidLocalAddr: config.Global.ForbidLocalAddr,
@@ -315,12 +315,12 @@ func main() {
 	// template functions
 	functions := &Functions{
 		GeoResolver:    geoResolver,
-		GeoCache:       lru.NewTTLCache[string, *GeoipInfo](8192),
+		GeoCache:       lru.NewTTLCache[string, *GeoipInfo](cmp.Or(config.Global.GeoCacheSize, 8192)),
 		GeoSite:        &geosite.DomainListCommunity{Transport: transport},
-		GeoSiteCache:   lru.NewTTLCache[string, *string](8192),
+		GeoSiteCache:   lru.NewTTLCache[string, *string](cmp.Or(config.Global.GeositeCacheSize, 8192)),
 		FetchUserAgent: ChromeUserAgent,
 		FetchClient:    &http.Client{Transport: transport},
-		FetchCache:     lru.NewTTLCache[string, *FetchResponse](8192),
+		FetchCache:     lru.NewTTLCache[string, *FetchResponse](1024),
 		RegexpCache:    xsync.NewMapOf[string, *regexp.Regexp](),
 		FileLineCache:  xsync.NewMapOf[string, *FileLoader[[]string]](),
 		FileIPSetCache: xsync.NewMapOf[string, *FileLoader[*netipx.IPSet]](),
