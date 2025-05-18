@@ -13,7 +13,7 @@ if [ -z "$GOMAXPROCS" ] && [ -f /sys/fs/cgroup/cpu.max ]; then
 fi
 
 for mountpoint in $(awk '$2 ~ /^(\/data|\/root\/.+)$/ { print $2 }' /proc/mounts); do
-  for startfile in $(ls $mountpoint/*.start); do
+  for startfile in $(ls $mountpoint/local.d/*.start); do
     $startfile
   done
 done
@@ -64,7 +64,7 @@ http:
             {{"{{"}} .Request.URL.Query.Get "callback" -{{"}}"}}({{"{{"}} (fetch .Request.UserAgent 10 (default 0 (int (.Request.URL.Query.Get "ttl"))) (.Request.URL.Query.Get "url")).Body {{"}}"}})
       - location: /
         index:
-          root: /root/web/wallpaper
+          root: /root/.local/web/wallpaper
 tunnel:
   - listen: ['127.0.0.{{ $id }}:10080']
     proxy_pass: '240.0.0.1:80'

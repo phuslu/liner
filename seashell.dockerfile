@@ -5,43 +5,45 @@
 # curl -sSLf https://github.com/moby/buildkit/releases/download/v0.21.0/buildkit-v0.21.0.linux-arm64.tar.gz | sudo tar xvz -C /usr/local/bin/ --strip-components=1 --wildcards bin/buildctl
 # sudo nerdctl build --no-cache -f seashell.dockerfile -t phuslu/seashell --platform linux/amd64,linux/arm64 --output type=image,oci-mediatypes=true,compression=zstd,compression-level=19,push=true,name=docker.io/phuslu/seashell .
 
-FROM debian:stable-slim
+FROM alpine:3.21
 RUN \
-  export DEBIAN_FRONTEND=noninteractive && \
-  apt update -y && \
-  apt upgrade -y && \
-  apt install -y \
-    bind9-dnsutils \
+  apk update && \
+  apk upgrade && \
+  apk add --update --no-cache \
+    bash \
+    bind-tools \
+    busybox-openrc \
     curl \
     dropbear \
+    gcompat \
+    grep \
     htop \
     iproute2 \
-    iputils-ping \
     jq \
-    locales \
-    lsb-release \
-    net-tools \
+    logrotate \
+    lsblk \
+    lscpu \
+    openrc \
     openssh-client \
+    openssl \
     procps \
     rsync \
     runit \
+    runit-openrc \
     sudo \
+    tini \
     tmux \
-    util-linux \
-    vim-tiny \
-    wget && \
-  rm -rf /var/cache/apt/* /var/lib/apt/lists/* && \
-  # set locale
-  echo "LC_ALL=en_US.UTF-8" >> /etc/environment && \
-  echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen && \
-  echo "LANG=en_US.UTF-8" > /etc/locale.conf && \
-  locale-gen en_US.UTF-8 && \
+    xz && \
+  rm -rf /var/cache/apk/* && \
   # set bash profile for root
+  sed -i 's#root:x:0:0:root:/root:/bin/sh#root:x:0:0:root:/root:/bin/bash#g' /etc/passwd && \
   echo '. $HOME/.bashrc' >/root/.bash_profile && \
   curl -sSlf https://phus.lu/bashrc >/root/.bashrc && \
+  # modify other configs
+  echo 'Welcome to Alpine Container Environment!' | tee /etc/motd && \
   # add cloudinit to runit services
   mkdir /etc/service/cloudinit && \
-  echo '#!/bin/bash\ntest -n "$cloudinit" && exec bash <(curl -sSlf "$cloudinit")' >/etc/service/cloudinit/run && \
+  echo -e '#!/bin/bash\ntest -n "$cloudinit" && exec bash <(curl -sSlf "$cloudinit")' >/etc/service/cloudinit/run && \
   chmod +x /etc/service/cloudinit/run
 
 ENTRYPOINT ["/usr/bin/runsvdir", "-P ", "/etc/service"]
