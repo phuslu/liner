@@ -175,44 +175,61 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 
 	defer ln.Close()
 
-	hijacker, ok := rw.(http.Hijacker)
-	if !ok {
-		log.Error().Context(ri.LogContext).Str("username", user.Username).Msg("tunnel cannot hijack request")
-		http.Error(rw, "Hijack request failed", http.StatusInternalServerError)
-		return
-	}
+	var conn net.Conn
 
-	conn, _, err := hijacker.Hijack()
-	if !ok {
-		log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Msg("tunnel hijack request error")
-		http.Error(rw, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// see https://www.ietf.org/archive/id/draft-kazuho-httpbis-reverse-tunnel-00.html
-	b := AppendableBytes(make([]byte, 0, 2048))
-	switch req.Header.Get("Connection") {
-	case "upgrade", "Upgrade":
-		b = b.Str("HTTP/1.1 101 Switching Protocols\r\n")
-		switch req.Header.Get("Upgrade") {
-		case "websocket":
-			wskey := sha1.Sum([]byte(req.Header.Get("Sec-WebSocket-Key") + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
-			b = b.Str("sec-websocket-accept: ").Base64(wskey[:]).Str("\r\n")
-			b = b.Str("connection: Upgrade\r\n")
-			b = b.Str("upgrade: websocket\r\n")
-		case "reverse":
-			b = b.Str("connection: Upgrade\r\n")
-			b = b.Str("upgrade: reverse\r\n")
+	if req.ProtoAtLeast(2, 0) {
+		raddr, err := net.ResolveTCPAddr("tcp", req.RemoteAddr)
+		if err != nil {
+			log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Str("remote_addr", req.RemoteAddr).Msg("tunnel resolve remote addr error")
+			http.Error(rw, err.Error(), http.StatusInternalServerError)
 		}
-		b = b.Str("\r\n")
-	default:
-		b = b.Str("HTTP/1.1 200 OK\r\n\r\n")
-	}
+		laddr, err := net.ResolveTCPAddr("tcp", ri.ServerAddr)
+		if err != nil {
+			log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Str("local_addr", ri.ServerAddr).Msg("tunnel resolve local addr error")
+			http.Error(rw, err.Error(), http.StatusInternalServerError)
+		}
+		conn = HTTP2RequestStream{req.Body, rw, raddr, laddr}
+		rw.WriteHeader(http.StatusOK)
+	} else {
+		hijacker, ok := rw.(http.Hijacker)
+		if !ok {
+			log.Error().Context(ri.LogContext).Str("username", user.Username).Msg("tunnel cannot hijack request")
+			http.Error(rw, "Hijack request failed", http.StatusInternalServerError)
+			return
+		}
 
-	_, err = conn.Write(b)
-	if !ok {
-		log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Msg("tunnel send response error")
-		return
+		conn, _, err = hijacker.Hijack()
+		if !ok {
+			log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Msg("tunnel hijack request error")
+			http.Error(rw, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// see https://www.ietf.org/archive/id/draft-kazuho-httpbis-reverse-tunnel-00.html
+		b := AppendableBytes(make([]byte, 0, 2048))
+		switch req.Header.Get("Connection") {
+		case "upgrade", "Upgrade":
+			b = b.Str("HTTP/1.1 101 Switching Protocols\r\n")
+			switch req.Header.Get("Upgrade") {
+			case "websocket":
+				wskey := sha1.Sum([]byte(req.Header.Get("Sec-WebSocket-Key") + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
+				b = b.Str("sec-websocket-accept: ").Base64(wskey[:]).Str("\r\n")
+				b = b.Str("connection: Upgrade\r\n")
+				b = b.Str("upgrade: websocket\r\n")
+			case "reverse":
+				b = b.Str("connection: Upgrade\r\n")
+				b = b.Str("upgrade: reverse\r\n")
+			}
+			b = b.Str("\r\n")
+		default:
+			b = b.Str("HTTP/1.1 200 OK\r\n\r\n")
+		}
+
+		_, err = conn.Write(b)
+		if !ok {
+			log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Msg("tunnel send response error")
+			return
+		}
 	}
 
 	session, err := yamux.Client(conn, &yamux.Config{
