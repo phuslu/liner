@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -63,7 +62,7 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	if h.Root == "" {
 		h.addHeaders(rw, req, ri)
 		if rw.Header().Get("content-type") == "" {
-			if s := mime.TypeByExtension(filepath.Ext(req.URL.Path)); s != "" {
+			if s := GetMimeTypeByExtension(filepath.Ext(req.URL.Path)); s != "" {
 				rw.Header().Set("content-type", s)
 			}
 		}
@@ -85,7 +84,7 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 			}
 
 			ext := filepath.Ext(h.File)
-			if !(ext == ".pac" || ext == ".tpl" || strings.HasPrefix(mime.TypeByExtension(ext), "text/")) {
+			if !(ext == ".pac" || ext == ".tpl" || strings.HasPrefix(GetMimeTypeByExtension(ext), "text/")) {
 				io.Copy(rw, file)
 				return
 			}
@@ -173,7 +172,7 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		defer file.Close()
 
 		h.addHeaders(rw, req, ri)
-		if s := mime.TypeByExtension(filepath.Ext(fullname)); s != "" {
+		if s := GetMimeTypeByExtension(filepath.Ext(fullname)); s != "" {
 			rw.Header().Set("content-type", s)
 		} else {
 			rw.Header().Set("content-type", "application/octet-stream")
