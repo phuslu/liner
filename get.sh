@@ -42,6 +42,10 @@ if test -s .env; then
   exit 0
 fi
 
+if test -f production.yaml; then
+  exit 0
+fi
+
 cat <<EOF > production.yaml
 global:
   log_level: info
