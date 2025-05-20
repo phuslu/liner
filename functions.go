@@ -9,10 +9,10 @@ import (
 	"net/http"
 	"net/netip"
 	"os"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"text/template"
 	"time"
 
@@ -29,6 +29,7 @@ type Functions struct {
 	GeoResolver *GeoResolver
 	GeoCache    *lru.TTLCache[string, *GeoipInfo]
 
+	GeoSiteOnce  *sync.Once
 	GeoSite      *geosite.DomainListCommunity
 	GeoSiteCache *lru.TTLCache[string, *string]
 
@@ -44,26 +45,6 @@ type Functions struct {
 }
 
 func (f *Functions) Load() error {
-	if names, _ := filepath.Glob("*domain-list-community*.tar.gz"); len(names) > 0 {
-		for _, name := range names {
-			if err := f.GeoSite.Load(context.Background(), name); err != nil {
-				return err
-			}
-		}
-	} else {
-		if err := f.GeoSite.Load(context.Background(), geosite.InlineTarball); err != nil {
-			return err
-		}
-	}
-
-	go func() {
-		for range time.Tick(time.Hour) {
-			if err := f.GeoSite.Load(context.Background(), geosite.OnlineTarball); err != nil {
-				log.Error().Err(err).Str("geosite_online_tarball", geosite.OnlineTarball).Msg("geosite load error")
-			}
-		}
-	}()
-
 	f.FuncMap = template.FuncMap(sprig.GenericFuncMap())
 
 	// sprig supplement
@@ -337,6 +318,18 @@ func (f *Functions) hasIPv6(host string) bool {
 }
 
 func (f *Functions) geosite(domain string) string {
+	f.GeoSiteOnce.Do(func() {
+		f.GeoSite.Load(context.Background(), geosite.InlineTarball)
+
+		go func() {
+			for range time.Tick(time.Hour) {
+				if err := f.GeoSite.Load(context.Background(), geosite.OnlineTarball); err != nil {
+					log.Error().Err(err).Str("geosite_online_tarball", geosite.OnlineTarball).Msg("geosite load error")
+				}
+			}
+		}()
+	})
+
 	if host, _, err := net.SplitHostPort(domain); err == nil {
 		domain = host
 	}

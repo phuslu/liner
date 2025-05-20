@@ -314,6 +314,7 @@ func main() {
 	functions := &Functions{
 		GeoResolver:    geoResolver,
 		GeoCache:       lru.NewTTLCache[string, *GeoipInfo](cmp.Or(config.Global.GeoCacheSize, 8192)),
+		GeoSiteOnce:    &sync.Once{},
 		GeoSite:        &geosite.DomainListCommunity{Transport: transport},
 		GeoSiteCache:   lru.NewTTLCache[string, *string](cmp.Or(config.Global.GeositeCacheSize, 8192)),
 		FetchUserAgent: ChromeUserAgent,
