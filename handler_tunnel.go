@@ -377,7 +377,7 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialer string) (net.Listen
 		DisableCompression: false,
 		EnableDatagrams:    false,
 		Dial: func(ctx context.Context, addr string, tlsConf *tls.Config, conf *quic.Config) (quic.EarlyConnection, error) {
-			host := u.Host
+			host := u.Hostname()
 			if h.Resolver != nil {
 				if ips, err := h.Resolver.LookupNetIP(ctx, "ip", host); err == nil && len(ips) != 0 {
 					// host = ips[fastrandn(uint32(len(ips)))].String()
@@ -419,37 +419,16 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialer string) (net.Listen
 	}
 
 	pr, pw := ringbuffer.New(8192).Pipe()
-	req := &http.Request{
-		ProtoMajor: 3,
-		Method:     http.MethodConnect,
-		URL: &url.URL{
-			Scheme: "https",
-			Host:   u.Hostname(),
-			Path:   HTTPTunnelReverseTCPPathPrefix + targetHost + "/" + targetPort + "/",
-		},
-		Host: u.Host,
-		Header: http.Header{
-			"content-type": []string{"application/octet-stream"},
-			"user-agent":   []string{DefaultUserAgent},
-			// "x-forwarded-network": []string{network},
-		},
-		Body:          pr,
-		ContentLength: -1,
-	}
-	if header, _ := ctx.Value(DialerHTTPHeaderContextKey).(http.Header); header != nil {
-		log.Debug().Any("dialer_http_header", header).Msg("http3 dialer set extras headers")
-		for key, values := range header {
-			for _, value := range values {
-				req.Header.Add(key, value)
-			}
-		}
-	}
-
-	if u.User != nil {
-		req.Header.Set("proxy-authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(u.User.Username()+":"+first(u.User.Password()))))
-	}
 
 	// see https://www.ietf.org/archive/id/draft-kazuho-httpbis-reverse-tunnel-00.html
+	req, err := http.NewRequestWithContext(ctx, http.MethodConnect, "https://"+u.Host, pr)
+	req.ContentLength = -1
+	req.Header.Set("location", HTTPTunnelReverseTCPPathPrefix+targetHost+"/"+targetPort+"/")
+	req.Header.Set("content-type", "application/octet-stream")
+	req.Header.Set("user-agent", DefaultUserAgent)
+	if u.User != nil {
+		req.Header.Set("authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(u.User.Username()+":"+first(u.User.Password()))))
+	}
 	if u.Query().Get("websocket") == "true" {
 		req.Method = http.MethodPost
 		req.Header.Set("Connection", "Upgrade")
@@ -459,6 +438,14 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialer string) (net.Listen
 	} else {
 		req.Header.Set("Connection", "Upgrade")
 		req.Header.Set("Upgrade", "reverse")
+	}
+	if header, _ := ctx.Value(DialerHTTPHeaderContextKey).(http.Header); header != nil {
+		log.Debug().Any("dialer_http_header", header).Msg("http3 dialer set extras headers")
+		for key, values := range header {
+			for _, value := range values {
+				req.Header.Add(key, value)
+			}
+		}
 	}
 
 	var remoteAddr, localAddr net.Addr

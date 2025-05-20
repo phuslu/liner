@@ -124,6 +124,14 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		req.Proto, req.ProtoMajor, req.ProtoMinor = "HTTP/3.0", 3, 0
 	}
 
+	// fix http3 tunnel request
+	if req.ProtoMajor == 3 && req.Method == http.MethodConnect {
+		if s := req.Header.Get("location"); strings.HasPrefix(s, HTTPTunnelReverseTCPPathPrefix) {
+			req.URL.RawPath = s
+			req.URL.Path = s
+		}
+	}
+
 	// fix real remote ip
 	if xfr := req.Header.Get("x-forwarded-for"); xfr != "" {
 		ri.RemoteIP = strings.Split(xfr, ",")[0]

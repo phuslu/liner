@@ -189,7 +189,22 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 			http.Error(rw, err.Error(), http.StatusInternalServerError)
 		}
 		conn = HTTP2RequestStream{req.Body, rw, raddr, laddr}
-		rw.WriteHeader(http.StatusOK)
+
+		flusher, ok := rw.(http.Flusher)
+		if !ok {
+			http.Error(rw, fmt.Sprintf("%#v is not http.Flusher", rw), http.StatusBadGateway)
+			return
+		}
+		if req.Header.Get("Sec-Websocket-Key") != "" {
+			key := sha1.Sum([]byte(req.Header.Get("Sec-WebSocket-Key") + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
+			rw.Header().Set("sec-websocket-accept", base64.StdEncoding.EncodeToString(key[:]))
+			rw.Header().Set("upgrade", "websocket")
+			rw.Header().Set("connection", "Upgrade")
+			rw.WriteHeader(http.StatusSwitchingProtocols)
+		} else {
+			rw.WriteHeader(http.StatusOK)
+		}
+		flusher.Flush()
 	} else {
 		hijacker, ok := rw.(http.Hijacker)
 		if !ok {
