@@ -339,7 +339,7 @@ func (h *TunnelHandler) wstunnel(ctx context.Context, dialer string) (net.Listen
 	ln, err := yamux.Server(conn, &yamux.Config{
 		AcceptBacklog:           256,
 		PingBacklog:             32,
-		EnableKeepAlive:         true,
+		EnableKeepAlive:         h.Config.EnableKeepAlive,
 		KeepAliveInterval:       30 * time.Second,
 		MeasureRTTInterval:      30 * time.Second,
 		ConnectionWriteTimeout:  10 * time.Second,
@@ -488,7 +488,7 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialer string) (net.Listen
 	ln, err := yamux.Server(conn, &yamux.Config{
 		AcceptBacklog:           256,
 		PingBacklog:             32,
-		EnableKeepAlive:         true,
+		EnableKeepAlive:         h.Config.EnableKeepAlive,
 		KeepAliveInterval:       30 * time.Second,
 		MeasureRTTInterval:      30 * time.Second,
 		ConnectionWriteTimeout:  10 * time.Second,

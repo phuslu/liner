@@ -42,11 +42,12 @@ type HTTPConfig struct {
 		LogInterval      int64  `json:"log_interval" yaml:"log_interval"`
 	} `json:"forward" yaml:"forward"`
 	Tunnel struct {
-		Enabled      bool     `json:"enabled" yaml:"enabled"`
-		AuthTable    string   `json:"auth_table" yaml:"auth_table"`
-		AllowListens []string `json:"allow_listens" yaml:"allow_listens"`
-		SpeedLimit   int64    `json:"speed_limit" yaml:"speed_limit"`
-		Log          bool     `json:"log" yaml:"log"`
+		Enabled         bool     `json:"enabled" yaml:"enabled"`
+		AuthTable       string   `json:"auth_table" yaml:"auth_table"`
+		AllowListens    []string `json:"allow_listens" yaml:"allow_listens"`
+		SpeedLimit      int64    `json:"speed_limit" yaml:"speed_limit"`
+		EnableKeepAlive bool     `json:"enable_keep_alive" yaml:"enable_keep_alive"`
+		Log             bool     `json:"log" yaml:"log"`
 	} `json:"tunnel" yaml:"tunnel"`
 	Web []struct {
 		Location string `json:"location" yaml:"location"`
@@ -100,13 +101,14 @@ type StreamConfig struct {
 }
 
 type TunnelConfig struct {
-	Listen      []string `json:"listen" yaml:"listen"`
-	ProxyPass   string   `json:"proxy_pass" yaml:"proxy_pass"`
-	Resolver    string   `json:"resolver" yaml:"resolver"`
-	DialTimeout int      `json:"dial_timeout" yaml:"dial_timeout"`
-	Dialer      string   `json:"dialer" yaml:"dialer"`
-	SpeedLimit  int64    `json:"speed_limit" yaml:"speed_limit"`
-	Log         bool     `json:"log" yaml:"log"`
+	Listen          []string `json:"listen" yaml:"listen"`
+	ProxyPass       string   `json:"proxy_pass" yaml:"proxy_pass"`
+	Resolver        string   `json:"resolver" yaml:"resolver"`
+	DialTimeout     int      `json:"dial_timeout" yaml:"dial_timeout"`
+	Dialer          string   `json:"dialer" yaml:"dialer"`
+	SpeedLimit      int64    `json:"speed_limit" yaml:"speed_limit"`
+	EnableKeepAlive bool     `json:"enable_keep_alive" yaml:"enable_keep_alive"`
+	Log             bool     `json:"log" yaml:"log"`
 }
 
 type DnsConfig struct {
