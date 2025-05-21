@@ -317,19 +317,22 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	}(req.Context())
 
 	go func(ctx context.Context) {
-		count, duration := 0, 10*time.Second
+		count := 0
+		seconds := 5 + fastrandn(10)
 		for {
-			time.Sleep(duration)
+			time.Sleep(time.Duration(seconds) * time.Second)
 			stream, err := session.OpenStream(ctx)
-			if err != nil {
-				count, duration = count+1, 5*time.Second
-				if count == 3 {
-					exit <- err
-					break
-				}
-			} else {
+			switch {
+			case count == 3:
+				exit <- err
+				return
+			case err != nil:
+				count++
+				seconds = 1 + fastrandn(5)
+			default:
 				stream.Close()
-				count, duration = 0, 10*time.Second
+				count = 0
+				seconds = 5 + fastrandn(10)
 			}
 		}
 	}(req.Context())
