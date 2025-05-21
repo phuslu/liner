@@ -508,7 +508,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 				Interval:  cmp.Or(h.Config.Forward.LogInterval, 1),
 			}
 		}
-		transmitBytes, err := io.CopyBuffer(w, conn, make([]byte, 1024*1024)) // buffer size should align to http2.MaxReadFrameSize
+		transmitBytes, err := io.Copy(w, conn) //TODO: buffer size should align to http2.MaxReadFrameSize
 		log.Debug().Context(ri.LogContext).Str("username", ri.ProxyUser.Username).Str("http_domain", domain).Int64("speed_limit", speedLimit).Int64("transmit_bytes", transmitBytes).Err(err).Msg("forward log")
 	default:
 		if req.Host == "" {
