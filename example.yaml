@@ -110,6 +110,7 @@ https:
       enabled: true
       auth_table: authuser.csv
       allow_listens: ["127.0.0.1"]
+      enable_keep_alive: true
       log: true
     web:
       - location: /dns-query
@@ -198,7 +199,9 @@ stream:
     proxy_pass: github.com:443
     dialer: proxy1
 tunnel:
-  - dial_timeout: 5
-    local_addr: 10.0.0.2:2222
-    remote_addr: 192.168.50.1:2222
-    ssh: {'host': 'phuslu.ddns.net', 'port': 22, 'user': 'admin', 'key': '@/root/.ssh/id_rsa'}
+  - listen: ['127.0.0.1:10022']
+    proxy_pass: '192.168.50.1:22'
+    resolver: https://1.1.1.1/dns-query
+    dialer: cloud
+    dial_timeout: 5
+    enable_keep_alive: true
