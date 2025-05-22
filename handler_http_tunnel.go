@@ -318,21 +318,22 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 
 	go func(ctx context.Context) {
 		count := 0
-		seconds := 5 + fastrandn(10)
+		seconds := 5 + fastrandn(30)
 		for {
 			time.Sleep(time.Duration(seconds) * time.Second)
-			stream, err := session.OpenStream(ctx)
+			rtt, err := session.Ping()
 			switch {
 			case count == 3:
 				exit <- err
 				return
 			case err != nil:
+				log.Error().Err(err).Str("tunnel_listen", ln.Addr().String()).Str("remote_addr", session.RemoteAddr().String()).Msg("tunnel ping error")
 				count++
 				seconds = 1 + fastrandn(5)
 			default:
-				stream.Close()
+				log.Debug().Str("tunnel_listen", ln.Addr().String()).Str("remote_addr", session.RemoteAddr().String()).Dur("ping_ms", rtt).Msg("tunnel ping successfully")
 				count = 0
-				seconds = 5 + fastrandn(10)
+				seconds = 5 + fastrandn(30)
 			}
 		}
 	}(req.Context())
