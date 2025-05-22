@@ -181,7 +181,7 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		if s := req.Header.Get("range"); s == "" {
 			rw.Header().Set("content-length", strconv.FormatInt(fi.Size(), 10))
 			rw.WriteHeader(http.StatusOK)
-			n, err := io.CopyBuffer(rw, file, make([]byte, 1<<20))
+			n, err := io.Copy(rw, file)
 			log.Info().Context(ri.LogContext).Err(err).Int("http_status", http.StatusOK).Int64("http_content_length", n).Msg("web_root request")
 		} else {
 			if !strings.HasPrefix(s, "bytes=") {
@@ -229,15 +229,11 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 			if ranges[0] > 0 {
 				file.Seek(ranges[0], 0)
 			}
-			var fr io.Reader = file
-			if ranges[1] < filesize-1 {
-				fr = io.LimitReader(file, length)
-			}
 			// send data
 			rw.Header().Set("content-range", fmt.Sprintf("bytes %d-%d/%d", ranges[0], ranges[1], filesize))
 			rw.Header().Set("content-length", strconv.FormatInt(length, 10))
 			rw.WriteHeader(http.StatusPartialContent)
-			n, err := io.CopyBuffer(rw, fr, make([]byte, 1<<20))
+			n, err := io.CopyN(rw, file, length)
 			log.Info().Context(ri.LogContext).Err(err).Int("http_status", http.StatusOK).Int64("http_content_length", n).Msg("web_root request")
 		}
 
