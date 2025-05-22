@@ -508,7 +508,14 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 				Interval:  cmp.Or(h.Config.Forward.LogInterval, 1),
 			}
 		}
-		transmitBytes, err := io.Copy(w, conn) //TODO: buffer size should align to http2.MaxReadFrameSize
+		var transmitBytes int64
+		if tc, ok := conn.(*net.TCPConn); ok && req.ProtoAtLeast(2, 0) {
+			// Use wrapper to hide existing w.WriteTo from io.Copy.
+			// buffer size should align to http2.MaxReadFrameSize
+			transmitBytes, err = io.CopyBuffer(w, tcpConnWithoutWriteTo{TCPConn: tc}, make([]byte, 256*1024))
+		} else {
+			transmitBytes, err = io.Copy(w, conn) // splice to
+		}
 		log.Debug().Context(ri.LogContext).Str("username", ri.ProxyUser.Username).Str("http_domain", domain).Int64("speed_limit", speedLimit).Int64("transmit_bytes", transmitBytes).Err(err).Msg("forward log")
 	default:
 		if req.Host == "" {
@@ -606,7 +613,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			}
 		}
 
-		transmitBytes, err := io.CopyBuffer(w, resp.Body, make([]byte, 1024*1024)) // buffer size should align to http2.MaxReadFrameSize
+		transmitBytes, err := io.CopyBuffer(w, resp.Body, make([]byte, 256*1024)) // buffer size should align to http2.MaxReadFrameSize
 		log.Debug().Context(ri.LogContext).Str("username", ri.ProxyUser.Username).Str("http_domain", domain).Int64("transmit_bytes", transmitBytes).Int64("speed_limit", speedLimit).Err(err).Msg("forward log")
 	}
 }
@@ -661,6 +668,18 @@ func RejectRequest(rw http.ResponseWriter, req *http.Request) {
 	time.Sleep(time.Duration(1+fastrandn(3)) * time.Second)
 	// http.Error(rw, "403 Forbidden", http.StatusForbidden)
 	http.Error(rw, "400 Bad Request", http.StatusBadRequest)
+}
+
+// see https://github.com/golang/go/blob/master/src/net/net.go#L785C1-L791C2
+type noWriteTo struct{}
+
+func (noWriteTo) WriteTo(io.Writer) (int64, error) {
+	panic("can't happen")
+}
+
+type tcpConnWithoutWriteTo struct {
+	noWriteTo
+	*net.TCPConn
 }
 
 type ForwardLogWriter struct {
