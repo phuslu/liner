@@ -38,11 +38,11 @@ fi
 tar xvzf $filename
 rm -rf $filename
 
-if test -s .env; then
+if test -f production.yaml; then
   exit 0
 fi
 
-if test -f production.yaml; then
+if test -s .env; then
   exit 0
 fi
 
@@ -74,7 +74,10 @@ https:
           pass: 'http://127.0.0.1:80'
 EOF
 
-cat <<EOF > liner.service
+echo ENV=production > .env
+
+if type -p systemctl; then
+  cat <<EOF > liner.service
 [Unit]
 Wants=network-online.target
 After=network.target network-online.target
@@ -97,10 +100,6 @@ NoNewPrivileges=no
 [Install]
 WantedBy=multi-user.target
 EOF
-
-echo ENV=production > .env
-
-if type -p systemctl; then
   sudo systemctl enable $(pwd)/liner.service
   sudo systemctl restart liner
 else
