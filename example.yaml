@@ -68,6 +68,11 @@ https:
               "geoip": {{toJson (geoip .)}}
             }
             {{end}}
+      - location: /dns-query
+        doh:
+          enabled: true
+          policy: proxy_pass
+          proxy_pass: https://1.1.1.1/dns-query
       - location: /jsonp
         index:
           headers: |

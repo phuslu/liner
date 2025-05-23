@@ -62,6 +62,11 @@ type HTTPConfig struct {
 			Root              string `json:"root" yaml:"root"`
 			AuthBasicUserFile string `json:"auth_basic_user_file" yaml:"auth_basic_user_file"`
 		} `json:"dav" yaml:"dav"`
+		Doh struct {
+			Enabled   bool   `json:"enabled" yaml:"enabled"`
+			Policy    string `json:"policy" yaml:"policy"`
+			ProxyPass string `json:"proxy_pass" yaml:"proxy_pass"`
+		} `json:"doh" yaml:"doh"`
 		Index struct {
 			Root    string `json:"root" yaml:"root"`
 			Headers string `json:"headers" yaml:"headers"`

@@ -50,6 +50,15 @@ func (h *HTTPWebHandler) Load() error {
 					AuthBasicUserFile: web.Dav.AuthBasicUserFile,
 				},
 			})
+		case web.Doh.Enabled:
+			routers = append(routers, router{
+				web.Location,
+				&HTTPWebDohHandler{
+					Policy:    web.Doh.Policy,
+					ProxyPass: web.Doh.ProxyPass,
+					Functions: h.Functions,
+				},
+			})
 		case web.Index.Root != "" || web.Index.Body != "" || web.Index.File != "":
 			routers = append(routers, router{
 				web.Location,
