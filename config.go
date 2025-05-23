@@ -40,6 +40,7 @@ type HTTPConfig struct {
 		PreferIpv6       bool   `json:"prefer_ipv6" yaml:"prefer_ipv6"`
 		Log              bool   `json:"log" yaml:"log"`
 		LogInterval      int64  `json:"log_interval" yaml:"log_interval"`
+		IoCopyBuffer     int    `json:"io_copy_buffer" yaml:"io_copy_buffer"`
 	} `json:"forward" yaml:"forward"`
 	Tunnel struct {
 		Enabled         bool     `json:"enabled" yaml:"enabled"`
