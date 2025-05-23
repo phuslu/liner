@@ -144,6 +144,8 @@ type Config struct {
 		DnsServer        string `json:"dns_server" yaml:"dns_server"`
 		DnsCacheDuration string `json:"dns_cache_duration" yaml:"dns_cache_duration"`
 		DnsCacheSize     int    `json:"dns_cache_size" yaml:"dns_cache_size"`
+		TcpReadBuffer    int    `json:"tcp_read_buffer" yaml:"tcp_read_buffer"`
+		TcpWriteBuffer   int    `json:"tcp_write_buffer" yaml:"tcp_write_buffer"`
 		GeoCacheSize     int    `json:"geo_cache_size" yaml:"geo_cache_size"`
 		GeositeCacheSize int    `json:"geosite_cache_size" yaml:"geosite_cache_size"`
 		IdleConnTimeout  int    `json:"idle_conn_timeout" yaml:"idle_conn_timeout"`

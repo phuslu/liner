@@ -494,10 +494,10 @@ func main() {
 		go server.Serve(TCPListener{
 			TCPListener:     ln.(*net.TCPListener),
 			KeepAlivePeriod: 3 * time.Minute,
-			// ReadBufferSize:  1 << 20,
-			// WriteBufferSize: 1 << 20,
-			MirrorHeader: true,
-			TLSConfig:    server.TLSConfig,
+			ReadBufferSize:  config.Global.TcpReadBuffer,
+			WriteBufferSize: config.Global.TcpWriteBuffer,
+			MirrorHeader:    true,
+			TLSConfig:       server.TLSConfig,
 		})
 
 		servers = append(servers, server)
@@ -601,8 +601,8 @@ func main() {
 			ln = TCPListener{
 				TCPListener:     ln.(*net.TCPListener),
 				KeepAlivePeriod: 3 * time.Minute,
-				ReadBufferSize:  32 * 1024,
-				WriteBufferSize: 32 * 1024,
+				ReadBufferSize:  config.Global.TcpReadBuffer,
+				WriteBufferSize: config.Global.TcpWriteBuffer,
 			}
 		}
 
