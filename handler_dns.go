@@ -1,13 +1,17 @@
 package main
 
 import (
+	"bufio"
 	"context"
+	"encoding/binary"
 	"fmt"
+	"io"
 	"net"
 	"net/netip"
 	"strings"
 	"sync"
 	"text/template"
+	"time"
 
 	"github.com/phuslu/fastdns"
 	"github.com/phuslu/log"
@@ -86,6 +90,51 @@ func (h *DnsHandler) Serve(ctx context.Context, conn *net.UDPConn) {
 		rw := dnsResponseWriter{conn, req.LocalAddr, req.RemoteAddr}
 
 		go h.ServeDNS(ctx, rw, req)
+	}
+}
+
+func (h *DnsHandler) ServeTCP(ctx context.Context, ln net.Listener) {
+	defer ln.Close()
+
+	laddr, _ := netip.ParseAddrPort(ln.Addr().String())
+
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			time.Sleep(10 * time.Millisecond)
+			continue
+		}
+
+		go func(ctx context.Context, conn net.Conn) {
+			raddr, _ := netip.ParseAddrPort(conn.RemoteAddr().String())
+			br := bufio.NewReader(conn)
+			for {
+				var n uint16
+				err := binary.Read(br, binary.BigEndian, &n)
+				if err != nil {
+					log.Error().Err(err).NetIPAddrPort("remote_addr", raddr).Msg("dot read dns message header error")
+					conn.Close()
+					return
+				}
+
+				req := drPool.Get().(*DnsRequest)
+				req.Message.Raw, _, err = AppendReadFrom(req.Message.Raw[:0], io.LimitReader(br, int64(n)))
+				if err != nil {
+					log.Error().Err(err).NetIPAddrPort("remote_addr", raddr).Msg("dot read dns message data error")
+					conn.Close()
+					return
+				}
+
+				req.LocalAddr = laddr
+				req.RemoteAddr = raddr
+				req.Domain = ""
+				req.QType = ""
+
+				rw := dotResponseWriter{conn, req.LocalAddr, req.RemoteAddr}
+
+				h.ServeDNS(ctx, rw, req)
+			}
+		}(ctx, conn)
 	}
 }
 
@@ -240,3 +289,27 @@ func (w dnsResponseWriter) Write(b []byte) (int, error) {
 }
 
 var _ fastdns.ResponseWriter = dnsResponseWriter{}
+
+type dotResponseWriter struct {
+	conn  net.Conn
+	laddr netip.AddrPort
+	raddr netip.AddrPort
+}
+
+func (w dotResponseWriter) LocalAddr() netip.AddrPort {
+	return w.laddr
+}
+
+func (w dotResponseWriter) RemoteAddr() netip.AddrPort {
+	return w.raddr
+}
+
+func (w dotResponseWriter) Write(data []byte) (int, error) {
+	n := uint16(len(data))
+	b := make([]byte, 0, 2048)
+	b = append(b, byte(n>>8), byte(n&0xff))
+	b = append(b, data...)
+	return w.conn.Write(b)
+}
+
+var _ fastdns.ResponseWriter = dotResponseWriter{}
