@@ -27,7 +27,6 @@ type DnsRequest struct {
 	LogContext log.Context
 	LocalAddr  netip.AddrPort
 	RemoteAddr netip.AddrPort
-	Conn       *net.UDPConn
 	Message    *fastdns.Message
 	Domain     string
 	QType      string
@@ -81,15 +80,14 @@ func (h *DnsHandler) Serve(ctx context.Context, conn *net.UDPConn) {
 
 		req.LocalAddr = laddr
 		req.RemoteAddr = addr
-		req.Conn = conn
 		req.Domain = ""
 		req.QType = ""
 
-		go h.ServeDNS(ctx, req)
+		go h.ServeDNS(ctx, conn, req)
 	}
 }
 
-func (h *DnsHandler) ServeDNS(ctx context.Context, req *DnsRequest) {
+func (h *DnsHandler) ServeDNS(ctx context.Context, client *net.UDPConn, req *DnsRequest) {
 	defer drPool.Put(req)
 
 	req.LogContext = log.NewContext(req.LogContext[:0]).Xid("trace_id", log.NewXID()).NetIPAddrPort("local_addr", req.LocalAddr).NetIPAddr("remote_addr", req.RemoteAddr.Addr()).Value()
@@ -129,7 +127,7 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, req *DnsRequest) {
 			return dst
 		}
 
-		rw := DnsResponseWriter{req}
+		rw := dnsResponseWriter{client, req}
 		parts := strings.Fields(policyName)
 		switch parts[0] {
 		case "ERROR", "error":
@@ -219,23 +217,24 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, req *DnsRequest) {
 	}
 	req.Message.Raw = req.Message.Raw[:n]
 
-	req.Conn.WriteToUDPAddrPort(req.Message.Raw, req.RemoteAddr)
+	client.WriteToUDPAddrPort(req.Message.Raw, req.RemoteAddr)
 }
 
-type DnsResponseWriter struct {
-	*DnsRequest
+type dnsResponseWriter struct {
+	conn *net.UDPConn
+	req  *DnsRequest
 }
 
-func (w DnsResponseWriter) LocalAddr() netip.AddrPort {
-	return w.DnsRequest.LocalAddr
+func (w dnsResponseWriter) LocalAddr() netip.AddrPort {
+	return w.req.LocalAddr
 }
 
-func (w DnsResponseWriter) RemoteAddr() netip.AddrPort {
-	return w.DnsRequest.RemoteAddr
+func (w dnsResponseWriter) RemoteAddr() netip.AddrPort {
+	return w.req.RemoteAddr
 }
 
-func (w DnsResponseWriter) Write(b []byte) (int, error) {
-	return w.DnsRequest.Conn.WriteToUDPAddrPort(b, w.DnsRequest.RemoteAddr)
+func (w dnsResponseWriter) Write(b []byte) (int, error) {
+	return w.conn.WriteToUDPAddrPort(b, w.req.RemoteAddr)
 }
 
-var _ fastdns.ResponseWriter = DnsResponseWriter{}
+var _ fastdns.ResponseWriter = dnsResponseWriter{}
