@@ -54,14 +54,14 @@ func (h *HTTPWebDohHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	dr := drPool.Get().(*DnsRequest)
 	defer drPool.Put(dr)
 
-	dr.Message.Raw = dr.Message.Raw[:cap(dr.Message.Raw)]
-	n, err := req.Body.Read(dr.Message.Raw)
+	var err error
+
+	dr.Message.Raw, _, err = AppendReadFrom(dr.Message.Raw[:0], req.Body)
 	if err != nil && !errors.Is(err, io.EOF) {
 		log.Error().Context(ri.LogContext).Err(err).Msg("doh read from request body error")
 		http.Error(rw, "DNS query not specified or too small: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	dr.Message.Raw = dr.Message.Raw[:n]
 
 	dr.LocalAddr, _ = netip.ParseAddrPort(ri.ServerAddr)
 	dr.RemoteAddr, _ = netip.ParseAddrPort(req.RemoteAddr)
@@ -196,14 +196,12 @@ func (h *HTTPWebDohHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		return
 	}
 
-	dr.Message.Raw = dr.Message.Raw[:cap(dr.Message.Raw)]
-	n, err = conn.Read(dr.Message.Raw)
+	dr.Message.Raw, _, err = AppendReadFrom(dr.Message.Raw[:0], conn)
 	if err != nil {
 		log.Error().Context(ri.LogContext).Err(err).Context(ri.LogContext).Str("proxy_pass", proxypass).Msg("doh read raw data error")
 		http.Error(rw, "DNS internal error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	dr.Message.Raw = dr.Message.Raw[:n]
 
 	rw.Header().Set("Content-Type", "application/dns-message")
 	rw.WriteHeader(http.StatusOK)
