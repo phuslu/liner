@@ -175,6 +175,61 @@ func AppendSplitLines(dst []string, input string) []string {
 	return dst
 }
 
+// AppendReadFrom efficiently reads all data from r and appends it to dst.
+//
+// This function implements a memory-efficient alternative to append(dst, io.ReadAll(r)...)
+// by reusing the existing capacity of dst and growing the buffer using an exponential
+// doubling strategy to minimize allocations.
+//
+// Parameters:
+//   - dst: The destination slice to append to. Can be nil, empty, or contain existing data.
+//   - r:   The io.Reader to read all data from.
+//
+// Returns:
+//   - []byte: The resulting slice containing original dst data followed by all read data.
+//   - int64:  The number of bytes read from r (excluding the original length of dst).
+//   - error:  Any error encountered during reading. io.EOF is not returned as an error.
+//
+// The function guarantees that:
+//   - All existing data in dst is preserved at the beginning of the result
+//   - Memory allocations are minimized through capacity reuse and doubling growth
+//   - The returned byte count matches exactly what was read from the reader
+//   - Behavior is consistent with standard library io.ReaderFrom interface patterns
+//
+// Example:
+//
+//	data := make([]byte, 0, 1500)
+//	data, _, err = AppendReadFrom(data, conn)
+func AppendReadFrom(dst []byte, r io.Reader) ([]byte, int64, error) {
+	nStart := int64(len(dst))
+	nMax := int64(cap(dst))
+	n := nStart
+	if nMax == 0 {
+		nMax = 64
+		dst = make([]byte, nMax)
+	} else {
+		dst = dst[:nMax]
+	}
+	for {
+		if n == nMax {
+			nMax *= 2
+			bNew := make([]byte, nMax)
+			copy(bNew, dst)
+			dst = bNew
+		}
+		nn, err := r.Read(dst[n:])
+		n += int64(nn)
+		if err != nil {
+			dst = dst[:n]
+			n -= nStart
+			if err == io.EOF {
+				return dst, n, nil
+			}
+			return dst, n, err
+		}
+	}
+}
+
 func AppendTemplate(dst []byte, template string, startTag, endTag byte, m map[string]interface{}, stripSpace bool) []byte {
 	j := 0
 	for i := 0; i < len(template); i++ {
