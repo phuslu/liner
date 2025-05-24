@@ -83,11 +83,13 @@ func (h *DnsHandler) Serve(ctx context.Context, conn *net.UDPConn) {
 		req.Domain = ""
 		req.QType = ""
 
-		go h.ServeDNS(ctx, conn, req)
+		rw := dnsResponseWriter{conn, req.LocalAddr, req.RemoteAddr}
+
+		go h.ServeDNS(ctx, rw, req)
 	}
 }
 
-func (h *DnsHandler) ServeDNS(ctx context.Context, client *net.UDPConn, req *DnsRequest) {
+func (h *DnsHandler) ServeDNS(ctx context.Context, rw fastdns.ResponseWriter, req *DnsRequest) {
 	defer drPool.Put(req)
 
 	req.LogContext = log.NewContext(req.LogContext[:0]).Xid("trace_id", log.NewXID()).NetIPAddrPort("local_addr", req.LocalAddr).NetIPAddr("remote_addr", req.RemoteAddr.Addr()).Value()
@@ -127,7 +129,6 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, client *net.UDPConn, req *Dns
 			return dst
 		}
 
-		rw := dnsResponseWriter{client, req}
 		parts := strings.Fields(policyName)
 		switch parts[0] {
 		case "ERROR", "error":
@@ -217,24 +218,25 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, client *net.UDPConn, req *Dns
 	}
 	req.Message.Raw = req.Message.Raw[:n]
 
-	client.WriteToUDPAddrPort(req.Message.Raw, req.RemoteAddr)
+	rw.Write(req.Message.Raw)
 }
 
 type dnsResponseWriter struct {
-	conn *net.UDPConn
-	req  *DnsRequest
+	conn  *net.UDPConn
+	laddr netip.AddrPort
+	raddr netip.AddrPort
 }
 
 func (w dnsResponseWriter) LocalAddr() netip.AddrPort {
-	return w.req.LocalAddr
+	return w.laddr
 }
 
 func (w dnsResponseWriter) RemoteAddr() netip.AddrPort {
-	return w.req.RemoteAddr
+	return w.raddr
 }
 
 func (w dnsResponseWriter) Write(b []byte) (int, error) {
-	return w.conn.WriteToUDPAddrPort(b, w.req.RemoteAddr)
+	return w.conn.WriteToUDPAddrPort(b, w.raddr)
 }
 
 var _ fastdns.ResponseWriter = dnsResponseWriter{}
