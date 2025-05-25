@@ -33,6 +33,7 @@ type DnsRequest struct {
 	LocalAddr  netip.AddrPort
 	RemoteAddr netip.AddrPort
 	Message    *fastdns.Message
+	Proto      string
 	Domain     string
 	QType      string
 }
@@ -81,6 +82,7 @@ func (h *DnsHandler) Serve(ctx context.Context, conn *net.UDPConn) {
 
 		req.LocalAddr = laddr
 		req.RemoteAddr = addr
+		req.Proto = "dns"
 		req.Domain = ""
 		req.QType = ""
 
@@ -126,6 +128,7 @@ func (h *DnsHandler) ServeTCP(ctx context.Context, ln net.Listener) {
 
 				req.LocalAddr = laddr
 				req.RemoteAddr = raddr
+				req.Proto = "dot"
 				req.Domain = ""
 				req.QType = ""
 
@@ -144,7 +147,7 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, rw fastdns.ResponseWriter, re
 		}
 	}()
 
-	req.LogContext = log.NewContext(req.LogContext[:0]).Xid("trace_id", log.NewXID()).NetIPAddrPort("local_addr", req.LocalAddr).NetIPAddr("remote_addr", req.RemoteAddr.Addr()).Value()
+	req.LogContext = log.NewContext(req.LogContext[:0]).Xid("trace_id", log.NewXID()).Str("dns_proto", req.Proto).NetIPAddrPort("local_addr", req.LocalAddr).NetIPAddr("remote_addr", req.RemoteAddr.Addr()).Value()
 
 	proxypass, dialer := h.Config.ProxyPass, h.dialer
 	if h.policy != nil {

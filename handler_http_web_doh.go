@@ -69,6 +69,7 @@ func (h *HTTPWebDohHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 
 	dr.LocalAddr, _ = netip.ParseAddrPort(ri.ServerAddr)
 	dr.RemoteAddr, _ = netip.ParseAddrPort(req.RemoteAddr)
+	dr.Proto = "doh"
 	dr.Domain = ""
 	dr.QType = ""
 
