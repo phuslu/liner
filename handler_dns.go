@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -45,10 +46,6 @@ var drPool = sync.Pool{
 }
 
 func (h *DnsHandler) Load() error {
-	if len(h.Config.Listen) != 1 {
-		return fmt.Errorf("invaild length of listen: %#v", h.Config.Listen)
-	}
-
 	resolver, err := GetResolver(h.Config.ProxyPass)
 	if err != nil {
 		return fmt.Errorf("invaild dns proxy_pass: %#v: %w", h.Config.ProxyPass, err)
@@ -112,7 +109,9 @@ func (h *DnsHandler) ServeTCP(ctx context.Context, ln net.Listener) {
 				var n uint16
 				err := binary.Read(br, binary.BigEndian, &n)
 				if err != nil {
-					log.Error().Err(err).NetIPAddrPort("remote_addr", raddr).Msg("dot read dns message header error")
+					if !errors.Is(err, io.EOF) {
+						log.Error().Err(err).NetIPAddrPort("remote_addr", raddr).Msg("dot read dns message header error")
+					}
 					conn.Close()
 					return
 				}

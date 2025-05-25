@@ -632,7 +632,7 @@ func main() {
 			}
 
 			if err = h.Load(); err != nil {
-				log.Fatal().Err(err).Str("address", addr).Msg("socks hanlder load error")
+				log.Fatal().Err(err).Str("address", addr).Msg("socks handler load error")
 			}
 
 			go func(ln net.Listener, h *SocksHandler) {
@@ -669,7 +669,7 @@ func main() {
 			}
 
 			if err = h.Load(); err != nil {
-				log.Fatal().Err(err).Str("address", addr).Msg("stream hanlder load error")
+				log.Fatal().Err(err).Str("address", addr).Msg("stream handler load error")
 			}
 
 			go func(ln net.Listener, h *StreamHandler) {
@@ -710,7 +710,7 @@ func main() {
 			}
 
 			if err = h.Load(); err != nil {
-				log.Fatal().Err(err).Str("address", addr).Msg("dns hanlder load error")
+				log.Fatal().Err(err).Str("address", addr).Msg("ssh handler load error")
 			}
 
 			go h.Serve(context.Background(), ln)
@@ -736,25 +736,41 @@ func main() {
 	// dns handler
 	for _, dns := range config.Dns {
 		for _, addr := range dns.Listen {
-			var pc net.PacketConn
-
-			if pc, err = lc.ListenPacket(context.Background(), "udp", addr); err != nil {
-				log.Fatal().Err(err).Str("address", addr).Msg("net.Listen error")
+			if !strings.Contains(addr, "://") {
+				addr = "udp://" + addr
 			}
-
-			log.Info().Str("version", version).Str("address", pc.LocalAddr().String()).Msg("liner listen and serve dns port")
+			u, err := url.Parse(addr)
+			if err != nil {
+				log.Fatal().Err(err).Str("address", addr).Msg("dns handler parse addr error")
+			}
 
 			h := &DnsHandler{
 				Config:    dns,
 				Functions: functions.FuncMap,
 				Logger:    dnsLogger,
 			}
-
 			if err = h.Load(); err != nil {
-				log.Fatal().Err(err).Str("address", addr).Msg("dns hanlder load error")
+				log.Fatal().Err(err).Str("address", addr).Msg("dns handler load error")
 			}
 
-			go h.Serve(context.Background(), pc.(*net.UDPConn))
+			switch u.Scheme {
+			case "udp":
+				pc, err := lc.ListenPacket(context.Background(), "udp", u.Host)
+				if err != nil {
+					log.Fatal().Err(err).Str("address", addr).Msg("net.Listen error")
+				}
+				log.Info().Str("version", version).Str("address", pc.LocalAddr().String()).Msg("liner listen and serve dns port")
+				go h.Serve(context.Background(), pc.(*net.UDPConn))
+			case "tcp":
+				ln, err := lc.Listen(context.Background(), "tcp", u.Host)
+				if err != nil {
+					log.Fatal().Err(err).Str("address", addr).Msg("net.Listen error")
+				}
+				log.Info().Str("version", version).Str("address", ln.Addr().String()).Msg("liner listen and serve dns port")
+				go h.ServeTCP(context.Background(), ln)
+			default:
+				log.Fatal().Err(err).Str("address", addr).Msg("dns handler invalid addr error")
+			}
 		}
 	}
 
