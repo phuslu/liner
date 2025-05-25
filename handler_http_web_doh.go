@@ -52,7 +52,11 @@ func (h *HTTPWebDohHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	}
 
 	dr := drPool.Get().(*DnsRequest)
-	defer drPool.Put(dr)
+	defer func() {
+		if len(dr.Message.Raw) <= 4096 {
+			drPool.Put(dr)
+		}
+	}()
 
 	var err error
 

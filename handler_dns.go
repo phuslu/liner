@@ -139,7 +139,11 @@ func (h *DnsHandler) ServeTCP(ctx context.Context, ln net.Listener) {
 }
 
 func (h *DnsHandler) ServeDNS(ctx context.Context, rw fastdns.ResponseWriter, req *DnsRequest) {
-	defer drPool.Put(req)
+	defer func() {
+		if len(req.Message.Raw) <= 4096 {
+			drPool.Put(req)
+		}
+	}()
 
 	req.LogContext = log.NewContext(req.LogContext[:0]).Xid("trace_id", log.NewXID()).NetIPAddrPort("local_addr", req.LocalAddr).NetIPAddr("remote_addr", req.RemoteAddr.Addr()).Value()
 
