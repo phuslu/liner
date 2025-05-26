@@ -1427,3 +1427,26 @@ func (cm *CachingMap[K, V]) Get(key K) (value V, ok bool, err error) {
 
 	return
 }
+
+func GetMaxProcsFromCgroupV2() int {
+	data, err := os.ReadFile("/sys/fs/cgroup/cpu.max")
+	if err != nil {
+		return 0
+	}
+
+	fields := strings.Fields(string(data))
+	if len(fields) != 2 || fields[0] == "max" {
+		return 0
+	}
+
+	quota, err1 := strconv.Atoi(fields[0])
+	period, err2 := strconv.Atoi(fields[1])
+
+	if err1 != nil || err2 != nil || period <= 0 {
+		return 0
+	}
+
+	n := (quota + period - 1) / period
+
+	return n
+}

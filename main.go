@@ -16,6 +16,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -56,6 +57,10 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "-version" {
 		println(version)
 		return
+	}
+
+	if s, n := os.Getenv("GOMAXPROCS"), GetMaxProcsFromCgroupV2(); s == "" && n > 0 {
+		runtime.GOMAXPROCS(n)
 	}
 
 	filename := ""
