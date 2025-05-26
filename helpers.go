@@ -32,6 +32,7 @@ import (
 
 	"github.com/libp2p/go-yamux/v5"
 	"github.com/nathanaelle/password/v2"
+	"github.com/phuslu/lru"
 	"golang.org/x/crypto/ocsp"
 )
 
@@ -990,12 +991,37 @@ func ReadFile(s string) (body []byte, err error) {
 	return
 }
 
+var htpassdCache = lru.NewTTLCache[string, [][2]string](1024)
+
 func HtpasswdVerify(htpasswdFile string, req *http.Request) error {
-	file, err := os.Open(htpasswdFile)
-	if err != nil {
-		return fmt.Errorf("open htpasswd file %s error: %w", htpasswdFile, err)
+	loader := func(ctx context.Context, filename string) ([][2]string, time.Duration, error) {
+		result := make([][2]string, 0, 64)
+
+		file, err := os.Open(htpasswdFile)
+		if err != nil {
+			return nil, 0, fmt.Errorf("open htpasswd file %s error: %w", htpasswdFile, err)
+		}
+		defer file.Close()
+
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			parts := strings.SplitN(scanner.Text(), ":", 2)
+			if len(parts) != 2 {
+				continue
+			}
+			result = append(result, [2]string{strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])})
+		}
+		if err := scanner.Err(); err != nil {
+			return nil, 0, fmt.Errorf("read htpasswd file %s error: %w", htpasswdFile, err)
+		}
+
+		return result, 2 * time.Minute, nil
 	}
-	defer file.Close()
+
+	pairs, err, _ := htpassdCache.GetOrLoad(req.Context(), htpasswdFile, loader)
+	if err != nil {
+		return err
+	}
 
 	s := req.Header.Get("authorization")
 	if s == "" {
@@ -1017,19 +1043,15 @@ func HtpasswdVerify(htpasswdFile string, req *http.Request) error {
 	factory := &password.Factory{}
 	factory.Register(password.MD5, password.SHA256, password.SHA512, password.BCRYPT)
 
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if i := strings.IndexByte(line, ':'); i > 0 && line[:i] == user {
-			factory.Set(strings.TrimSpace(line[i+1:]))
+	for _, pair := range pairs {
+		if user == parts[0] {
+			factory.Set(pair[1])
 			if factory.CrypterFound().Verify(s2b(pass)) {
 				return nil
+			} else {
+				return fmt.Errorf("wrong username or password: %+v", parts)
 			}
-			break
 		}
-	}
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("read htpasswd file %s error: %w", htpasswdFile, err)
 	}
 
 	return fmt.Errorf("wrong username or password: %+v", parts)
