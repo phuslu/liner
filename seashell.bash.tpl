@@ -7,13 +7,6 @@ set -ex
 
 test -x ~/.config/service/liner/run && exit 0
 
-if [ -z "$GOMAXPROCS" ] && [ -f /sys/fs/cgroup/cpu.max ]; then
-  read q p < /sys/fs/cgroup/cpu.max
-  if [ "$q" != max ]; then
-    export GOMAXPROCS=$(((q + p - 1) / p))
-  fi
-fi
-
 cd && mkdir -p liner && cd liner
 
 goosarch=$(grep -q 'CPU architecture: 8' /proc/cpuinfo && echo linux_arm64 || echo linux_amd64)
