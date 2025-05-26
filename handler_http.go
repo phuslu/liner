@@ -15,7 +15,7 @@ import (
 
 	"github.com/mileusna/useragent"
 	"github.com/phuslu/log"
-	"github.com/puzpuzpuz/xsync/v3"
+	"github.com/puzpuzpuz/xsync/v4"
 )
 
 type HTTPHandler interface {
@@ -26,7 +26,7 @@ type HTTPHandler interface {
 type HTTPServerHandler struct {
 	Config         HTTPConfig
 	ServerNames    []string
-	ClientHelloMap *xsync.MapOf[string, *TLSClientHelloInfo]
+	ClientHelloMap *xsync.Map[string, *TLSClientHelloInfo]
 	UserAgentMap   *CachingMap[string, useragent.UserAgent]
 	GeoResolver    *GeoResolver
 	ForwardHandler HTTPHandler

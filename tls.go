@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/phuslu/log"
-	"github.com/puzpuzpuz/xsync/v3"
+	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/quic-go/quic-go"
 	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/sys/cpu"
@@ -90,18 +90,18 @@ type TLSInspector struct {
 	Sniproies        map[string]TLSInspectorSniproxy
 	AutoCert         *autocert.Manager
 	RootCA           *RootCA
-	TLSConfigCache   *xsync.MapOf[TLSInspectorCacheKey, TLSInspectorCacheValue[*tls.Config]]
-	CertificateCache *xsync.MapOf[TLSInspectorCacheKey, TLSInspectorCacheValue[*tls.Certificate]]
-	ClientHelloMap   *xsync.MapOf[string, *TLSClientHelloInfo]
+	TLSConfigCache   *xsync.Map[TLSInspectorCacheKey, TLSInspectorCacheValue[*tls.Config]]
+	CertificateCache *xsync.Map[TLSInspectorCacheKey, TLSInspectorCacheValue[*tls.Certificate]]
+	ClientHelloMap   *xsync.Map[string, *TLSClientHelloInfo]
 }
 
 func (m *TLSInspector) AddCertEntry(entry TLSInspectorEntry) error {
 	if m.TLSConfigCache == nil {
-		m.TLSConfigCache = xsync.NewMapOf[TLSInspectorCacheKey, TLSInspectorCacheValue[*tls.Config]]()
+		m.TLSConfigCache = xsync.NewMap[TLSInspectorCacheKey, TLSInspectorCacheValue[*tls.Config]](xsync.WithSerialResize())
 	}
 
 	if m.CertificateCache == nil {
-		m.CertificateCache = xsync.NewMapOf[TLSInspectorCacheKey, TLSInspectorCacheValue[*tls.Certificate]]()
+		m.CertificateCache = xsync.NewMap[TLSInspectorCacheKey, TLSInspectorCacheValue[*tls.Certificate]](xsync.WithSerialResize())
 	}
 
 	if m.AutoCert == nil {

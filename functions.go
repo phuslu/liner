@@ -20,7 +20,7 @@ import (
 	"github.com/phuslu/geosite"
 	"github.com/phuslu/log"
 	"github.com/phuslu/lru"
-	"github.com/puzpuzpuz/xsync/v3"
+	"github.com/puzpuzpuz/xsync/v4"
 	"go4.org/netipx"
 	"golang.org/x/net/publicsuffix"
 )
@@ -37,9 +37,9 @@ type Functions struct {
 	FetchClient    *http.Client
 	FetchCache     *lru.TTLCache[string, *FetchResponse]
 
-	RegexpCache    *xsync.MapOf[string, *regexp.Regexp]
-	FileLineCache  *xsync.MapOf[string, *FileLoader[[]string]]
-	FileIPSetCache *xsync.MapOf[string, *FileLoader[*netipx.IPSet]]
+	RegexpCache    *xsync.Map[string, *regexp.Regexp]
+	FileLineCache  *xsync.Map[string, *FileLoader[[]string]]
+	FileIPSetCache *xsync.Map[string, *FileLoader[*netipx.IPSet]]
 
 	FuncMap template.FuncMap
 }
@@ -411,7 +411,7 @@ func (f *Functions) wildcardMatch(pattern, s string) bool {
 }
 
 func (f *Functions) inFileLine(filename, line string) bool {
-	loader, _ := f.FileLineCache.LoadOrCompute(filename, func() *FileLoader[[]string] {
+	loader, _ := f.FileLineCache.LoadOrCompute(filename, func() (*FileLoader[[]string], bool) {
 		return &FileLoader[[]string]{
 			Filename: filename,
 			Unmarshal: func(data []byte, v any) error {
@@ -425,7 +425,7 @@ func (f *Functions) inFileLine(filename, line string) bool {
 			},
 			PollDuration: 2 * time.Minute,
 			Logger:       log.DefaultLogger.Slog(),
-		}
+		}, false
 	})
 	if loader == nil {
 		return false
@@ -442,7 +442,7 @@ func (f *Functions) inFileLine(filename, line string) bool {
 }
 
 func (f *Functions) inFileIPSet(filename, ipstr string) bool {
-	loader, _ := f.FileIPSetCache.LoadOrCompute(filename, func() *FileLoader[*netipx.IPSet] {
+	loader, _ := f.FileIPSetCache.LoadOrCompute(filename, func() (*FileLoader[*netipx.IPSet], bool) {
 		return &FileLoader[*netipx.IPSet]{
 			Filename: filename,
 			Unmarshal: func(data []byte, v any) error {
@@ -477,7 +477,7 @@ func (f *Functions) inFileIPSet(filename, ipstr string) bool {
 			},
 			PollDuration: 2 * time.Minute,
 			Logger:       log.DefaultLogger.Slog(),
-		}
+		}, false
 	})
 	if loader == nil {
 		return false
@@ -497,9 +497,9 @@ func (f *Functions) inFileIPSet(filename, ipstr string) bool {
 }
 
 func (f *Functions) regexMatch(pattern, s string) bool {
-	regex, _ := f.RegexpCache.LoadOrCompute(pattern, func() *regexp.Regexp {
+	regex, _ := f.RegexpCache.LoadOrCompute(pattern, func() (*regexp.Regexp, bool) {
 		v, _ := regexp.Compile(pattern)
-		return v
+		return v, false
 	})
 	if regex == nil {
 		return false

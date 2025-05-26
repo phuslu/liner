@@ -22,7 +22,7 @@ import (
 
 	"github.com/libp2p/go-yamux/v5"
 	"github.com/phuslu/log"
-	"github.com/puzpuzpuz/xsync/v3"
+	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/smallnest/ringbuffer"
@@ -31,7 +31,7 @@ import (
 
 type TunnelHandler struct {
 	Config          TunnelConfig
-	MemoryListeners *xsync.MapOf[string, *MemoryListener]
+	MemoryListeners *xsync.Map[string, *MemoryListener]
 	Resolver        *Resolver
 	LocalDialer     Dialer
 	Dialers         map[string]string

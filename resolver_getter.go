@@ -13,7 +13,7 @@ import (
 
 	"github.com/phuslu/fastdns"
 	"github.com/phuslu/lru"
-	"github.com/puzpuzpuz/xsync/v3"
+	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"golang.org/x/net/http2"
@@ -24,10 +24,10 @@ type resolvererr struct {
 	Err      error
 }
 
-var resolvers = xsync.NewMapOf[string, resolvererr]()
+var resolvers = xsync.NewMap[string, resolvererr](xsync.WithSerialResize())
 
 func GetResolver(addr string) (r *Resolver, err error) {
-	racer, _ := resolvers.LoadOrCompute(addr, func() (r resolvererr) {
+	racer, _ := resolvers.LoadOrCompute(addr, func() (r resolvererr, cancel bool) {
 		r.Resolver = &Resolver{
 			Client: &fastdns.Client{
 				Addr: addr,

@@ -29,7 +29,7 @@ import (
 	"github.com/phuslu/geosite"
 	"github.com/phuslu/log"
 	"github.com/phuslu/lru"
-	"github.com/puzpuzpuz/xsync/v3"
+	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/robfig/cron/v3"
@@ -325,9 +325,9 @@ func main() {
 		FetchUserAgent: ChromeUserAgent,
 		FetchClient:    &http.Client{Transport: transport},
 		FetchCache:     lru.NewTTLCache[string, *FetchResponse](1024),
-		RegexpCache:    xsync.NewMapOf[string, *regexp.Regexp](),
-		FileLineCache:  xsync.NewMapOf[string, *FileLoader[[]string]](),
-		FileIPSetCache: xsync.NewMapOf[string, *FileLoader[*netipx.IPSet]](),
+		RegexpCache:    xsync.NewMap[string, *regexp.Regexp](xsync.WithSerialResize()),
+		FileLineCache:  xsync.NewMap[string, *FileLoader[[]string]](xsync.WithSerialResize()),
+		FileIPSetCache: xsync.NewMap[string, *FileLoader[*netipx.IPSet]](xsync.WithSerialResize()),
 	}
 	if err := functions.Load(); err != nil {
 		log.Fatal().Err(err).Msgf("%T.Load() fatal", functions)
@@ -340,7 +340,7 @@ func main() {
 		DeferAccept: true,
 	}
 
-	memoryListeners := xsync.NewMapOf[string, *MemoryListener]()
+	memoryListeners := xsync.NewMap[string, *MemoryListener](xsync.WithSerialResize())
 	for _, sshConfig := range config.Ssh {
 		for _, listen := range sshConfig.Listen {
 			memoryListeners.Store(listen, nil)
@@ -358,7 +358,7 @@ func main() {
 
 	// listen and serve https
 	tlsConfigurator := &TLSInspector{
-		ClientHelloMap: xsync.NewMapOf[string, *TLSClientHelloInfo](),
+		ClientHelloMap: xsync.NewMap[string, *TLSClientHelloInfo](xsync.WithSerialResize()),
 	}
 	h2handlers := map[string]map[string]HTTPHandler{}
 	for _, server := range config.Https {

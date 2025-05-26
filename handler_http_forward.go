@@ -20,7 +20,7 @@ import (
 
 	"github.com/mileusna/useragent"
 	"github.com/phuslu/log"
-	"github.com/puzpuzpuz/xsync/v3"
+	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/valyala/bytebufferpool"
 	"golang.org/x/net/publicsuffix"
 )
@@ -28,7 +28,7 @@ import (
 type HTTPForwardHandler struct {
 	Config          HTTPConfig
 	ForwardLogger   log.Logger
-	MemoryListeners *xsync.MapOf[string, *MemoryListener]
+	MemoryListeners *xsync.Map[string, *MemoryListener]
 	MemoryDialers   *sync.Map // map[string]*MemoryDialer
 	LocalDialer     *LocalDialer
 	LocalTransport  *http.Transport
@@ -617,7 +617,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 	}
 }
 
-var csvloaders = xsync.NewMapOf[string, *FileLoader[[]UserInfo]]()
+var csvloaders = xsync.NewMap[string, *FileLoader[[]UserInfo]](xsync.WithSerialResize())
 
 func GetUserCsvLoader(authTableFile string) *FileLoader[[]UserInfo] {
 	unmarshal := func(data []byte, v any) error {
@@ -666,13 +666,13 @@ func GetUserCsvLoader(authTableFile string) *FileLoader[[]UserInfo] {
 		return nil
 	}
 
-	loader, _ := csvloaders.LoadOrCompute(authTableFile, func() *FileLoader[[]UserInfo] {
+	loader, _ := csvloaders.LoadOrCompute(authTableFile, func() (*FileLoader[[]UserInfo], bool) {
 		return &FileLoader[[]UserInfo]{
 			Filename:     authTableFile,
 			Unmarshal:    unmarshal,
 			PollDuration: 15 * time.Second,
 			Logger:       log.DefaultLogger.Slog(),
-		}
+		}, false
 	})
 
 	return loader
