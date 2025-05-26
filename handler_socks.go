@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"strings"
 	"text/template"
-	"time"
 
 	"github.com/phuslu/log"
 	"github.com/valyala/bytebufferpool"
@@ -61,12 +60,7 @@ func (h *SocksHandler) Load() error {
 	}
 
 	if strings.HasSuffix(h.Config.Forward.AuthTable, ".csv") {
-		h.csvloader = &FileLoader[[]UserInfo]{
-			Filename:     h.Config.Forward.AuthTable,
-			Unmarshal:    UserCsvUnmarshal,
-			PollDuration: 30 * time.Second,
-			Logger:       log.DefaultLogger.Slog(),
-		}
+		h.csvloader = GetUserCsvLoader(h.Config.Forward.AuthTable)
 		records := h.csvloader.Load()
 		if records == nil {
 			log.Fatal().Str("auth_table", h.Config.Forward.AuthTable).Msg("load auth_table failed")
