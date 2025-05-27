@@ -775,6 +775,34 @@ func main() {
 				}
 				log.Info().Str("version", version).Str("address", ln.Addr().String()).Msg("liner listen and serve dns port")
 				go h.ServeTCP(context.Background(), ln)
+			case "tls":
+				keyfile := &FileLoader[tls.Certificate]{
+					Filename:     dns.Keyfile,
+					PollDuration: 2 * time.Hour,
+					Logger:       log.DefaultLogger.Slog(),
+					Unmarshal: func(data []byte, v any) (err error) {
+						cert, ok := v.(*tls.Certificate)
+						if !ok {
+							return errors.New("*tls.Certificate required")
+						}
+						*cert, err = tls.X509KeyPair(data, data)
+						return
+					},
+				}
+				if keyfile.Load() == nil {
+					log.Fatal().Str("keyfile", dns.Keyfile).Msg("liner dns load tls keyfile failed")
+				}
+				ln, err := lc.Listen(context.Background(), "tcp", u.Host)
+				if err != nil {
+					log.Fatal().Err(err).Str("address", addr).Msg("net.Listen error")
+				}
+				ln = tls.NewListener(ln, &tls.Config{
+					GetCertificate: func(_ *tls.ClientHelloInfo) (*tls.Certificate, error) {
+						return keyfile.Load(), nil
+					},
+				})
+				log.Info().Str("version", version).Str("address", ln.Addr().String()).Msg("liner listen and serve dns port")
+				go h.ServeTCP(context.Background(), ln)
 			default:
 				log.Fatal().Err(err).Str("address", addr).Msg("dns handler invalid addr error")
 			}
