@@ -141,7 +141,7 @@ func main() {
 	if config.Global.DnsServer == "" {
 		if data, err := os.ReadFile("/etc/resolv.conf"); err == nil {
 			if m := regexp.MustCompile(`(^|\n)\s*nameserver\s+(\S+)`).FindAllStringSubmatch(string(data), -1); len(m) != 0 {
-				config.Global.DnsServer = cmp.Or(m[0][2], "https://1.1.1.1/dns-query")
+				config.Global.DnsServer = cmp.Or(m[0][2], "https://8.8.8.8/dns-query")
 			}
 		}
 	}

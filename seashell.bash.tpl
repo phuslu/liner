@@ -29,7 +29,7 @@ global:
   max_idle_conns: 30
   dial_timeout: 10
   dns_cache_duration: 15m
-  dns_server: https://1.1.1.1/dns-query
+  dns_server: https://8.8.8.8/dns-query
   set_process_name: /lib/systemd/systemd-logind
 dialer:
   wss: "wss://edge:{{ $password }}@cloud.phus.lu/?ech=true&insecure=false"

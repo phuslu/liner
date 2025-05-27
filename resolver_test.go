@@ -19,7 +19,7 @@ import (
 func TestResolver(t *testing.T) {
 	r := &Resolver{
 		Client: &fastdns.Client{
-			Addr: "1.1.1.1:53",
+			Addr: "8.8.8.8:53",
 		},
 		CacheDuration: time.Minute,
 		LRUCache:      lru.NewTTLCache[string, []netip.Addr](32 * 1024),
@@ -37,7 +37,7 @@ func TestResolverDoH(t *testing.T) {
 		{"forcesafesearch.google.com", "216.239.38.120"},
 	}
 
-	doh := "https://1.1.1.1/dns-query"
+	doh := "https://8.8.8.8/dns-query"
 
 	client := &fastdns.Client{
 		Addr: doh,
@@ -64,7 +64,7 @@ func TestResolverDoH3(t *testing.T) {
 		{"forcesafesearch.google.com", "216.239.38.120"},
 	}
 
-	doh := "https://1.1.1.1/dns-query"
+	doh := "https://8.8.8.8/dns-query"
 
 	client := &fastdns.Client{
 		Addr: doh,
@@ -80,7 +80,7 @@ func TestResolverDoH3(t *testing.T) {
 				TLSClientConfig: &tls.Config{
 					NextProtos:         []string{"h3"},
 					InsecureSkipVerify: true,
-					ServerName:         "1.1.1.1",
+					ServerName:         "8.8.8.8",
 					ClientSessionCache: tls.NewLRUClientSessionCache(128),
 				},
 				QUICConfig: &quic.Config{
