@@ -18,7 +18,8 @@ dialer:
   wss: wss://phuslu:123456@www.phus.lu:443/
   ssh: ssh://phuslu:123456@phus.lu:22/?timeout=8&max_clients=4&key=/home/phuslu/.ssh/id_rsa
 dns:
-  - listen: ['127.0.0.53:53']
+  - listen: [':53', 'tcp://0.0.0.0:53', 'tls://0.0.0.0:853']
+    keyfile: phus_lu.pem
     policy: |
       {{ if hasSuffix ".ip.phus.lu" .Request.Domain }}
         {{ if eq "A" .Request.QType }}
