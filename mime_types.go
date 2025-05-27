@@ -1,5 +1,15 @@
 package main
 
+import (
+	"mime"
+)
+
+func RegisterMimeTypes() {
+	for ext, typ := range mimetypes {
+		mime.AddExtensionType(ext, typ)
+	}
+}
+
 func GetMimeTypeByExtension(ext string) string {
 	b := AppendToLower(make([]byte, 0, 8), ext)
 	return mimetypes[string(b)]
