@@ -129,6 +129,9 @@ func NewIPInt(ip string) IPInt {
 // zero-copy conversion only if the buffer is not modified afterward.
 // Behavior is undefined for non-ASCII input.
 func AppendToLower(dst []byte, s string) []byte {
+	if len(s) == 0 {
+		return dst
+	}
 	n := len(dst)
 	dst = append(dst, s...)
 	m := n + len(s) - 1
