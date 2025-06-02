@@ -227,11 +227,13 @@ func main() {
 				Websocket:  u.Scheme == "ws" || u.Scheme == "wss",
 				UserAgent:  cmp.Or(u.Query().Get("user_agent"), DefaultUserAgent),
 				Insecure:   u.Query().Get("insecure") == "true",
+				ECH:        u.Query().Get("ech") == "true",
 				CACert:     u.Query().Get("cacert"),
 				ClientKey:  u.Query().Get("key"),
 				ClientCert: u.Query().Get("cert"),
 				Resolve:    map[string]string{u.Host: u.Query().Get("resolve")},
 				Dialer:     dialer,
+				Resolver:   geoResolver.Resolver,
 			}
 		case "http2":
 			dialers[name] = &HTTP2Dialer{

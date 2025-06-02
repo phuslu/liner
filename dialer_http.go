@@ -27,12 +27,14 @@ type HTTPDialer struct {
 	TLS        bool
 	Websocket  bool
 	Insecure   bool
+	ECH        bool
 	UserAgent  string
 	CACert     string
 	ClientKey  string
 	ClientCert string
 	Resolve    map[string]string
 	Dialer     Dialer
+	Resolver   *Resolver
 
 	mu        sync.Mutex
 	tlsConfig *tls.Config
@@ -115,7 +117,20 @@ func (d *HTTPDialer) DialContext(ctx context.Context, network, addr string) (net
 		if d.tlsConfig == nil {
 			return nil, errors.New("httpdialer: empty tls config")
 		}
-		tlsConn := tls.Client(conn, d.tlsConfig)
+		tlsConfig := d.tlsConfig
+		if d.ECH {
+			https, err := d.Resolver.LookupHTTPS(ctx, d.Host)
+			if err != nil {
+				return nil, fmt.Errorf("lookup https %v error: %w", d.Host, err)
+			}
+			if len(https) == 0 || len(https[0].ECH) == 0 {
+				return nil, fmt.Errorf("lookup https %v error: emtpy record", d.Host)
+			}
+			tlsConfig = tlsConfig.Clone()
+			tlsConfig.MinVersion = tls.VersionTLS13
+			tlsConfig.EncryptedClientHelloConfigList = https[0].ECH
+		}
+		tlsConn := tls.Client(conn, tlsConfig)
 		err = tlsConn.HandshakeContext(ctx)
 		if err != nil {
 			return nil, err
