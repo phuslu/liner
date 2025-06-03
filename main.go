@@ -190,7 +190,7 @@ func main() {
 		DialTimeout:     time.Duration(cmp.Or(config.Global.DialTimeout, 15)) * time.Second,
 		TCPKeepAlive:    30 * time.Second,
 		TLSConfig: &tls.Config{
-			InsecureSkipVerify: true,
+			InsecureSkipVerify: config.Global.TlsInsecure,
 			ClientSessionCache: tls.NewLRUClientSessionCache(2048),
 		},
 	}
