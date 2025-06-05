@@ -46,15 +46,6 @@ if test -s .env; then
   exit 0
 fi
 
-if test -f /sys/fs/cgroup/memory.max; then
-  io_copy_buffer=$(($(</sys/fs/cgroup/memory.max) / 8192))
-else
-  io_copy_buffer=$(($(awk '/MemTotal/ {print $2 * 1024}' /proc/meminfo) / 8192))
-fi
-if [ "$io_copy_buffer" -gt 524288 ]; fi
-  io_copy_buffer=524288
-fi
-
 cat <<EOF > production.yaml
 global:
   log_level: info
@@ -67,7 +58,7 @@ https:
     forward:
       log: true
       prefer_ipv6: false
-      io_copy_buffer: ${io_copy_buffer}
+      io_copy_buffer: 131072
       policy: |
         {{if all (.Request.ProtoAtLeast 2 0) (eq .Request.TLS.Version 0x0304) (greased .ClientHelloInfo)}}
             bypass_auth
