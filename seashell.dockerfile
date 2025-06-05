@@ -16,6 +16,7 @@ RUN apk add --update --no-cache \
     htop \
     iproute2 \
     jq \
+    less \
     logrotate \
     lsblk \
     lscpu \
