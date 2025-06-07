@@ -297,11 +297,19 @@ func main() {
 
 	dialers := make(map[string]Dialer)
 	for name, s := range config.Dialer {
-		u, err := url.Parse(s)
-		if err != nil {
-			log.Fatal().Err(err).Str("dialer_url", s).Msg("parse dailer url failed")
+		var d Dialer = dialer
+		for line := range strings.Lines(s) {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			u, err := url.Parse(line)
+			if err != nil {
+				log.Fatal().Err(err).Str("dialer_url", s).Msg("parse dailer url failed")
+			}
+			d = dialerof(u, d)
 		}
-		dialers[name] = dialerof(u, dialer)
+		dialers[name] = d
 	}
 
 	// see http.DefaultTransport
