@@ -195,15 +195,11 @@ func main() {
 		},
 	}
 
-	dialers := make(map[string]Dialer)
-	for name, dailer := range config.Dialer {
-		u, err := url.Parse(dailer)
-		if err != nil {
-			log.Fatal().Err(err).Str("dailer", dailer).Msg("parse dailer url failed")
-		}
+	// dialer builder
+	dialerof := func(u *url.URL, underlay Dialer) Dialer {
 		switch u.Scheme {
 		case "local":
-			dialers[name] = &LocalDialer{
+			return &LocalDialer{
 				Resolver:        geoResolver.Resolver,
 				ResolveCache:    dialer.ResolveCache,
 				Interface:       u.Host,
@@ -218,7 +214,7 @@ func main() {
 				},
 			}
 		case "http", "https", "ws", "wss":
-			dialers[name] = &HTTPDialer{
+			return &HTTPDialer{
 				Username:   u.User.Username(),
 				Password:   first(u.User.Password()),
 				Host:       u.Hostname(),
@@ -232,11 +228,11 @@ func main() {
 				ClientKey:  u.Query().Get("key"),
 				ClientCert: u.Query().Get("cert"),
 				Resolve:    map[string]string{u.Host: u.Query().Get("resolve")},
-				Dialer:     dialer,
+				Dialer:     underlay,
 				Resolver:   geoResolver.Resolver,
 			}
 		case "http2":
-			dialers[name] = &HTTP2Dialer{
+			return &HTTP2Dialer{
 				Username:   u.User.Username(),
 				Password:   first(u.User.Password()),
 				Host:       u.Hostname(),
@@ -247,10 +243,10 @@ func main() {
 				ClientKey:  u.Query().Get("key"),
 				ClientCert: u.Query().Get("cert"),
 				MaxClients: cmp.Or(first(strconv.Atoi(u.Query().Get("max_clients"))), 8),
-				Dialer:     dialer,
+				Dialer:     underlay,
 			}
 		case "http3", "http3+wss":
-			dialers[name] = &HTTP3Dialer{
+			return &HTTP3Dialer{
 				Username:  u.User.Username(),
 				Password:  first(u.User.Password()),
 				Host:      u.Hostname(),
@@ -261,27 +257,27 @@ func main() {
 				Resolver:  geoResolver.Resolver,
 			}
 		case "socks", "socks5", "socks5h":
-			dialers[name] = &Socks5Dialer{
+			return &Socks5Dialer{
 				Username: u.User.Username(),
 				Password: first(u.User.Password()),
 				Host:     u.Hostname(),
 				Port:     u.Port(),
 				Socks5H:  u.Scheme == "socks5h",
 				Resolver: geoResolver.Resolver,
-				Dialer:   dialer,
+				Dialer:   underlay,
 			}
 		case "socks4", "socks4a":
-			dialers[name] = &Socks4Dialer{
+			return &Socks4Dialer{
 				Username: u.User.Username(),
 				Password: first(u.User.Password()),
 				Host:     u.Hostname(),
 				Port:     u.Port(),
 				Socks4A:  u.Scheme == "socks4a",
 				Resolver: geoResolver.Resolver,
-				Dialer:   dialer,
+				Dialer:   underlay,
 			}
 		case "ssh", "ssh2":
-			dialers[name] = &SSHDialer{
+			return &SSHDialer{
 				Username:              u.User.Username(),
 				Password:              first(u.User.Password()),
 				PrivateKey:            string(first(os.ReadFile(u.Query().Get("key")))),
@@ -291,11 +287,21 @@ func main() {
 				UserKnownHostsFile:    cmp.Or(u.Query().Get("UserKnownHostsFile"), u.Query().Get("user_known_hosts_file")),
 				MaxClients:            cmp.Or(first(strconv.Atoi(u.Query().Get("max_clients"))), 8),
 				Timeout:               time.Duration(cmp.Or(first(strconv.Atoi(u.Query().Get("timeout"))), 10)) * time.Second,
-				Dialer:                dialer,
+				Dialer:                underlay,
 			}
 		default:
 			log.Fatal().Str("dialer_scheme", u.Scheme).Msgf("unsupported dialer=%+v", u)
 		}
+		return nil
+	}
+
+	dialers := make(map[string]Dialer)
+	for name, s := range config.Dialer {
+		u, err := url.Parse(s)
+		if err != nil {
+			log.Fatal().Err(err).Str("dialer_url", s).Msg("parse dailer url failed")
+		}
+		dialers[name] = dialerof(u, dialer)
 	}
 
 	// see http.DefaultTransport
