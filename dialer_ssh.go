@@ -33,7 +33,7 @@ type SSHDialer struct {
 }
 
 func (d *SSHDialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
-	connect := func() (*ssh.Client, error) {
+	connect := func(ctx context.Context) (*ssh.Client, error) {
 		config := &ssh.ClientConfig{
 			User: d.Username,
 			Auth: []ssh.AuthMethod{
@@ -99,7 +99,7 @@ func (d *SSHDialer) DialContext(ctx context.Context, network, addr string) (net.
 	if atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&d.clients[n]))) == nil {
 		d.mutexes[n].Lock()
 		if d.clients[n] == nil {
-			c, err := connect()
+			c, err := connect(ctx)
 			if err != nil {
 				d.mutexes[n].Unlock()
 				return nil, err
@@ -109,17 +109,17 @@ func (d *SSHDialer) DialContext(ctx context.Context, network, addr string) (net.
 		d.mutexes[n].Unlock()
 	}
 
-	conn, err := d.clients[n].Dial(network, addr)
+	conn, err := d.clients[n].DialContext(ctx, network, addr)
 	if err != nil {
 		time.Sleep(time.Duration(100+fastrandn(200)) * time.Millisecond)
 		old := d.clients[n]
 		d.mutexes[n].Lock()
 		if d.clients[n] == old {
-			d.clients[n], err = connect()
+			d.clients[n], err = connect(ctx)
 		}
 		d.mutexes[n].Unlock()
 		if c := d.clients[n]; c != nil && c != old {
-			conn, err = c.Dial(network, addr)
+			conn, err = c.DialContext(ctx, network, addr)
 		}
 	}
 
