@@ -5,7 +5,7 @@
 
 set -ex
 
-test -x ~/.config/service/liner/run && exit 0
+test -x ~/service/liner/run && exit 0
 
 cd && mkdir -p liner && cd liner
 
@@ -65,9 +65,9 @@ http:
 EOF
 
 if test -f /seashell.sh; then
-  mkdir -p ~/.config/service/liner
-  echo -e '#!/bin/bash\ncd ~/liner && exec $(pwd)/liner production.yaml' >  ~/.config/service/liner/run
-  chmod +x ~/.config/service/liner/run
+  mkdir -p ~/service/liner
+  echo -e '#!/bin/bash\ncd ~/liner && exec $(pwd)/liner production.yaml' >  ~/service/liner/run
+  chmod +x ~/service/liner/run
 else
   echo -e 'while :; do env GOMAXPROCS=2 $(pwd)/liner production.yaml; sleep 2; done' > keepalive
   exec /bin/sh keepalive
