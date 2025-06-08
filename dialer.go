@@ -13,6 +13,7 @@ import (
 
 	"github.com/phuslu/log"
 	"github.com/phuslu/lru"
+	"github.com/xtaci/kcp-go/v5"
 )
 
 type Dialer interface {
@@ -41,6 +42,7 @@ type LocalDialer struct {
 	PerferIPv6      bool
 	ForbidLocalAddr bool
 	Concurrency     int
+	KCPBlockCrypt   kcp.BlockCrypt
 
 	DialTimeout   time.Duration
 	TCPKeepAlive  time.Duration
@@ -129,11 +131,15 @@ func (d *LocalDialer) dialSerial(ctx context.Context, network, hostname string, 
 			return nil, net.InvalidAddrError("intranet address is rejected: " + ip.String())
 		}
 
-		dailer := &net.Dialer{}
-		if d.Interface != "" {
-			dailer.Control = (&DailerController{Interface: d.Interface}).Control
+		if d.KCPBlockCrypt != nil {
+			conn, err = kcp.DialWithOptions(netip.AddrPortFrom(ip, port).String(), d.KCPBlockCrypt, 10, 3)
+		} else {
+			dailer := &net.Dialer{}
+			if d.Interface != "" {
+				dailer.Control = (&DailerController{Interface: d.Interface}).Control
+			}
+			conn, err = dailer.DialContext(ctx, network, netip.AddrPortFrom(ip, port).String())
 		}
-		conn, err = dailer.DialContext(ctx, network, netip.AddrPortFrom(ip, port).String())
 		if err != nil {
 			if i < len(ips)-1 {
 				continue
@@ -180,12 +186,17 @@ func (d *LocalDialer) dialParallel(ctx context.Context, network, hostname string
 				lane <- dialResult{nil, net.InvalidAddrError("intranet address is rejected: " + ip.String())}
 				return
 			}
-
-			dailer := &net.Dialer{}
-			if d.Interface != "" {
-				dailer.Control = (&DailerController{Interface: d.Interface}).Control
+			var conn net.Conn
+			var err error
+			if d.KCPBlockCrypt != nil {
+				conn, err = kcp.DialWithOptions(netip.AddrPortFrom(ip, port).String(), d.KCPBlockCrypt, 10, 3)
+			} else {
+				dailer := &net.Dialer{}
+				if d.Interface != "" {
+					dailer.Control = (&DailerController{Interface: d.Interface}).Control
+				}
+				conn, err = dailer.DialContext(ctx, network, netip.AddrPortFrom(ip, port).String())
 			}
-			conn, err := dailer.DialContext(ctx, network, netip.AddrPortFrom(ip, port).String())
 			if err != nil {
 				lane <- dialResult{nil, err}
 				return

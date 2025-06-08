@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"errors"
 	"io"
 	"log/slog"
@@ -33,6 +34,7 @@ import (
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/robfig/cron/v3"
+	"github.com/xtaci/kcp-go/v5"
 	"go4.org/netipx"
 	"golang.org/x/net/http2"
 )
@@ -199,6 +201,10 @@ func main() {
 	dialerof := func(u *url.URL, underlay Dialer) Dialer {
 		switch u.Scheme {
 		case "local":
+			var kcpKey kcp.BlockCrypt
+			if s := u.Query().Get("kcp"); s != "" {
+				kcpKey = must(kcp.NewAESBlockCrypt(must(base64.URLEncoding.DecodeString(s))))
+			}
 			return &LocalDialer{
 				Resolver:        geoResolver.Resolver,
 				ResolveCache:    dialer.ResolveCache,
@@ -206,6 +212,7 @@ func main() {
 				PerferIPv6:      u.Query().Get("prefer_ipv6") == "true",
 				Concurrency:     2,
 				ForbidLocalAddr: config.Global.ForbidLocalAddr,
+				KCPBlockCrypt:   kcpKey,
 				DialTimeout:     time.Duration(cmp.Or(first(strconv.Atoi(u.Query().Get("dial_timeout"))), config.Global.DialTimeout, 15)) * time.Second,
 				TCPKeepAlive:    30 * time.Second,
 				TLSConfig: &tls.Config{
