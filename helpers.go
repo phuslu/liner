@@ -1293,6 +1293,22 @@ func (b AppendableBytes) Int64(i int64, base int) AppendableBytes {
 	return strconv.AppendInt(b, i, base)
 }
 
+func (b AppendableBytes) Pad(c byte, base int) AppendableBytes {
+	n := (base - len(b)%base) % base
+	if n == 0 {
+		return b
+	}
+	b = append(b, make([]byte, n)...)
+	if c != 0 {
+		m := len(b) - 1
+		_ = b[m]
+		for i := m - n + 1; i <= m; i++ {
+			b[i] = c
+		}
+	}
+	return b
+}
+
 type FileLoader[T any] struct {
 	Filename     string
 	Unmarshal    func([]byte, any) error
