@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"context"
 	"crypto/tls"
-	"encoding/base64"
 	"errors"
 	"io"
 	"log/slog"
@@ -203,7 +202,7 @@ func main() {
 		case "local":
 			var kcpKey kcp.BlockCrypt
 			if s := u.Query().Get("kcp"); s != "" {
-				kcpKey = must(kcp.NewAESBlockCrypt(must(base64.URLEncoding.DecodeString(s))))
+				kcpKey = must(kcp.NewAESBlockCrypt(AppendableBytes([]byte(s)).Pad('\x00', 16)))
 			}
 			return &LocalDialer{
 				Resolver:        geoResolver.Resolver,
@@ -651,7 +650,7 @@ func main() {
 
 		// start kcp server
 		if !config.Global.DisableKcp && handler.KCPKey != "" {
-			kcpKey := must(kcp.NewAESBlockCrypt(must(base64.URLEncoding.DecodeString(handler.KCPKey))))
+			kcpKey := must(kcp.NewAESBlockCrypt(AppendableBytes([]byte(handler.KCPKey)).Pad('\x00', 16)))
 			ln, err := kcp.ListenWithOptions(addr, kcpKey, 10, 3)
 			if err != nil {
 				log.Fatal().Err(err).Str("address", addr).Msg("kcp.ListenWithOptions error")
