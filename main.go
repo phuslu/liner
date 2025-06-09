@@ -553,7 +553,10 @@ func main() {
 	}
 
 	// listen and serve http
-	h1handlers := map[string]HTTPHandler{}
+	h1handlers := map[string]struct {
+		HTTPHandler HTTPHandler
+		KCPKey      string
+	}{}
 	for _, httpConfig := range config.Http {
 		httpConfig.ServerName = append(httpConfig.ServerName, "", "localhost", "127.0.0.1")
 		if name, err := os.Hostname(); err == nil {
@@ -604,7 +607,13 @@ func main() {
 		}
 
 		for _, listen := range httpConfig.Listen {
-			h1handlers[listen] = handler
+			h1handlers[listen] = struct {
+				HTTPHandler HTTPHandler
+				KCPKey      string
+			}{
+				HTTPHandler: handler,
+				KCPKey:      httpConfig.KcpKey,
+			}
 		}
 	}
 
@@ -612,7 +621,7 @@ func main() {
 		addr, handler := addr, handler
 
 		server := &http.Server{
-			Handler:  handler,
+			Handler:  handler.HTTPHandler,
 			ErrorLog: log.DefaultLogger.Std("", 0),
 		}
 
@@ -639,6 +648,16 @@ func main() {
 		go server.Serve(ln)
 
 		servers = append(servers, server)
+
+		// start kcp server
+		if !config.Global.DisableKcp && handler.KCPKey != "" {
+			kcpKey := must(kcp.NewAESBlockCrypt(must(base64.URLEncoding.DecodeString(handler.KCPKey))))
+			ln, err := kcp.ListenWithOptions(addr, kcpKey, 10, 3)
+			if err != nil {
+				log.Fatal().Err(err).Str("address", addr).Msg("kcp.ListenWithOptions error")
+			}
+			go server.Serve(ln)
+		}
 	}
 
 	// socks handler
