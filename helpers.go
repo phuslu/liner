@@ -1298,7 +1298,12 @@ func (b AppendableBytes) Pad(c byte, base int) AppendableBytes {
 	if n == 0 {
 		return b
 	}
-	b = append(b, make([]byte, n)...)
+	if n <= 32 {
+		b = append(b, make([]byte, 32)...)
+		b = b[:len(b)+n-32]
+	} else {
+		b = append(b, make([]byte, n)...)
+	}
 	if c != 0 {
 		m := len(b) - 1
 		_ = b[m]
