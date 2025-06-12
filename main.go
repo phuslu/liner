@@ -60,8 +60,8 @@ func main() {
 		return
 	}
 
-	if s, n := os.Getenv("GOMAXPROCS"), GetMaxProcsFromCgroupV2(); s == "" && n > 0 {
-		runtime.GOMAXPROCS(n)
+	if g, p, m := runtime.Version(), os.Getenv("GOMAXPROCS"), GetMaxProcsFromCgroupV2(); g < "go1.25" && p == "" && m > 0 {
+		runtime.GOMAXPROCS(m)
 	}
 
 	RegisterMimeTypes()
