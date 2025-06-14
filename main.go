@@ -150,33 +150,36 @@ func main() {
 		Resolver:      must(GetResolver(config.Global.DnsServer)),
 		LocalizedName: true,
 	}
-	for _, name := range []string{"GeoIP2-City.mmdb", "GeoLite2-City.mmdb"} {
-		geoResolver.CityReader, err = maxminddb.Open(name)
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			log.Fatal().Err(err).Str("geoip2_city_database", name).Msg("load geoip2 city database error")
+	if names, err := filepath.Glob("*.mmdb"); err == nil {
+		for _, name := range names {
+			reader, err := maxminddb.Open(name)
+			if err != nil {
+				log.Fatal().Err(err).Str("geoip2_database_name", name).Msg("load geoip2 database error")
+			}
+			switch reader.Metadata.DatabaseType {
+			case "GeoIP2-City":
+				geoResolver.CityReader = reader
+			case "GeoIP2-ISP":
+				geoResolver.ISPReader = reader
+			case "GeoIP2-Domain":
+				geoResolver.DomainReader = reader
+			case "GeoIP2-Connection-Type":
+				geoResolver.ConnectionTypeReader = reader
+			case "GeoIP2-ASN":
+				break
+			case "GeoLite2-City":
+				geoResolver.CityReader = cmp.Or(geoResolver.CityReader, reader)
+			case "GeoLite2-ISP":
+				geoResolver.ISPReader = cmp.Or(geoResolver.ISPReader, reader)
+			case "GeoLite2-Domain":
+				geoResolver.DomainReader = cmp.Or(geoResolver.DomainReader, reader)
+			case "GeoLite2-Connection-Type":
+				geoResolver.ConnectionTypeReader = cmp.Or(geoResolver.ConnectionTypeReader, reader)
+			case "GeoLite2-ASN":
+				break
+			}
+			log.Info().Str("geoip2_database_name", name).Str("geoip2_database_type", reader.Metadata.DatabaseType).Msg("load geoip2 database ok")
 		}
-		break
-	}
-	for _, name := range []string{"GeoIP2-ISP.mmdb", "GeoLite2-ISP.mmdb"} {
-		geoResolver.ISPReader, err = maxminddb.Open(name)
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			log.Fatal().Err(err).Str("geoip2_isp_database", name).Msg("load geoip2 isp database error")
-		}
-		break
-	}
-	for _, name := range []string{"GeoIP2-Domain.mmdb", "GeoLite2-Domain.mmdb"} {
-		geoResolver.DomainReader, err = maxminddb.Open(name)
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			log.Fatal().Err(err).Str("geoip2_domain_database", name).Msg("load geoip2 domain database error")
-		}
-		break
-	}
-	for _, name := range []string{"GeoIP2-Connection-Type.mmdb", "GeoLite2-Connection-Type.mmdb"} {
-		geoResolver.ConnectionTypeReader, err = maxminddb.Open(name)
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			log.Fatal().Err(err).Str("geoip2_connection_type_database", name).Msg("load geoip2 connection_type database error")
-		}
-		break
 	}
 
 	// global dialer
