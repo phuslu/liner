@@ -15,7 +15,7 @@ type GeoResolver struct {
 	ISPReader            *maxminddb.Reader
 	DomainReader         *maxminddb.Reader
 	ConnectionTypeReader *maxminddb.Reader
-	LocalizedName        bool
+	EnableCJKCityName    bool
 }
 
 func (r *GeoResolver) LookupCity(ctx context.Context, ip net.IP) (string, string, error) {
@@ -52,7 +52,7 @@ func (r *GeoResolver) LookupCity(ctx context.Context, ip net.IP) (string, string
 	err := r.CityReader.Lookup(ip, &record)
 
 	code, name := record.Country.ISOCode, record.City.Names.EN
-	if r.LocalizedName {
+	if r.EnableCJKCityName {
 		switch code {
 		case "CN", "HK":
 			name = strings.TrimSuffix(record.City.Names.CN, "市")

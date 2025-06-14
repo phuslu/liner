@@ -147,8 +147,8 @@ func main() {
 		}
 	}
 	resolver := &GeoResolver{
-		Resolver:      must(GetResolver(config.Global.DnsServer)),
-		LocalizedName: true,
+		Resolver:          must(GetResolver(config.Global.DnsServer)),
+		EnableCJKCityName: true,
 	}
 	if names, err := filepath.Glob("*.mmdb"); err == nil {
 		for _, name := range names {
