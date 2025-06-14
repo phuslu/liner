@@ -146,7 +146,7 @@ func main() {
 			}
 		}
 	}
-	geoResolver := &GeoResolver{
+	resolver := &GeoResolver{
 		Resolver:      must(GetResolver(config.Global.DnsServer)),
 		LocalizedName: true,
 	}
@@ -158,23 +158,23 @@ func main() {
 			}
 			switch reader.Metadata.DatabaseType {
 			case "GeoIP2-City":
-				geoResolver.CityReader = reader
+				resolver.CityReader = reader
 			case "GeoIP2-ISP":
-				geoResolver.ISPReader = reader
+				resolver.ISPReader = reader
 			case "GeoIP2-Domain":
-				geoResolver.DomainReader = reader
+				resolver.DomainReader = reader
 			case "GeoIP2-Connection-Type":
-				geoResolver.ConnectionTypeReader = reader
+				resolver.ConnectionTypeReader = reader
 			case "GeoIP2-ASN":
 				break
 			case "GeoLite2-City":
-				geoResolver.CityReader = cmp.Or(geoResolver.CityReader, reader)
+				resolver.CityReader = cmp.Or(resolver.CityReader, reader)
 			case "GeoLite2-ISP":
-				geoResolver.ISPReader = cmp.Or(geoResolver.ISPReader, reader)
+				resolver.ISPReader = cmp.Or(resolver.ISPReader, reader)
 			case "GeoLite2-Domain":
-				geoResolver.DomainReader = cmp.Or(geoResolver.DomainReader, reader)
+				resolver.DomainReader = cmp.Or(resolver.DomainReader, reader)
 			case "GeoLite2-Connection-Type":
-				geoResolver.ConnectionTypeReader = cmp.Or(geoResolver.ConnectionTypeReader, reader)
+				resolver.ConnectionTypeReader = cmp.Or(resolver.ConnectionTypeReader, reader)
 			case "GeoLite2-ASN":
 				break
 			}
@@ -184,7 +184,7 @@ func main() {
 
 	// global dialer
 	dialer := &LocalDialer{
-		Resolver:        geoResolver.Resolver,
+		Resolver:        resolver.Resolver,
 		ResolveCache:    lru.NewTTLCache[string, []netip.Addr](cmp.Or(config.Global.DnsCacheSize, 8192)),
 		Concurrency:     2,
 		PerferIPv6:      false,
@@ -208,7 +208,7 @@ func main() {
 				kcpKey = must(kcp.NewAESBlockCrypt(AppendableBytes([]byte(s)).Pad('\x00', 16)))
 			}
 			return &LocalDialer{
-				Resolver:        geoResolver.Resolver,
+				Resolver:        resolver.Resolver,
 				ResolveCache:    dialer.ResolveCache,
 				Interface:       u.Host,
 				PerferIPv6:      u.Query().Get("prefer_ipv6") == "true",
@@ -238,7 +238,7 @@ func main() {
 				ClientCert: u.Query().Get("cert"),
 				Resolve:    map[string]string{u.Host: u.Query().Get("resolve")},
 				Dialer:     underlay,
-				Resolver:   geoResolver.Resolver,
+				Resolver:   resolver.Resolver,
 			}
 		case "http2":
 			return &HTTP2Dialer{
@@ -263,7 +263,7 @@ func main() {
 				UserAgent: cmp.Or(u.Query().Get("user_agent"), DefaultUserAgent),
 				Insecure:  u.Query().Get("insecure") == "true",
 				Websocket: strings.HasSuffix(u.Scheme, "+wss"),
-				Resolver:  geoResolver.Resolver,
+				Resolver:  resolver.Resolver,
 			}
 		case "socks", "socks5", "socks5h":
 			return &Socks5Dialer{
@@ -272,7 +272,7 @@ func main() {
 				Host:     u.Hostname(),
 				Port:     u.Port(),
 				Socks5H:  u.Scheme == "socks5h",
-				Resolver: geoResolver.Resolver,
+				Resolver: resolver.Resolver,
 				Dialer:   underlay,
 			}
 		case "socks4", "socks4a":
@@ -282,7 +282,7 @@ func main() {
 				Host:     u.Hostname(),
 				Port:     u.Port(),
 				Socks4A:  u.Scheme == "socks4a",
-				Resolver: geoResolver.Resolver,
+				Resolver: resolver.Resolver,
 				Dialer:   underlay,
 			}
 		case "ssh", "ssh2":
@@ -344,7 +344,7 @@ func main() {
 
 	// template functions
 	functions := &Functions{
-		GeoResolver:    geoResolver,
+		GeoResolver:    resolver,
 		GeoCache:       lru.NewTTLCache[string, *GeoipInfo](cmp.Or(config.Global.GeoCacheSize, 8192)),
 		GeoSiteOnce:    &sync.Once{},
 		GeoSite:        &geosite.DomainListCommunity{Transport: transport},
@@ -413,7 +413,7 @@ func main() {
 			ServerNames:    server.ServerName,
 			ClientHelloMap: tlsConfigurator.ClientHelloMap,
 			UserAgentMap:   useragentMap,
-			GeoResolver:    geoResolver,
+			GeoResolver:    resolver,
 			Config:         server,
 		}
 
@@ -591,7 +591,7 @@ func main() {
 			ServerNames:    httpConfig.ServerName,
 			ClientHelloMap: tlsConfigurator.ClientHelloMap,
 			UserAgentMap:   useragentMap,
-			GeoResolver:    geoResolver,
+			GeoResolver:    resolver,
 			Config:         httpConfig,
 		}
 
@@ -676,7 +676,7 @@ func main() {
 			h := &SocksHandler{
 				Config:        socksConfig,
 				ForwardLogger: forwardLogger,
-				GeoResolver:   geoResolver,
+				GeoResolver:   resolver,
 				LocalDialer:   dialer,
 				Dialers:       dialers,
 				Functions:     functions.FuncMap,
@@ -714,7 +714,7 @@ func main() {
 			h := &StreamHandler{
 				Config:        streamConfig,
 				ForwardLogger: forwardLogger,
-				GeoResolver:   geoResolver,
+				GeoResolver:   resolver,
 				LocalDialer:   dialer,
 				Dialers:       dialers,
 			}
@@ -773,7 +773,7 @@ func main() {
 		h := &TunnelHandler{
 			Config:          tunnel,
 			MemoryListeners: memoryListeners,
-			Resolver:        geoResolver.Resolver,
+			Resolver:        resolver.Resolver,
 			LocalDialer:     dialer,
 			Dialers:         config.Dialer,
 		}
