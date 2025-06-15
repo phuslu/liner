@@ -150,7 +150,7 @@ func main() {
 		Resolver:          must(GetResolver(config.Global.DnsServer)),
 		EnableCJKCityName: true,
 	}
-	if names, err := filepath.Glob("*.mmdb"); err == nil {
+	if names, err := filepath.Glob(filepath.Join(config.Global.Geoip2Dir, "*.mmdb")); err == nil {
 		newerdb := func(r1, r2 *maxminddb.Reader) *maxminddb.Reader {
 			if r1 == nil || r1.Metadata.BuildEpoch < r2.Metadata.BuildEpoch {
 				return r2

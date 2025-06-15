@@ -154,6 +154,7 @@ type Config struct {
 		TcpReadBuffer    int    `json:"tcp_read_buffer" yaml:"tcp_read_buffer"`
 		TcpWriteBuffer   int    `json:"tcp_write_buffer" yaml:"tcp_write_buffer"`
 		TlsInsecure      bool   `json:"tls_insecure" yaml:"tls_insecure"`
+		Geoip2Dir        string `json:"geoip2_dir" yaml:"geoip2_dir"`
 		GeoCacheSize     int    `json:"geo_cache_size" yaml:"geo_cache_size"`
 		GeositeCacheSize int    `json:"geosite_cache_size" yaml:"geosite_cache_size"`
 		IdleConnTimeout  int    `json:"idle_conn_timeout" yaml:"idle_conn_timeout"`
