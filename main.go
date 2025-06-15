@@ -151,6 +151,12 @@ func main() {
 		EnableCJKCityName: true,
 	}
 	if names, err := filepath.Glob("*.mmdb"); err == nil {
+		newerdb := func(r1, r2 *maxminddb.Reader) *maxminddb.Reader {
+			if r1 == nil || r1.Metadata.BuildEpoch < r2.Metadata.BuildEpoch {
+				return r2
+			}
+			return r1
+		}
 		for _, name := range names {
 			reader, err := maxminddb.Open(name)
 			if err != nil {
@@ -158,23 +164,23 @@ func main() {
 			}
 			switch reader.Metadata.DatabaseType {
 			case "GeoIP2-City":
-				resolver.CityReader = reader
+				resolver.CityReader = newerdb(resolver.CityReader, reader)
 			case "GeoIP2-ISP":
-				resolver.ISPReader = reader
+				resolver.ISPReader = newerdb(resolver.ISPReader, reader)
 			case "GeoIP2-Domain":
-				resolver.DomainReader = reader
+				resolver.DomainReader = newerdb(resolver.DomainReader, reader)
 			case "GeoIP2-Connection-Type":
-				resolver.ConnectionTypeReader = reader
+				resolver.ConnectionTypeReader = newerdb(resolver.ConnectionTypeReader, reader)
 			case "GeoIP2-ASN":
 				break
 			case "GeoLite2-City":
-				resolver.CityReader = cmp.Or(resolver.CityReader, reader)
+				resolver.CityReader = newerdb(resolver.CityReader, reader)
 			case "GeoLite2-ISP":
-				resolver.ISPReader = cmp.Or(resolver.ISPReader, reader)
+				resolver.ISPReader = newerdb(resolver.ISPReader, reader)
 			case "GeoLite2-Domain":
-				resolver.DomainReader = cmp.Or(resolver.DomainReader, reader)
+				resolver.DomainReader = newerdb(resolver.DomainReader, reader)
 			case "GeoLite2-Connection-Type":
-				resolver.ConnectionTypeReader = cmp.Or(resolver.ConnectionTypeReader, reader)
+				resolver.ConnectionTypeReader = newerdb(resolver.ConnectionTypeReader, reader)
 			case "GeoLite2-ASN":
 				break
 			}
