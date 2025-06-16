@@ -8,7 +8,6 @@ import (
 	"encoding/base64"
 	"net"
 	"net/http"
-	"net/url"
 	"slices"
 	"strings"
 	"sync"
@@ -153,14 +152,15 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	}
 
 	// decode encrypted url
-	if strings.HasPrefix(req.URL.Path, HTTPTunnelEncryptedPathPrefix) {
-		key, payload := req.URL.Path[3:len(HTTPTunnelEncryptedPathPrefix)-1], req.URL.Path[len(HTTPTunnelEncryptedPathPrefix):]
+	if strings.HasPrefix(req.RequestURI, HTTPTunnelEncryptedPathPrefix) {
+		key := HTTPTunnelEncryptedPathPrefix[3 : len(HTTPTunnelEncryptedPathPrefix)-1]
+		payload := req.RequestURI[len(HTTPTunnelEncryptedPathPrefix):]
 		if b, err := base64.StdEncoding.AppendDecode(make([]byte, 0, 1024), s2b(payload)); err == nil {
 			if cipher, err := rc4.NewCipher(s2b(key)); err == nil {
 				cipher.XORKeyStream(b, b)
-				if u, err := url.Parse(b2s(b)); err == nil {
-					req.URL = u
-				}
+				req.RequestURI = string(b)
+				req.URL.Path = req.RequestURI
+				req.URL.RawPath = req.RequestURI
 			}
 		}
 	}

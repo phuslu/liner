@@ -25,6 +25,7 @@ type HTTPDialer struct {
 	Host       string
 	Port       string
 	TLS        bool
+	RC4        bool
 	Websocket  bool
 	Insecure   bool
 	ECH        bool
@@ -147,13 +148,12 @@ func (d *HTTPDialer) DialContext(ctx context.Context, network, addr string) (net
 		// see https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-connect-tcp-05
 		host, port, _ := net.SplitHostPort(addr)
 		key := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%x%x\n", fastrandn(1<<32-1), fastrandn(1<<32-1))))
-		if d.TLS {
+		if d.TLS && !d.RC4 {
 			buf = buf.Str("GET ").Str(HTTPTunnelConnectTCPPathPrefix).Str(host).Byte('/').Str(port).Str("/ HTTP/1.1\r\n")
 		} else {
 			payload := AppendableBytes(make([]byte, 0, 1024)).Str(HTTPTunnelConnectTCPPathPrefix).Str(host).Byte('/').Str(port).Byte('/')
 			cipher, _ := rc4.NewCipher(s2b(HTTPTunnelEncryptedPathPrefix[3 : len(HTTPTunnelEncryptedPathPrefix)-1]))
 			cipher.XORKeyStream(payload, payload)
-			payload = base64.StdEncoding.AppendEncode(make([]byte, 0, 1024), payload)
 			buf = buf.Str("GET ").Str(HTTPTunnelEncryptedPathPrefix).Base64(payload).Str(" HTTP/1.1\r\n")
 		}
 		buf = buf.Str("Host: ").Str(d.Host).Str("\r\n")

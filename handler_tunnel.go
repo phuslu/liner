@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"crypto/rc4"
 	"crypto/tls"
 	"encoding/base64"
 	"errors"
@@ -269,7 +270,15 @@ func (h *TunnelHandler) wstunnel(ctx context.Context, dialer string) (net.Listen
 
 	// see https://www.ietf.org/archive/id/draft-kazuho-httpbis-reverse-tunnel-00.html
 	buf := AppendableBytes(make([]byte, 0, 2048))
-	buf = buf.Str("GET ").Str(HTTPTunnelReverseTCPPathPrefix).Str(targetHost).Byte('/').Str(targetPort).Str("/ HTTP/1.1\r\n")
+	if u.Query().Get("rc4") == "true" {
+		key := HTTPTunnelEncryptedPathPrefix[3 : len(HTTPTunnelEncryptedPathPrefix)-1]
+		payload := AppendableBytes(make([]byte, 0, 1024)).Str(HTTPTunnelReverseTCPPathPrefix).Str(targetHost).Byte('/').Str(targetPort).Byte('/')
+		cipher, _ := rc4.NewCipher(s2b(key))
+		cipher.XORKeyStream(payload, payload)
+		buf = buf.Str("GET ").Str(HTTPTunnelEncryptedPathPrefix).Base64(payload).Str(" HTTP/1.1\r\n")
+	} else {
+		buf = buf.Str("GET ").Str(HTTPTunnelReverseTCPPathPrefix).Str(targetHost).Byte('/').Str(targetPort).Str("/ HTTP/1.1\r\n")
+	}
 	buf = buf.Str("Host: ").Str(u.Hostname()).Str("\r\n")
 	buf = buf.Str("Authorization: Basic ").Base64(AppendableBytes(make([]byte, 0, 128)).Str(u.User.Username()).Byte(':').Str(first(u.User.Password()))).Str("\r\n")
 	buf = buf.Str("User-Agent: ").Str(DefaultUserAgent).Str("\r\n")
