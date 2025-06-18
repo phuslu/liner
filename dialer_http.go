@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -151,7 +152,19 @@ func (d *HTTPDialer) DialContext(ctx context.Context, network, addr string) (net
 		if d.TLS && !d.RC4 {
 			buf = buf.Str("GET ").Str(HTTPTunnelConnectTCPPathPrefix).Str(host).Byte('/').Str(port).Str("/ HTTP/1.1\r\n")
 		} else {
-			payload := AppendableBytes(make([]byte, 0, 1024)).Str(HTTPTunnelConnectTCPPathPrefix).Str(host).Byte('/').Str(port).Byte('/')
+			header := http.Header{}
+			if d.Username != "" {
+				header.Set("Proxy-Authorization", "Basic "+base64.StdEncoding.EncodeToString(s2b(d.Username+":"+d.Password)))
+			}
+			payload, _ := json.Marshal(struct {
+				Time   int64       `json:"time"`
+				Header http.Header `json:"header"`
+				URI    string      `json:"uri"`
+			}{
+				Time:   time.Now().Unix(),
+				Header: header,
+				URI:    fmt.Sprintf("%s%s/%s/", HTTPTunnelConnectTCPPathPrefix, host, port),
+			})
 			cipher, _ := rc4.NewCipher(s2b(HTTPTunnelEncryptedPathPrefix[3 : len(HTTPTunnelEncryptedPathPrefix)-1]))
 			cipher.XORKeyStream(payload, payload)
 			buf = buf.Str("GET ").Str(HTTPTunnelEncryptedPathPrefix).Base64(payload).Str(" HTTP/1.1\r\n")
@@ -162,7 +175,7 @@ func (d *HTTPDialer) DialContext(ctx context.Context, network, addr string) (net
 		buf = buf.Str("Sec-WebSocket-Version: 13\r\n")
 		buf = buf.Str("Sec-WebSocket-Key: ").Str(key).Str("\r\n")
 	}
-	if d.Username != "" {
+	if d.Username != "" && !d.RC4 {
 		buf = buf.Str("Proxy-Authorization: Basic ").Base64(s2b(d.Username + ":" + d.Password)).Str("\r\n")
 	}
 	if header, _ := ctx.Value(DialerHTTPHeaderContextKey).(http.Header); header != nil {
