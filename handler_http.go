@@ -119,6 +119,37 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		}
 	}
 
+	// decode encrypted url
+	if strings.HasPrefix(req.RequestURI, HTTPTunnelEncryptedPathPrefix) {
+		key := HTTPTunnelEncryptedPathPrefix[3 : len(HTTPTunnelEncryptedPathPrefix)-1]
+		payload := req.RequestURI[len(HTTPTunnelEncryptedPathPrefix):]
+		if b, err := base64.StdEncoding.AppendDecode(make([]byte, 0, 1024), s2b(payload)); err == nil {
+			if cipher, err := rc4.NewCipher(s2b(key)); err == nil {
+				cipher.XORKeyStream(b, b)
+				req.RequestURI = string(b)
+				req.URL.Path = req.RequestURI
+				req.URL.RawPath = req.RequestURI
+				if b[0] == '{' {
+					var payload struct {
+						Time   int64       `json:"time"`
+						Header http.Header `json:"header"`
+						URI    string      `json:"uri"`
+					}
+					if err := json.Unmarshal(b, &payload); err == nil {
+						req.RequestURI = payload.URI
+						req.URL.Path = req.RequestURI
+						req.URL.RawPath = req.RequestURI
+						for key, values := range payload.Header {
+							for _, value := range values {
+								req.Header.Add(key, value)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
 	// fix http3 request
 	if req.Proto == "" && ri.ClientHelloInfo != nil && len(ri.ClientHelloInfo.SupportedProtos) > 0 && ri.ClientHelloInfo.SupportedProtos[0] == "h3" {
 		req.Proto, req.ProtoMajor, req.ProtoMinor = "HTTP/3.0", 3, 0
@@ -148,37 +179,6 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		case "Basic":
 			if b, err := base64.StdEncoding.DecodeString(s); err == nil {
 				ri.ProxyUser.Username, ri.ProxyUser.Password, _ = strings.Cut(string(b), ":")
-			}
-		}
-	}
-
-	// decode encrypted url
-	if strings.HasPrefix(req.RequestURI, HTTPTunnelEncryptedPathPrefix) {
-		key := HTTPTunnelEncryptedPathPrefix[3 : len(HTTPTunnelEncryptedPathPrefix)-1]
-		payload := req.RequestURI[len(HTTPTunnelEncryptedPathPrefix):]
-		if b, err := base64.StdEncoding.AppendDecode(make([]byte, 0, 1024), s2b(payload)); err == nil {
-			if cipher, err := rc4.NewCipher(s2b(key)); err == nil {
-				cipher.XORKeyStream(b, b)
-				req.RequestURI = string(b)
-				req.URL.Path = req.RequestURI
-				req.URL.RawPath = req.RequestURI
-				if b[0] == '{' {
-					var payload struct {
-						Time   int64       `json:"time"`
-						Header http.Header `json:"header"`
-						URI    string      `json:"uri"`
-					}
-					if err := json.Unmarshal(b, &payload); err == nil {
-						req.RequestURI = payload.URI
-						req.URL.Path = req.RequestURI
-						req.URL.RawPath = req.RequestURI
-						for key, values := range payload.Header {
-							for _, value := range values {
-								req.Header.Add(key, value)
-							}
-						}
-					}
-				}
 			}
 		}
 	}
