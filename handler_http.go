@@ -126,23 +126,18 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		if b, err := base64.StdEncoding.AppendDecode(make([]byte, 0, 1024), s2b(payload)); err == nil {
 			if cipher, err := rc4.NewCipher(s2b(key)); err == nil {
 				cipher.XORKeyStream(b, b)
-				req.RequestURI = string(b)
-				req.URL.Path = req.RequestURI
-				req.URL.RawPath = req.RequestURI
-				if b[0] == '{' {
-					var payload struct {
-						Time   int64       `json:"time"`
-						Header http.Header `json:"header"`
-						URI    string      `json:"uri"`
-					}
-					if err := json.Unmarshal(b, &payload); err == nil {
-						req.RequestURI = payload.URI
-						req.URL.Path = req.RequestURI
-						req.URL.RawPath = req.RequestURI
-						for key, values := range payload.Header {
-							for _, value := range values {
-								req.Header.Add(key, value)
-							}
+				var payload struct {
+					Time   int64       `json:"time"`
+					Header http.Header `json:"header"`
+					URI    string      `json:"uri"`
+				}
+				if err := json.Unmarshal(b, &payload); err == nil {
+					req.RequestURI = payload.URI
+					req.URL.Path = req.RequestURI
+					req.URL.RawPath = req.RequestURI
+					for key, values := range payload.Header {
+						for _, value := range values {
+							req.Header.Add(key, value)
 						}
 					}
 				}
