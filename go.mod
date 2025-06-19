@@ -5,7 +5,7 @@ go 1.24
 require (
 	github.com/creack/pty v1.1.24
 	github.com/go-task/slim-sprig/v3 v3.0.0
-	github.com/libp2p/go-yamux/v5 v5.0.0
+	github.com/libp2p/go-yamux/v5 v5.0.1
 	github.com/mileusna/useragent v1.3.5
 	github.com/nathanaelle/password/v2 v2.0.1
 	github.com/oschwald/maxminddb-golang v1.13.1
@@ -19,7 +19,7 @@ require (
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/smallnest/ringbuffer v0.0.0-20250317021400-0da97b586904
 	github.com/valyala/bytebufferpool v1.0.0
-	github.com/xtaci/kcp-go/v5 v5.6.21
+	github.com/xtaci/kcp-go/v5 v5.6.22
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba
 	golang.org/x/crypto v0.39.0
 	golang.org/x/net v0.41.0
