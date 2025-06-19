@@ -235,7 +235,7 @@ func main() {
 				Host:       u.Hostname(),
 				Port:       cmp.Or(u.Port(), map[string]string{"http": "80", "https": "443", "ws": "80", "wss": "443"}[u.Scheme]),
 				TLS:        u.Scheme == "https" || u.Scheme == "wss",
-				RC4:        u.Query().Get("rc4") == "true",
+				Chacha20:   u.Query().Get("chacha20") == "true",
 				Websocket:  u.Scheme == "ws" || u.Scheme == "wss",
 				UserAgent:  cmp.Or(u.Query().Get("user_agent"), DefaultUserAgent),
 				Insecure:   u.Query().Get("insecure") == "true",

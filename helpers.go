@@ -33,6 +33,8 @@ import (
 	"github.com/libp2p/go-yamux/v5"
 	"github.com/nathanaelle/password/v2"
 	"github.com/phuslu/lru"
+	"golang.org/x/crypto/chacha20"
+	"golang.org/x/crypto/hkdf"
 	"golang.org/x/crypto/ocsp"
 )
 
@@ -359,6 +361,22 @@ func AppendAESCBCBase64Encryption(dst []byte, text []byte, key, iv []byte) []byt
 	}
 
 	return dst[:old+need]
+}
+
+func Chacha20NewCipher(passphrase []byte) (cipher *chacha20.Cipher, err error) {
+	key := make([]byte, 32)
+	nonce := make([]byte, 12)
+	h := hkdf.New(sha256.New, passphrase, nil, nil)
+	_, err = io.ReadFull(h, key)
+	if err != nil {
+		return
+	}
+	_, err = io.ReadFull(h, nonce)
+	if err != nil {
+		return
+	}
+	cipher, err = chacha20.NewUnauthenticatedCipher(key, nonce)
+	return
 }
 
 type FlushWriter struct {

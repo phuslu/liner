@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"cmp"
 	"context"
-	"crypto/rc4"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
@@ -26,7 +25,7 @@ type HTTPDialer struct {
 	Host       string
 	Port       string
 	TLS        bool
-	RC4        bool
+	Chacha20   bool
 	Websocket  bool
 	Insecure   bool
 	ECH        bool
@@ -149,7 +148,7 @@ func (d *HTTPDialer) DialContext(ctx context.Context, network, addr string) (net
 		// see https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-connect-tcp-05
 		host, port, _ := net.SplitHostPort(addr)
 		key := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%x%x\n", fastrandn(1<<32-1), fastrandn(1<<32-1))))
-		if d.TLS && !d.RC4 {
+		if d.TLS && !d.Chacha20 {
 			buf = buf.Str("GET ").Str(HTTPTunnelConnectTCPPathPrefix).Str(host).Byte('/').Str(port).Str("/ HTTP/1.1\r\n")
 		} else {
 			header := http.Header{}
@@ -165,7 +164,11 @@ func (d *HTTPDialer) DialContext(ctx context.Context, network, addr string) (net
 				Header: header,
 				URI:    fmt.Sprintf("%s%s/%s/", HTTPTunnelConnectTCPPathPrefix, host, port),
 			})
-			cipher, _ := rc4.NewCipher(s2b(HTTPTunnelEncryptedPathPrefix[3 : len(HTTPTunnelEncryptedPathPrefix)-1]))
+			passphrase := HTTPTunnelEncryptedPathPrefix[3 : len(HTTPTunnelEncryptedPathPrefix)-1]
+			cipher, err := Chacha20NewCipher(s2b(passphrase))
+			if err != nil {
+				return nil, err
+			}
 			cipher.XORKeyStream(payload, payload)
 			buf = buf.Str("GET ").Str(HTTPTunnelEncryptedPathPrefix).Base64(payload).Str(" HTTP/1.1\r\n")
 		}
@@ -175,7 +178,7 @@ func (d *HTTPDialer) DialContext(ctx context.Context, network, addr string) (net
 		buf = buf.Str("Sec-WebSocket-Version: 13\r\n")
 		buf = buf.Str("Sec-WebSocket-Key: ").Str(key).Str("\r\n")
 	}
-	if d.Username != "" && !d.RC4 {
+	if d.Username != "" && !d.Chacha20 {
 		buf = buf.Str("Proxy-Authorization: Basic ").Base64(s2b(d.Username + ":" + d.Password)).Str("\r\n")
 	}
 	if header, _ := ctx.Value(DialerHTTPHeaderContextKey).(http.Header); header != nil {
