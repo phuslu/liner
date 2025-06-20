@@ -39,7 +39,7 @@ import (
 // fastrandn returns a pseudorandom uint32 in [0,n).
 //
 //go:noescape
-//go:linkname fastrandn runtime.fastrandn
+//go:linkname fastrandn runtime.cheaprandn
 func fastrandn(x uint32) uint32
 
 func b2s(b []byte) string {
