@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hkdf"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
@@ -34,7 +35,6 @@ import (
 	"github.com/nathanaelle/password/v2"
 	"github.com/phuslu/lru"
 	"golang.org/x/crypto/chacha20"
-	"golang.org/x/crypto/hkdf"
 	"golang.org/x/crypto/ocsp"
 )
 
@@ -370,9 +370,8 @@ func AppendAESCBCBase64Encryption(dst []byte, text []byte, key, iv []byte) []byt
 }
 
 func Chacha20NewEncryptStreamCipher(passphrase []byte) (cipher *chacha20.Cipher, nonce []byte, err error) {
-	key := make([]byte, 32)
-	h := hkdf.New(sha256.New, passphrase, nil, nil)
-	_, err = io.ReadFull(h, key)
+	var key []byte
+	key, err = hkdf.Key(sha256.New, passphrase, nil, "20151012", 32)
 	if err != nil {
 		return
 	}
@@ -386,9 +385,8 @@ func Chacha20NewEncryptStreamCipher(passphrase []byte) (cipher *chacha20.Cipher,
 }
 
 func Chacha20NewDecryptStreamCipher(passphrase []byte, nonce []byte) (cipher *chacha20.Cipher, err error) {
-	key := make([]byte, 32)
-	h := hkdf.New(sha256.New, passphrase, nil, nil)
-	_, err = io.ReadFull(h, key)
+	var key []byte
+	key, err = hkdf.Key(sha256.New, passphrase, nil, "20151012", 32)
 	if err != nil {
 		return
 	}
