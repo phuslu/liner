@@ -1,10 +1,12 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"crypto/tls"
 	_ "embed"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"net"
 	"net/http"
@@ -121,16 +123,18 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	// decode encrypted url
 	if strings.HasPrefix(req.RequestURI, HTTPTunnelEncryptedPathPrefix) {
 		passphrase := HTTPTunnelEncryptedPathPrefix[3 : len(HTTPTunnelEncryptedPathPrefix)-1]
-		nonce, payload, _ := strings.Cut(req.RequestURI[len(HTTPTunnelEncryptedPathPrefix):], "/")
-		if b, err := base64.StdEncoding.AppendDecode(make([]byte, 0, 1024), s2b(payload)); err == nil {
-			if cipher, err := Chacha20NewDecryptStreamCipher(s2b(passphrase), s2b(nonce)); err == nil {
-				cipher.XORKeyStream(b, b)
+		s1, s2, _ := strings.Cut(req.RequestURI[len(HTTPTunnelEncryptedPathPrefix):], "/")
+		nonce, err1 := hex.AppendDecode(make([]byte, 0, 32), s2b(s1))
+		payload, err2 := base64.StdEncoding.AppendDecode(make([]byte, 0, 2048), s2b(s2))
+		if err := cmp.Or(err1, err2); err == nil {
+			if cipher, err := Chacha20NewDecryptStreamCipher(s2b(passphrase), nonce); err == nil {
+				cipher.XORKeyStream(payload, payload)
 				var info struct {
 					Time   int64       `json:"time"`
 					Header http.Header `json:"header"`
 					URI    string      `json:"uri"`
 				}
-				if err := json.Unmarshal(b, &info); err == nil {
+				if err := json.Unmarshal(payload, &info); err == nil {
 					req.RequestURI = info.URI
 					req.URL.Path = req.RequestURI
 					req.URL.RawPath = req.RequestURI

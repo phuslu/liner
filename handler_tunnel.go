@@ -292,7 +292,7 @@ func (h *TunnelHandler) wstunnel(ctx context.Context, dialer string) (net.Listen
 			return nil, err
 		}
 		cipher.XORKeyStream(payload, payload)
-		buf = buf.Str("GET ").Str(HTTPTunnelEncryptedPathPrefix).Bytes(nonce).Byte('/').Base64(payload).Str(" HTTP/1.1\r\n")
+		buf = buf.Str("GET ").Str(HTTPTunnelEncryptedPathPrefix).Hex(nonce).Byte('/').Base64(payload).Str(" HTTP/1.1\r\n")
 	} else {
 		buf = buf.Str("GET ").Str(HTTPTunnelReverseTCPPathPrefix).Str(targetHost).Byte('/').Str(targetPort).Str("/ HTTP/1.1\r\n")
 	}

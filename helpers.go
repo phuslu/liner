@@ -6,10 +6,12 @@ import (
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hkdf"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -34,7 +36,6 @@ import (
 	"github.com/nathanaelle/password/v2"
 	"github.com/phuslu/lru"
 	"golang.org/x/crypto/chacha20"
-	"golang.org/x/crypto/hkdf"
 	"golang.org/x/crypto/ocsp"
 )
 
@@ -370,25 +371,22 @@ func AppendAESCBCBase64Encryption(dst []byte, text []byte, key, iv []byte) []byt
 }
 
 func Chacha20NewEncryptStreamCipher(passphrase []byte) (cipher *chacha20.Cipher, nonce []byte, err error) {
-	key := make([]byte, 32)
-	h := hkdf.New(sha256.New, passphrase, nil, nil)
-	_, err = io.ReadFull(h, key)
+	var key []byte
+	key, err = hkdf.Key(sha256.New, passphrase, nil, "20151012", 32)
 	if err != nil {
 		return
 	}
-	nonce = make([]byte, 0, 12)
-	n := fastrand()
-	nonce = hex.AppendEncode(nonce, (*[4]byte)(unsafe.Pointer(&n))[:])
-	n = fastrand()
-	nonce = hex.AppendEncode(nonce, (*[4]byte)(unsafe.Pointer(&n))[:2])
+	nonce = make([]byte, 12)
+	binary.NativeEndian.PutUint32(nonce[0:], fastrand())
+	binary.NativeEndian.PutUint32(nonce[4:], fastrand())
+	binary.NativeEndian.PutUint32(nonce[8:], fastrand())
 	cipher, err = chacha20.NewUnauthenticatedCipher(key, nonce)
 	return
 }
 
 func Chacha20NewDecryptStreamCipher(passphrase []byte, nonce []byte) (cipher *chacha20.Cipher, err error) {
-	key := make([]byte, 32)
-	h := hkdf.New(sha256.New, passphrase, nil, nil)
-	_, err = io.ReadFull(h, key)
+	var key []byte
+	key, err = hkdf.Key(sha256.New, passphrase, nil, "20151012", 32)
 	if err != nil {
 		return
 	}
