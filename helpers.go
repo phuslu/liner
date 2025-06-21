@@ -38,6 +38,12 @@ import (
 	"golang.org/x/crypto/ocsp"
 )
 
+// fastrand returns a pseudorandom uint32.
+//
+//go:noescape
+//go:linkname fastrand runtime.cheaprand
+func fastrand() uint32
+
 // fastrandn returns a pseudorandom uint32 in [0,n).
 //
 //go:noescape
@@ -363,15 +369,26 @@ func AppendAESCBCBase64Encryption(dst []byte, text []byte, key, iv []byte) []byt
 	return dst[:old+need]
 }
 
-func Chacha20NewCipher(passphrase []byte) (cipher *chacha20.Cipher, err error) {
+func Chacha20NewEncryptStreamCipher(passphrase []byte) (cipher *chacha20.Cipher, nonce []byte, err error) {
 	key := make([]byte, 32)
-	nonce := make([]byte, 12)
 	h := hkdf.New(sha256.New, passphrase, nil, nil)
 	_, err = io.ReadFull(h, key)
 	if err != nil {
 		return
 	}
-	_, err = io.ReadFull(h, nonce)
+	nonce = make([]byte, 0, 12)
+	n := fastrand()
+	nonce = hex.AppendEncode(nonce, (*[4]byte)(unsafe.Pointer(&n))[:])
+	n = fastrand()
+	nonce = hex.AppendEncode(nonce, (*[4]byte)(unsafe.Pointer(&n))[:2])
+	cipher, err = chacha20.NewUnauthenticatedCipher(key, nonce)
+	return
+}
+
+func Chacha20NewDecryptStreamCipher(passphrase []byte, nonce []byte) (cipher *chacha20.Cipher, err error) {
+	key := make([]byte, 32)
+	h := hkdf.New(sha256.New, passphrase, nil, nil)
+	_, err = io.ReadFull(h, key)
 	if err != nil {
 		return
 	}

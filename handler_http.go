@@ -121,9 +121,9 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	// decode encrypted url
 	if strings.HasPrefix(req.RequestURI, HTTPTunnelEncryptedPathPrefix) {
 		passphrase := HTTPTunnelEncryptedPathPrefix[3 : len(HTTPTunnelEncryptedPathPrefix)-1]
-		payload := req.RequestURI[len(HTTPTunnelEncryptedPathPrefix):]
+		nonce, payload, _ := strings.Cut(req.RequestURI[len(HTTPTunnelEncryptedPathPrefix):], "/")
 		if b, err := base64.StdEncoding.AppendDecode(make([]byte, 0, 1024), s2b(payload)); err == nil {
-			if cipher, err := Chacha20NewCipher(s2b(passphrase)); err == nil {
+			if cipher, err := Chacha20NewDecryptStreamCipher(s2b(passphrase), s2b(nonce)); err == nil {
 				cipher.XORKeyStream(b, b)
 				var info struct {
 					Time   int64       `json:"time"`

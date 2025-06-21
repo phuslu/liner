@@ -287,12 +287,12 @@ func (h *TunnelHandler) wstunnel(ctx context.Context, dialer string) (net.Listen
 			URI:    fmt.Sprintf("%s%s/%s/", HTTPTunnelReverseTCPPathPrefix, targetHost, targetPort),
 		})
 		passphrase := HTTPTunnelEncryptedPathPrefix[3 : len(HTTPTunnelEncryptedPathPrefix)-1]
-		cipher, err := Chacha20NewCipher(s2b(passphrase))
+		cipher, nonce, err := Chacha20NewEncryptStreamCipher(s2b(passphrase))
 		if err != nil {
 			return nil, err
 		}
 		cipher.XORKeyStream(payload, payload)
-		buf = buf.Str("GET ").Str(HTTPTunnelEncryptedPathPrefix).Base64(payload).Str(" HTTP/1.1\r\n")
+		buf = buf.Str("GET ").Str(HTTPTunnelEncryptedPathPrefix).Bytes(nonce).Byte('/').Base64(payload).Str(" HTTP/1.1\r\n")
 	} else {
 		buf = buf.Str("GET ").Str(HTTPTunnelReverseTCPPathPrefix).Str(targetHost).Byte('/').Str(targetPort).Str("/ HTTP/1.1\r\n")
 	}
