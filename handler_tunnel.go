@@ -268,11 +268,11 @@ func (h *TunnelHandler) wstunnel(ctx context.Context, dialer string) (net.Listen
 		return nil, fmt.Errorf("invalid remote addr: %s", h.Config.Listen[0])
 	}
 
-	useChacha20 := u.Query().Get("chacha20") == "true"
+	chacha20Key := u.Query().Get("chacha20_key")
 
 	// see https://www.ietf.org/archive/id/draft-kazuho-httpbis-reverse-tunnel-00.html
 	buf := AppendableBytes(make([]byte, 0, 2048))
-	if useChacha20 {
+	if chacha20Key != "" {
 		header := http.Header{}
 		if username := u.User.Username(); username != "" {
 			header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString(s2b(username+":"+first(u.User.Password()))))
@@ -286,8 +286,7 @@ func (h *TunnelHandler) wstunnel(ctx context.Context, dialer string) (net.Listen
 			Header: header,
 			URI:    fmt.Sprintf("%s%s/%s/", HTTPTunnelReverseTCPPathPrefix, targetHost, targetPort),
 		})
-		passphrase := HTTPTunnelEncryptedPathPrefix[3 : len(HTTPTunnelEncryptedPathPrefix)-1]
-		cipher, nonce, err := Chacha20NewEncryptStreamCipher(s2b(passphrase))
+		cipher, nonce, err := Chacha20NewEncryptStreamCipher(s2b(chacha20Key))
 		if err != nil {
 			return nil, err
 		}
@@ -297,7 +296,7 @@ func (h *TunnelHandler) wstunnel(ctx context.Context, dialer string) (net.Listen
 		buf = buf.Str("GET ").Str(HTTPTunnelReverseTCPPathPrefix).Str(targetHost).Byte('/').Str(targetPort).Str("/ HTTP/1.1\r\n")
 	}
 	buf = buf.Str("Host: ").Str(u.Hostname()).Str("\r\n")
-	if !useChacha20 {
+	if chacha20Key == "" {
 		buf = buf.Str("Authorization: Basic ").Base64(AppendableBytes(make([]byte, 0, 128)).Str(u.User.Username()).Byte(':').Str(first(u.User.Password()))).Str("\r\n")
 	}
 	buf = buf.Str("User-Agent: ").Str(DefaultUserAgent).Str("\r\n")

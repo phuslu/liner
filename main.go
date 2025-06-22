@@ -230,22 +230,22 @@ func main() {
 			}
 		case "http", "https", "ws", "wss":
 			return &HTTPDialer{
-				Username:   u.User.Username(),
-				Password:   first(u.User.Password()),
-				Host:       u.Hostname(),
-				Port:       cmp.Or(u.Port(), map[string]string{"http": "80", "https": "443", "ws": "80", "wss": "443"}[u.Scheme]),
-				TLS:        u.Scheme == "https" || u.Scheme == "wss",
-				Chacha20:   u.Query().Get("chacha20") == "true",
-				Websocket:  u.Scheme == "ws" || u.Scheme == "wss",
-				UserAgent:  cmp.Or(u.Query().Get("user_agent"), DefaultUserAgent),
-				Insecure:   u.Query().Get("insecure") == "true",
-				ECH:        u.Query().Get("ech") == "true",
-				CACert:     u.Query().Get("cacert"),
-				ClientKey:  u.Query().Get("key"),
-				ClientCert: u.Query().Get("cert"),
-				Resolve:    map[string]string{u.Host: u.Query().Get("resolve")},
-				Dialer:     underlay,
-				Resolver:   resolver.Resolver,
+				Username:    u.User.Username(),
+				Password:    first(u.User.Password()),
+				Host:        u.Hostname(),
+				Port:        cmp.Or(u.Port(), map[string]string{"http": "80", "https": "443", "ws": "80", "wss": "443"}[u.Scheme]),
+				TLS:         u.Scheme == "https" || u.Scheme == "wss",
+				Chacha20Key: u.Query().Get("chacha20_key"),
+				Websocket:   u.Scheme == "ws" || u.Scheme == "wss",
+				UserAgent:   cmp.Or(u.Query().Get("user_agent"), DefaultUserAgent),
+				Insecure:    u.Query().Get("insecure") == "true",
+				ECH:         u.Query().Get("ech") == "true",
+				CACert:      u.Query().Get("cacert"),
+				ClientKey:   u.Query().Get("key"),
+				ClientCert:  u.Query().Get("cert"),
+				Resolve:     map[string]string{u.Host: u.Query().Get("resolve")},
+				Dialer:      underlay,
+				Resolver:    resolver.Resolver,
 			}
 		case "http2":
 			return &HTTP2Dialer{

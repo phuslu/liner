@@ -17,6 +17,7 @@ type HTTPConfig struct {
 	KcpKey       string   `json:"kcp_key" yaml:"kcp_key"`
 	Keyfile      string   `json:"keyfile" yaml:"keyfile"`
 	Certfile     string   `json:"certfile" yaml:"certfile"`
+	Chacha20Key  string   `json:"chacha20_key" yaml:"chacha20_key"`
 	ServerConfig map[string]struct {
 		Keyfile        string `json:"keyfile" yaml:"keyfile"`
 		Certfile       string `json:"certfile" yaml:"certfile"`
