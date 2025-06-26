@@ -52,26 +52,10 @@ func (d *HTTP3Dialer) init() {
 
 	d.transport = &http3.Transport{
 		DisableCompression: false,
-		EnableDatagrams:    false,
+		EnableDatagrams:    true,
 		Dial: func(ctx context.Context, addr string, tlsConf *tls.Config, conf *quic.Config) (*quic.Conn, error) {
-			host := d.Host
-			if d.Resolver != nil {
-				if ips, err := d.Resolver.LookupNetIP(ctx, "ip", host); err == nil && len(ips) != 0 {
-					// host = ips[fastrandn(uint32(len(ips)))].String()
-					host = ips[0].String()
-				}
-			}
-			pconn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4zero, Port: 0})
-			if err != nil {
-				return nil, err
-			}
-			raddr, err := net.ResolveUDPAddr("udp", net.JoinHostPort(host, cmp.Or(d.Port, "443")))
-			if err != nil {
-				return nil, err
-			}
-			return quic.DialEarly(ctx,
-				pconn,
-				raddr,
+			return quic.DialAddrEarly(ctx,
+				net.JoinHostPort(d.Host, cmp.Or(d.Port, "443")),
 				&tls.Config{
 					NextProtos:         []string{"h3"},
 					InsecureSkipVerify: d.Insecure,
@@ -79,12 +63,12 @@ func (d *HTTP3Dialer) init() {
 					ClientSessionCache: tls.NewLRUClientSessionCache(1024),
 				},
 				&quic.Config{
-					DisablePathMTUDiscovery: false,
-					EnableDatagrams:         false,
-					MaxIncomingUniStreams:   200,
-					MaxIncomingStreams:      200,
-					// MaxStreamReceiveWindow:     6 * 1024 * 1024,
-					// MaxConnectionReceiveWindow: 15 * 1024 * 1024,
+					DisablePathMTUDiscovery:    false,
+					EnableDatagrams:            true,
+					MaxIncomingUniStreams:      200,
+					MaxIncomingStreams:         200,
+					MaxStreamReceiveWindow:     12 * 1024 * 1024,
+					MaxConnectionReceiveWindow: 100 * 1024 * 1024,
 				},
 			)
 		},
