@@ -402,7 +402,9 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialer string) (net.Listen
 		EnableDatagrams:    true,
 		Dial: func(ctx context.Context, addr string, tlsConf *tls.Config, conf *quic.Config) (*quic.Conn, error) {
 			host := u.Hostname()
-			if h.Resolver != nil {
+			if resolve := u.Query().Get("resolve"); resolve != "" {
+				host = resolve
+			} else if h.Resolver != nil {
 				if ips, err := h.Resolver.LookupNetIP(ctx, "ip", host); err == nil && len(ips) != 0 {
 					// host = ips[fastrandn(uint32(len(ips)))].String()
 					host = ips[0].String()
