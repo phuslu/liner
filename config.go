@@ -14,7 +14,6 @@ import (
 type HTTPConfig struct {
 	Listen       []string `json:"listen" yaml:"listen"`
 	ServerName   []string `json:"server_name" yaml:"server_name"`
-	KcpKey       string   `json:"kcp_key" yaml:"kcp_key"`
 	Keyfile      string   `json:"keyfile" yaml:"keyfile"`
 	Certfile     string   `json:"certfile" yaml:"certfile"`
 	Chacha20Key  string   `json:"chacha20_key" yaml:"chacha20_key"`
@@ -161,7 +160,6 @@ type Config struct {
 		IdleConnTimeout  int    `json:"idle_conn_timeout" yaml:"idle_conn_timeout"`
 		MaxIdleConns     int    `json:"max_idle_conns" yaml:"max_idle_conns"`
 		DisableHttp3     bool   `json:"disable_http3" yaml:"disable_http3"`
-		DisableKcp       bool   `json:"disable_kcp" yaml:"disable_kcp"`
 		SetProcessName   string `json:"set_process_name" yaml:"set_process_name"`
 	} `json:"global" yaml:"global"`
 	Cron []struct {

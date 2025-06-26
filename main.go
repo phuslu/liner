@@ -33,7 +33,6 @@ import (
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/robfig/cron/v3"
-	"github.com/xtaci/kcp-go/v5"
 	"go4.org/netipx"
 	"golang.org/x/net/http2"
 )
@@ -209,10 +208,6 @@ func main() {
 	dialerof := func(u *url.URL, underlay Dialer) Dialer {
 		switch u.Scheme {
 		case "local":
-			var kcpKey kcp.BlockCrypt
-			if s := u.Query().Get("kcp"); s != "" {
-				kcpKey = must(kcp.NewAESBlockCrypt(AppendableBytes([]byte(s)).Pad('\x00', 16)))
-			}
 			return &LocalDialer{
 				Resolver:        resolver.Resolver,
 				ResolveCache:    dialer.ResolveCache,
@@ -220,7 +215,6 @@ func main() {
 				PerferIPv6:      u.Query().Get("prefer_ipv6") == "true",
 				Concurrency:     2,
 				ForbidLocalAddr: config.Global.ForbidLocalAddr,
-				KCPBlockCrypt:   kcpKey,
 				DialTimeout:     time.Duration(cmp.Or(first(strconv.Atoi(u.Query().Get("dial_timeout"))), config.Global.DialTimeout, 15)) * time.Second,
 				TCPKeepAlive:    30 * time.Second,
 				TLSConfig: &tls.Config{
@@ -564,7 +558,6 @@ func main() {
 	// listen and serve http
 	h1handlers := map[string]struct {
 		HTTPHandler HTTPHandler
-		KCPKey      string
 	}{}
 	for _, httpConfig := range config.Http {
 		httpConfig.ServerName = append(httpConfig.ServerName, "", "localhost", "127.0.0.1")
@@ -618,10 +611,8 @@ func main() {
 		for _, listen := range httpConfig.Listen {
 			h1handlers[listen] = struct {
 				HTTPHandler HTTPHandler
-				KCPKey      string
 			}{
 				HTTPHandler: handler,
-				KCPKey:      httpConfig.KcpKey,
 			}
 		}
 	}
@@ -657,16 +648,6 @@ func main() {
 		go server.Serve(ln)
 
 		servers = append(servers, server)
-
-		// start kcp server
-		if !config.Global.DisableKcp && handler.KCPKey != "" {
-			kcpKey := must(kcp.NewAESBlockCrypt(AppendableBytes([]byte(handler.KCPKey)).Pad('\x00', 16)))
-			ln, err := kcp.ListenWithOptions(addr, kcpKey, 10, 3)
-			if err != nil {
-				log.Fatal().Err(err).Str("address", addr).Msg("kcp.ListenWithOptions error")
-			}
-			go server.Serve(ln)
-		}
 	}
 
 	// socks handler
