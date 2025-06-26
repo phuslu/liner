@@ -460,15 +460,15 @@ func (stream HTTP2RequestStream) LocalAddr() net.Addr {
 }
 
 func (stream HTTP2RequestStream) SetDeadline(t time.Time) error {
-	return &net.OpError{Op: "set", Net: "http2", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
+	return nil
 }
 
 func (stream HTTP2RequestStream) SetReadDeadline(t time.Time) error {
-	return &net.OpError{Op: "set", Net: "http2", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
+	return nil
 }
 
 func (stream HTTP2RequestStream) SetWriteDeadline(t time.Time) error {
-	return &net.OpError{Op: "set", Net: "http2", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
+	return nil
 }
 
 type TCPListener struct {

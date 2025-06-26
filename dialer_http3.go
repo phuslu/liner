@@ -208,13 +208,16 @@ func (c *http3Stream) LocalAddr() net.Addr {
 }
 
 func (c *http3Stream) SetDeadline(t time.Time) error {
-	return &net.OpError{Op: "set", Net: "http3", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
+	return nil
+	// return &net.OpError{Op: "set", Net: "http3", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
 }
 
 func (c *http3Stream) SetReadDeadline(t time.Time) error {
-	return &net.OpError{Op: "set", Net: "http3", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
+	return nil
+	// return &net.OpError{Op: "set", Net: "http3", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
 }
 
 func (c *http3Stream) SetWriteDeadline(t time.Time) error {
-	return &net.OpError{Op: "set", Net: "http3", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
+	return nil
+	// return &net.OpError{Op: "set", Net: "http3", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
 }

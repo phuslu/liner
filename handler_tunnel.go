@@ -389,9 +389,6 @@ func (h *TunnelHandler) wstunnel(ctx context.Context, dialer string) (net.Listen
 func (h *TunnelHandler) h3tunnel(ctx context.Context, dialer string) (net.Listener, error) {
 	log.Info().Str("dialer", dialer).Msg("connecting tunnel host")
 
-	ctx, cancel := context.WithTimeout(ctx, time.Duration(h.Config.DialTimeout)*time.Second)
-	defer cancel()
-
 	u, err := url.Parse(dialer)
 	if err != nil {
 		return nil, err
@@ -402,7 +399,7 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialer string) (net.Listen
 
 	transport := &http3.Transport{
 		DisableCompression: false,
-		EnableDatagrams:    false,
+		EnableDatagrams:    true,
 		Dial: func(ctx context.Context, addr string, tlsConf *tls.Config, conf *quic.Config) (*quic.Conn, error) {
 			host := u.Hostname()
 			if h.Resolver != nil {
@@ -429,12 +426,12 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialer string) (net.Listen
 					ClientSessionCache: tls.NewLRUClientSessionCache(1024),
 				},
 				&quic.Config{
-					DisablePathMTUDiscovery: false,
-					EnableDatagrams:         false,
-					MaxIncomingUniStreams:   200,
-					MaxIncomingStreams:      200,
-					// MaxStreamReceiveWindow:     6 * 1024 * 1024,
-					// MaxConnectionReceiveWindow: 15 * 1024 * 1024,
+					DisablePathMTUDiscovery:    false,
+					EnableDatagrams:            true,
+					MaxIncomingUniStreams:      200,
+					MaxIncomingStreams:         200,
+					MaxStreamReceiveWindow:     6 * 1024 * 1024,
+					MaxConnectionReceiveWindow: 100 * 1024 * 1024,
 				},
 			)
 		},
