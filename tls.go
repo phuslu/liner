@@ -344,7 +344,7 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 
 var HTTP3ClientHelloInfoContextKey = struct{}{}
 
-func (m *TLSInspector) HTTP3ConnContext(ctx context.Context, conn quic.Connection) context.Context {
+func (m *TLSInspector) HTTP3ConnContext(ctx context.Context, conn *quic.Conn) context.Context {
 	addr := conn.RemoteAddr().String()
 	if info, ok := m.ClientHelloMap.Load(addr); ok {
 		AppendJA4Fingerprint(info.JA4[:0], TLSVersion(conn.ConnectionState().TLS.Version), info.ClientHelloInfo, true)

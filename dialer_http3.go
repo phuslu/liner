@@ -53,7 +53,7 @@ func (d *HTTP3Dialer) init() {
 	d.transport = &http3.Transport{
 		DisableCompression: false,
 		EnableDatagrams:    false,
-		Dial: func(ctx context.Context, addr string, tlsConf *tls.Config, conf *quic.Config) (quic.EarlyConnection, error) {
+		Dial: func(ctx context.Context, addr string, tlsConf *tls.Config, conf *quic.Config) (*quic.Conn, error) {
 			host := d.Host
 			if d.Resolver != nil {
 				if ips, err := d.Resolver.LookupNetIP(ctx, "ip", host); err == nil && len(ips) != 0 {
