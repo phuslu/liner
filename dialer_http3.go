@@ -31,8 +31,8 @@ type HTTP3Dialer struct {
 	Port      string
 	UserAgent string
 	Insecure  bool
+	Resolve   string
 	Websocket bool
-	Resolver  *Resolver
 
 	mu        sync.Mutex
 	transport *http3.Transport
@@ -55,7 +55,7 @@ func (d *HTTP3Dialer) init() {
 		EnableDatagrams:    true,
 		Dial: func(ctx context.Context, addr string, tlsConf *tls.Config, conf *quic.Config) (*quic.Conn, error) {
 			return quic.DialAddrEarly(ctx,
-				net.JoinHostPort(d.Host, cmp.Or(d.Port, "443")),
+				net.JoinHostPort(cmp.Or(d.Resolve, d.Host), cmp.Or(d.Port, "443")),
 				&tls.Config{
 					NextProtos:         []string{"h3"},
 					InsecureSkipVerify: d.Insecure,

@@ -263,8 +263,8 @@ func main() {
 				Port:      u.Port(),
 				UserAgent: cmp.Or(u.Query().Get("user_agent"), DefaultUserAgent),
 				Insecure:  u.Query().Get("insecure") == "true",
+				Resolve:   u.Query().Get("resolve"),
 				Websocket: strings.HasSuffix(u.Scheme, "+wss"),
-				Resolver:  resolver.Resolver,
 			}
 		case "socks", "socks5", "socks5h":
 			return &Socks5Dialer{
