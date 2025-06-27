@@ -368,7 +368,7 @@ func main() {
 		DeferAccept: true,
 	}
 
-	memoryListeners := xsync.NewMap[string, *MemoryListener](xsync.WithSerialResize())
+	memoryListeners := new(sync.Map)
 	for _, sshConfig := range config.Ssh {
 		for _, listen := range sshConfig.Listen {
 			memoryListeners.Store(listen, nil)
@@ -628,7 +628,7 @@ func main() {
 		var ln net.Listener
 
 		if _, ok := memoryListeners.Load(addr); ok && (strings.HasPrefix(addr, "240.0.0.1:") || strings.HasPrefix(addr, "@")) {
-			log.Info().Str("version", version).Str("address", addr).Msg("liner listen and serve")
+			log.Info().Str("version", version).Str("address", addr).Msg("liner listen and serve in memory")
 			mln := &MemoryListener{}
 			memoryListeners.Store(addr, mln)
 			ln = mln
@@ -737,7 +737,7 @@ func main() {
 			var ln net.Listener
 
 			if _, ok := memoryListeners.Load(addr); ok && (strings.HasPrefix(addr, "240.0.0.1:") || strings.HasPrefix(addr, "@")) {
-				log.Info().Str("version", version).Str("address", addr).Msg("liner listen and serve ssh")
+				log.Info().Str("version", version).Str("address", addr).Msg("liner listen and serve ssh in memory")
 				mln := &MemoryListener{}
 				memoryListeners.Store(addr, mln)
 				ln = mln

@@ -19,11 +19,11 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/libp2p/go-yamux/v5"
 	"github.com/phuslu/log"
-	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/smallnest/ringbuffer"
@@ -32,7 +32,7 @@ import (
 
 type TunnelHandler struct {
 	Config          TunnelConfig
-	MemoryListeners *xsync.Map[string, *MemoryListener]
+	MemoryListeners *sync.Map // map[string]*MemoryListener
 	Resolver        *Resolver
 	LocalDialer     Dialer
 	Dialers         map[string]string
@@ -536,7 +536,8 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialer string) (net.Listen
 
 func (h *TunnelHandler) handle(ctx context.Context, rconn net.Conn, laddr string) {
 	if h.MemoryListeners != nil {
-		if ln, ok := h.MemoryListeners.Load(h.Config.ProxyPass); ok && ln != nil {
+		if v, ok := h.MemoryListeners.Load(h.Config.ProxyPass); ok && v != nil {
+			ln, _ := v.(*MemoryListener)
 			log.Info().Str("remote_host", rconn.RemoteAddr().String()).Str("local_addr", ln.Addr().String()).Msg("tunnel handler memory listener local addr")
 			ln.SendConn(rconn)
 			return

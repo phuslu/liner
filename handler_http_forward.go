@@ -28,7 +28,7 @@ import (
 type HTTPForwardHandler struct {
 	Config          HTTPConfig
 	ForwardLogger   log.Logger
-	MemoryListeners *xsync.Map[string, *MemoryListener]
+	MemoryListeners *sync.Map // map[string]*MemoryListener
 	MemoryDialers   *sync.Map // map[string]*MemoryDialer
 	LocalDialer     *LocalDialer
 	LocalTransport  *http.Transport
@@ -347,7 +347,8 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		}
 
 		if h.MemoryListeners != nil {
-			if ln, ok := h.MemoryListeners.Load(req.Host); ok && ln != nil {
+			if v, ok := h.MemoryListeners.Load(req.Host); ok && v != nil {
+				ln, _ := v.(*MemoryListener)
 				switch req.ProtoMajor {
 				case 1:
 					lconn, _, err := http.NewResponseController(rw).Hijack()
