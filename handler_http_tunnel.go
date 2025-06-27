@@ -183,7 +183,7 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 			log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Str("local_addr", ri.ServerAddr).Msg("tunnel resolve local addr error")
 			http.Error(rw, err.Error(), http.StatusInternalServerError)
 		}
-		conn = HTTP2RequestStream{req.Body, rw, raddr, laddr}
+		conn = HTTPRequestStream{req.Body, rw, http.NewResponseController(rw), raddr, laddr}
 
 		flusher, ok := rw.(http.Flusher)
 		if !ok {

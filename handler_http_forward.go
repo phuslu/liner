@@ -369,7 +369,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 				case 2:
 					raddr, laddr := first(net.ResolveTCPAddr("tcp", req.RemoteAddr)), first(net.ResolveTCPAddr("tcp", ri.ServerAddr))
 					rw.WriteHeader(http.StatusOK)
-					ln.SendConn(HTTP2RequestStream{req.Body, rw, raddr, laddr})
+					ln.SendConn(HTTPRequestStream{req.Body, rw, http.NewResponseController(rw), raddr, laddr})
 					log.Info().Context(ri.LogContext).Str("memory_listener_addr", ln.Addr().String()).Msg("http2 forward handler memory listener local addr")
 					return
 				}
@@ -444,7 +444,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			}
 			flusher.Flush()
 
-			w = FlushWriter{rw}
+			w = HTTPFlushWriter{rw, http.NewResponseController(rw)}
 			r = req.Body
 		} else {
 			hijacker, ok := rw.(http.Hijacker)

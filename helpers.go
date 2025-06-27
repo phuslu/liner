@@ -394,80 +394,68 @@ func Chacha20NewDecryptStreamCipher(passphrase []byte, nonce []byte) (cipher *ch
 	return
 }
 
-type FlushWriter struct {
-	w io.Writer
+type HTTPFlushWriter struct {
+	http.ResponseWriter
+	*http.ResponseController
 }
 
-func (fw FlushWriter) Write(p []byte) (n int, err error) {
-	n, err = fw.w.Write(p)
-	if f, ok := fw.w.(http.Flusher); ok {
-		f.Flush()
+func (w HTTPFlushWriter) Write(p []byte) (n int, err error) {
+	n, err = w.ResponseWriter.Write(p)
+	if err != nil {
+		return 0, err
+	}
+	//nolint:bodyclose
+	err = w.ResponseController.Flush()
+	if err != nil {
+		return 0, err
 	}
 	return
 }
 
-type HTTP2ReadWriteCloser struct {
+type HTTPRequestStream struct {
 	io.ReadCloser
 	http.ResponseWriter
-}
-
-func (rwc HTTP2ReadWriteCloser) Write(p []byte) (n int, err error) {
-	n, err = rwc.ResponseWriter.Write(p)
-	if err != nil {
-		return 0, err
-	}
-
-	//nolint:bodyclose
-	err = http.NewResponseController(rwc.ResponseWriter).Flush()
-	if err != nil {
-		return 0, err
-	}
-	return n, nil
-}
-
-type HTTP2RequestStream struct {
-	io.ReadCloser
-	http.ResponseWriter
+	*http.ResponseController
 	raddr *net.TCPAddr
 	laddr *net.TCPAddr
 }
 
-func (stream HTTP2RequestStream) Write(p []byte) (n int, err error) {
+func (stream HTTPRequestStream) Write(p []byte) (n int, err error) {
 	n, err = stream.ResponseWriter.Write(p)
 	if err != nil {
 		return 0, err
 	}
-
 	//nolint:bodyclose
-	err = http.NewResponseController(stream.ResponseWriter).Flush()
+	err = stream.ResponseController.Flush()
 	if err != nil {
 		return 0, err
 	}
 	return n, nil
 }
-func (stream HTTP2RequestStream) RemoteAddr() net.Addr {
+
+func (stream HTTPRequestStream) RemoteAddr() net.Addr {
 	if stream.raddr == nil {
 		return &net.TCPAddr{}
 	}
 	return stream.raddr
 }
 
-func (stream HTTP2RequestStream) LocalAddr() net.Addr {
+func (stream HTTPRequestStream) LocalAddr() net.Addr {
 	if stream.laddr == nil {
 		return &net.TCPAddr{}
 	}
 	return stream.laddr
 }
 
-func (stream HTTP2RequestStream) SetDeadline(t time.Time) error {
+func (stream HTTPRequestStream) SetDeadline(t time.Time) error {
 	return nil
 }
 
-func (stream HTTP2RequestStream) SetReadDeadline(t time.Time) error {
+func (stream HTTPRequestStream) SetReadDeadline(t time.Time) error {
 	return nil
 }
 
-func (stream HTTP2RequestStream) SetWriteDeadline(t time.Time) error {
+func (stream HTTPRequestStream) SetWriteDeadline(t time.Time) error {
 	return nil
 }
 
