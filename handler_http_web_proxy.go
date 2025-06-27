@@ -266,12 +266,7 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		}
 		rw.WriteHeader(resp.StatusCode)
 
-		hijacker, ok := rw.(http.Hijacker)
-		if !ok {
-			http.Error(rw, fmt.Sprintf("%#v is not http.Hijacker", rw), http.StatusBadGateway)
-			return
-		}
-		lconn, flusher, err := hijacker.Hijack()
+		lconn, flusher, err := http.NewResponseController(rw).Hijack()
 		if err != nil {
 			http.Error(rw, err.Error(), http.StatusBadGateway)
 			return

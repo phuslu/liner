@@ -185,11 +185,6 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		}
 		conn = HTTPRequestStream{req.Body, rw, http.NewResponseController(rw), raddr, laddr}
 
-		flusher, ok := rw.(http.Flusher)
-		if !ok {
-			http.Error(rw, fmt.Sprintf("%#v is not http.Flusher", rw), http.StatusBadGateway)
-			return
-		}
 		if req.Header.Get("Sec-Websocket-Key") != "" {
 			key := sha1.Sum([]byte(req.Header.Get("Sec-WebSocket-Key") + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
 			rw.Header().Set("sec-websocket-accept", base64.StdEncoding.EncodeToString(key[:]))
@@ -199,16 +194,9 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		} else {
 			rw.WriteHeader(http.StatusOK)
 		}
-		flusher.Flush()
+		http.NewResponseController(rw).Flush()
 	} else {
-		hijacker, ok := rw.(http.Hijacker)
-		if !ok {
-			log.Error().Context(ri.LogContext).Str("username", user.Username).Msg("tunnel cannot hijack request")
-			http.Error(rw, "Hijack request failed", http.StatusInternalServerError)
-			return
-		}
-
-		conn, _, err = hijacker.Hijack()
+		conn, _, err = http.NewResponseController(rw).Hijack()
 		if !ok {
 			log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Msg("tunnel hijack request error")
 			http.Error(rw, err.Error(), http.StatusInternalServerError)

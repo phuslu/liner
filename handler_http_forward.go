@@ -175,10 +175,8 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			RejectRequest(rw, req)
 			return
 		case "reset", "close":
-			if hijacker, ok := rw.(http.Hijacker); ok {
-				if conn, _, err := hijacker.Hijack(); err == nil {
-					conn.Close()
-				}
+			if conn, _, err := http.NewResponseController(rw).Hijack(); err == nil {
+				conn.Close()
 			}
 			return
 		case "require_auth", "require_proxy_auth", "require_www_auth":
@@ -352,12 +350,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			if ln, ok := h.MemoryListeners.Load(req.Host); ok && ln != nil {
 				switch req.ProtoMajor {
 				case 1:
-					hijacker, ok := rw.(http.Hijacker)
-					if !ok {
-						http.Error(rw, fmt.Sprintf("%#v is not http.Hijacker", rw), http.StatusBadGateway)
-						return
-					}
-					lconn, _, err := hijacker.Hijack()
+					lconn, _, err := http.NewResponseController(rw).Hijack()
 					if err != nil {
 						http.Error(rw, err.Error(), http.StatusBadGateway)
 						return
@@ -427,12 +420,6 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		var r io.Reader
 
 		if req.ProtoAtLeast(2, 0) {
-			flusher, ok := rw.(http.Flusher)
-			if !ok {
-				http.Error(rw, fmt.Sprintf("%#v is not http.Flusher", rw), http.StatusBadGateway)
-				return
-			}
-
 			if tunnel && req.Header.Get("Sec-Websocket-Key") != "" {
 				key := sha1.Sum([]byte(req.Header.Get("Sec-WebSocket-Key") + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
 				rw.Header().Set("sec-websocket-accept", base64.StdEncoding.EncodeToString(key[:]))
@@ -442,17 +429,12 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			} else {
 				rw.WriteHeader(http.StatusOK)
 			}
-			flusher.Flush()
+			http.NewResponseController(rw).Flush()
 
 			w = HTTPFlushWriter{rw, http.NewResponseController(rw)}
 			r = req.Body
 		} else {
-			hijacker, ok := rw.(http.Hijacker)
-			if !ok {
-				http.Error(rw, fmt.Sprintf("%#v is not http.Hijacker", rw), http.StatusBadGateway)
-				return
-			}
-			lconn, _, err := hijacker.Hijack()
+			lconn, _, err := http.NewResponseController(rw).Hijack()
 			if err != nil {
 				http.Error(rw, err.Error(), http.StatusBadGateway)
 				return
