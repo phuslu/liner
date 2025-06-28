@@ -401,30 +401,14 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialer string) (net.Listen
 		DisableCompression: false,
 		EnableDatagrams:    true,
 		Dial: func(ctx context.Context, addr string, tlsConf *tls.Config, conf *quic.Config) (*quic.Conn, error) {
-			host := u.Hostname()
-			if resolve := u.Query().Get("resolve"); resolve != "" {
-				host = resolve
-			} else if h.Resolver != nil {
-				if ips, err := h.Resolver.LookupNetIP(ctx, "ip", host); err == nil && len(ips) != 0 {
-					// host = ips[fastrandn(uint32(len(ips)))].String()
-					host = ips[0].String()
-				}
-			}
-			pconn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4zero, Port: 0})
-			if err != nil {
-				return nil, err
-			}
-			raddr, err := net.ResolveUDPAddr("udp", net.JoinHostPort(host, cmp.Or(u.Port(), "443")))
-			if err != nil {
-				return nil, err
-			}
-			return quic.DialEarly(ctx,
-				pconn,
-				raddr,
+			ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			defer cancel()
+			return quic.DialAddrEarly(ctx,
+				net.JoinHostPort(cmp.Or(u.Query().Get("resolve"), u.Hostname()), cmp.Or(u.Port(), "443")),
 				&tls.Config{
 					NextProtos:         []string{"h3"},
 					InsecureSkipVerify: u.Query().Get("insecure") == "true",
-					ServerName:         u.Host,
+					ServerName:         u.Hostname(),
 					ClientSessionCache: tls.NewLRUClientSessionCache(1024),
 				},
 				&quic.Config{

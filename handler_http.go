@@ -120,6 +120,11 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		}
 	}
 
+	// fix http3 request
+	if req.Proto == "" && ri.ClientHelloInfo != nil && len(ri.ClientHelloInfo.SupportedProtos) > 0 && ri.ClientHelloInfo.SupportedProtos[0] == "h3" {
+		req.Proto, req.ProtoMajor, req.ProtoMinor = "HTTP/3.0", 3, 0
+	}
+
 	// decode encrypted url
 	if strings.HasPrefix(req.RequestURI, HTTPTunnelEncryptedPathPrefix) {
 		passphrase := cmp.Or(h.Config.Chacha20Key, HTTPTunnelEncryptedPathPrefix[3:len(HTTPTunnelEncryptedPathPrefix)-1])
@@ -135,22 +140,17 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 					URI    string      `json:"uri"`
 				}
 				if err := json.Unmarshal(payload, &info); err == nil {
-					req.RequestURI = info.URI
-					req.URL.Path = req.RequestURI
-					req.URL.RawPath = req.RequestURI
 					for key, values := range info.Header {
 						for _, value := range values {
 							req.Header.Add(key, value)
 						}
 					}
+					req.RequestURI = info.URI
+					req.URL.Path = req.RequestURI
+					req.URL.RawPath = req.RequestURI
 				}
 			}
 		}
-	}
-
-	// fix http3 request
-	if req.Proto == "" && ri.ClientHelloInfo != nil && len(ri.ClientHelloInfo.SupportedProtos) > 0 && ri.ClientHelloInfo.SupportedProtos[0] == "h3" {
-		req.Proto, req.ProtoMajor, req.ProtoMinor = "HTTP/3.0", 3, 0
 	}
 
 	// fix http3 tunnel request
