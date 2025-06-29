@@ -158,10 +158,12 @@ func (d *HTTPDialer) DialContext(ctx context.Context, network, addr string) (net
 			payload, _ := json.Marshal(struct {
 				Time   int64       `json:"time"`
 				Header http.Header `json:"header"`
+				Method string      `json:"method"`
 				URI    string      `json:"uri"`
 			}{
 				Time:   time.Now().Unix(),
 				Header: header,
+				Method: http.MethodGet,
 				URI:    fmt.Sprintf("%s%s/%s/", HTTPTunnelConnectTCPPathPrefix, host, port),
 			})
 			cipher, nonce, err := Chacha20NewEncryptStreamCipher(s2b(d.Chacha20Key))

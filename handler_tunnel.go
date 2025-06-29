@@ -280,10 +280,12 @@ func (h *TunnelHandler) wstunnel(ctx context.Context, dialer string) (net.Listen
 		payload, _ := json.Marshal(struct {
 			Time   int64       `json:"time"`
 			Header http.Header `json:"header"`
+			Method string      `json:"method"`
 			URI    string      `json:"uri"`
 		}{
 			Time:   time.Now().Unix(),
 			Header: header,
+			Method: http.MethodGet,
 			URI:    fmt.Sprintf("%s%s/%s/", HTTPTunnelReverseTCPPathPrefix, targetHost, targetPort),
 		})
 		cipher, nonce, err := Chacha20NewEncryptStreamCipher(s2b(chacha20Key))

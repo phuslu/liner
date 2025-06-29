@@ -137,6 +137,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 				var info struct {
 					Time   int64       `json:"time"`
 					Header http.Header `json:"header"`
+					Method string      `json:"method"`
 					URI    string      `json:"uri"`
 				}
 				if err := json.Unmarshal(payload, &info); err == nil {
@@ -145,6 +146,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 							req.Header.Add(key, value)
 						}
 					}
+					req.Method = cmp.Or(info.Method, req.Method)
 					req.RequestURI = info.URI
 					req.URL.Path = req.RequestURI
 					req.URL.RawPath = req.RequestURI
