@@ -16,6 +16,7 @@ require (
 	github.com/pkg/sftp v1.13.9
 	github.com/puzpuzpuz/xsync/v4 v4.1.0
 	github.com/quic-go/quic-go v0.53.0
+	github.com/refraction-networking/utls v1.7.3
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/smallnest/ringbuffer v0.0.0-20250317021400-0da97b586904
 	github.com/valyala/bytebufferpool v1.0.0
@@ -27,7 +28,10 @@ require (
 )
 
 require (
+	github.com/andybalholm/brotli v1.0.6 // indirect
+	github.com/cloudflare/circl v1.5.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
+	github.com/klauspost/compress v1.17.4 // indirect
 	github.com/kr/fs v0.1.0 // indirect
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/kr/text v0.2.0 // indirect

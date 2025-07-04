@@ -17,6 +17,7 @@ import (
 
 	"github.com/libp2p/go-yamux/v5"
 	"github.com/phuslu/log"
+	utls "github.com/refraction-networking/utls"
 	"github.com/smallnest/ringbuffer"
 	"golang.org/x/net/http2"
 )
@@ -53,14 +54,14 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialer string) (net.Listen
 				return nil, err
 			}
 
-			tlsConfig := &tls.Config{
+			tlsConfig := &utls.Config{
 				NextProtos:         []string{"h2"},
 				InsecureSkipVerify: u.Query().Get("insecure") == "true",
 				ServerName:         u.Hostname(),
-				ClientSessionCache: tls.NewLRUClientSessionCache(1024),
+				ClientSessionCache: utls.NewLRUClientSessionCache(1024),
 			}
 
-			tlsConn := tls.Client(conn, tlsConfig)
+			tlsConn := utls.UClient(conn, tlsConfig, utls.HelloChrome_Auto)
 
 			err = tlsConn.HandshakeContext(ctx)
 			if err != nil {
