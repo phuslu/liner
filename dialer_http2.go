@@ -18,6 +18,7 @@ import (
 	"time"
 	"unsafe"
 
+	utls "github.com/refraction-networking/utls"
 	"github.com/smallnest/ringbuffer"
 	"golang.org/x/net/http2"
 )
@@ -65,11 +66,11 @@ func (d *HTTP2Dialer) DialContext(ctx context.Context, network, addr string) (ne
 					return nil, err
 				}
 
-				tlsConfig := &tls.Config{
+				tlsConfig := &utls.Config{
 					NextProtos:         []string{"h2"},
 					InsecureSkipVerify: d.Insecure,
 					ServerName:         d.Host,
-					ClientSessionCache: tls.NewLRUClientSessionCache(1024),
+					ClientSessionCache: utls.NewLRUClientSessionCache(1024),
 				}
 				if d.CACert != "" && d.ClientKey != "" && d.ClientCert != "" {
 					caData, err := os.ReadFile(d.CACert)
@@ -77,17 +78,17 @@ func (d *HTTP2Dialer) DialContext(ctx context.Context, network, addr string) (ne
 						return nil, err
 					}
 
-					cert, err := tls.LoadX509KeyPair(d.ClientCert, d.ClientKey)
+					cert, err := utls.LoadX509KeyPair(d.ClientCert, d.ClientKey)
 					if err != nil {
 						return nil, err
 					}
 
 					tlsConfig.RootCAs = x509.NewCertPool()
 					tlsConfig.RootCAs.AppendCertsFromPEM(caData)
-					tlsConfig.Certificates = []tls.Certificate{cert}
+					tlsConfig.Certificates = []utls.Certificate{cert}
 				}
 
-				tlsConn := tls.Client(conn, tlsConfig)
+				tlsConn := utls.UClient(conn, tlsConfig, utls.HelloChrome_Auto)
 
 				err = tlsConn.HandshakeContext(ctx)
 				if err != nil {
