@@ -54,6 +54,11 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialer string) (net.Listen
 				return nil, err
 			}
 
+			if tc, _ := conn.(*net.TCPConn); conn != nil && h.Config.SpeedLimit > 0 {
+				err := SetTcpMaxPacingRate(tc, int(h.Config.SpeedLimit))
+				log.DefaultLogger.Err(err).Str("tunnel_proxy_pass", h.Config.ProxyPass).Str("tunnel_dialer_name", h.Config.Dialer).Int64("tunnel_speedlimit", h.Config.SpeedLimit).Msg("set speedlimit")
+			}
+
 			tlsConfig := &utls.Config{
 				NextProtos:         []string{"h2"},
 				InsecureSkipVerify: u.Query().Get("insecure") == "true",
