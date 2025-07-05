@@ -991,6 +991,10 @@ func IsReservedIP(ip net.IP) bool {
 }
 
 func ReadFile(s string) (body []byte, err error) {
+	if s == "-" {
+		return io.ReadAll(os.Stdin)
+	}
+
 	var u *url.URL
 
 	u, err = url.Parse(s)

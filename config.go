@@ -177,36 +177,20 @@ type Config struct {
 }
 
 func NewConfig(filename string) (*Config, error) {
-	if filename == "" {
-		var env = "development"
-		// prefer GOLANG_ENV
-		for _, name := range []string{"GOLANG_ENV", "ENV"} {
-			if s := os.Getenv(name); s != "" {
-				env = s
-				break
-			}
-		}
-		// prefer .json
-		for _, ext := range []string{".json", ".yaml"} {
-			filename = env + ext
-			if _, err := os.Stat(filename); err == nil {
-				break
-			}
-		}
-	}
-
 	datas := [][]byte{}
 	if data, err := ReadFile(filename); err == nil {
 		data = regexp.MustCompilePOSIX(`^( *)upstream:`).ReplaceAll(data, []byte("${1}dialer:"))
 		datas = append(datas, data)
 	}
 
-	dir, ext := filename[:len(filename)-len(filepath.Ext(filename))]+".d", filepath.Ext(filename)
-	if entries, err := os.ReadDir(dir); err == nil {
-		for _, entry := range entries {
-			if name := entry.Name(); strings.HasSuffix(name, ext) {
-				if data, err := os.ReadFile(filepath.Join(dir, name)); err == nil {
-					datas = append(datas, data)
+	if strings.HasSuffix(filename, ".yaml") || strings.HasSuffix(filename, ".json") {
+		dir, ext := filename[:len(filename)-len(filepath.Ext(filename))]+".d", filepath.Ext(filename)
+		if entries, err := os.ReadDir(dir); err == nil {
+			for _, entry := range entries {
+				if name := entry.Name(); strings.HasSuffix(name, ext) {
+					if data, err := os.ReadFile(filepath.Join(dir, name)); err == nil {
+						datas = append(datas, data)
+					}
 				}
 			}
 		}
@@ -216,11 +200,17 @@ func NewConfig(filename string) (*Config, error) {
 	for _, data := range datas {
 		c := new(Config)
 		var err error
-		switch filepath.Ext(filename) {
-		case ".json":
-			err = json.Unmarshal(data, c)
-		case ".yaml":
+		switch {
+		case strings.HasSuffix(filename, ".yaml"):
 			err = yaml.Unmarshal(data, c)
+		case strings.HasSuffix(filename, ".json"):
+			err = json.Unmarshal(data, c)
+		case filename == "-":
+			if strings.HasPrefix(b2s(data), "{") {
+				err = json.Unmarshal(data, c)
+			} else {
+				err = yaml.Unmarshal(data, c)
+			}
 		default:
 			err = fmt.Errorf("format of %s not supportted", filename)
 		}

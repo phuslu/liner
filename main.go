@@ -46,17 +46,21 @@ var (
 )
 
 func main() {
-	executable, err := os.Executable()
-	if err != nil {
-		println("cannot get executable path")
-		os.Exit(1)
+	filename := "-"
+	for _, arg := range slices.Backward(os.Args) {
+		switch {
+		case arg == "-version" || arg == "--version":
+			println(version)
+			return
+		case strings.HasSuffix(arg, ".yaml") || strings.HasSuffix(arg, ".json"):
+			filename = arg
+		}
 	}
 
-	os.Chdir(filepath.Dir(executable))
-
-	if len(os.Args) > 1 && os.Args[1] == "-version" {
-		println(version)
-		return
+	config, err := NewConfig(filename)
+	if err != nil {
+		log.Fatal().Err(err).Str("filename", filename).Msg("NewConfig() error")
+		os.Exit(1)
 	}
 
 	if g, p, m := runtime.Version(), os.Getenv("GOMAXPROCS"), GetMaxProcsFromCgroupV2(); g < "go1.25" && p == "" && m > 0 {
@@ -64,16 +68,6 @@ func main() {
 	}
 
 	RegisterMimeTypes()
-
-	filename := ""
-	if len(os.Args) > 1 {
-		filename = os.Args[1]
-	}
-	config, err := NewConfig(filename)
-	if err != nil {
-		log.Fatal().Err(err).Str("filename", filename).Msg("NewConfig() error")
-		os.Exit(1)
-	}
 
 	// main logger
 	var forwardLogger, dnsLogger log.Logger
@@ -114,7 +108,7 @@ func main() {
 			Level:  log.ParseLevel(cmp.Or(config.Global.LogLevel, "info")),
 			Caller: 1,
 			Writer: &log.FileWriter{
-				Filename:   executable + ".log",
+				Filename:   "liner.log",
 				MaxBackups: 1,
 				MaxSize:    cmp.Or(config.Global.LogMaxsize, 10*1024*1024),
 				LocalTime:  config.Global.LogLocaltime,

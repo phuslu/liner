@@ -66,6 +66,47 @@ dist () {
     popd
 }
 
+wheel () {
+    mkdir pyliner
+    env CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -v -trimpath -ldflags="${LDFLAGS}" -buildmode=c-shared -o pyliner/pyliner_linux_x86_64.pyd
+    # env CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build -v -trimpath -ldflags="${LDFLAGS}" -buildmode=c-shared -o pyliner/pyliner_linux_aarch64.pyd
+    # env CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -v -trimpath -ldflags="${LDFLAGS}" -buildmode=c-shared -o pyliner/pyliner_darwin_x86_64.pyd
+    # env CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build -v -trimpath -ldflags="${LDFLAGS}" -buildmode=c-shared -o pyliner/pyliner_windows_x86_64.pyd
+    echo '
+import os, platform, ctypes;
+libpyliner = ctypes.CDLL(os.path.join(os.path.dirname(__file__), ("pyliner_"+platform.system()+"_"+platform.machine()+".pyd").lower()))
+' | tee pyliner/__init__.py
+    echo '
+from . import libpyliner
+libpyliner.Start()
+' | tee pyliner/__main__.py
+    echo "
+[build-system]
+requires = ['setuptools', 'wheel']
+build-backend = 'setuptools.build_meta'
+
+[project]
+name = 'pyliner'
+version = '${REVSION}'
+description = 'python bindings for liner'
+dependencies = []
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ['.']
+
+[tool.setuptools.package-data]
+'pyliner' = ['*.pyd']
+" | tee pyproject.toml
+    python3 -m venv .venv
+    export PATH=$(pwd)/.venv/bin:$PATH
+    pip install build
+    python3 -m build
+    mv dist/pyliner-${REVSION}-py3-none-any.whl build/
+}
+
 clean () {
     rm -rf ${BUILDDIR}
     rmdir ${BUILDROOT} || true
