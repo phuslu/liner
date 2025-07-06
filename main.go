@@ -77,7 +77,20 @@ func main() {
 
 	// main logger
 	var forwardLogger, dnsLogger log.Logger
-	if log.IsTerminal(os.Stderr.Fd()) {
+	if config.Global.LogLevel == "disabled" {
+		log.DefaultLogger = log.Logger{
+			Level:  log.ParseLevel("error"),
+			Writer: log.IOWriter{io.Discard},
+		}
+		forwardLogger = log.Logger{
+			Level:  log.ParseLevel("error"),
+			Writer: log.IOWriter{io.Discard},
+		}
+		dnsLogger = log.Logger{
+			Level:  log.ParseLevel("error"),
+			Writer: log.IOWriter{io.Discard},
+		}
+	} else if log.IsTerminal(os.Stderr.Fd()) {
 		log.DefaultLogger = log.Logger{
 			Level:      log.ParseLevel(cmp.Or(config.Global.LogLevel, "info")),
 			Caller:     1,
@@ -849,7 +862,7 @@ func main() {
 		cronOptions = append(cronOptions, cron.WithLocation(time.UTC))
 	}
 	runner := cron.New(cronOptions...)
-	if !log.IsTerminal(os.Stderr.Fd()) {
+	if config.Global.LogLevel != "disabled" && !log.IsTerminal(os.Stderr.Fd()) {
 		runner.AddFunc("0 0 0 * * *", func() { log.DefaultLogger.Writer.(*log.FileWriter).Rotate() })
 		if slices.ContainsFunc(config.Http, func(c HTTPConfig) bool { return c.Forward.Log }) ||
 			slices.ContainsFunc(config.Https, func(c HTTPConfig) bool { return c.Forward.Log }) {
@@ -887,7 +900,13 @@ func main() {
 	<-c
 
 	log.Info().Msg("liner flush logs and exit.")
-	log.DefaultLogger.Writer.(io.Closer).Close()
-	forwardLogger.Writer.(io.Closer).Close()
+	for _, w := range []log.Writer{
+		log.DefaultLogger.Writer,
+		forwardLogger.Writer,
+	} {
+		if c, ok := w.(io.Closer); ok {
+			c.Close()
+		}
+	}
 	log.Info().Msg("liner server shutdown")
 }
