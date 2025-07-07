@@ -68,7 +68,11 @@ dist () {
 
 wheel () {
     rm -rf wheel && mkdir -p wheel/liner
-    env CGO_ENABLED=1 go build -v -trimpath -ldflags="${LDFLAGS}" -buildmode=c-shared -o wheel/liner/libliner.so
+    GO_LDFLAGS="-s -w -X main.version=${REVSION}"
+    if [ "$(go env GOOS)" == "darwin" ]; then
+        GO_LDFLAGS="${GO_LDFLAGS} -linkmode external -extldflags '-Wl,-install_name,@rpath/libliner.so'"
+    fi
+    env CGO_ENABLED=1 go build -v -trimpath -ldflags="${GO_LDFLAGS}" -buildmode=c-shared -o wheel/liner/libliner.so
     echo '
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
@@ -96,7 +100,19 @@ PyMODINIT_FUNC PyInit_liner(void) {
     return PyModule_Create(&startmodule);
 }
 ' | tee wheel/liner/liner.c
-    gcc -fPIC -I$(python3-config --includes) -I./wheel/liner wheel/liner/liner.c -L./wheel/liner -lliner -Wl,-rpath,'$ORIGIN' -o ./wheel/liner/liner$(python3-config --extension-suffix) -shared
+    local RPATH_FLAG
+    if [ "$GOOS" == "darwin" ]; then
+        RPATH_FLAG="-Wl,-rpath,@loader_path"
+    else
+        RPATH_FLAG='-Wl,-rpath,$ORIGIN'
+    fi
+    gcc -fPIC $(python3-config --includes) \
+        -I./wheel/liner \
+        wheel/liner/liner.c \
+        -L./wheel/liner -lliner \
+        "${RPATH_FLAG}" \
+        $(python3-config --ldflags --embed) \
+        -o ./wheel/liner/liner$(python3-config --extension-suffix) -shared
     touch wheel/liner/__init__.py
     echo '
 from . import liner
