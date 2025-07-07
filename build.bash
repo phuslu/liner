@@ -3,7 +3,7 @@
 function setup() {
 	export DEBIAN_FRONTEND=noninteractive
 	apt update -y
-	apt install -yq git curl jq zip bzip2 xz-utils gh build-essential python3-pip python3-venv
+	apt install -yq git curl jq zip bzip2 xz-utils gh build-essential python3-pip python3-venv python3-dev
 
 	git config --global --add safe.directory '*'
 
@@ -61,8 +61,8 @@ function release() {
 	sha1sum liner_* >checksums.txt
 	git log --oneline --pretty=format:"%h %s" -5 | tee changelog.txt
 
-	gh release view v0.0.0 --json assets --jq .assets[].name | egrep '^(liner_|pyliner)' | xargs -i gh release delete-asset v0.0.0 {} --yes
-	gh release upload v0.0.0 liner_* pyliner* checksums.txt --clobber
+	gh release view v0.0.0 --json assets --jq .assets[].name | egrep '^liner' | xargs -i gh release delete-asset v0.0.0 {} --yes
+	gh release upload v0.0.0 liner* checksums.txt --clobber
 	gh release edit v0.0.0 --notes-file changelog.txt
 
 	popd

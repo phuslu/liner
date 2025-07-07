@@ -67,26 +67,48 @@ dist () {
 }
 
 wheel () {
-    mkdir pyliner
-    env CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -v -trimpath -ldflags="${LDFLAGS}" -buildmode=c-shared -o pyliner/pyliner_linux_x86_64.pyd
-    # env CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build -v -trimpath -ldflags="${LDFLAGS}" -buildmode=c-shared -o pyliner/pyliner_linux_aarch64.pyd
-    # env CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -v -trimpath -ldflags="${LDFLAGS}" -buildmode=c-shared -o pyliner/pyliner_darwin_x86_64.pyd
-    # env CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build -v -trimpath -ldflags="${LDFLAGS}" -buildmode=c-shared -o pyliner/pyliner_windows_x86_64.pyd
+    rm -rf wheel && mkdir -p wheel/liner
+    env CGO_ENABLED=1 go build -v -trimpath -ldflags="${LDFLAGS}" -buildmode=c-shared -o wheel/liner/libliner.so
     echo '
-import os, platform, ctypes;
-libpyliner = ctypes.CDLL(os.path.join(os.path.dirname(__file__), ("pyliner_"+platform.system()+"_"+platform.machine()+".pyd").lower()))
-' | tee pyliner/__init__.py
+#define PY_SSIZE_T_CLEAN
+#include <Python.h>
+#include "libliner.h"
+
+static PyObject* start(PyObject *self, PyObject *args) {
+    Start();
+    Py_RETURN_NONE;
+}
+
+static PyMethodDef StartMethods[] = {
+    {"start", start, METH_NOARGS, "start liner"},
+    {NULL, NULL, 0, NULL}
+};
+
+static struct PyModuleDef startmodule = {
+    PyModuleDef_HEAD_INIT,
+    "liner",
+    NULL,
+    -1,
+    StartMethods
+};
+
+PyMODINIT_FUNC PyInit_liner(void) {
+    return PyModule_Create(&startmodule);
+}
+' | tee wheel/liner/liner.c
+    gcc -fPIC -I$(python3-config --includes) -I./wheel/liner wheel/liner/liner.c -L./wheel/liner -lliner -Wl,-rpath,'$ORIGIN' -o ./wheel/liner/liner$(python3-config --extension-suffix) -shared
+    touch wheel/liner/__init__.py
     echo '
-from . import libpyliner
-libpyliner.Start()
-' | tee pyliner/__main__.py
+from . import liner
+liner.start()
+' | tee wheel/liner/__main__.py
     echo "
 [build-system]
 requires = ['setuptools', 'wheel']
 build-backend = 'setuptools.build_meta'
 
 [project]
-name = 'pyliner'
+name = 'liner'
 version = '${REVSION}'
 description = 'python bindings for liner'
 dependencies = []
@@ -98,13 +120,15 @@ include-package-data = true
 where = ['.']
 
 [tool.setuptools.package-data]
-'pyliner' = ['*.pyd']
-" | tee pyproject.toml
+'liner' = ['*.so']
+" | tee wheel/pyproject.toml
+    cd wheel
     python3 -m venv .venv
     export PATH=$(pwd)/.venv/bin:$PATH
     pip install build
     python3 -m build
-    mv dist/pyliner-${REVSION}-py3-none-any.whl build/
+    cd ..
+    mv wheel/dist/liner-${REVSION}-py3-none-any.whl build/
 }
 
 clean () {
