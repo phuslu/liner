@@ -11,6 +11,8 @@ go = 'garble -literals -seed=o9WDTZ4CN4w' if os.getenv('GOGARBLE') else 'go'
 
 go_ldflags = f'-s -w -X main.version={revsion}'
 go_ldflags = go_ldflags + " -linkmode external -extldflags '-Wl,-install_name,@rpath/libliner.so'" if is_darwin else go_ldflags
+
+assert os.system('rm -rf liner dist') == 0
 assert os.system(f'{go} build -v -trimpath -ldflags="{go_ldflags}" -buildmode=c-shared -o liner/libliner.so') == 0
 assert os.system('ln -sf ../start.c.in liner/start.c') == 0
 assert os.system('ln -sf ../README.md liner/README.md') == 0

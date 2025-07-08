@@ -10,7 +10,7 @@ function setup() {
 	mkdir -p ~/.ssh
 	ssh-keyscan -H github.com | tee -a ~/.ssh/known_hosts
 
-	curl -L https://github.com/phuslu/go/releases/download/v0.0.0/gotip.linux-amd64.tar.xz | \
+	curl -L https://github.com/phuslu/go/releases/download/v0.0.0/go1.24.linux-amd64.tar.xz | \
 	tar xvJ -C /tmp/
 }
 
@@ -18,7 +18,7 @@ function build() {
 	export CGO_ENABLED=0
 	export GOROOT=/tmp/go
 	export GOPATH=/tmp/gopath
-	export PATH=${GOPATH}/bin:${GOROOT}/bin:$PATH
+	export PATH=${GOPATH:-~/go}/bin:${GOROOT}/bin:$PATH
 
 	if grep -lr $(printf '\r\n') * | grep '.go$' ; then
 		echo -e "\e[1;31mPlease run dos2unix for go source files\e[0m"
@@ -41,6 +41,8 @@ function build() {
 	go build -v .
 	go test -v .
 
+	go install -v mvdan.cc/garble@latest
+
 	cat <<EOF |
 CGO_ENABLED=0 GOOS=android GOARCH=arm64 ./make.bash build dist
 CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 ./make.bash build dist
@@ -58,14 +60,10 @@ function wheel() {
 	export CGO_ENABLED=1
 	export GOROOT=/tmp/go
 	export GOPATH=/tmp/gopath
-	export PATH=${GOPATH}/bin:${GOROOT}/bin:$PATH
-	export REVSION=$(git rev-list --count HEAD)
+	export PATH=${GOPATH:-~/go}/bin:${GOROOT}/bin:$PATH
 
-	(cd / && go install -v mvdan.cc/garble@latest)
-	export GOGARBLE=liner
+	REVSION=$(git rev-list --count HEAD) GOGARBLE=liner python3 setup.py bdist_wheel
 
-	rm -rf liner dist
-	python3 setup.py bdist_wheel
 	mv dist/liner-*.whl build/
 }
 

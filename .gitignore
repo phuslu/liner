@@ -5,8 +5,7 @@ lego/*
 .goenv
 liner
 liner.service
-production*.yaml
-development.yaml
+*.yaml
 go.env
 CHANGELOG
 *.csv
