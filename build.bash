@@ -52,13 +52,27 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 ./make.bash build dist
 EOF
 	xargs --max-procs=8 -n1 -i bash -c {}
 
-	./make.bash wheel
+}
+
+function wheel() {
+	export CGO_ENABLED=1
+	export GOROOT=/tmp/go
+	export GOPATH=/tmp/gopath
+	export PATH=${GOPATH}/bin:${GOROOT}/bin:$PATH
+	export REVSION=$(git rev-list --count HEAD)
+
+	(cd / && go install -v mvdan.cc/garble@latest)
+	export GOGARBLE=liner
+
+	rm -rf liner dist
+	python3 setup.py bdist_wheel
+	mv dist/liner-*.whl build/
 }
 
 function release() {
 	pushd build
 
-	sha1sum liner_* >checksums.txt
+	sha1sum liner* >checksums.txt
 	git log --oneline --pretty=format:"%h %s" -5 | tee changelog.txt
 
 	gh release view v0.0.0 --json assets --jq .assets[].name | egrep '^liner' | xargs -i gh release delete-asset v0.0.0 {} --yes
