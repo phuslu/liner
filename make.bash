@@ -73,21 +73,24 @@ wheel () {
         GO_LDFLAGS="${GO_LDFLAGS} -linkmode external -extldflags '-Wl,-install_name,@rpath/libliner.so'"
     fi
     env CGO_ENABLED=1 go build -v -trimpath -ldflags="${GO_LDFLAGS}" -buildmode=c-shared -o wheel/liner/libliner.so
+    touch wheel/liner/__init__.py
     echo '
+from . import liner
+liner.start()
+' | tee wheel/liner/__main__.py
+    echo '
+#define Py_LIMITED_API 0x03090000
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 #include "libliner.h"
-
 static PyObject* start(PyObject *self, PyObject *args) {
     Start();
     Py_RETURN_NONE;
 }
-
 static PyMethodDef StartMethods[] = {
     {"start", start, METH_NOARGS, "start liner"},
     {NULL, NULL, 0, NULL}
 };
-
 static struct PyModuleDef startmodule = {
     PyModuleDef_HEAD_INIT,
     "liner",
@@ -95,56 +98,38 @@ static struct PyModuleDef startmodule = {
     -1,
     StartMethods
 };
-
 PyMODINIT_FUNC PyInit_liner(void) {
     return PyModule_Create(&startmodule);
 }
 ' | tee wheel/liner/liner.c
-    local RPATH_FLAG
-    if [ "$GOOS" == "darwin" ]; then
-        RPATH_FLAG="-Wl,-rpath,@loader_path"
-    else
-        RPATH_FLAG='-Wl,-rpath,$ORIGIN'
-    fi
-    gcc -fPIC $(python3-config --includes) \
-        -I./wheel/liner \
-        wheel/liner/liner.c \
-        -L./wheel/liner -lliner \
-        "${RPATH_FLAG}" \
-        $(python3-config --ldflags --embed) \
-        -o ./wheel/liner/liner$(python3-config --extension-suffix) -shared
-    touch wheel/liner/__init__.py
-    echo '
-from . import liner
-liner.start()
-' | tee wheel/liner/__main__.py
     echo "
-[build-system]
-requires = ['setuptools', 'wheel']
-build-backend = 'setuptools.build_meta'
-
-[project]
-name = 'liner'
-version = '${REVSION}'
-description = 'python bindings for liner'
-dependencies = []
-
-[tool.setuptools]
-include-package-data = true
-
-[tool.setuptools.packages.find]
-where = ['.']
-
-[tool.setuptools.package-data]
-'liner' = ['*.so']
-" | tee wheel/pyproject.toml
+import platform
+from setuptools import setup, Extension
+liner_extension = Extension(
+    'liner.liner',
+    define_macros=[('Py_LIMITED_API', '0x03090000')],
+    sources=['liner/liner.c'],
+    include_dirs=['./liner'],
+    library_dirs=['./liner'],
+    libraries=['liner'],
+    extra_link_args=['-Wl,-rpath,' + ('@loader_path' if platform.system() == 'Darwin' else '\$ORIGIN')],
+    py_limited_api=True,
+)
+setup(
+    name='liner',
+    version='${REVSION}',
+    description='python bindings for liner',
+    packages=['liner'],
+    ext_modules=[liner_extension],
+    options={'bdist_wheel':{'py_limited_api':'cp39','plat_name':'macosx_11_0_'+platform.machine() if platform.system() == 'Darwin' else None}},
+    include_package_data=True,
+    package_data={'liner':['libliner.so']},
+)
+" | tee wheel/setup.py
     cd wheel
-    python3 -m venv .venv
-    export PATH=$(pwd)/.venv/bin:$PATH
-    pip install build
-    python3 -m build
+    python3 setup.py bdist_wheel
     cd ..
-    mv wheel/dist/liner-${REVSION}-py3-none-any.whl build/
+    mv wheel/dist/liner-*.whl build/
 }
 
 clean () {
