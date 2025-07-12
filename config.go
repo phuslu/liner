@@ -26,11 +26,6 @@ type HTTPConfig struct {
 		DisableOcsp    bool   `json:"disable_ocsp" yaml:"disable_ocsp"`
 		PreferChacha20 bool   `json:"prefer_chacha20" yaml:"prefer_chacha20"`
 	} `json:"server_config" yaml:"server_config"`
-	Sniproxy []struct {
-		ServerName  string `json:"server_name" yaml:"server_name"`
-		ProxyPass   string `json:"proxy_pass" yaml:"proxy_pass"`
-		DialTimeout int    `json:"dial_timeout" yaml:"dial_timeout"`
-	} `json:"sniproxy" yaml:"sniproxy"`
 	Forward struct {
 		Policy           string `json:"policy" yaml:"policy"`
 		AuthTable        string `json:"auth_table" yaml:"auth_table"`

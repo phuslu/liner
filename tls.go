@@ -5,11 +5,8 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
-	"fmt"
-	"io"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,13 +52,6 @@ type TLSInspectorEntry struct {
 	DisableOCSP    bool
 }
 
-type TLSInspectorSniproxy struct {
-	ServerName  string
-	ProxyPass   string
-	DialTimeout int
-	Dialer      Dialer
-}
-
 type TLSInspectorCacheKey struct {
 	ServerName     string
 	DisableTLS11   bool
@@ -87,7 +77,6 @@ type TLSInspector struct {
 	DefaultServername string
 
 	Entries          map[string]TLSInspectorEntry
-	Sniproies        map[string]TLSInspectorSniproxy
 	AutoCert         *autocert.Manager
 	RootCA           *RootCA
 	TLSConfigCache   *xsync.Map[TLSInspectorCacheKey, TLSInspectorCacheValue[*tls.Config]]
@@ -146,15 +135,6 @@ func (m *TLSInspector) AddCertEntry(entry TLSInspectorEntry) error {
 	return nil
 }
 
-func (m *TLSInspector) AddSniproxy(sniproxy TLSInspectorSniproxy) error {
-	if m.Sniproies == nil {
-		m.Sniproies = make(map[string]TLSInspectorSniproxy)
-	}
-	m.Sniproies[sniproxy.ServerName] = sniproxy
-
-	return nil
-}
-
 func (m *TLSInspector) HostPolicy(ctx context.Context, host string) error {
 	return nil
 }
@@ -204,44 +184,6 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 
 	if host, _, err := net.SplitHostPort(hello.ServerName); err == nil {
 		hello.ServerName = host
-	}
-
-	if sni, ok := m.Sniproies[hello.ServerName]; ok {
-		if mc, ok := hello.Conn.(*MirrorHeaderConn); ok {
-			rconn, err := func(ctx context.Context) (net.Conn, error) {
-				if sni.DialTimeout > 0 {
-					var cancel context.CancelFunc
-					ctx, cancel = context.WithTimeout(ctx, time.Duration(sni.DialTimeout)*time.Second)
-					defer cancel()
-				}
-				if !strings.Contains(sni.ProxyPass, "://") {
-					return sni.Dialer.DialContext(ctx, "tcp", sni.ProxyPass)
-				}
-				u, err := url.Parse(sni.ProxyPass)
-				if err != nil {
-					return nil, err
-				}
-				switch u.Scheme {
-				case "unix", "unixgram":
-					return sni.Dialer.DialContext(ctx, u.Scheme, u.Path)
-				default:
-					return sni.Dialer.DialContext(ctx, u.Scheme, u.Host)
-				}
-			}(hello.Context())
-			if err != nil {
-				return nil, fmt.Errorf("sniproxy: proxy_pass %s error: %w", sni.ProxyPass, err)
-			}
-			_, err = rconn.Write(mc.Header)
-			if err != nil {
-				return nil, fmt.Errorf("sniproxy: proxy_pass %s error: %w", sni.ProxyPass, err)
-			}
-			go io.Copy(hello.Conn, rconn)
-			_, err = io.Copy(rconn, hello.Conn)
-			if err != nil {
-				return nil, fmt.Errorf("sniproxy: proxy_pass %s error: %w", sni.ProxyPass, err)
-			}
-			return nil, io.EOF
-		}
 	}
 
 	var serverName = hello.ServerName

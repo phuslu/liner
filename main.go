@@ -444,13 +444,6 @@ func main() {
 		}
 
 		for _, listen := range server.Listen {
-			for _, sniproxy := range server.Sniproxy {
-				tlsConfigurator.AddSniproxy(TLSInspectorSniproxy{
-					ServerName: sniproxy.ServerName,
-					ProxyPass:  sniproxy.ProxyPass,
-					Dialer:     dialer,
-				})
-			}
 			for _, name := range server.ServerName {
 				config, _ := server.ServerConfig[name]
 				if config.Keyfile == "" {
