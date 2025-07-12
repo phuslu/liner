@@ -69,21 +69,14 @@ func main() {
 
 	RegisterMimeTypes()
 
-	// main logger
-	var forwardLogger, dnsLogger log.Logger
+	// main and data logger
+	var dataLogger log.Logger
 	if config.Global.LogLevel == "disabled" {
 		log.DefaultLogger = log.Logger{
 			Level:  log.ParseLevel("error"),
 			Writer: log.IOWriter{io.Discard},
 		}
-		forwardLogger = log.Logger{
-			Level:  log.ParseLevel("error"),
-			Writer: log.IOWriter{io.Discard},
-		}
-		dnsLogger = log.Logger{
-			Level:  log.ParseLevel("error"),
-			Writer: log.IOWriter{io.Discard},
-		}
+		dataLogger = log.DefaultLogger
 	} else if log.IsTerminal(os.Stderr.Fd()) {
 		log.DefaultLogger = log.Logger{
 			Level:      log.ParseLevel(cmp.Or(config.Global.LogLevel, "info")),
@@ -94,14 +87,7 @@ func main() {
 				EndWithMessage: true,
 			},
 		}
-		forwardLogger = log.Logger{
-			Level:  log.ParseLevel(cmp.Or(config.Global.LogLevel, "info")),
-			Writer: log.DefaultLogger.Writer,
-		}
-		dnsLogger = log.Logger{
-			Level:  log.ParseLevel(cmp.Or(config.Global.LogLevel, "info")),
-			Writer: log.DefaultLogger.Writer,
-		}
+		dataLogger = log.DefaultLogger
 	} else {
 		// main logger
 		log.DefaultLogger = log.Logger{
@@ -114,26 +100,12 @@ func main() {
 				LocalTime:  config.Global.LogLocaltime,
 			},
 		}
-		// forward logger
-		forwardLogger = log.Logger{
-			Level: log.ParseLevel(cmp.Or(config.Global.LogLevel, "info")),
+		// data logger
+		dataLogger = log.Logger{
 			Writer: &log.AsyncWriter{
 				ChannelSize: cmp.Or(config.Global.LogChannelSize, 8192),
 				Writer: &log.FileWriter{
-					Filename:   "forward.log",
-					MaxBackups: cmp.Or(config.Global.LogBackups, 2),
-					MaxSize:    cmp.Or(config.Global.LogMaxsize, 20*1024*1024),
-					LocalTime:  config.Global.LogLocaltime,
-				},
-			},
-		}
-		// dns logger
-		dnsLogger = log.Logger{
-			Level: log.ParseLevel(cmp.Or(config.Global.LogLevel, "info")),
-			Writer: &log.AsyncWriter{
-				ChannelSize: cmp.Or(config.Global.LogChannelSize, 8192),
-				Writer: &log.FileWriter{
-					Filename:   "dns.log",
+					Filename:   "data.log",
 					MaxBackups: cmp.Or(config.Global.LogBackups, 2),
 					MaxSize:    cmp.Or(config.Global.LogMaxsize, 20*1024*1024),
 					LocalTime:  config.Global.LogLocaltime,
@@ -420,7 +392,7 @@ func main() {
 		handler := &HTTPServerHandler{
 			ForwardHandler: &HTTPForwardHandler{
 				Config:          server,
-				ForwardLogger:   forwardLogger,
+				DataLogger:      dataLogger,
 				MemoryListeners: memoryListeners,
 				MemoryDialers:   memoryDialers,
 				LocalDialer:     dialer,
@@ -590,7 +562,7 @@ func main() {
 		handler := &HTTPServerHandler{
 			ForwardHandler: &HTTPForwardHandler{
 				Config:          httpConfig,
-				ForwardLogger:   forwardLogger,
+				DataLogger:      dataLogger,
 				MemoryListeners: memoryListeners,
 				MemoryDialers:   memoryDialers,
 				LocalDialer:     dialer,
@@ -682,12 +654,12 @@ func main() {
 			log.Info().Str("version", version).Str("address", ln.Addr().String()).Msg("liner listen and serve socks")
 
 			h := &SocksHandler{
-				Config:        socksConfig,
-				ForwardLogger: forwardLogger,
-				GeoResolver:   resolver,
-				LocalDialer:   dialer,
-				Dialers:       dialers,
-				Functions:     functions.FuncMap,
+				Config:      socksConfig,
+				DataLogger:  dataLogger,
+				GeoResolver: resolver,
+				LocalDialer: dialer,
+				Dialers:     dialers,
+				Functions:   functions.FuncMap,
 			}
 
 			if err = h.Load(); err != nil {
@@ -720,11 +692,11 @@ func main() {
 			log.Info().Str("version", version).Str("address", ln.Addr().String()).Msg("liner listen and forward port")
 
 			h := &StreamHandler{
-				Config:        streamConfig,
-				ForwardLogger: forwardLogger,
-				GeoResolver:   resolver,
-				LocalDialer:   dialer,
-				Dialers:       dialers,
+				Config:      streamConfig,
+				DataLogger:  dataLogger,
+				GeoResolver: resolver,
+				LocalDialer: dialer,
+				Dialers:     dialers,
 			}
 
 			if err = h.Load(); err != nil {
@@ -804,9 +776,9 @@ func main() {
 			}
 
 			h := &DnsHandler{
-				Config:    dns,
-				Functions: functions.FuncMap,
-				Logger:    dnsLogger,
+				Config:     dns,
+				Functions:  functions.FuncMap,
+				DataLogger: dataLogger,
 			}
 			if err = h.Load(); err != nil {
 				log.Fatal().Err(err).Str("address", addr).Msg("dns handler load error")
@@ -872,11 +844,9 @@ func main() {
 	if config.Global.LogLevel != "disabled" && !log.IsTerminal(os.Stderr.Fd()) {
 		runner.AddFunc("0 0 0 * * *", func() { log.DefaultLogger.Writer.(*log.FileWriter).Rotate() })
 		if slices.ContainsFunc(config.Http, func(c HTTPConfig) bool { return c.Forward.Log }) ||
-			slices.ContainsFunc(config.Https, func(c HTTPConfig) bool { return c.Forward.Log }) {
-			runner.AddFunc("0 0 0 * * *", func() { forwardLogger.Writer.(*log.AsyncWriter).Writer.(*log.FileWriter).Rotate() })
-		}
-		if len(config.Dns) > 0 {
-			runner.AddFunc("0 0 0 * * *", func() { dnsLogger.Writer.(*log.AsyncWriter).Writer.(*log.FileWriter).Rotate() })
+			slices.ContainsFunc(config.Https, func(c HTTPConfig) bool { return c.Forward.Log }) ||
+			len(config.Dns) > 0 {
+			runner.AddFunc("0 0 0 * * *", func() { dataLogger.Writer.(*log.AsyncWriter).Writer.(*log.FileWriter).Rotate() })
 		}
 	}
 	for _, job := range config.Cron {
@@ -908,8 +878,8 @@ func main() {
 
 	log.Info().Msg("liner flush logs and exit.")
 	for _, w := range []log.Writer{
+		dataLogger.Writer,
 		log.DefaultLogger.Writer,
-		forwardLogger.Writer,
 	} {
 		if c, ok := w.(io.Closer); ok {
 			c.Close()

@@ -27,7 +27,7 @@ import (
 
 type HTTPForwardHandler struct {
 	Config          HTTPConfig
-	ForwardLogger   log.Logger
+	DataLogger      log.Logger
 	MemoryListeners *sync.Map // map[string]*MemoryListener
 	MemoryDialers   *sync.Map // map[string]*MemoryDialer
 	LocalDialer     *LocalDialer
@@ -458,10 +458,11 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		go io.Copy(conn, r)
 
 		if userLog {
-			w = &ForwardLogWriter{
-				Writer: w,
-				Logger: h.ForwardLogger,
+			w = &DataLogWriter{
+				Writer:     w,
+				DataLogger: h.DataLogger,
 				Context: log.NewContext(nil).
+					Str("logger", "forward").
 					Xid("trace_id", ri.TraceID).
 					Str("server_name", ri.ServerName).
 					Str("server_addr", ri.ServerAddr).
@@ -566,10 +567,11 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 
 		var w io.Writer = rw
 		if userLog {
-			w = &ForwardLogWriter{
-				Writer: w,
-				Logger: h.ForwardLogger,
+			w = &DataLogWriter{
+				Writer:     w,
+				DataLogger: h.DataLogger,
 				Context: log.NewContext(nil).
+					Str("logger", "forward").
 					Xid("trace_id", ri.TraceID).
 					Str("server_name", ri.ServerName).
 					Str("server_addr", ri.ServerAddr).
@@ -679,22 +681,22 @@ type tcpConnWithoutWriteTo struct {
 	*net.TCPConn
 }
 
-type ForwardLogWriter struct {
+type DataLogWriter struct {
 	io.Writer
-	Logger    log.Logger
-	Context   log.Context
-	FieldName string
-	Interval  int64
+	DataLogger log.Logger
+	Context    log.Context
+	FieldName  string
+	Interval   int64
 
 	timestamp int64
 	transmits int64
 }
 
-func (w *ForwardLogWriter) Write(buf []byte) (n int, err error) {
+func (w *DataLogWriter) Write(buf []byte) (n int, err error) {
 	n, err = w.Writer.Write(buf)
 	now := time.Now().Unix()
 	if w.transmits != 0 && (w.timestamp == 0 || now-w.timestamp >= w.Interval || err != nil) {
-		w.Logger.Log().Context(w.Context).Int64(w.FieldName, w.transmits).Msg("forward log")
+		w.DataLogger.Log().Context(w.Context).Int64(w.FieldName, w.transmits).Msg("")
 		w.timestamp = now
 		w.transmits = 0
 	} else {

@@ -1,21 +1,27 @@
 sources:
-  liner:
+  liner_data:
     type: file
     include:
-      - ./forward.*.log
+      - ./data.*.log
 transforms:
-  transforms:
+  liner_data_parser:
     type: remap
     inputs:
-      - liner
+      - liner_data
     source: |
       . = parse_json!(.message)
       .timestamp = del(.time)
       .app = "liner"
+  liner_data_forward:
+    type: filter
+    inputs:
+      - liner_data_parser
+    condition: |
+      .logger == "forward"
 sinks:
   vlogs:
     inputs:
-      - transforms
+      - liner_data_forward
     type: elasticsearch
     endpoints:
       #- http://vlogs.phus.lu/insert/elasticsearch/
@@ -31,4 +37,4 @@ sinks:
     query:
       _msg_field: message
       _time_field: timestamp
-      _stream_fields: app,server_name,server_addr,tls_version,ja4,username,remote_ip,remote_country,remote_region,remote_city,http_method,http_host,http_domain,http_proto,user_agent,user_agent_os,user_agent_os_version,user_agent_name,user_agent_version
+      _stream_fields: app,logger,server_name,server_addr,tls_version,ja4,username,remote_ip,remote_country,remote_region,remote_city,http_method,http_host,http_domain,http_proto,user_agent,user_agent_os,user_agent_os_version,user_agent_name,user_agent_version
