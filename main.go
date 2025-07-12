@@ -391,10 +391,30 @@ func main() {
 
 	servers := make([]*http.Server, 0)
 
-	// listen and serve https
+	// tls inspector
 	tlsConfigurator := &TLSInspector{
 		ClientHelloMap: xsync.NewMap[string, *TLSClientHelloInfo](xsync.WithSerialResize()),
 	}
+
+	// sni proxy
+	if config.Sni.Enabled {
+		handler := &SniHandler{
+			Config:      config.Sni,
+			GeoResolver: resolver,
+			LocalDialer: dialer,
+			Dialers:     dialers,
+			Functions:   functions.FuncMap,
+		}
+		err = handler.Load()
+		if err != nil {
+			log.Fatal().Err(err).Msgf("%T.Load() return error: %+v", handler, err)
+		}
+		log.Info().Msgf("%T.Load() ok", handler)
+
+		tlsConfigurator.TLSSniFallback = handler.ServeConn
+	}
+
+	// listen and serve https
 	h2handlers := map[string]map[string]HTTPHandler{}
 	for _, server := range config.Https {
 		handler := &HTTPServerHandler{

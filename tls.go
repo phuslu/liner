@@ -73,10 +73,13 @@ type TLSClientHelloInfo struct {
 	JA4 [36]byte
 }
 
+type TLSSniFallback func(ctx context.Context, sni string, data []byte, conn net.Conn) error
+
 type TLSInspector struct {
 	DefaultServername string
 
-	Entries          map[string]TLSInspectorEntry
+	Entries          map[string]TLSInspectorEntry // key: TLS ServerName
+	TLSSniFallback   TLSSniFallback
 	AutoCert         *autocert.Manager
 	RootCA           *RootCA
 	TLSConfigCache   *xsync.Map[TLSInspectorCacheKey, TLSInspectorCacheValue[*tls.Config]]
@@ -184,6 +187,17 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 
 	if host, _, err := net.SplitHostPort(hello.ServerName); err == nil {
 		hello.ServerName = host
+	}
+
+	if m.TLSSniFallback != nil {
+		if mc, ok := hello.Conn.(*MirrorHeaderConn); ok {
+			if _, ok := m.Entries[hello.ServerName]; ok {
+				err := m.TLSSniFallback(hello.Context(), hello.ServerName, mc.Header, mc.Conn)
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
 	}
 
 	var serverName = hello.ServerName

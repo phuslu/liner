@@ -78,6 +78,12 @@ type HTTPConfig struct {
 	} `json:"web" yaml:"web"`
 }
 
+type SniConfig struct {
+	Enabled bool   `json:"enabled" yaml:"enabled"`
+	Policy  string `json:"policy" yaml:"policy"`
+	Log     bool   `json:"log" yaml:"log"`
+}
+
 type SocksConfig struct {
 	Listen  []string `json:"listen" yaml:"listen"`
 	Forward struct {
@@ -162,6 +168,7 @@ type Config struct {
 		Command string `json:"command" yaml:"command"`
 	} `json:"cron" yaml:"cron"`
 	Dialer map[string]string `json:"dialer" yaml:"dialer"`
+	Sni    SniConfig         `json:"sni" yaml:"sni"`
 	Https  []HTTPConfig      `json:"https" yaml:"https"`
 	Http   []HTTPConfig      `json:"http" yaml:"http"`
 	Socks  []SocksConfig     `json:"socks" yaml:"socks"`
