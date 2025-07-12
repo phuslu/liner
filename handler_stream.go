@@ -21,11 +21,11 @@ type StreamRequest struct {
 }
 
 type StreamHandler struct {
-	Config        StreamConfig
-	ForwardLogger log.Logger
-	GeoResolver   *GeoResolver
-	LocalDialer   *LocalDialer
-	Dialers       map[string]Dialer
+	Config      StreamConfig
+	DataLogger  log.Logger
+	GeoResolver *GeoResolver
+	LocalDialer *LocalDialer
+	Dialers     map[string]Dialer
 
 	tlsConfig *tls.Config
 }
@@ -120,7 +120,7 @@ func (h *StreamHandler) ServeConn(conn net.Conn) {
 	}
 	defer rconn.Close()
 
-	log.Info().Stringer("trace_id", req.TraceID).Str("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Str("proxy_pass", h.Config.ProxyPass).Str("stream_dialer_name", h.Config.Dialer).Msg("forward stream")
+	log.Info().Xid("trace_id", req.TraceID).Str("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Str("proxy_pass", h.Config.ProxyPass).Str("stream_dialer_name", h.Config.Dialer).Msg("forward stream")
 
 	go io.Copy(rconn, conn)
 	_, err = io.Copy(conn, rconn)
@@ -130,7 +130,7 @@ func (h *StreamHandler) ServeConn(conn net.Conn) {
 		if h.GeoResolver.CityReader != nil {
 			country, city, _ = h.GeoResolver.LookupCity(ctx, net.ParseIP(req.RemoteIP))
 		}
-		h.ForwardLogger.Info().Stringer("trace_id", req.TraceID).Str("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Str("remote_country", country).Str("remote_city", city).Str("stream_dialer_name", h.Config.Dialer).Msg("forward port request end")
+		h.DataLogger.Log().Str("logger", "stream").Xid("trace_id", req.TraceID).Str("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Str("remote_country", country).Str("remote_city", city).Str("stream_dialer_name", h.Config.Dialer).Msg("")
 	}
 
 	return

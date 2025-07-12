@@ -30,12 +30,12 @@ type SocksRequest struct {
 }
 
 type SocksHandler struct {
-	Config        SocksConfig
-	ForwardLogger log.Logger
-	GeoResolver   *GeoResolver
-	LocalDialer   *LocalDialer
-	Dialers       map[string]Dialer
-	Functions     template.FuncMap
+	Config      SocksConfig
+	DataLogger  log.Logger
+	GeoResolver *GeoResolver
+	LocalDialer *LocalDialer
+	Dialers     map[string]Dialer
+	Functions   template.FuncMap
 
 	policy    *template.Template
 	dialer    *template.Template
@@ -247,7 +247,7 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 		if h.GeoResolver.CityReader != nil {
 			country, city, _ = h.GeoResolver.LookupCity(context.Background(), net.ParseIP(req.RemoteIP))
 		}
-		h.ForwardLogger.Info().Stringer("trace_id", req.TraceID).Str("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Str("remote_country", country).Str("remote_city", city).Str("forward_dialer_name", h.Config.Forward.Dialer).Str("socks_host", req.Host).Int("socks_port", req.Port).Int("socks_version", int(req.Version)).Str("forward_dialer_name", dialerName).Msg("forward socks request end")
+		h.DataLogger.Log().Str("logger", "socks").Xid("trace_id", req.TraceID).Str("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Str("remote_country", country).Str("remote_city", city).Str("forward_dialer_name", h.Config.Forward.Dialer).Str("socks_host", req.Host).Int("socks_port", req.Port).Int("socks_version", int(req.Version)).Str("forward_dialer_name", dialerName).Msg("")
 	}
 
 	return
