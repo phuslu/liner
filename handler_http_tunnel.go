@@ -314,7 +314,7 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 				count++
 				seconds = 1 + fastrandn(5)
 			default:
-				log.Debug().Str("tunnel_listen", ln.Addr().String()).Str("remote_addr", session.RemoteAddr().String()).Dur("ping_ms", rtt).Msg("tunnel ping successfully")
+				log.Trace().Str("tunnel_listen", ln.Addr().String()).Str("remote_addr", session.RemoteAddr().String()).Dur("ping_ms", rtt).Msg("tunnel ping successfully")
 				count = 0
 				seconds = 5 + fastrandn(30)
 			}
