@@ -61,7 +61,7 @@ function wheel() {
 
 	go install -v mvdan.cc/garble@latest
 
-	REVSION=$(git rev-list --count HEAD) GOGARBLE=liner python3 setup.py bdist_wheel
+	env GOGARBLE=liner python3 setup.py bdist_wheel
 
 	mkdir -p build
 	mv wheel/dist/liner-*.whl build/
@@ -70,17 +70,14 @@ function wheel() {
 function release() {
 	pushd build
 
-	sha1sum liner* >checksums.txt
-	git log --oneline --pretty=format:"%h %s" -5 | tee changelog.txt
-
-	REVSION=$(git rev-list --count HEAD)
-	
-	gh release upload v0.0.0 liner* checksums.txt --clobber
-	gh release edit v0.0.0 --notes-file changelog.txt
-
-	local filenames=$(gh release view v0.0.0 --json assets --jq .assets[].name)
-	if [ $(echo $filenames | grep -oP '[0-9]{4}' | sort -u | wc -c) -gt 5 ]; then
-		echo $filenames | xargs -n1 | egrep '^liner' | fgrep -v ${REVSION} | xargs -i gh release delete-asset v0.0.0 {} --yes
+	if ls liner_*; then
+		sha1sum liner* >checksums.txt
+		git log --oneline --pretty=format:"%h %s" -5 | tee changelog.txt
+		gh release view v0.0.0 --json assets --jq .assets[].name | egrep '^liner_' | xargs -i gh release delete-asset v0.0.0 {} --yes
+		gh release upload v0.0.0 liner_* checksums.txt --clobber
+		gh release edit v0.0.0 --notes-file changelog.txt
+	elif ls liner-*.whl; then
+		gh release upload v0.0.0 liner-*.whl --clobber
 	fi
 
 	popd
