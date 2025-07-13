@@ -11,6 +11,7 @@ os.system('rm -rf wheel && mkdir -p wheel/liner')
 os.chdir('wheel')
 
 os.environ['CGO_ENABLED'] = '1'
+os.environ['CGO_CFLAGS'] = '-D_FORTIFY_SOURCE=0'
 
 revsion = os.getenv('REVSION', '1984')
 is_darwin = platform.system() == 'Darwin'
