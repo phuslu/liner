@@ -7,7 +7,7 @@ os.environ['CGO_ENABLED'] = '1'
 
 revsion = os.getenv('REVSION', '1984')
 is_darwin = platform.system() == 'Darwin'
-go = 'garble -literals -seed=o9WDTZ4CN4w' if os.getenv('GOGARBLE') else 'go'
+go = 'garble -literals -tiny -seed=o9WDTZ4CN4w' if os.getenv('GOGARBLE') else 'go'
 
 go_ldflags = f'-s -w -X main.version={revsion}'
 go_ldflags = go_ldflags + " -linkmode external -extldflags '-Wl,-install_name,@rpath/libliner.so'" if is_darwin else go_ldflags
