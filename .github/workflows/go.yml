@@ -1,16 +1,13 @@
-name: Go
+name: go
 on: [push]
 jobs:
   build:
     name: build
     runs-on: ubuntu-latest
-    container:
-      image: ubuntu:latest
     steps:
       - uses: actions/checkout@v1
-      - run: ./build.bash setup
-      - run: ./build.bash build
-      - run: ./build.bash wheel
-      - run: ./build.bash release
+      - run: sudo ./build.bash setup
+      - run: sudo ./build.bash build
+      - run: sudo -E ./build.bash release
         env:
           GITHUB_TOKEN: ${{ secrets.GOTIP_TOKEN }}

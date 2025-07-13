@@ -7,10 +7,9 @@ function setup() {
 
 	git config --global --add safe.directory '*'
 
-	mkdir -p ~/.ssh
-	ssh-keyscan -H github.com | tee -a ~/.ssh/known_hosts
+	goarch=$(test $(uname -m) = aarch64 && echo arm64 || echo amd64)
 
-	curl -L https://github.com/phuslu/go/releases/download/v0.0.0/go1.24.linux-amd64.tar.xz | \
+	curl -L https://github.com/phuslu/go/releases/download/v0.0.0/go1.24.linux-${goarch}.tar.xz | \
 	tar xvJ -C /tmp/
 }
 
@@ -41,8 +40,6 @@ function build() {
 	go build -v .
 	go test -v .
 
-	go install -v mvdan.cc/garble@latest
-
 	cat <<EOF |
 CGO_ENABLED=0 GOOS=android GOARCH=arm64 ./make.bash build dist
 CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 ./make.bash build dist
@@ -62,9 +59,12 @@ function wheel() {
 	export GOPATH=/tmp/gopath
 	export PATH=${GOPATH:-~/go}/bin:${GOROOT}/bin:$PATH
 
+	go install -v mvdan.cc/garble@latest
+
 	REVSION=$(git rev-list --count HEAD) GOGARBLE=liner python3 setup.py bdist_wheel
 
-	mv dist/liner-*.whl build/
+	mkdir -p build
+	mv wheel/dist/liner-*.whl build/
 }
 
 function release() {
@@ -73,9 +73,15 @@ function release() {
 	sha1sum liner* >checksums.txt
 	git log --oneline --pretty=format:"%h %s" -5 | tee changelog.txt
 
-	gh release view v0.0.0 --json assets --jq .assets[].name | egrep '^liner' | xargs -i gh release delete-asset v0.0.0 {} --yes
+	REVSION=$(git rev-list --count HEAD)
+	
 	gh release upload v0.0.0 liner* checksums.txt --clobber
 	gh release edit v0.0.0 --notes-file changelog.txt
+
+	local filenames=$(gh release view v0.0.0 --json assets --jq .assets[].name)
+	if [ $(echo $filenames | grep -oP '[0-9]{4}' | sort -u | wc -c) -gt 5 ]; then
+		echo $filenames | xargs -n1 | egrep '^liner' | fgrep -v ${REVSION} | xargs -i gh release delete-asset v0.0.0 {} --yes
+	fi
 
 	popd
 }

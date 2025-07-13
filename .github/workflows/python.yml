@@ -1,0 +1,23 @@
+name: python
+on: [push]
+jobs:
+  linux_x86_64:
+    name: linux_x86_64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - run: sudo ./build.bash setup
+      - run: sudo ./build.bash wheel
+      - run: sudo -E ./build.bash release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GOTIP_TOKEN }}
+  linux_aarch64:
+    name: linux_aarch64
+    runs-on: ubuntu-22.04-arm
+    steps:
+      - uses: actions/checkout@v1
+      - run: sudo ./build.bash setup
+      - run: sudo ./build.bash wheel
+      - run: sudo -E ./build.bash release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GOTIP_TOKEN }}

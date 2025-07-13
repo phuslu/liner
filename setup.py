@@ -3,6 +3,13 @@ import platform
 import setuptools
 
 
+def system(cmd):
+    print(cmd)
+    assert os.system(cmd) == 0
+
+os.system('rm -rf wheel && mkdir -p wheel/liner')
+os.chdir('wheel')
+
 os.environ['CGO_ENABLED'] = '1'
 
 revsion = os.getenv('REVSION', '1984')
@@ -12,10 +19,10 @@ go = 'garble -literals -tiny -seed=o9WDTZ4CN4w' if os.getenv('GOGARBLE') else 'g
 go_ldflags = f'-s -w -X main.version={revsion}'
 go_ldflags = go_ldflags + " -linkmode external -extldflags '-Wl,-install_name,@rpath/libliner.so'" if is_darwin else go_ldflags
 
-assert os.system('rm -rf liner dist') == 0
-assert os.system(f'{go} build -v -trimpath -ldflags="{go_ldflags}" -buildmode=c-shared -o liner/libliner.so') == 0
-assert os.system('ln -sf ../start.c.in liner/start.c') == 0
-assert os.system('ln -sf ../README.md liner/README.md') == 0
+system('rm -rf build dist liner liner.egg-info') == 0
+system(f'{go} build -v -trimpath -ldflags="{go_ldflags}" -buildmode=c-shared -o liner/libliner.so ..') == 0
+system('ln -sf ../../start.c.in liner/start.c') == 0
+system('ln -sf ../../README.md liner/README.md') == 0
 open('liner/__init__.py', 'wb').write(b'')
 open('liner/__main__.py', 'wb').write(b'from . import liner\nliner.start()')
 
