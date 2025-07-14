@@ -63,8 +63,12 @@ function wheel() {
 
 	env GOGARBLE=liner python3 setup.py bdist_wheel
 
+	python3 -m venv ~/.venv
+	~/.venv/bin/pip install auditwheel
+	~/.venv/bin/auditwheel repair wheel/dist/liner-*.whl
+
 	mkdir -p build
-	mv wheel/dist/liner-*.whl build/
+	mv wheelhouse/liner-*.whl build/
 }
 
 function release() {
