@@ -23,6 +23,7 @@ import (
 	"github.com/libp2p/go-yamux/v5"
 	"github.com/phuslu/log"
 	"github.com/pkg/sftp"
+	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -81,6 +82,12 @@ func (h *SshHandler) Load() error {
 			switch {
 			case !ok:
 				user.AuthError = fmt.Errorf("invalid username: %v", user.Username)
+			case strings.HasPrefix(records[i].Password, "$2y$") && len(records[i].Password) == 60:
+				if err := bcrypt.CompareHashAndPassword([]byte(records[i].Password), []byte(pass)); err != nil {
+					user.AuthError = err
+				} else {
+					user = records[i]
+				}
 			case user.Password != records[i].Password:
 				user.AuthError = fmt.Errorf("wrong password: %v", user.Username)
 			default:
