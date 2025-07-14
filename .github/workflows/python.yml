@@ -1,8 +1,8 @@
 name: python
 on: [push]
 jobs:
-  linux_x86_64:
-    name: linux_x86_64
+  manylinux_x86_64:
+    name: manylinux_x86_64
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v1
@@ -11,8 +11,8 @@ jobs:
       - run: sudo -E ./build.bash release
         env:
           GITHUB_TOKEN: ${{ secrets.GOTIP_TOKEN }}
-  linux_aarch64:
-    name: linux_aarch64
+  manylinux_aarch64:
+    name: manylinux_aarch64
     runs-on: ubuntu-22.04-arm
     steps:
       - uses: actions/checkout@v1
@@ -21,3 +21,15 @@ jobs:
       - run: sudo -E ./build.bash release
         env:
           GITHUB_TOKEN: ${{ secrets.GOTIP_TOKEN }}
+  # musllinux_x86_64:
+  #   name: musllinux_x86_64
+  #   runs-on: ubuntu-latest
+  #   container:
+  #     image: phuslu/seashell:latest
+  #   steps:
+  #     - uses: actions/checkout@v1
+  #     - run: bash ./build.bash setup
+  #     - run: bash ./build.bash wheel
+  #     - run: bash ./build.bash release
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GOTIP_TOKEN }}
