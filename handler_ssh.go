@@ -49,7 +49,7 @@ func (h *SshHandler) Load() error {
 	}
 
 	h.sshConfig = &ssh.ServerConfig{
-		ServerVersion: fmt.Sprintf("SSH-2.0-liner-%s", version),
+		ServerVersion: cmp.Or(h.Config.ServerVersion, fmt.Sprintf("SSH-2.0-liner-%s", version)),
 		MaxAuthTries:  3,
 	}
 
