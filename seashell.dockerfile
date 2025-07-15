@@ -10,14 +10,12 @@ RUN apk add --update --no-cache \
     bash \
     bind-tools \
     curl \
-    dropbear \
     gcompat \
     grep \
     htop \
     iproute2 \
     jq \
     less \
-    logrotate \
     lsblk \
     lscpu \
     openssh-client \
