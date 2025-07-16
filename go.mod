@@ -10,7 +10,7 @@ require (
 	github.com/nathanaelle/password/v2 v2.0.1
 	github.com/oschwald/maxminddb-golang v1.13.1
 	github.com/phuslu/fastdns v0.12.5
-	github.com/phuslu/geosite v1.0.20250601
+	github.com/phuslu/geosite v1.0.20250701
 	github.com/phuslu/log v1.0.118
 	github.com/phuslu/lru v1.0.18
 	github.com/pkg/sftp v1.13.9
@@ -21,26 +21,26 @@ require (
 	github.com/smallnest/ringbuffer v0.0.0-20250317021400-0da97b586904
 	github.com/valyala/bytebufferpool v1.0.0
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba
-	golang.org/x/crypto v0.39.0
-	golang.org/x/net v0.41.0
-	golang.org/x/sys v0.33.0
+	golang.org/x/crypto v0.40.0
+	golang.org/x/net v0.42.0
+	golang.org/x/sys v0.34.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
-	github.com/andybalholm/brotli v1.0.6 // indirect
-	github.com/cloudflare/circl v1.5.0 // indirect
+	github.com/andybalholm/brotli v1.2.0 // indirect
+	github.com/cloudflare/circl v1.6.1 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
-	github.com/klauspost/compress v1.17.4 // indirect
+	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/kr/fs v0.1.0 // indirect
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
 	github.com/quic-go/qpack v0.5.1 // indirect
 	go.uber.org/mock v0.5.2 // indirect
-	golang.org/x/mod v0.25.0 // indirect
-	golang.org/x/sync v0.15.0 // indirect
-	golang.org/x/text v0.26.0 // indirect
-	golang.org/x/tools v0.34.0 // indirect
+	golang.org/x/mod v0.26.0 // indirect
+	golang.org/x/sync v0.16.0 // indirect
+	golang.org/x/text v0.27.0 // indirect
+	golang.org/x/tools v0.35.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
 )
