@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -73,18 +74,20 @@ type TLSClientHelloInfo struct {
 	JA4 [36]byte
 }
 
-type TLSSniFallback func(ctx context.Context, sni string, data []byte, conn net.Conn) error
+var ErrTLSServerNameNotFound = errors.New("tls server name is not found")
+
+type TLSServerNameHandle func(ctx context.Context, sni string, data []byte, conn net.Conn) error
 
 type TLSInspector struct {
 	DefaultServername string
 
-	Entries          map[string]TLSInspectorEntry // key: TLS ServerName
-	TLSSniFallback   TLSSniFallback
-	AutoCert         *autocert.Manager
-	RootCA           *RootCA
-	TLSConfigCache   *xsync.Map[TLSInspectorCacheKey, TLSInspectorCacheValue[*tls.Config]]
-	CertificateCache *xsync.Map[TLSInspectorCacheKey, TLSInspectorCacheValue[*tls.Certificate]]
-	ClientHelloMap   *xsync.Map[string, *TLSClientHelloInfo]
+	Entries             map[string]TLSInspectorEntry // key: TLS ServerName
+	AutoCert            *autocert.Manager
+	RootCA              *RootCA
+	TLSConfigCache      *xsync.Map[TLSInspectorCacheKey, TLSInspectorCacheValue[*tls.Config]]
+	CertificateCache    *xsync.Map[TLSInspectorCacheKey, TLSInspectorCacheValue[*tls.Certificate]]
+	ClientHelloMap      *xsync.Map[string, *TLSClientHelloInfo]
+	TLSServerNameHandle TLSServerNameHandle
 }
 
 func (m *TLSInspector) AddCertEntry(entry TLSInspectorEntry) error {
@@ -152,7 +155,7 @@ func (m *TLSInspector) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certific
 		}
 	}
 	if !ok {
-		return nil, errors.New("server_name(" + hello.ServerName + ") is not allowed")
+		return nil, ErrTLSServerNameNotFound
 	}
 
 	if entry.KeyFile != "" {
@@ -187,17 +190,6 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 
 	if host, _, err := net.SplitHostPort(hello.ServerName); err == nil {
 		hello.ServerName = host
-	}
-
-	if m.TLSSniFallback != nil {
-		if mc, ok := hello.Conn.(*MirrorHeaderConn); ok {
-			if _, ok := m.Entries[hello.ServerName]; ok {
-				err := m.TLSSniFallback(hello.Context(), hello.ServerName, mc.Header, mc.Conn)
-				if err != nil {
-					return nil, err
-				}
-			}
-		}
 	}
 
 	var serverName = hello.ServerName
@@ -251,7 +243,15 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 
 	cert, err := m.GetCertificate(hello)
 	if err != nil {
-		return nil, err
+		if err == ErrTLSServerNameNotFound && m.TLSServerNameHandle != nil {
+			if mc, ok := hello.Conn.(*MirrorHeaderConn); ok {
+				err := m.TLSServerNameHandle(hello.Context(), hello.ServerName, mc.Header, mc.Conn)
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+		return nil, fmt.Errorf("tls inspector cannot handle server name %#v: %w", hello.ServerName, err)
 	}
 
 	cacert := cert.Leaf

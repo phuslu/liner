@@ -103,4 +103,4 @@ func (h *SniHandler) ServeConn(ctx context.Context, servername string, header []
 	return io.EOF
 }
 
-var _ TLSSniFallback = (&SniHandler{}).ServeConn
+var _ TLSServerNameHandle = (&SniHandler{}).ServeConn

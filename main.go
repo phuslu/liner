@@ -383,7 +383,7 @@ func main() {
 		}
 		log.Info().Msgf("%T.Load() ok", handler)
 
-		tlsConfigurator.TLSSniFallback = handler.ServeConn
+		tlsConfigurator.TLSServerNameHandle = handler.ServeConn
 	}
 
 	// listen and serve https
