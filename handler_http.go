@@ -56,6 +56,7 @@ type RequestInfo struct {
 	TraceID         log.XID
 	UserAgent       useragent.UserAgent
 	ProxyUserInfo   UserInfo
+	AuthUserInfo    UserInfo
 	GeoipInfo       GeoipInfo
 	LogContext      log.Context
 }
@@ -181,6 +182,16 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		case "Basic":
 			if b, err := base64.StdEncoding.DecodeString(s); err == nil {
 				ri.ProxyUserInfo.Username, ri.ProxyUserInfo.Password, _ = strings.Cut(string(b), ":")
+			}
+		}
+	}
+
+	ri.AuthUserInfo = UserInfo{}
+	if s := req.Header.Get("authorization"); s != "" {
+		switch t, s, _ := strings.Cut(s, " "); t {
+		case "Basic":
+			if b, err := base64.StdEncoding.DecodeString(s); err == nil {
+				ri.AuthUserInfo.Username, ri.AuthUserInfo.Password, _ = strings.Cut(string(b), ":")
 			}
 		}
 	}

@@ -69,15 +69,7 @@ func (h *HTTPTunnelHandler) Load() error {
 func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	ri := req.Context().Value(RequestInfoContextKey).(*RequestInfo)
 
-	var user UserInfo
-	if s := req.Header.Get("authorization"); s != "" {
-		switch t, s, _ := strings.Cut(s, " "); t {
-		case "Basic":
-			if b, err := base64.StdEncoding.DecodeString(s); err == nil {
-				user.Username, user.Password, _ = strings.Cut(string(b), ":")
-			}
-		}
-	}
+	user := ri.AuthUserInfo
 
 	if user.Username == "" || user.Password == "" {
 		log.Error().Context(ri.LogContext).Str("username", user.Username).Msg("tunnel user authorization required")
