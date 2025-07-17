@@ -22,6 +22,7 @@ import (
 	"github.com/phuslu/log"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/valyala/bytebufferpool"
+	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/net/publicsuffix"
 )
 
@@ -136,6 +137,12 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		switch {
 		case !ok:
 			ri.ProxyUser.AuthError = fmt.Errorf("invalid username: %v", ri.ProxyUser.Username)
+		case strings.HasPrefix(records[i].Password, "$2y$") && len(records[i].Password) == 60:
+			if err := bcrypt.CompareHashAndPassword([]byte(records[i].Password), []byte(ri.ProxyUser.Password)); err != nil {
+				ri.ProxyUser.AuthError = err
+			} else {
+				ri.ProxyUser = records[i]
+			}
 		case ri.ProxyUser.Password != records[i].Password:
 			ri.ProxyUser.AuthError = fmt.Errorf("wrong password: %v", ri.ProxyUser.Username)
 		default:
