@@ -214,3 +214,12 @@ tunnel:
     dialer: cloud
     dial_timeout: 5
     enable_keep_alive: true
+sni:
+  enabled: true
+  log: true
+  policy: |
+    {{if wildcardMatch `github.com|*.github.com|*.githubusercontent.com` .Request.ServerName }}
+      {{ .Request.ServerName }}:443 proxy1
+    {{else if eq "netflix" .Request.ServerName }}
+      {{ .Request.ServerName }}:443 proxy2
+    {{end}}

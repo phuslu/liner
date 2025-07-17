@@ -21,6 +21,8 @@ type SniRequest struct {
 	TraceID    log.XID
 }
 
+var _ TLSServerNameHandle = (&SniHandler{}).ServeConn
+
 type SniHandler struct {
 	Config      SniConfig
 	GeoResolver *GeoResolver
@@ -102,5 +104,3 @@ func (h *SniHandler) ServeConn(ctx context.Context, servername string, header []
 
 	return io.EOF
 }
-
-var _ TLSServerNameHandle = (&SniHandler{}).ServeConn
