@@ -75,12 +75,12 @@ func (h *HTTPWebHandler) Load() error {
 			routers = append(routers, router{
 				web.Location,
 				&HTTPWebProxyHandler{
-					Transport:         h.Transport,
-					Functions:         h.Functions,
-					Pass:              web.Proxy.Pass,
-					AuthBasicUserFile: web.Proxy.AuthBasicUserFile,
-					SetHeaders:        web.Proxy.SetHeaders,
-					DumpFailure:       web.Proxy.DumpFailure,
+					Transport:   h.Transport,
+					Functions:   h.Functions,
+					Pass:        web.Proxy.Pass,
+					AuthTable:   web.Proxy.AuthTable,
+					SetHeaders:  web.Proxy.SetHeaders,
+					DumpFailure: web.Proxy.DumpFailure,
 				},
 			})
 		}

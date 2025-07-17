@@ -70,10 +70,10 @@ type HTTPConfig struct {
 			File    string `json:"file" yaml:"file"`
 		} `json:"index" yaml:"index"`
 		Proxy struct {
-			Pass              string `json:"pass" yaml:"pass"`
-			AuthBasicUserFile string `json:"auth_basic_user_file" yaml:"auth_basic_user_file"`
-			SetHeaders        string `json:"set_headers" yaml:"set_headers"`
-			DumpFailure       bool   `json:"dump_failure" yaml:"dump_failure"`
+			Pass        string `json:"pass" yaml:"pass"`
+			AuthTable   string `json:"auth_table" yaml:"auth_table"`
+			SetHeaders  string `json:"set_headers" yaml:"set_headers"`
+			DumpFailure bool   `json:"dump_failure" yaml:"dump_failure"`
 		} `json:"proxy" yaml:"proxy"`
 	} `json:"web" yaml:"web"`
 }

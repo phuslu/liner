@@ -23,20 +23,30 @@ import (
 )
 
 type HTTPWebProxyHandler struct {
-	Transport         *http.Transport
-	Functions         template.FuncMap
-	Pass              string
-	AuthBasic         string
-	AuthBasicUserFile string
-	SetHeaders        string
-	DumpFailure       bool
+	Transport   *http.Transport
+	Functions   template.FuncMap
+	Pass        string
+	AuthBasic   string
+	AuthTable   string
+	SetHeaders  string
+	DumpFailure bool
 
+	csvloader *FileLoader[[]UserInfo]
 	proxypass *template.Template
 	headers   *template.Template
 }
 
 func (h *HTTPWebProxyHandler) Load() error {
 	var err error
+
+	if strings.HasSuffix(h.AuthTable, ".csv") {
+		h.csvloader = GetUserCsvLoader(h.AuthTable)
+		records := h.csvloader.Load()
+		if records == nil {
+			log.Fatal().Str("proxy_pass", h.Pass).Str("auth_table", h.AuthTable).Msg("load auth_table failed")
+		}
+		log.Info().Str("proxy_pass", h.Pass).Str("auth_table", h.AuthTable).Int("auth_table_size", len(*records)).Msg("load auth_table ok")
+	}
 
 	h.proxypass, err = template.New(h.Pass).Funcs(h.Functions).Parse(h.Pass)
 	if err != nil {
@@ -59,9 +69,15 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	// 	return
 	// }
 
-	if h.AuthBasicUserFile != "" {
-		if err := HtpasswdVerify(h.AuthBasicUserFile, req); err != nil && !errors.Is(err, os.ErrNotExist) {
-			log.Error().Context(ri.LogContext).Err(err).Msg("web dav auth error")
+	if h.csvloader != nil {
+		err := VerifyUserInfoByCsvLoader(h.csvloader, &ri.AuthUserInfo)
+		if err == nil {
+			if allow, _ := ri.AuthUserInfo.Attrs["allow_proxy"].(string); allow != "1" {
+				err = fmt.Errorf("webdav is not allow for user: %#v", ri.AuthUserInfo.Username)
+			}
+		}
+		if err != nil {
+			log.Error().Context(ri.LogContext).Err(err).Any("user_attrs", ri.AuthUserInfo.Attrs).Msg("web proxy auth error")
 			rw.Header().Set("www-authenticate", `Basic realm="`+h.AuthBasic+`"`)
 			http.Error(rw, "401 unauthorised: "+err.Error(), http.StatusUnauthorized)
 
