@@ -33,8 +33,6 @@ import (
 	"unsafe"
 
 	"github.com/libp2p/go-yamux/v5"
-	"github.com/nathanaelle/password/v2"
-	"github.com/phuslu/lru"
 	"golang.org/x/crypto/chacha20"
 	"golang.org/x/crypto/ocsp"
 )
@@ -1017,72 +1015,6 @@ func ReadFile(s string) (body []byte, err error) {
 	}
 
 	return
-}
-
-var htpassdCache = lru.NewTTLCache[string, [][2]string](1024)
-
-func HtpasswdVerify(htpasswdFile string, req *http.Request) error {
-	loader := func(ctx context.Context, filename string) ([][2]string, time.Duration, error) {
-		result := make([][2]string, 0, 64)
-
-		file, err := os.Open(htpasswdFile)
-		if err != nil {
-			return nil, 0, fmt.Errorf("open htpasswd file %s error: %w", htpasswdFile, err)
-		}
-		defer file.Close()
-
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			parts := strings.SplitN(scanner.Text(), ":", 2)
-			if len(parts) != 2 {
-				continue
-			}
-			result = append(result, [2]string{strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])})
-		}
-		if err := scanner.Err(); err != nil {
-			return nil, 0, fmt.Errorf("read htpasswd file %s error: %w", htpasswdFile, err)
-		}
-
-		return result, 2 * time.Minute, nil
-	}
-
-	pairs, err, _ := htpassdCache.GetOrLoad(req.Context(), htpasswdFile, loader)
-	if err != nil {
-		return err
-	}
-
-	s := req.Header.Get("authorization")
-	if s == "" {
-		return errors.New("no authorization header")
-	}
-	if !strings.HasPrefix(s, "Basic ") {
-		return fmt.Errorf("unsupported authorization header: %+v", s)
-	}
-	data, err := base64.StdEncoding.DecodeString(s[6:])
-	if err != nil {
-		return fmt.Errorf("invalid authorization header: %+v", s)
-	}
-	parts := strings.SplitN(string(data), ":", 2)
-	if len(parts) != 2 {
-		return fmt.Errorf("invalid authorization header: %+v", s)
-	}
-	user, pass := parts[0], parts[1]
-
-	factory := &password.Factory{}
-	factory.Register(password.MD5, password.SHA256, password.SHA512, password.BCRYPT)
-
-	for _, pair := range pairs {
-		if user == parts[0] {
-			factory.Set(pair[1])
-			if factory.CrypterFound().Verify(s2b(pass)) {
-				return nil
-			} else {
-				return fmt.Errorf("wrong username or password: %+v", parts)
-			}
-		}
-	}
-
-	return fmt.Errorf("wrong username or password: %+v", parts)
 }
 
 func SetHTTP2ResponseWriterSentHeader(rw http.ResponseWriter, sent bool) error {
