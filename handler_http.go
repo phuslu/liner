@@ -292,7 +292,7 @@ func GetUserCsvLoader(authTableFile string) *FileLoader[[]UserInfo] {
 	return loader
 }
 
-func LookupUserFromCsvLoader(csvloader *FileLoader[[]UserInfo], user *UserInfo) error {
+func VerifyUserInfoByCsvLoader(csvloader *FileLoader[[]UserInfo], user *UserInfo) error {
 	records := *csvloader.Load()
 	i, ok := slices.BinarySearchFunc(records, *user, func(a, b UserInfo) int { return cmp.Compare(a.Username, b.Username) })
 	switch {

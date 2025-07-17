@@ -129,7 +129,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 	}
 
 	if ri.ProxyUserInfo.Username != "" && h.Config.Forward.AuthTable != "" {
-		_ = LookupUserFromCsvLoader(h.csvloader, &ri.ProxyUserInfo)
+		_ = VerifyUserInfoByCsvLoader(h.csvloader, &ri.ProxyUserInfo)
 	}
 
 	bb := bytebufferpool.Get()
