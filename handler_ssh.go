@@ -22,7 +22,6 @@ import (
 	"github.com/creack/pty"
 	"github.com/phuslu/log"
 	"github.com/pkg/sftp"
-	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -76,22 +75,7 @@ func (h *SshHandler) Load() error {
 				Username: c.User(),
 				Password: string(pass),
 			}
-			records := *h.csvloader.Load()
-			i, ok := slices.BinarySearchFunc(records, user, func(a, b UserInfo) int { return cmp.Compare(a.Username, b.Username) })
-			switch {
-			case !ok:
-				user.AuthError = fmt.Errorf("invalid username: %v", user.Username)
-			case strings.HasPrefix(records[i].Password, "$2y$") && len(records[i].Password) == 60:
-				if err := bcrypt.CompareHashAndPassword([]byte(records[i].Password), []byte(pass)); err != nil {
-					user.AuthError = err
-				} else {
-					user = records[i]
-				}
-			case user.Password != records[i].Password:
-				user.AuthError = fmt.Errorf("wrong password: %v", user.Username)
-			default:
-				user = records[i]
-			}
+			_ = LookupUserFromCsvLoader(h.csvloader, &user)
 			if allow, _ := user.Attrs["allow_ssh"].(string); allow != "" {
 				switch allow {
 				case "0":

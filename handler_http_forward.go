@@ -11,7 +11,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,7 +20,6 @@ import (
 	"github.com/mileusna/useragent"
 	"github.com/phuslu/log"
 	"github.com/valyala/bytebufferpool"
-	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/net/publicsuffix"
 )
 
@@ -131,22 +129,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 	}
 
 	if ri.ProxyUser.Username != "" && h.Config.Forward.AuthTable != "" {
-		records := *h.csvloader.Load()
-		i, ok := slices.BinarySearchFunc(records, ri.ProxyUser, func(a, b UserInfo) int { return cmp.Compare(a.Username, b.Username) })
-		switch {
-		case !ok:
-			ri.ProxyUser.AuthError = fmt.Errorf("invalid username: %v", ri.ProxyUser.Username)
-		case strings.HasPrefix(records[i].Password, "$2y$") && len(records[i].Password) == 60:
-			if err := bcrypt.CompareHashAndPassword([]byte(records[i].Password), []byte(ri.ProxyUser.Password)); err != nil {
-				ri.ProxyUser.AuthError = err
-			} else {
-				ri.ProxyUser = records[i]
-			}
-		case ri.ProxyUser.Password != records[i].Password:
-			ri.ProxyUser.AuthError = fmt.Errorf("wrong password: %v", ri.ProxyUser.Username)
-		default:
-			ri.ProxyUser = records[i]
-		}
+		_ = LookupUserFromCsvLoader(h.csvloader, &ri.ProxyUser)
 	}
 
 	bb := bytebufferpool.Get()

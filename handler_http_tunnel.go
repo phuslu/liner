@@ -1,17 +1,14 @@
 package main
 
 import (
-	"cmp"
 	"context"
 	"crypto/sha1"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/netip"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,7 +17,6 @@ import (
 	"github.com/libp2p/go-yamux/v5"
 	"github.com/phuslu/log"
 	"go4.org/netipx"
-	"golang.org/x/crypto/bcrypt"
 )
 
 type HTTPTunnelHandler struct {
@@ -91,22 +87,7 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 
 	log.Info().Context(ri.LogContext).Str("username", user.Username).Str("password", user.Password).Msg("tunnel verify user")
 
-	records := *h.csvloader.Load()
-	i, ok := slices.BinarySearchFunc(records, user, func(a, b UserInfo) int { return cmp.Compare(a.Username, b.Username) })
-	switch {
-	case !ok:
-		user.AuthError = fmt.Errorf("invalid username: %v", user.Username)
-	case strings.HasPrefix(records[i].Password, "$2y$") && len(records[i].Password) == 60:
-		if err := bcrypt.CompareHashAndPassword([]byte(records[i].Password), []byte(user.Password)); err != nil {
-			user.AuthError = err
-		} else {
-			user = records[i]
-		}
-	case user.Password != records[i].Password:
-		user.AuthError = fmt.Errorf("wrong password: %v", user.Username)
-	default:
-		user = records[i]
-	}
+	_ = LookupUserFromCsvLoader(h.csvloader, &user)
 
 	if user.AuthError != nil {
 		log.Error().Err(user.AuthError).Context(ri.LogContext).Str("username", user.Username).Msg("tunnel user auth failed")
@@ -204,7 +185,7 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		http.NewResponseController(rw).Flush()
 	} else {
 		conn, _, err = http.NewResponseController(rw).Hijack()
-		if !ok {
+		if err != nil {
 			log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Msg("tunnel hijack request error")
 			http.Error(rw, err.Error(), http.StatusInternalServerError)
 			return
@@ -231,7 +212,7 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		}
 
 		_, err = conn.Write(b)
-		if !ok {
+		if err != nil {
 			log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Msg("tunnel send response error")
 			return
 		}

@@ -19,6 +19,7 @@ import (
 	"github.com/mileusna/useragent"
 	"github.com/phuslu/log"
 	"github.com/puzpuzpuz/xsync/v4"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type HTTPHandler interface {
@@ -289,4 +290,24 @@ func GetUserCsvLoader(authTableFile string) *FileLoader[[]UserInfo] {
 	})
 
 	return loader
+}
+
+func LookupUserFromCsvLoader(csvloader *FileLoader[[]UserInfo], user *UserInfo) error {
+	records := *csvloader.Load()
+	i, ok := slices.BinarySearchFunc(records, *user, func(a, b UserInfo) int { return cmp.Compare(a.Username, b.Username) })
+	switch {
+	case !ok:
+		user.AuthError = fmt.Errorf("invalid username: %v", user.Username)
+	case strings.HasPrefix(records[i].Password, "$2y$") && len(records[i].Password) == 60:
+		if err := bcrypt.CompareHashAndPassword([]byte(records[i].Password), []byte(user.Password)); err != nil {
+			user.AuthError = err
+		} else {
+			*user = records[i]
+		}
+	case user.Password != records[i].Password:
+		user.AuthError = fmt.Errorf("wrong password: %v", user.Username)
+	default:
+		*user = records[i]
+	}
+	return user.AuthError
 }
