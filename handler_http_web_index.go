@@ -3,7 +3,6 @@ package main
 import (
 	"compress/gzip"
 	_ "embed"
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -147,13 +146,6 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	}
 
 	if fi.IsDir() {
-		// .htpasswd
-		htfile := filepath.Join(fullname, ".htpasswd")
-		if err = HtpasswdVerify(htfile, req); err != nil && !errors.Is(err, os.ErrNotExist) {
-			rw.Header().Set("www-authenticate", `Basic realm="Authentication Required"`)
-			http.Error(rw, "401 unauthorised: "+err.Error(), http.StatusUnauthorized)
-			return
-		}
 		// index.html
 		index := filepath.Join(fullname, "index.html")
 		if fi2, err := os.Stat(index); err == nil && !fi2.IsDir() {
