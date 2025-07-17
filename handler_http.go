@@ -56,7 +56,7 @@ type RequestInfo struct {
 	ClientTCPConn   *net.TCPConn
 	TraceID         log.XID
 	UserAgent       useragent.UserAgent
-	ProxyUser       UserInfo
+	ProxyUserInfo   UserInfo
 	GeoipInfo       GeoipInfo
 	LogContext      log.Context
 }
@@ -176,12 +176,12 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		ri.GeoipInfo.Country, ri.GeoipInfo.City, _ = h.GeoResolver.LookupCity(context.Background(), net.ParseIP(ri.RemoteIP))
 	}
 
-	ri.ProxyUser = UserInfo{}
+	ri.ProxyUserInfo = UserInfo{}
 	if s := req.Header.Get("proxy-authorization"); s != "" {
 		switch t, s, _ := strings.Cut(s, " "); t {
 		case "Basic":
 			if b, err := base64.StdEncoding.DecodeString(s); err == nil {
-				ri.ProxyUser.Username, ri.ProxyUser.Password, _ = strings.Cut(string(b), ":")
+				ri.ProxyUserInfo.Username, ri.ProxyUserInfo.Password, _ = strings.Cut(string(b), ":")
 			}
 		}
 	}

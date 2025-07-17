@@ -96,7 +96,7 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	}
 
 	speedLimit := h.Config.Tunnel.SpeedLimit
-	if s, _ := ri.ProxyUser.Attrs["speed_limit"].(string); s != "" {
+	if s, _ := ri.ProxyUserInfo.Attrs["speed_limit"].(string); s != "" {
 		n, _ := strconv.ParseInt(s, 10, 64)
 		switch {
 		case n > 0:

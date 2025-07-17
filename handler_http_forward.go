@@ -128,8 +128,8 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		return
 	}
 
-	if ri.ProxyUser.Username != "" && h.Config.Forward.AuthTable != "" {
-		_ = LookupUserFromCsvLoader(h.csvloader, &ri.ProxyUser)
+	if ri.ProxyUserInfo.Username != "" && h.Config.Forward.AuthTable != "" {
+		_ = LookupUserFromCsvLoader(h.csvloader, &ri.ProxyUserInfo)
 	}
 
 	bb := bytebufferpool.Get()
@@ -146,7 +146,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			UserInfo        UserInfo
 			UserAgent       *useragent.UserAgent
 			ServerAddr      string
-		}{req, ri.ClientHelloInfo, ri.JA4, ri.ProxyUser, &ri.UserAgent, ri.ServerAddr})
+		}{req, ri.ClientHelloInfo, ri.JA4, ri.ProxyUserInfo, &ri.UserAgent, ri.ServerAddr})
 		if err != nil {
 			log.Error().Err(err).Context(ri.LogContext).Str("forward_policy", h.Config.Forward.Policy).Interface("client_hello_info", ri.ClientHelloInfo).Interface("tls_connection_state", req.TLS).Msg("execute forward_policy error")
 			http.NotFound(rw, req)
@@ -202,13 +202,13 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		}
 	}
 
-	if policyName != "bypass_auth" && (ri.ProxyUser.Username == "" || ri.ProxyUser.AuthError != nil) {
-		log.Warn().Err(err).Context(ri.LogContext).Str("username", ri.ProxyUser.Username).Str("proxy_authorization", req.Header.Get("proxy-authorization")).Msg("auth error")
+	if policyName != "bypass_auth" && (ri.ProxyUserInfo.Username == "" || ri.ProxyUserInfo.AuthError != nil) {
+		log.Warn().Err(err).Context(ri.LogContext).Str("username", ri.ProxyUserInfo.Username).Str("proxy_authorization", req.Header.Get("proxy-authorization")).Msg("auth error")
 		RejectRequest(rw, req)
 		return
 	}
 
-	if s, _ := ri.ProxyUser.Attrs["allow_client"].(string); s != "" && s != "1" {
+	if s, _ := ri.ProxyUserInfo.Attrs["allow_client"].(string); s != "" && s != "1" {
 		browser := strings.HasPrefix(req.UserAgent(), "Mozilla/5.0 ")
 		if ri.ClientHelloInfo != nil && len(ri.ClientHelloInfo.CipherSuites) != 0 {
 			if c := ri.ClientHelloInfo.CipherSuites[0]; !(c&0x0f0f == 0x0a0a && c&0xff == c>>8) {
@@ -216,13 +216,13 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			}
 		}
 		if !browser {
-			log.Warn().Err(err).Context(ri.LogContext).Str("username", ri.ProxyUser.Username).Str("proxy_authorization", req.Header.Get("proxy-authorization")).Msg("user is not allow client")
+			log.Warn().Err(err).Context(ri.LogContext).Str("username", ri.ProxyUserInfo.Username).Str("proxy_authorization", req.Header.Get("proxy-authorization")).Msg("user is not allow client")
 			RejectRequest(rw, req)
 			return
 		}
 	}
 
-	if s, _ := ri.ProxyUser.Attrs["speed_limit"].(string); s != "" {
+	if s, _ := ri.ProxyUserInfo.Attrs["speed_limit"].(string); s != "" {
 		n, _ := strconv.ParseInt(s, 10, 64)
 		switch {
 		case n > 0:
@@ -244,7 +244,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 				UserAgent       *useragent.UserAgent
 				ServerAddr      string
 				User            UserInfo
-			}{req, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr, ri.ProxyUser})
+			}{req, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr, ri.ProxyUserInfo})
 			if err != nil {
 				log.Error().Err(err).Context(ri.LogContext).Str("forward_tcp_congestion", h.Config.Forward.TcpCongestion).Msg("execute forward_tcp_congestion error")
 				http.Error(rw, err.Error(), http.StatusBadGateway)
@@ -299,7 +299,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			UserAgent       *useragent.UserAgent
 			ServerAddr      string
 			User            UserInfo
-		}{req, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr, ri.ProxyUser})
+		}{req, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr, ri.ProxyUserInfo})
 		if err != nil {
 			log.Error().Err(err).Context(ri.LogContext).Str("forward_dialer_name", h.Config.Forward.Dialer).Msg("execute forward_dialer error")
 			http.NotFound(rw, req)
@@ -309,18 +309,18 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 	}
 
 	var userLog = h.Config.Forward.Log
-	if ri.ProxyUser.Attrs["no_log"] == "1" {
+	if ri.ProxyUserInfo.Attrs["no_log"] == "1" {
 		userLog = false
 	}
 
-	log.Info().Context(ri.LogContext).Str("req_method", req.Method).Str("req_host", req.Host).Any("req_header", req.Header).Str("username", ri.ProxyUser.Username).Any("user_attrs", ri.ProxyUser.Attrs).Str("forward_policy_name", policyName).Str("forward_dialer_value", dialerValue).Str("http_domain", domain).Int64("speed_limit", speedLimit).Msg("forward request")
+	log.Info().Context(ri.LogContext).Str("req_method", req.Method).Str("req_host", req.Host).Any("req_header", req.Header).Str("username", ri.ProxyUserInfo.Username).Any("user_attrs", ri.ProxyUserInfo.Attrs).Str("forward_policy_name", policyName).Str("forward_dialer_value", dialerValue).Str("http_domain", domain).Int64("speed_limit", speedLimit).Msg("forward request")
 
 	var dialerName = dialerValue
 	var preferIPv6 = h.Config.Forward.PreferIpv6
 	if strings.Contains(dialerValue, "=") {
 		u, err := url.ParseQuery(dialerValue)
 		if err != nil {
-			log.Error().Context(ri.LogContext).Err(err).Str("username", ri.ProxyUser.Username).Str("forward_policy_name", policyName).Str("forward_dialer_value", dialerValue).Str("http_domain", domain).Msg("forward parse dialer json error")
+			log.Error().Context(ri.LogContext).Err(err).Str("username", ri.ProxyUserInfo.Username).Str("forward_policy_name", policyName).Str("forward_dialer_value", dialerValue).Str("http_domain", domain).Msg("forward parse dialer json error")
 			return
 		}
 		dialerName = u.Get("dialer")
@@ -386,14 +386,14 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 				header.Set("x-forwarded-for", ri.RemoteIP)
 			}
 			if s := header.Get("x-forwarded-user"); s != "" {
-				header.Set("x-forwarded-user", s+","+ri.ProxyUser.Username)
+				header.Set("x-forwarded-user", s+","+ri.ProxyUserInfo.Username)
 			} else {
-				header.Set("x-forwarded-user", ri.ProxyUser.Username)
+				header.Set("x-forwarded-user", ri.ProxyUserInfo.Username)
 			}
 		} else {
 			ctx = context.WithValue(ctx, DialerHTTPHeaderContextKey, http.Header{
 				"x-forwarded-for":  []string{ri.RemoteIP},
-				"x-forwarded-user": []string{ri.ProxyUser.Username},
+				"x-forwarded-user": []string{ri.ProxyUserInfo.Username},
 			})
 		}
 		network := cmp.Or(req.Header.Get("x-forwarded-network"), "tcp")
@@ -457,7 +457,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 					Str("server_addr", ri.ServerAddr).
 					Str("tls_version", ri.TLSVersion.String()).
 					Str("ja4", ri.JA4).
-					Str("username", ri.ProxyUser.Username).
+					Str("username", ri.ProxyUserInfo.Username).
 					Str("remote_ip", ri.RemoteIP).
 					Str("remote_country", ri.GeoipInfo.Country).
 					Str("remote_city", ri.GeoipInfo.City).
@@ -488,7 +488,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		} else {
 			transmitBytes, err = io.Copy(w, conn) // splice to
 		}
-		log.Debug().Context(ri.LogContext).Str("username", ri.ProxyUser.Username).Str("http_domain", domain).Int64("speed_limit", speedLimit).Int64("transmit_bytes", transmitBytes).Err(err).Msg("forward log")
+		log.Debug().Context(ri.LogContext).Str("username", ri.ProxyUserInfo.Username).Str("http_domain", domain).Int64("speed_limit", speedLimit).Int64("transmit_bytes", transmitBytes).Err(err).Msg("forward log")
 	default:
 		if req.Host == "" {
 			http.NotFound(rw, req)
@@ -566,7 +566,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 					Str("server_addr", ri.ServerAddr).
 					Str("tls_version", ri.TLSVersion.String()).
 					Str("ja4", ri.JA4).
-					Str("username", ri.ProxyUser.Username).
+					Str("username", ri.ProxyUserInfo.Username).
 					Str("remote_ip", ri.RemoteIP).
 					Str("remote_country", ri.GeoipInfo.Country).
 					Str("remote_city", ri.GeoipInfo.City).
@@ -587,7 +587,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		}
 
 		transmitBytes, err := io.CopyBuffer(w, resp.Body, make([]byte, 256*1024)) // buffer size should align to http2.MaxReadFrameSize
-		log.Debug().Context(ri.LogContext).Str("username", ri.ProxyUser.Username).Str("http_domain", domain).Int64("transmit_bytes", transmitBytes).Int64("speed_limit", speedLimit).Err(err).Msg("forward log")
+		log.Debug().Context(ri.LogContext).Str("username", ri.ProxyUserInfo.Username).Str("http_domain", domain).Int64("transmit_bytes", transmitBytes).Int64("speed_limit", speedLimit).Err(err).Msg("forward log")
 	}
 }
 
