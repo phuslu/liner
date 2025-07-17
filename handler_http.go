@@ -302,7 +302,7 @@ func GetUserCsvLoader(authTableFile string) *FileLoader[[]UserInfo] {
 	return loader
 }
 
-func VerifyUserInfoByCsvLoader(csvloader *FileLoader[[]UserInfo], user *UserInfo) (err error) {
+func LookupUserInfoFromCsvLoader(csvloader *FileLoader[[]UserInfo], user *UserInfo) (err error) {
 	records := *csvloader.Load()
 	i, ok := slices.BinarySearchFunc(records, *user, func(a, b UserInfo) int { return cmp.Compare(a.Username, b.Username) })
 	switch {
@@ -313,10 +313,10 @@ func VerifyUserInfoByCsvLoader(csvloader *FileLoader[[]UserInfo], user *UserInfo
 		if err == nil {
 			*user = records[i]
 		}
-	case user.Password != records[i].Password:
-		err = fmt.Errorf("wrong password: %v", user.Username)
-	default:
+	case user.Password == records[i].Password:
 		*user = records[i]
+	default:
+		err = fmt.Errorf("wrong password: %v", user.Username)
 	}
 	return
 }
