@@ -8,11 +8,13 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/mileusna/useragent"
 	"github.com/phuslu/log"
@@ -226,4 +228,65 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	default:
 		h.WebHandler.ServeHTTP(rw, req)
 	}
+}
+
+var csvloaders = xsync.NewMap[string, *FileLoader[[]UserInfo]](xsync.WithSerialResize())
+
+func GetUserCsvLoader(authTableFile string) *FileLoader[[]UserInfo] {
+	unmarshal := func(data []byte, v any) error {
+		infos, ok := v.(*[]UserInfo)
+		if !ok {
+			return fmt.Errorf("*[]UserInfo required, found %T", v)
+		}
+		lines := AppendSplitLines(nil, b2s(data))
+		if len(lines) <= 1 {
+			return fmt.Errorf("no csv rows: %s", data)
+		}
+		names := strings.Split(lines[0], ",")
+		if len(names) <= 1 {
+			return fmt.Errorf("no csv columns: %s", data)
+		}
+		for i := range names {
+			names[i] = strings.ToLower(names[i])
+		}
+		for _, line := range lines[1:] {
+			parts := strings.Split(line, ",")
+			if len(parts) <= 1 {
+				continue
+			}
+			var user UserInfo
+			for i, part := range parts {
+				switch i {
+				case 0:
+					user.Username = part
+				case 1:
+					user.Password = part
+				default:
+					if user.Attrs == nil {
+						user.Attrs = make(map[string]any)
+					}
+					if i >= len(names) {
+						return fmt.Errorf("overflow csv cloumn, names=%v parts=%v", names, parts)
+					}
+					user.Attrs[names[i]] = part
+				}
+			}
+			*infos = append(*infos, user)
+		}
+		slices.SortFunc(*infos, func(a, b UserInfo) int {
+			return cmp.Compare(a.Username, b.Username)
+		})
+		return nil
+	}
+
+	loader, _ := csvloaders.LoadOrCompute(authTableFile, func() (*FileLoader[[]UserInfo], bool) {
+		return &FileLoader[[]UserInfo]{
+			Filename:     authTableFile,
+			Unmarshal:    unmarshal,
+			PollDuration: 15 * time.Second,
+			Logger:       log.DefaultLogger.Slog(),
+		}, false
+	})
+
+	return loader
 }
