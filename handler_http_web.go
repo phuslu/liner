@@ -46,8 +46,8 @@ func (h *HTTPWebHandler) Load() error {
 			routers = append(routers, router{
 				web.Location,
 				&HTTPWebDavHandler{
-					Root:              web.Dav.Root,
-					AuthBasicUserFile: web.Dav.AuthBasicUserFile,
+					Root:      web.Dav.Root,
+					AuthTable: web.Dav.AuthTable,
 				},
 			})
 		case web.Doh.Enabled:

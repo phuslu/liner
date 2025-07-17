@@ -54,9 +54,9 @@ type HTTPConfig struct {
 			DefaultAPP string `json:"default_app" yaml:"default_app"`
 		} `json:"cgi" yaml:"cgi"`
 		Dav struct {
-			Enabled           bool   `json:"enabled" yaml:"enabled"`
-			Root              string `json:"root" yaml:"root"`
-			AuthBasicUserFile string `json:"auth_basic_user_file" yaml:"auth_basic_user_file"`
+			Enabled   bool   `json:"enabled" yaml:"enabled"`
+			Root      string `json:"root" yaml:"root"`
+			AuthTable string `json:"auth_table" yaml:"auth_table"`
 		} `json:"dav" yaml:"dav"`
 		Doh struct {
 			Enabled   bool   `json:"enabled" yaml:"enabled"`
