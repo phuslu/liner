@@ -128,8 +128,9 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		return
 	}
 
+	var proxyAuthError error
 	if ri.ProxyUserInfo.Username != "" && h.Config.Forward.AuthTable != "" {
-		_ = VerifyUserInfoByCsvLoader(h.csvloader, &ri.ProxyUserInfo)
+		proxyAuthError = VerifyUserInfoByCsvLoader(h.csvloader, &ri.ProxyUserInfo)
 	}
 
 	bb := bytebufferpool.Get()
@@ -202,7 +203,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		}
 	}
 
-	if policyName != "bypass_auth" && (ri.ProxyUserInfo.Username == "" || ri.ProxyUserInfo.AuthError != nil) {
+	if policyName != "bypass_auth" && (ri.ProxyUserInfo.Username == "" || proxyAuthError != nil) {
 		log.Warn().Err(err).Context(ri.LogContext).Str("username", ri.ProxyUserInfo.Username).Str("proxy_authorization", req.Header.Get("proxy-authorization")).Msg("auth error")
 		RejectRequest(rw, req)
 		return

@@ -39,10 +39,9 @@ type HTTPServerHandler struct {
 }
 
 type UserInfo struct {
-	Username  string
-	Password  string
-	Attrs     map[string]any
-	AuthError error
+	Username string
+	Password string
+	Attrs    map[string]any
 }
 
 type RequestInfo struct {
@@ -292,22 +291,21 @@ func GetUserCsvLoader(authTableFile string) *FileLoader[[]UserInfo] {
 	return loader
 }
 
-func VerifyUserInfoByCsvLoader(csvloader *FileLoader[[]UserInfo], user *UserInfo) error {
+func VerifyUserInfoByCsvLoader(csvloader *FileLoader[[]UserInfo], user *UserInfo) (err error) {
 	records := *csvloader.Load()
 	i, ok := slices.BinarySearchFunc(records, *user, func(a, b UserInfo) int { return cmp.Compare(a.Username, b.Username) })
 	switch {
 	case !ok:
-		user.AuthError = fmt.Errorf("invalid username: %v", user.Username)
+		err = fmt.Errorf("invalid username: %v", user.Username)
 	case strings.HasPrefix(records[i].Password, "$2y$") && len(records[i].Password) == 60:
-		if err := bcrypt.CompareHashAndPassword([]byte(records[i].Password), []byte(user.Password)); err != nil {
-			user.AuthError = err
-		} else {
+		err = bcrypt.CompareHashAndPassword([]byte(records[i].Password), []byte(user.Password))
+		if err == nil {
 			*user = records[i]
 		}
 	case user.Password != records[i].Password:
-		user.AuthError = fmt.Errorf("wrong password: %v", user.Username)
+		err = fmt.Errorf("wrong password: %v", user.Username)
 	default:
 		*user = records[i]
 	}
-	return user.AuthError
+	return
 }

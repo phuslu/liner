@@ -87,11 +87,10 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 
 	log.Info().Context(ri.LogContext).Str("username", user.Username).Str("password", user.Password).Msg("tunnel verify user")
 
-	_ = VerifyUserInfoByCsvLoader(h.csvloader, &user)
-
-	if user.AuthError != nil {
-		log.Error().Err(user.AuthError).Context(ri.LogContext).Str("username", user.Username).Msg("tunnel user auth failed")
-		http.Error(rw, user.AuthError.Error(), http.StatusUnauthorized)
+	err := VerifyUserInfoByCsvLoader(h.csvloader, &user)
+	if err != nil {
+		log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Msg("tunnel user auth failed")
+		http.Error(rw, err.Error(), http.StatusUnauthorized)
 		return
 	}
 

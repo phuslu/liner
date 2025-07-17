@@ -75,15 +75,15 @@ func (h *SshHandler) Load() error {
 				Username: c.User(),
 				Password: string(pass),
 			}
-			_ = VerifyUserInfoByCsvLoader(h.csvloader, &user)
+			err := VerifyUserInfoByCsvLoader(h.csvloader, &user)
 			if allow, _ := user.Attrs["allow_ssh"].(string); allow != "" {
 				switch allow {
 				case "0":
-					user.AuthError = fmt.Errorf("wrong permission, allow_ssh is %s: %v", allow, user.Username)
+					err = fmt.Errorf("wrong permission, allow_ssh is %s: %v", allow, user.Username)
 				}
 			}
-			if user.AuthError != nil {
-				return nil, user.AuthError
+			if err != nil {
+				return nil, err
 			}
 			return nil, nil
 		}
