@@ -243,7 +243,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 
 var csvloaders = xsync.NewMap[string, *FileLoader[[]UserInfo]](xsync.WithSerialResize())
 
-func GetUserCsvLoader(authTableFile string) *FileLoader[[]UserInfo] {
+func GetUserInfoCsvLoader(authTableFile string) *FileLoader[[]UserInfo] {
 	unmarshal := func(data []byte, v any) error {
 		infos, ok := v.(*[]UserInfo)
 		if !ok {

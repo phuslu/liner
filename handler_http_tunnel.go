@@ -30,7 +30,7 @@ type HTTPTunnelHandler struct {
 
 func (h *HTTPTunnelHandler) Load() error {
 	if strings.HasSuffix(h.Config.Tunnel.AuthTable, ".csv") {
-		h.csvloader = GetUserCsvLoader(h.Config.Tunnel.AuthTable)
+		h.csvloader = GetUserInfoCsvLoader(h.Config.Tunnel.AuthTable)
 		records := h.csvloader.Load()
 		if records == nil {
 			log.Fatal().Strs("server_name", h.Config.ServerName).Str("auth_table", h.Config.Tunnel.AuthTable).Msg("load auth_table failed")
