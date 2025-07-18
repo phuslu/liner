@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"net"
 	"net/netip"
 	"strconv"
@@ -19,6 +20,7 @@ type Socks5Dialer struct {
 	Host     string
 	Port     string
 	Socks5H  bool
+	Logger   *slog.Logger
 	Resolver *Resolver
 	Dialer   Dialer
 }
@@ -26,8 +28,11 @@ type Socks5Dialer struct {
 func (d *Socks5Dialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
 	dialer := d.Dialer
 	if m, ok := ctx.Value(DialerMemoryDialersContextKey).(*sync.Map); ok && m != nil {
-		if d, ok := m.Load(addr); ok && d != nil {
-			if md, ok := d.(*MemoryDialer); ok && md != nil {
+		if v, ok := m.Load(addr); ok && d != nil {
+			if md, ok := v.(*MemoryDialer); ok && md != nil {
+				if d.Logger != nil {
+					d.Logger.Info("socks5 dialer switch to memory dialer", "memory_dialer_address", md.Address)
+				}
 				dialer = md
 			}
 		}

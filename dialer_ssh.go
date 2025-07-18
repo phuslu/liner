@@ -3,6 +3,7 @@ package main
 import (
 	"cmp"
 	"context"
+	"log/slog"
 	"net"
 	"os"
 	"sync"
@@ -26,6 +27,7 @@ type SSHDialer struct {
 	UserKnownHostsFile    string
 	MaxClients            int
 	Timeout               time.Duration
+	Logger                *slog.Logger
 	Dialer                Dialer
 
 	mutexes [64]sync.Mutex
@@ -63,8 +65,11 @@ func (d *SSHDialer) DialContext(ctx context.Context, network, addr string) (net.
 		hostport := net.JoinHostPort(d.Host, cmp.Or(d.Port, "22"))
 		dialer := d.Dialer
 		if m, ok := ctx.Value(DialerMemoryDialersContextKey).(*sync.Map); ok && m != nil {
-			if d, ok := m.Load(hostport); ok && d != nil {
-				if md, ok := d.(*MemoryDialer); ok && md != nil {
+			if v, ok := m.Load(hostport); ok && d != nil {
+				if md, ok := v.(*MemoryDialer); ok && md != nil {
+					if d.Logger != nil {
+						d.Logger.Info("ssh dialer switch to memory dialer", "memory_dialer_address", md.Address)
+					}
 					dialer = md
 				}
 			}

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptrace"
@@ -16,7 +17,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/phuslu/log"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/smallnest/ringbuffer"
@@ -33,6 +33,7 @@ type HTTP3Dialer struct {
 	Insecure  bool
 	Resolve   string
 	Websocket bool
+	Logger    *slog.Logger
 
 	mu        sync.Mutex
 	transport *http3.Transport
@@ -100,7 +101,9 @@ func (d *HTTP3Dialer) DialContext(ctx context.Context, network, addr string) (ne
 		ContentLength: -1,
 	}
 	if header, _ := ctx.Value(DialerHTTPHeaderContextKey).(http.Header); header != nil {
-		log.Debug().Any("dialer_http_header", header).Msg("http3 dialer set extras headers")
+		if d.Logger != nil {
+			d.Logger.Debug("http3 dialer set extras headers", "dialer_http_header", header)
+		}
 		for key, values := range header {
 			for _, value := range values {
 				req.Header.Add(key, value)
@@ -124,7 +127,9 @@ func (d *HTTP3Dialer) DialContext(ctx context.Context, network, addr string) (ne
 		req.Header.Set("Upgrade", "websocket")
 		req.Header.Set("Sec-WebSocket-Version", "13")
 		req.Header.Set("Sec-WebSocket-Key", key)
-		log.Debug().Stringer("req_url", req.URL).Any("req_header", req.Header).Msg("http3dialer websocket request")
+		if d.Logger != nil {
+			d.Logger.Debug("http3dialer websocket request", "req_url", req.URL, "req_header", req.Header)
+		}
 	}
 
 	var remoteAddr, localAddr net.Addr
@@ -138,13 +143,16 @@ func (d *HTTP3Dialer) DialContext(ctx context.Context, network, addr string) (ne
 	resp, err := d.transport.RoundTripOpt(req, http3.RoundTripOpt{OnlyCachedConn: false})
 	if err != nil {
 		if errmsg := err.Error(); strings.Contains(errmsg, "timeout: ") || strings.Contains(errmsg, "context deadline exceeded") || strings.Contains(errmsg, "context canceled") {
-			log.Warn().Err(err).Msg("close underlying http3 connection")
-			d.transport.Close()
+			if d.Logger != nil {
+				d.Logger.Warn("close underlying http3 connection", "error", err)
+			}
 		}
 		return nil, err
 	}
 
-	log.Debug().Int("resp_statuscode", resp.StatusCode).Any("resp_header", resp.Header).Msg("http3dialer websocket response")
+	if d.Logger != nil {
+		d.Logger.Debug("http3dialer websocket response", "resp_statuscode", resp.StatusCode, "resp_header", resp.Header)
+	}
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusSwitchingProtocols {
 		data, _ := io.ReadAll(resp.Body)

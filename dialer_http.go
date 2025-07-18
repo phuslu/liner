@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -35,6 +36,7 @@ type HTTPDialer struct {
 	ClientCert  string
 	Resolve     map[string]string
 	Dialer      Dialer
+	Logger      *slog.Logger
 	Resolver    *Resolver
 
 	mu        sync.Mutex
@@ -96,8 +98,11 @@ func (d *HTTPDialer) DialContext(ctx context.Context, network, addr string) (net
 
 	dialer := d.Dialer
 	if m, ok := ctx.Value(DialerMemoryDialersContextKey).(*sync.Map); ok && m != nil {
-		if d, ok := m.Load(hostport); ok && d != nil {
-			if md, ok := d.(*MemoryDialer); ok && md != nil {
+		if v, ok := m.Load(hostport); ok && d != nil {
+			if md, ok := v.(*MemoryDialer); ok && md != nil {
+				if d.Logger != nil {
+					d.Logger.Info("http dialer switch to memory dialer", "memory_dialer_address", md.Address)
+				}
 				dialer = md
 			}
 		}

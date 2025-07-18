@@ -168,6 +168,7 @@ func main() {
 
 	// global dialer
 	dialer := &LocalDialer{
+		Logger:          slog.Default(),
 		Resolver:        resolver.Resolver,
 		ResolveCache:    lru.NewTTLCache[string, []netip.Addr](cmp.Or(config.Global.DnsCacheSize, 8192)),
 		Concurrency:     2,
@@ -216,6 +217,7 @@ func main() {
 				CACert:      u.Query().Get("cacert"),
 				ClientKey:   u.Query().Get("key"),
 				ClientCert:  u.Query().Get("cert"),
+				Logger:      slog.Default(),
 				Resolve:     map[string]string{u.Host: u.Query().Get("resolve")},
 				Dialer:      underlay,
 				Resolver:    resolver.Resolver,
@@ -232,6 +234,7 @@ func main() {
 				ClientKey:  u.Query().Get("key"),
 				ClientCert: u.Query().Get("cert"),
 				MaxClients: cmp.Or(first(strconv.Atoi(u.Query().Get("max_clients"))), 8),
+				Logger:     slog.Default(),
 				Dialer:     underlay,
 			}
 		case "http3", "http3+wss":
@@ -244,16 +247,7 @@ func main() {
 				Insecure:  u.Query().Get("insecure") == "true",
 				Resolve:   u.Query().Get("resolve"),
 				Websocket: strings.HasSuffix(u.Scheme, "+wss"),
-			}
-		case "socks", "socks5", "socks5h":
-			return &Socks5Dialer{
-				Username: u.User.Username(),
-				Password: first(u.User.Password()),
-				Host:     u.Hostname(),
-				Port:     u.Port(),
-				Socks5H:  u.Scheme == "socks5h",
-				Resolver: resolver.Resolver,
-				Dialer:   underlay,
+				Logger:    slog.Default(),
 			}
 		case "socks4", "socks4a":
 			return &Socks4Dialer{
@@ -262,6 +256,18 @@ func main() {
 				Host:     u.Hostname(),
 				Port:     u.Port(),
 				Socks4A:  u.Scheme == "socks4a",
+				Logger:   slog.Default(),
+				Resolver: resolver.Resolver,
+				Dialer:   underlay,
+			}
+		case "socks", "socks5", "socks5h":
+			return &Socks5Dialer{
+				Username: u.User.Username(),
+				Password: first(u.User.Password()),
+				Host:     u.Hostname(),
+				Port:     u.Port(),
+				Socks5H:  u.Scheme == "socks5h",
+				Logger:   slog.Default(),
 				Resolver: resolver.Resolver,
 				Dialer:   underlay,
 			}
@@ -276,6 +282,7 @@ func main() {
 				UserKnownHostsFile:    cmp.Or(u.Query().Get("UserKnownHostsFile"), u.Query().Get("user_known_hosts_file")),
 				MaxClients:            cmp.Or(first(strconv.Atoi(u.Query().Get("max_clients"))), 8),
 				Timeout:               time.Duration(cmp.Or(first(strconv.Atoi(u.Query().Get("timeout"))), 10)) * time.Second,
+				Logger:                slog.Default(),
 				Dialer:                underlay,
 			}
 		default:

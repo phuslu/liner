@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"log/slog"
 	"net"
 	"net/netip"
 	"slices"
@@ -11,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/phuslu/log"
 	"github.com/phuslu/lru"
 )
 
@@ -34,6 +34,7 @@ var (
 var _ Dialer = (*LocalDialer)(nil)
 
 type LocalDialer struct {
+	Logger       *slog.Logger
 	Resolver     *Resolver
 	ResolveCache *lru.TTLCache[string, []netip.Addr]
 
@@ -113,7 +114,9 @@ func (d *LocalDialer) dialContext(ctx context.Context, network, address string, 
 	conn, err := dial(ctx, network, host, ips, uint16(port), tlsConfig)
 	if err != nil && ip4 != nil {
 		if errmsg := err.Error(); strings.Contains(errmsg, "connect: network is unreachable") || (strings.HasPrefix(errmsg, "dial tcp ") && strings.HasSuffix(errmsg, ": i/o timeout")) {
-			log.Warn().Err(err).Str("network", network).Str("host", host).Interface("ips", ips).Interface("ip4", ip4).Msg("retry dialing to ip4")
+			if d.Logger != nil {
+				d.Logger.Warn("retry dialing to ip4", "network", network, "host", host, "ips", ips, "ip4", ip4)
+			}
 			conn, err = dial(ctx, network, host, ip4, uint16(port), tlsConfig)
 			if err == nil {
 				d.ResolveCache.Set(host, ip4, d.Resolver.CacheDuration)

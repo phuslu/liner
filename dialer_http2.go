@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptrace"
@@ -37,6 +38,7 @@ type HTTP2Dialer struct {
 	ClientCert string
 	MaxClients int
 
+	Logger *slog.Logger
 	Dialer Dialer
 
 	mutexes [64]sync.Mutex
@@ -52,8 +54,11 @@ func (d *HTTP2Dialer) DialContext(ctx context.Context, network, addr string) (ne
 				hostport := net.JoinHostPort(d.Host, cmp.Or(d.Port, "443"))
 				dialer := d.Dialer
 				if m, ok := ctx.Value(DialerMemoryDialersContextKey).(*sync.Map); ok && m != nil {
-					if d, ok := m.Load(hostport); ok && d != nil {
-						if md, ok := d.(*MemoryDialer); ok && md != nil {
+					if v, ok := m.Load(hostport); ok && d != nil {
+						if md, ok := v.(*MemoryDialer); ok && md != nil {
+							if d.Logger != nil {
+								d.Logger.Info("http2 dialer switch to memory dialer", "memory_dialer_address", md.Address)
+							}
 							dialer = md
 						}
 					}
