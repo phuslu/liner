@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"crypto/tls"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/netip"
@@ -32,6 +33,7 @@ func GetResolver(addr string) (r *Resolver, err error) {
 			Client: &fastdns.Client{
 				Addr: addr,
 			},
+			Logger:        slog.Default(),
 			CacheDuration: 10 * time.Minute,
 			LRUCache:      lru.NewTTLCache[string, []netip.Addr](64 * 1024),
 		}
