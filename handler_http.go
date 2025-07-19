@@ -3,6 +3,7 @@ package main
 import (
 	"cmp"
 	"context"
+	"crypto/subtle"
 	"crypto/tls"
 	_ "embed"
 	"encoding/base64"
@@ -11,7 +12,9 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -19,6 +22,7 @@ import (
 	"github.com/mileusna/useragent"
 	"github.com/phuslu/log"
 	"github.com/puzpuzpuz/xsync/v4"
+	"golang.org/x/crypto/argon2"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -302,12 +306,39 @@ func GetUserInfoCsvLoader(authTableFile string) *FileLoader[[]UserInfo] {
 	return loader
 }
 
+var argon2idRegex = regexp.MustCompile(`^\$argon2id\$v=(\d+)\$m=(\d+),t=(\d+),p=(\d+)\$(.+)\$(.+)$`)
+
 func LookupUserInfoFromCsvLoader(csvloader *FileLoader[[]UserInfo], user *UserInfo) (err error) {
 	records := *csvloader.Load()
 	i, ok := slices.BinarySearchFunc(records, *user, func(a, b UserInfo) int { return cmp.Compare(a.Username, b.Username) })
 	switch {
 	case !ok:
 		err = fmt.Errorf("invalid username: %v", user.Username)
+	case strings.HasPrefix(records[i].Password, "$argon2id$"):
+		// see https://github.com/alexedwards/argon2id
+		// $argon2id$v=19$m=65536,t=3,p=2$c29tZXNhbHQ$RdescudvJCsgt3ub+b+dWRWJTmaaJObG
+		ms := argon2idRegex.FindStringSubmatch(records[i].Password)
+		if ms == nil {
+			err = fmt.Errorf("invalid argon2id password: %v", records[i].Password)
+			return
+		}
+		m, t, p := first(strconv.Atoi(ms[2])), first(strconv.Atoi(ms[3])), first(strconv.Atoi(ms[4]))
+		var salt, key []byte
+		salt, err = base64.RawStdEncoding.Strict().DecodeString(ms[5])
+		if err != nil {
+			err = fmt.Errorf("invalid argon2id password: %v : %w", records[i].Password, err)
+			return
+		}
+		key, err = base64.RawStdEncoding.Strict().DecodeString(ms[6])
+		if err != nil {
+			err = fmt.Errorf("invalid argon2id password: %v : %w", records[i].Password, err)
+			return
+		}
+		idkey := argon2.IDKey([]byte(user.Password), salt, uint32(t), uint32(m), uint8(p), uint32(len(key)))
+		if subtle.ConstantTimeEq(int32(len(key)), int32(len(idkey))) == 0 ||
+			subtle.ConstantTimeCompare(key, idkey) != 1 {
+			err = fmt.Errorf("wrong password: %v", user.Username)
+		}
 	case strings.HasPrefix(records[i].Password, "$2y$") && len(records[i].Password) == 60:
 		err = bcrypt.CompareHashAndPassword([]byte(records[i].Password), []byte(user.Password))
 		if err == nil {
