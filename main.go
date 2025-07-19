@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"net/netip"
 	"net/url"
 	"os"
 	"os/exec"
@@ -128,6 +127,7 @@ func main() {
 		Resolver:          must(GetResolver(config.Global.DnsServer)),
 		EnableCJKCityName: true,
 	}
+	resolver.Resolver.NoIPv6Hosts = lru.NewTTLCache[string, bool](cmp.Or(config.Global.DnsCacheSize, 4096))
 	if names, err := filepath.Glob(filepath.Join(config.Global.Geoip2Dir, "*.mmdb")); err == nil {
 		newerdb := func(r1, r2 *maxminddb.Reader) *maxminddb.Reader {
 			if r1 == nil || r1.Metadata.BuildEpoch < r2.Metadata.BuildEpoch {
@@ -170,7 +170,6 @@ func main() {
 	dialer := &LocalDialer{
 		Logger:          slog.Default(),
 		Resolver:        resolver.Resolver,
-		ResolveCache:    lru.NewTTLCache[string, []netip.Addr](cmp.Or(config.Global.DnsCacheSize, 8192)),
 		Concurrency:     2,
 		PerferIPv6:      false,
 		ForbidLocalAddr: config.Global.ForbidLocalAddr,
@@ -190,7 +189,6 @@ func main() {
 		case "local":
 			return &LocalDialer{
 				Resolver:        resolver.Resolver,
-				ResolveCache:    dialer.ResolveCache,
 				Interface:       u.Host,
 				PerferIPv6:      u.Query().Get("prefer_ipv6") == "true",
 				Concurrency:     2,

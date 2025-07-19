@@ -11,8 +11,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/phuslu/lru"
 )
 
 type Dialer interface {
@@ -34,9 +32,8 @@ var (
 var _ Dialer = (*LocalDialer)(nil)
 
 type LocalDialer struct {
-	Logger       *slog.Logger
-	Resolver     *Resolver
-	ResolveCache *lru.TTLCache[string, []netip.Addr]
+	Logger   *slog.Logger
+	Resolver *Resolver
 
 	Interface       string
 	PerferIPv6      bool
@@ -74,12 +71,9 @@ func (d *LocalDialer) dialContext(ctx context.Context, network, address string, 
 		return nil, err
 	}
 
-	ips, _ := d.ResolveCache.Get(host)
-	if len(ips) == 0 {
-		ips, err = d.Resolver.LookupNetIP(ctx, "ip", host)
-		if err != nil {
-			return nil, err
-		}
+	ips, err := d.Resolver.LookupNetIP(ctx, "ip", host)
+	if err != nil {
+		return nil, err
 	}
 	if len(ips) == 0 {
 		return nil, net.InvalidAddrError("empty dns record: " + host)
@@ -115,11 +109,14 @@ func (d *LocalDialer) dialContext(ctx context.Context, network, address string, 
 	if err != nil && ip4 != nil {
 		if errmsg := err.Error(); strings.Contains(errmsg, "connect: network is unreachable") || (strings.HasPrefix(errmsg, "dial tcp ") && strings.HasSuffix(errmsg, ": i/o timeout")) {
 			if d.Logger != nil {
-				d.Logger.Warn("retry dialing to ip4", "network", network, "host", host, "ips", ips, "ip4", ip4)
+				d.Logger.Warn("retrying dial to ip4", "network", network, "host", host, "ips", ips, "ip4", ip4)
 			}
 			conn, err = dial(ctx, network, host, ip4, uint16(port), tlsConfig)
-			if err == nil {
-				d.ResolveCache.Set(host, ip4, d.Resolver.CacheDuration)
+			if err == nil && d.Resolver.NoIPv6Hosts != nil {
+				if d.Logger != nil {
+					d.Logger.Warn("dialed to ip4 and disable ipv6", "network", network, "host", host, "ips", ips, "ip4", ip4)
+				}
+				d.Resolver.NoIPv6Hosts.Set(host, true, 12*time.Hour)
 			}
 		}
 	}
