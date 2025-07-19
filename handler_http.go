@@ -22,6 +22,7 @@ import (
 	"github.com/mileusna/useragent"
 	"github.com/phuslu/log"
 	"github.com/puzpuzpuz/xsync/v4"
+	"github.com/zeebo/wyhash"
 	"golang.org/x/crypto/argon2"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -307,6 +308,7 @@ func GetUserInfoCsvLoader(authTableFile string) *FileLoader[[]UserInfo] {
 }
 
 var argon2idRegex = regexp.MustCompile(`^\$argon2id\$v=(\d+)\$m=(\d+),t=(\d+),p=(\d+)\$(.+)\$(.+)$`)
+var cryptPassHash = xsync.NewMap[string, uint64](xsync.WithSerialResize())
 
 func LookupUserInfoFromCsvLoader(csvloader *FileLoader[[]UserInfo], user *UserInfo) (err error) {
 	records := *csvloader.Load()
@@ -315,6 +317,14 @@ func LookupUserInfoFromCsvLoader(csvloader *FileLoader[[]UserInfo], user *UserIn
 	case !ok:
 		err = fmt.Errorf("invalid username: %v", user.Username)
 	case strings.HasPrefix(records[i].Password, "$argon2id$"):
+		if hash, ok := cryptPassHash.Load(records[i].Password); ok {
+			if hash == wyhash.HashString(user.Password, 0) {
+				*user = records[i]
+			} else {
+				err = fmt.Errorf("wrong password: %v", user.Username)
+			}
+			return
+		}
 		// see https://github.com/alexedwards/argon2id
 		// $argon2id$v=19$m=65536,t=3,p=2$c29tZXNhbHQ$RdescudvJCsgt3ub+b+dWRWJTmaaJObG
 		ms := argon2idRegex.FindStringSubmatch(records[i].Password)
@@ -338,12 +348,26 @@ func LookupUserInfoFromCsvLoader(csvloader *FileLoader[[]UserInfo], user *UserIn
 		if subtle.ConstantTimeEq(int32(len(key)), int32(len(idkey))) == 0 ||
 			subtle.ConstantTimeCompare(key, idkey) != 1 {
 			err = fmt.Errorf("wrong password: %v", user.Username)
+			return
 		}
-	case strings.HasPrefix(records[i].Password, "$2y$") && len(records[i].Password) == 60:
+		cryptPassHash.Store(records[i].Password, wyhash.HashString(user.Password, 0))
+		*user = records[i]
+	case strings.HasPrefix(records[i].Password, "$2y$"):
+		if hash, ok := cryptPassHash.Load(records[i].Password); ok {
+			if hash == wyhash.HashString(user.Password, 0) {
+				*user = records[i]
+			} else {
+				err = fmt.Errorf("wrong password: %v", user.Username)
+			}
+			return
+		}
 		err = bcrypt.CompareHashAndPassword([]byte(records[i].Password), []byte(user.Password))
-		if err == nil {
-			*user = records[i]
+		if err != nil {
+			err = fmt.Errorf("wrong password: %v: %w", user.Username, err)
+			return
 		}
+		cryptPassHash.Store(records[i].Password, wyhash.HashString(user.Password, 0))
+		*user = records[i]
 	case user.Password == records[i].Password:
 		*user = records[i]
 	default:
