@@ -22,6 +22,7 @@ import (
 	"github.com/mileusna/useragent"
 	"github.com/phuslu/log"
 	"github.com/puzpuzpuz/xsync/v4"
+	"github.com/zeebo/wyhash"
 	"golang.org/x/crypto/argon2"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -59,6 +60,7 @@ type RequestInfo struct {
 	ClientTCPConn   *net.TCPConn
 	TraceID         log.XID
 	UserAgent       useragent.UserAgent
+	UserFingerprint []byte
 	ProxyUserInfo   UserInfo
 	AuthUserInfo    UserInfo
 	GeoipInfo       GeoipInfo
@@ -200,6 +202,17 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		}
 	}
 
+	ri.UserFingerprint = AppendableBytes(ri.UserFingerprint[:0]).
+		Str(ri.RemoteIP).
+		Str(ri.JA4).
+		Str(ri.UserAgent.OS).
+		Str(ri.UserAgent.Name).
+		Str(ri.UserAgent.Version).
+		Str(ri.ProxyUserInfo.Username).
+		Str(ri.ProxyUserInfo.Password).
+		Str(ri.AuthUserInfo.Username).
+		Str(ri.AuthUserInfo.Password)
+
 	ri.TraceID = log.NewXID()
 
 	ri.LogContext = log.NewContext(ri.LogContext[:0]).
@@ -307,14 +320,25 @@ func GetUserInfoCsvLoader(authTableFile string) *FileLoader[[]UserInfo] {
 }
 
 var argon2idRegex = regexp.MustCompile(`^\$argon2id\$v=(\d+)\$m=(\d+),t=(\d+),p=(\d+)\$(.+)\$(.+)$`)
+var cryptPassHash = xsync.NewMap[string, uint64](xsync.WithSerialResize())
 
-func LookupUserInfoFromCsvLoader(csvloader *FileLoader[[]UserInfo], user *UserInfo) (err error) {
+func LookupUserInfoFromCsvLoader(csvloader *FileLoader[[]UserInfo], user *UserInfo, fingerprint []byte) (err error) {
 	records := *csvloader.Load()
 	i, ok := slices.BinarySearchFunc(records, *user, func(a, b UserInfo) int { return cmp.Compare(a.Username, b.Username) })
 	switch {
 	case !ok:
 		err = fmt.Errorf("invalid username: %v", user.Username)
 	case strings.HasPrefix(records[i].Password, "$argon2id$"):
+		if len(fingerprint) > 0 {
+			if hash, ok := cryptPassHash.Load(b2s(fingerprint)); ok {
+				if hash == wyhash.HashString(user.Password, 0) {
+					*user = records[i]
+				} else {
+					err = fmt.Errorf("wrong password: %v", user.Username)
+				}
+				return
+			}
+		}
 		// see https://github.com/alexedwards/argon2id
 		// $argon2id$v=19$m=65536,t=3,p=2$c29tZXNhbHQ$RdescudvJCsgt3ub+b+dWRWJTmaaJObG
 		ms := argon2idRegex.FindStringSubmatch(records[i].Password)
@@ -338,12 +362,32 @@ func LookupUserInfoFromCsvLoader(csvloader *FileLoader[[]UserInfo], user *UserIn
 		if subtle.ConstantTimeEq(int32(len(key)), int32(len(idkey))) == 0 ||
 			subtle.ConstantTimeCompare(key, idkey) != 1 {
 			err = fmt.Errorf("wrong password: %v", user.Username)
+			return
 		}
-	case strings.HasPrefix(records[i].Password, "$2y$") && len(records[i].Password) == 60:
+		if len(fingerprint) > 0 {
+			cryptPassHash.Store(string(fingerprint), wyhash.HashString(user.Password, 0))
+		}
+		*user = records[i]
+	case strings.HasPrefix(records[i].Password, "$2y$"):
+		if len(fingerprint) > 0 {
+			if hash, ok := cryptPassHash.Load(b2s(fingerprint)); ok {
+				if hash == wyhash.HashString(user.Password, 0) {
+					*user = records[i]
+				} else {
+					err = fmt.Errorf("wrong password: %v", user.Username)
+				}
+				return
+			}
+		}
 		err = bcrypt.CompareHashAndPassword([]byte(records[i].Password), []byte(user.Password))
-		if err == nil {
-			*user = records[i]
+		if err != nil {
+			err = fmt.Errorf("wrong password: %v: %w", user.Username, err)
+			return
 		}
+		if len(fingerprint) > 0 {
+			cryptPassHash.Store(string(fingerprint), wyhash.HashString(user.Password, 0))
+		}
+		*user = records[i]
 	case user.Password == records[i].Password:
 		*user = records[i]
 	default:

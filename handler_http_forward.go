@@ -130,7 +130,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 
 	var proxyAuthError error
 	if ri.ProxyUserInfo.Username != "" && h.Config.Forward.AuthTable != "" {
-		proxyAuthError = LookupUserInfoFromCsvLoader(h.csvloader, &ri.ProxyUserInfo)
+		proxyAuthError = LookupUserInfoFromCsvLoader(h.csvloader, &ri.ProxyUserInfo, ri.UserFingerprint)
 	}
 
 	bb := bytebufferpool.Get()

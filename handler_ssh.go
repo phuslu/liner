@@ -75,7 +75,7 @@ func (h *SshHandler) Load() error {
 				Username: c.User(),
 				Password: string(pass),
 			}
-			err := LookupUserInfoFromCsvLoader(h.csvloader, &user)
+			err := LookupUserInfoFromCsvLoader(h.csvloader, &user, nil)
 			if allow, _ := user.Attrs["allow_ssh"].(string); allow != "" {
 				switch allow {
 				case "0":
