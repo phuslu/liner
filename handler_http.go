@@ -315,8 +315,8 @@ func GetUserInfoCsvLoader(authTableFile string) (loader *FileLoader[[]UserInfo])
 
 var argon2idRegex = regexp.MustCompile(`^\$argon2id\$v=(\d+)\$m=(\d+),t=(\d+),p=(\d+)\$(.+)\$(.+)$`)
 
-func LookupUserInfoFromCsvLoader(csvloader *FileLoader[[]UserInfo], user *UserInfo) (err error) {
-	records := *csvloader.Load()
+func LookupUserInfoFromCsvLoader(userloader *FileLoader[[]UserInfo], user *UserInfo) (err error) {
+	records := *userloader.Load()
 	i, ok := slices.BinarySearchFunc(records, *user, func(a, b UserInfo) int { return cmp.Compare(a.Username, b.Username) })
 	switch {
 	case !ok:

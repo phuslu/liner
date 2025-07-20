@@ -29,10 +29,10 @@ type SshHandler struct {
 	Config SshConfig
 	Logger log.Logger
 
-	sshConfig *ssh.ServerConfig
-	csvloader *FileLoader[[]UserInfo]
-	keyloader *FileLoader[[]string]
-	shellPath string
+	sshConfig  *ssh.ServerConfig
+	userloader *FileLoader[[]UserInfo]
+	keyloader  *FileLoader[[]string]
+	shellPath  string
 
 	mu     sync.Mutex
 	closed bool
@@ -63,8 +63,8 @@ func (h *SshHandler) Load() error {
 
 	if strings.HasSuffix(h.Config.AuthTable, ".csv") {
 		h.Config.AuthTable = os.ExpandEnv(h.Config.AuthTable)
-		h.csvloader = GetUserInfoCsvLoader(h.Config.AuthTable)
-		records := h.csvloader.Load()
+		h.userloader = GetUserInfoCsvLoader(h.Config.AuthTable)
+		records := h.userloader.Load()
 		if records == nil {
 			return fmt.Errorf("Failed to load auth_table: %#v", h.Config.AuthTable)
 		}
@@ -75,7 +75,7 @@ func (h *SshHandler) Load() error {
 				Username: c.User(),
 				Password: string(pass),
 			}
-			err := LookupUserInfoFromCsvLoader(h.csvloader, &user)
+			err := LookupUserInfoFromCsvLoader(h.userloader, &user)
 			if allow, _ := user.Attrs["allow_ssh"].(string); allow != "" {
 				switch allow {
 				case "0":
