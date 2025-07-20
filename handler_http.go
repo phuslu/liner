@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"crypto/sha1"
+	"crypto/sha256"
 	"crypto/subtle"
 	"crypto/tls"
 	_ "embed"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
@@ -24,6 +27,7 @@ import (
 	"github.com/mileusna/useragent"
 	"github.com/phuslu/log"
 	"github.com/puzpuzpuz/xsync/v4"
+	"github.com/zeebo/wyhash"
 	"golang.org/x/crypto/argon2"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -323,6 +327,32 @@ func LookupUserInfoFromCsvLoader(userloader *FileLoader[[]UserInfo], user *UserI
 		err = fmt.Errorf("invalid username: %v", user.Username)
 	case user.Password == records[i].Password:
 		*user = records[i]
+	case strings.HasPrefix(records[i].Password, "0x"):
+		var b []byte
+		b, err = hex.AppendDecode(make([]byte, 0, 64), s2b(records[i].Password[2:]))
+		if err != nil {
+			err = fmt.Errorf("invalid sha1/sha256 password: %v", records[i].Password)
+			return
+		}
+		switch len(b) {
+		case 8:
+			if binary.BigEndian.Uint64(b) == wyhash.HashString(user.Password, 0) {
+				*user = records[i]
+				return
+			}
+		case 20:
+			if *(*[20]byte)(b) == sha1.Sum(s2b(user.Password)) {
+				*user = records[i]
+				return
+			}
+		case 32:
+			if *(*[32]byte)(b) == sha256.Sum256(s2b(user.Password)) {
+				*user = records[i]
+				return
+			}
+		}
+		err = fmt.Errorf("invalid md5/sha1/sha256 password: %v", records[i].Password)
+		return
 	case strings.HasPrefix(records[i].Password, "$2y$"):
 		err = bcrypt.CompareHashAndPassword([]byte(records[i].Password), []byte(user.Password))
 		if err == nil {
