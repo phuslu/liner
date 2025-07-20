@@ -35,16 +35,14 @@ if test "$(sha1sum $filename)" != "$checksum"; then
   exit 1
 fi
 
+if [ -f production.yaml ] || [ -s .env ]; then
+  echo liner | tar xvzf $filename -T -
+  rm -rf $filename
+  exit 0
+fi
+
 tar xvzf $filename
 rm -rf $filename
-
-if test -f production.yaml; then
-  exit 0
-fi
-
-if test -s .env; then
-  exit 0
-fi
 
 cat <<EOF > production.yaml
 global:

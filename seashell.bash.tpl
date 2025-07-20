@@ -10,7 +10,8 @@ test -x ~/service/liner/run && exit 0
 cd && mkdir -p liner && cd liner
 
 goosarch=$(grep -q 'CPU architecture: 8' /proc/cpuinfo && echo linux_arm64 || echo linux_amd64)
-curl -sSLf $(curl -s https://api.github.com/repos/phuslu/liner/releases/tags/v0.0.0 | awk -v goosarch="$goosarch" '$0 ~ goosarch {f=1} f && /browser_download_url/ {gsub(/.*: "|",?/, ""); print; exit}') | tar xvz -C .
+linerurl=$(curl -s https://api.github.com/repos/phuslu/liner/releases/tags/v0.0.0 | awk -v goosarch="$goosarch" '$0 ~ goosarch {f=1} f && /browser_download_url/ {gsub(/.*: "|",?/, ""); print; exit}')
+curl -sSLf $linerurl | tar xvz -C . -T <(echo liner)
 
 echo '{{ readFile `/home/phuslu/.ssh/id_ed25519.pub` | trim }}' | tee authorized_keys
 echo '{{ readFile `/home/phuslu/web/server/ssh_host_ed25519_key` | trim }}' | tee ssh_host_ed25519_key
