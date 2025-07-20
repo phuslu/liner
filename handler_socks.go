@@ -107,7 +107,7 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 		req.User.Username = string(b[2 : 2+int(b[1])])
 		req.User.Password = string(b[3+int(b[1]) : 3+int(b[1])+int(b[2+int(b[1])])])
 		// auth plugin
-		err := LookupUserInfoFromCsvLoader(h.csvloader, &req.User, nil)
+		err := LookupUserInfoFromCsvLoader(h.csvloader, &req.User)
 		if err != nil {
 			log.Warn().Err(err).Str("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Int("socks_version", int(req.Version)).Msg("auth error")
 			conn.Write([]byte{VersionSocks5, byte(Socks5StatusGeneralFailure)})
