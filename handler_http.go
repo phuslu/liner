@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"crypto/subtle"
@@ -59,7 +60,9 @@ type RequestInfo struct {
 	ClientTCPConn   *net.TCPConn
 	TraceID         log.XID
 	UserAgent       useragent.UserAgent
+	ProxyUserBytes  []byte
 	ProxyUserInfo   UserInfo
+	AuthUserBytes   []byte
 	AuthUserInfo    UserInfo
 	GeoipInfo       GeoipInfo
 	LogContext      log.Context
@@ -184,8 +187,12 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	if s := req.Header.Get("proxy-authorization"); s != "" {
 		switch t, s, _ := strings.Cut(s, " "); t {
 		case "Basic":
-			if b, err := base64.StdEncoding.DecodeString(s); err == nil {
-				ri.ProxyUserInfo.Username, ri.ProxyUserInfo.Password, _ = strings.Cut(string(b), ":")
+			var err error
+			if ri.ProxyUserBytes, err = base64.StdEncoding.AppendDecode(ri.ProxyUserBytes[:0], s2b(s)); err == nil {
+				if i := bytes.IndexByte(ri.ProxyUserBytes, ':'); i > 0 {
+					ri.ProxyUserInfo.Username = b2s(ri.ProxyUserBytes[:i])
+					ri.ProxyUserInfo.Password = b2s(ri.ProxyUserBytes[i+1:])
+				}
 			}
 		}
 	}
@@ -194,8 +201,12 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	if s := req.Header.Get("authorization"); s != "" {
 		switch t, s, _ := strings.Cut(s, " "); t {
 		case "Basic":
-			if b, err := base64.StdEncoding.DecodeString(s); err == nil {
-				ri.AuthUserInfo.Username, ri.AuthUserInfo.Password, _ = strings.Cut(string(b), ":")
+			var err error
+			if ri.AuthUserBytes, err = base64.StdEncoding.AppendDecode(ri.AuthUserBytes[:0], s2b(s)); err == nil {
+				if i := bytes.IndexByte(ri.AuthUserBytes, ':'); i > 0 {
+					ri.AuthUserInfo.Username = b2s(ri.AuthUserBytes[:i])
+					ri.AuthUserInfo.Password = b2s(ri.AuthUserBytes[i+1:])
+				}
 			}
 		}
 	}
