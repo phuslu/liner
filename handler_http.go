@@ -325,6 +325,15 @@ func LookupUserInfoFromCsvLoader(csvloader *FileLoader[[]UserInfo], user *UserIn
 	switch {
 	case !ok:
 		err = fmt.Errorf("invalid username: %v", user.Username)
+	case user.Password == records[i].Password:
+		*user = records[i]
+	case strings.HasPrefix(records[i].Password, "$2y$"):
+		err = bcrypt.CompareHashAndPassword([]byte(records[i].Password), []byte(user.Password))
+		if err == nil {
+			*user = records[i]
+		} else {
+			err = fmt.Errorf("wrong password: %v: %w", user.Username, err)
+		}
 	case strings.HasPrefix(records[i].Password, "$argon2id$"):
 		// see https://github.com/alexedwards/argon2id
 		// $argon2id$v=19$m=65536,t=3,p=2$c29tZXNhbHQ$RdescudvJCsgt3ub+b+dWRWJTmaaJObG
@@ -350,13 +359,6 @@ func LookupUserInfoFromCsvLoader(csvloader *FileLoader[[]UserInfo], user *UserIn
 			subtle.ConstantTimeCompare(key, idkey) != 1 {
 			err = fmt.Errorf("wrong password: %v", user.Username)
 		}
-	case strings.HasPrefix(records[i].Password, "$2y$") && len(records[i].Password) == 60:
-		err = bcrypt.CompareHashAndPassword([]byte(records[i].Password), []byte(user.Password))
-		if err == nil {
-			*user = records[i]
-		}
-	case user.Password == records[i].Password:
-		*user = records[i]
 	default:
 		err = fmt.Errorf("wrong password: %v", user.Username)
 	}
