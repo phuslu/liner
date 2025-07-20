@@ -1,4 +1,1 @@
-### Installation
-```
-curl phus.lu/liner | bash
-```
+Valar Morghulis, Valar Dohaeris.
