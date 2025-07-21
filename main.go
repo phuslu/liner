@@ -415,7 +415,19 @@ func main() {
 				Transport: transport,
 				Functions: functions.FuncMap,
 			},
-			ServerNames:    server.ServerName,
+			ServerNames: filter(server.ServerName, func(s string) bool {
+				return !strings.Contains(s, "*")
+			}),
+			ServerNameSuffixes: filtermap(server.ServerName, func(s string) (string, bool) {
+				i, j := strings.IndexByte(s, '*'), strings.LastIndexByte(s, '*')
+				switch {
+				case i < 0:
+					return "", false
+				case i == 0 && j == 0:
+					return s[1:], true
+				}
+				panic("unsupported server_name: " + s)
+			}),
 			ClientHelloMap: tlsConfigurator.ClientHelloMap,
 			UserAgentMap:   useragentMap,
 			GeoResolver:    resolver,
@@ -585,7 +597,19 @@ func main() {
 				Transport: transport,
 				Functions: functions.FuncMap,
 			},
-			ServerNames:    httpConfig.ServerName,
+			ServerNames: filter(httpConfig.ServerName, func(s string) bool {
+				return !strings.Contains(s, "*")
+			}),
+			ServerNameSuffixes: filtermap(httpConfig.ServerName, func(s string) (string, bool) {
+				i, j := strings.IndexByte(s, '*'), strings.LastIndexByte(s, '*')
+				switch {
+				case i < 0:
+					return "", false
+				case i == 0 && j == 0:
+					return s[1:], true
+				}
+				panic("unsupported server_name: " + s)
+			}),
 			ClientHelloMap: tlsConfigurator.ClientHelloMap,
 			UserAgentMap:   useragentMap,
 			GeoResolver:    resolver,

@@ -88,6 +88,26 @@ func must[T, U any](t T, u ...U) T {
 	return t
 }
 
+func filter[T any](items []T, pred func(T) bool) []T {
+	var result []T
+	for _, item := range items {
+		if pred(item) {
+			result = append(result, item)
+		}
+	}
+	return result
+}
+
+func filtermap[T any, R any](items []T, mapper func(T) (R, bool)) []R {
+	result := make([]R, 0, len(items))
+	for _, item := range items {
+		if v, ok := mapper(item); ok {
+			result = append(result, v)
+		}
+	}
+	return result
+}
+
 type IPInt uint32
 
 func NewIPInt(ip string) IPInt {
