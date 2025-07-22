@@ -5,7 +5,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/pprof"
-	"net/netip"
 	"strings"
 	"text/template"
 
@@ -109,7 +108,8 @@ func (h *HTTPWebHandler) Load() error {
 	}
 
 	h.mux.HandleFunc("/debug/", func(rw http.ResponseWriter, req *http.Request) {
-		if ap, err := netip.ParseAddrPort(req.RemoteAddr); err == nil && !ap.Addr().IsLoopback() && !ap.Addr().IsPrivate() {
+		ri := req.Context().Value(RequestInfoContextKey).(*RequestInfo)
+		if !ri.RemoteAddr.Addr().IsLoopback() && !ri.RemoteAddr.Addr().IsPrivate() {
 			http.Error(rw, "403 forbidden", http.StatusForbidden)
 			return
 		}

@@ -40,6 +40,7 @@ type HTTPServerHandler struct {
 
 type RequestInfo struct {
 	RemoteIP        string
+	RemoteAddr      netip.AddrPort
 	ServerAddr      netip.AddrPort
 	ServerName      string
 	TLSVersion      TLSVersion
@@ -82,6 +83,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	defer riPool.Put(ri)
 
 	ri.RemoteIP, _, _ = net.SplitHostPort(req.RemoteAddr)
+	ri.RemoteAddr, _ = netip.ParseAddrPort(req.RemoteAddr)
 	ri.ServerAddr, _ = netip.ParseAddrPort(req.Context().Value(http.LocalAddrContextKey).(net.Addr).String())
 	if req.TLS != nil {
 		ri.ServerName = req.TLS.ServerName

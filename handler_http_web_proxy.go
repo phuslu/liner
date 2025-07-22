@@ -197,8 +197,7 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		}
 		rw.WriteHeader(http.StatusOK)
 
-		raddr := first(net.ResolveTCPAddr("tcp", req.RemoteAddr))
-		rwc := HTTPRequestStream{req.Body, rw, http.NewResponseController(rw), raddr, net.TCPAddrFromAddrPort(ri.ServerAddr)}
+		rwc := HTTPRequestStream{req.Body, rw, http.NewResponseController(rw), net.TCPAddrFromAddrPort(ri.RemoteAddr), net.TCPAddrFromAddrPort(ri.ServerAddr)}
 		defer rwc.Close()
 
 		go io.Copy(rwc, br)
