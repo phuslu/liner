@@ -157,12 +157,7 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 			log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Str("remote_addr", req.RemoteAddr).Msg("tunnel resolve remote addr error")
 			http.Error(rw, err.Error(), http.StatusInternalServerError)
 		}
-		laddr, err := net.ResolveTCPAddr("tcp", ri.ServerAddr)
-		if err != nil {
-			log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Str("local_addr", ri.ServerAddr).Msg("tunnel resolve local addr error")
-			http.Error(rw, err.Error(), http.StatusInternalServerError)
-		}
-		conn = HTTPRequestStream{req.Body, rw, http.NewResponseController(rw), raddr, laddr}
+		conn = HTTPRequestStream{req.Body, rw, http.NewResponseController(rw), raddr, net.TCPAddrFromAddrPort(ri.ServerAddr)}
 
 		if req.Header.Get("Sec-Websocket-Key") != "" {
 			key := sha1.Sum([]byte(req.Header.Get("Sec-WebSocket-Key") + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))

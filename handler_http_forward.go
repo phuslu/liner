@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -151,7 +152,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			JA4             string
 			UserInfo        UserInfo
 			UserAgent       *useragent.UserAgent
-			ServerAddr      string
+			ServerAddr      netip.AddrPort
 		}{req, ri.ClientHelloInfo, ri.JA4, ri.ProxyUserInfo, &ri.UserAgent, ri.ServerAddr})
 		if err != nil {
 			log.Error().Err(err).Context(ri.LogContext).Str("forward_policy", h.Config.Forward.Policy).Interface("client_hello_info", ri.ClientHelloInfo).Interface("tls_connection_state", req.TLS).Msg("execute forward_policy error")
@@ -248,7 +249,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 				ClientHelloInfo *tls.ClientHelloInfo
 				JA4             string
 				UserAgent       *useragent.UserAgent
-				ServerAddr      string
+				ServerAddr      netip.AddrPort
 				User            UserInfo
 			}{req, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr, ri.ProxyUserInfo})
 			if err != nil {
@@ -303,7 +304,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			ClientHelloInfo *tls.ClientHelloInfo
 			JA4             string
 			UserAgent       *useragent.UserAgent
-			ServerAddr      string
+			ServerAddr      netip.AddrPort
 			User            UserInfo
 		}{req, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr, ri.ProxyUserInfo})
 		if err != nil {
@@ -356,9 +357,9 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 					log.Info().Context(ri.LogContext).Str("memory_listener_addr", ln.Addr().String()).Msg("http forward handler memory listener local addr")
 					return
 				case 2:
-					raddr, laddr := first(net.ResolveTCPAddr("tcp", req.RemoteAddr)), first(net.ResolveTCPAddr("tcp", ri.ServerAddr))
+					raddr := first(net.ResolveTCPAddr("tcp", req.RemoteAddr))
 					rw.WriteHeader(http.StatusOK)
-					ln.SendConn(HTTPRequestStream{req.Body, rw, http.NewResponseController(rw), raddr, laddr})
+					ln.SendConn(HTTPRequestStream{req.Body, rw, http.NewResponseController(rw), raddr, net.TCPAddrFromAddrPort(ri.ServerAddr)})
 					log.Info().Context(ri.LogContext).Str("memory_listener_addr", ln.Addr().String()).Msg("http2 forward handler memory listener local addr")
 					return
 				}
@@ -460,7 +461,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 					Str("logger", "forward").
 					Xid("trace_id", ri.TraceID).
 					Str("server_name", ri.ServerName).
-					Str("server_addr", ri.ServerAddr).
+					NetIPAddrPort("server_addr", ri.ServerAddr).
 					Str("tls_version", ri.TLSVersion.String()).
 					Str("ja4", ri.JA4).
 					Str("username", ri.ProxyUserInfo.Username).
@@ -569,7 +570,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 					Str("logger", "forward").
 					Xid("trace_id", ri.TraceID).
 					Str("server_name", ri.ServerName).
-					Str("server_addr", ri.ServerAddr).
+					NetIPAddrPort("server_addr", ri.ServerAddr).
 					Str("tls_version", ri.TLSVersion.String()).
 					Str("ja4", ri.JA4).
 					Str("username", ri.ProxyUserInfo.Username).

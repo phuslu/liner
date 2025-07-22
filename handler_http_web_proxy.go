@@ -93,7 +93,7 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		Request    *http.Request
 		JA4        string
 		UserAgent  *useragent.UserAgent
-		ServerAddr string
+		ServerAddr netip.AddrPort
 	}{req, ri.JA4, &ri.UserAgent, ri.ServerAddr})
 
 	proxypass := strings.TrimSpace(bb.String())
@@ -197,8 +197,8 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		}
 		rw.WriteHeader(http.StatusOK)
 
-		raddr, laddr := first(net.ResolveTCPAddr("tcp", req.RemoteAddr)), first(net.ResolveTCPAddr("tcp", ri.ServerAddr))
-		rwc := HTTPRequestStream{req.Body, rw, http.NewResponseController(rw), raddr, laddr}
+		raddr := first(net.ResolveTCPAddr("tcp", req.RemoteAddr))
+		rwc := HTTPRequestStream{req.Body, rw, http.NewResponseController(rw), raddr, net.TCPAddrFromAddrPort(ri.ServerAddr)}
 		defer rwc.Close()
 
 		go io.Copy(rwc, br)
@@ -326,7 +326,7 @@ func (h *HTTPWebProxyHandler) setHeaders(req *http.Request, ri *RequestInfo) {
 		Request    *http.Request
 		JA4        string
 		UserAgent  *useragent.UserAgent
-		ServerAddr string
+		ServerAddr netip.AddrPort
 	}{req, ri.JA4, &ri.UserAgent, ri.ServerAddr})
 
 	for line := range strings.Lines(bb.String()) {

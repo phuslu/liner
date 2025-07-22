@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"net"
 	"net/http"
+	"net/netip"
 	"slices"
 	"strings"
 	"sync"
@@ -39,7 +40,7 @@ type HTTPServerHandler struct {
 
 type RequestInfo struct {
 	RemoteIP        string
-	ServerAddr      string
+	ServerAddr      netip.AddrPort
 	ServerName      string
 	TLSVersion      TLSVersion
 	JA4             string
@@ -81,7 +82,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	defer riPool.Put(ri)
 
 	ri.RemoteIP, _, _ = net.SplitHostPort(req.RemoteAddr)
-	ri.ServerAddr = req.Context().Value(http.LocalAddrContextKey).(net.Addr).String()
+	ri.ServerAddr, _ = netip.ParseAddrPort(req.Context().Value(http.LocalAddrContextKey).(net.Addr).String())
 	if req.TLS != nil {
 		ri.ServerName = req.TLS.ServerName
 		ri.TLSVersion = TLSVersion(req.TLS.Version)
@@ -199,7 +200,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	ri.LogContext = log.NewContext(ri.LogContext[:0]).
 		Xid("trace_id", ri.TraceID).
 		Str("server_name", ri.ServerName).
-		Str("server_addr", ri.ServerAddr).
+		NetIPAddrPort("server_addr", ri.ServerAddr).
 		Str("tls_version", ri.TLSVersion.String()).
 		Str("ja4", ri.JA4).
 		Str("remote_ip", ri.RemoteIP).

@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -114,7 +115,7 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 
 		err := tmpl.Execute(w, struct {
 			ServerVersion string
-			ServerAddr    string
+			ServerAddr    netip.AddrPort
 			Request       *http.Request
 			UserAgent     *useragent.UserAgent
 			JA4           string
@@ -263,7 +264,7 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		Request    *http.Request
 		JA4        string
 		UserAgent  *useragent.UserAgent
-		ServerAddr string
+		ServerAddr netip.AddrPort
 		FileInfos  []fs.FileInfo
 	}{h.Root, req, ri.JA4, &ri.UserAgent, ri.ServerAddr, infos})
 	if err != nil {
@@ -286,7 +287,7 @@ func (h *HTTPWebIndexHandler) addHeaders(rw http.ResponseWriter, req *http.Reque
 		Request    *http.Request
 		JA4        string
 		UserAgent  *useragent.UserAgent
-		ServerAddr string
+		ServerAddr netip.AddrPort
 		FileInfos  []fs.FileInfo
 	}{h.Root, req, ri.JA4, &ri.UserAgent, ri.ServerAddr, nil})
 
