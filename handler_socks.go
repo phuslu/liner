@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
 	"text/template"
@@ -14,9 +15,9 @@ import (
 )
 
 type SocksRequest struct {
-	RemoteAddr  string
+	RemoteAddr  netip.AddrPort
 	RemoteIP    string
-	ServerAddr  string
+	ServerAddr  netip.AddrPort
 	Version     SocksVersion
 	ConnectType SocksCommand
 	SupportAuth bool
@@ -72,15 +73,23 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 	defer conn.Close()
 
 	var req SocksRequest
-	req.RemoteAddr = conn.RemoteAddr().String()
-	req.RemoteIP, _, _ = net.SplitHostPort(req.RemoteAddr)
-	req.ServerAddr = conn.LocalAddr().String()
+	if addr, ok := conn.RemoteAddr().(*net.TCPAddr); ok {
+		req.RemoteAddr = addr.AddrPort()
+	} else {
+		req.RemoteAddr, _ = netip.ParseAddrPort(conn.RemoteAddr().String())
+	}
+	req.RemoteIP = req.RemoteAddr.Addr().String()
+	if addr, ok := conn.LocalAddr().(*net.TCPAddr); ok {
+		req.ServerAddr = addr.AddrPort()
+	} else {
+		req.ServerAddr, _ = netip.ParseAddrPort(conn.LocalAddr().String())
+	}
 	req.TraceID = log.NewXID()
 
 	var b [512]byte
 	n, err := io.ReadAtLeast(conn, b[:], 2)
 	if err != nil || n == 0 {
-		log.Error().Err(err).Str("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Msg("socks read handshake error")
+		log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Msg("socks read handshake error")
 		return
 	}
 
@@ -94,13 +103,13 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 
 	if h.Config.Forward.AuthTable != "" {
 		if !req.SupportAuth {
-			log.Error().Err(err).Str("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Msg("socks client not support auth")
+			log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Msg("socks client not support auth")
 			return
 		}
 		conn.Write([]byte{VersionSocks5, byte(Socks5AuthMethodPassword)})
 		n, err = io.ReadAtLeast(conn, b[:], 4)
 		if err != nil || n == 0 {
-			log.Error().Err(err).Str("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Msg("socks read auth error")
+			log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Msg("socks read auth error")
 			return
 		}
 		// unpack username & password
@@ -109,7 +118,7 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 		// auth plugin
 		err := LookupUserInfoFromCsvLoader(h.userloader, &req.User)
 		if err != nil {
-			log.Warn().Err(err).Str("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Int("socks_version", int(req.Version)).Msg("auth error")
+			log.Warn().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Int("socks_version", int(req.Version)).Msg("auth error")
 			conn.Write([]byte{VersionSocks5, byte(Socks5StatusGeneralFailure)})
 			return
 		}
@@ -118,13 +127,13 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 	// auth ok
 	n, err = conn.Write([]byte{VersionSocks5, Socks5AuthMethodNone})
 	if err != nil || n == 0 {
-		log.Error().Err(err).Str("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Str("forward_policy", h.Config.Forward.Policy).Msg("socks write auth error")
+		log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Str("forward_policy", h.Config.Forward.Policy).Msg("socks write auth error")
 		return
 	}
 
 	n, err = io.ReadAtLeast(conn, b[:], 8)
 	if (err != nil && !strings.HasSuffix(err.Error(), " EOF")) || n == 0 {
-		log.Error().Err(err).Str("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Str("forward_policy", h.Config.Forward.Policy).Msg("socks read address error")
+		log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Str("forward_policy", h.Config.Forward.Policy).Msg("socks read address error")
 		return
 	}
 
@@ -156,14 +165,14 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 		bb.Reset()
 		err := h.policy.Execute(bb, struct {
 			Request    SocksRequest
-			ServerAddr string
+			ServerAddr netip.AddrPort
 		}{req, req.ServerAddr})
 		if err != nil {
-			log.Error().Err(err).Str("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Str("forward_policy", h.Config.Forward.Policy).Msg("execute forward_policy error")
+			log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Str("forward_policy", h.Config.Forward.Policy).Msg("execute forward_policy error")
 			return
 		}
 		policyName = strings.TrimSpace(bb.String())
-		log.Debug().Str("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Interface("request", req).Str("forward_policy_name", policyName).Msg("execute forward_policy ok")
+		log.Debug().NetIPAddrPort("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Interface("request", req).Str("forward_policy_name", policyName).Msg("execute forward_policy ok")
 
 		switch policyName {
 		case "reject", "deny":
@@ -172,7 +181,7 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 		}
 	}
 
-	log.Info().Str("remote_ip", req.RemoteIP).Str("server_addr", req.ServerAddr).Int("socks_version", int(req.Version)).Str("username", req.User.Username).Str("socks_host", req.Host).Msg("forward socks request")
+	log.Info().Str("remote_ip", req.RemoteIP).NetIPAddrPort("server_addr", req.ServerAddr).Int("socks_version", int(req.Version)).Str("username", req.User.Username).Str("socks_host", req.Host).Msg("forward socks request")
 
 	var dialerName = h.Config.Forward.Dialer
 	dail := h.LocalDialer.DialContext
@@ -180,10 +189,10 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 		bb.Reset()
 		err := h.dialer.Execute(bb, struct {
 			Request    SocksRequest
-			ServerAddr string
+			ServerAddr netip.AddrPort
 		}{req, req.ServerAddr})
 		if err != nil {
-			log.Error().Err(err).Str("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Str("forward_dialer_name", h.Config.Forward.Dialer).Msg("execute forward_dialer error")
+			log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Str("forward_dialer_name", h.Config.Forward.Dialer).Msg("execute forward_dialer error")
 			WriteSocks5Status(conn, Socks5StatusGeneralFailure)
 			return
 		}
@@ -191,7 +200,7 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 		if dialerName = strings.TrimSpace(bb.String()); dialerName != "" {
 			u, ok := h.Dialers[dialerName]
 			if !ok {
-				log.Error().Str("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Str("forward_dialer_name", h.Config.Forward.Dialer).Str("dialer_name", dialerName).Msg("dialer not exists")
+				log.Error().NetIPAddrPort("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Str("forward_dialer_name", h.Config.Forward.Dialer).Str("dialer_name", dialerName).Msg("dialer not exists")
 				return
 			}
 			dail = u.DialContext
@@ -204,7 +213,7 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 		network = "udp"
 	}
 
-	log.Info().Str("server_addr", req.ServerAddr).Int("socks_version", int(req.Version)).Str("username", req.User.Username).Str("remote_ip", req.RemoteIP).Str("socks_network", network).Str("socks_host", req.Host).Int("socks_port", req.Port).Str("forward_policy_name", policyName).Str("forward_dialer_name", dialerName).Msg("forward socks request")
+	log.Info().NetIPAddrPort("server_addr", req.ServerAddr).Int("socks_version", int(req.Version)).Str("username", req.User.Username).Str("remote_ip", req.RemoteIP).Str("socks_network", network).Str("socks_host", req.Host).Int("socks_port", req.Port).Str("forward_policy_name", policyName).Str("forward_dialer_name", dialerName).Msg("forward socks request")
 
 	ctx = context.WithValue(context.Background(), DialerHTTPHeaderContextKey, http.Header{
 		"X-Forwarded-For":  []string{req.RemoteIP},
@@ -212,7 +221,7 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 	})
 	rconn, err := dail(ctx, network, net.JoinHostPort(req.Host, strconv.Itoa(req.Port)))
 	if err != nil {
-		log.Error().Err(err).Str("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Str("forward_dialer_name", h.Config.Forward.Dialer).Str("socks_host", req.Host).Int("socks_port", req.Port).Int("socks_version", int(req.Version)).Str("forward_policy_name", policyName).Str("forward_dialer_name", dialerName).Msg("connect remote host failed")
+		log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Str("forward_dialer_name", h.Config.Forward.Dialer).Str("socks_host", req.Host).Int("socks_port", req.Port).Int("socks_version", int(req.Version)).Str("forward_policy_name", policyName).Str("forward_dialer_name", dialerName).Msg("connect remote host failed")
 		WriteSocks5Status(conn, Socks5StatusNetworkUnreachable)
 		if rconn != nil {
 			rconn.Close()
@@ -235,7 +244,7 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 		if h.GeoResolver.CityReader != nil {
 			country, city, _ = h.GeoResolver.LookupCity(context.Background(), net.ParseIP(req.RemoteIP))
 		}
-		h.DataLogger.Log().Str("logger", "socks").Xid("trace_id", req.TraceID).Str("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Str("remote_country", country).Str("remote_city", city).Str("forward_dialer_name", h.Config.Forward.Dialer).Str("socks_host", req.Host).Int("socks_port", req.Port).Int("socks_version", int(req.Version)).Str("forward_dialer_name", dialerName).Msg("")
+		h.DataLogger.Log().Str("logger", "socks").Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Str("remote_country", country).Str("remote_city", city).Str("forward_dialer_name", h.Config.Forward.Dialer).Str("socks_host", req.Host).Int("socks_port", req.Port).Int("socks_version", int(req.Version)).Str("forward_dialer_name", dialerName).Msg("")
 	}
 
 	return
