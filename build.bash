@@ -64,9 +64,10 @@ function wheel() {
 	export GOPATH=/tmp/gopath
 	export PATH=${GOPATH:-~/go}/bin:${GOROOT}/bin:$PATH
 
-	go install -v mvdan.cc/garble@latest
+	#go install -v mvdan.cc/garble@latest
+	#export GOGARBLE=liner
 
-	env GOGARBLE=liner python3 setup.py bdist_wheel
+	python3 setup.py bdist_wheel
 
 	python3 -m venv ~/.venv
 	~/.venv/bin/pip install auditwheel
