@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 	"time"
@@ -14,9 +15,9 @@ import (
 )
 
 type StreamRequest struct {
-	RemoteAddr string
+	RemoteAddr netip.AddrPort
 	RemoteIP   string
-	ServerAddr string
+	ServerAddr netip.AddrPort
 	TraceID    log.XID
 }
 
@@ -61,9 +62,17 @@ func (h *StreamHandler) ServeConn(conn net.Conn) {
 	defer conn.Close()
 
 	var req StreamRequest
-	req.RemoteAddr = conn.RemoteAddr().String()
-	req.RemoteIP, _, _ = net.SplitHostPort(req.RemoteAddr)
-	req.ServerAddr = conn.LocalAddr().String()
+	if addr, ok := conn.RemoteAddr().(*net.TCPAddr); ok {
+		req.RemoteAddr = addr.AddrPort()
+	} else {
+		req.RemoteAddr, _ = netip.ParseAddrPort(conn.RemoteAddr().String())
+	}
+	req.RemoteIP = req.RemoteAddr.Addr().String()
+	if addr, ok := conn.LocalAddr().(*net.TCPAddr); ok {
+		req.ServerAddr = addr.AddrPort()
+	} else {
+		req.ServerAddr, _ = netip.ParseAddrPort(conn.LocalAddr().String())
+	}
 	req.TraceID = log.NewXID()
 
 	if tc, _ := conn.(*net.TCPConn); conn != nil && h.Config.SpeedLimit > 0 {
@@ -85,7 +94,7 @@ func (h *StreamHandler) ServeConn(conn net.Conn) {
 	if h.Config.Dialer != "" {
 		dialer, ok := h.Dialers[h.Config.Dialer]
 		if !ok {
-			log.Error().Str("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Str("stream_dialer_name", h.Config.Dialer).Msg("dialer not exists")
+			log.Error().NetIPAddrPort("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Str("stream_dialer_name", h.Config.Dialer).Msg("dialer not exists")
 			return
 		}
 		dail = dialer.DialContext
@@ -120,7 +129,7 @@ func (h *StreamHandler) ServeConn(conn net.Conn) {
 	}
 	defer rconn.Close()
 
-	log.Info().Xid("trace_id", req.TraceID).Str("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Str("proxy_pass", h.Config.ProxyPass).Str("stream_dialer_name", h.Config.Dialer).Msg("forward stream")
+	log.Info().Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Str("proxy_pass", h.Config.ProxyPass).Str("stream_dialer_name", h.Config.Dialer).Msg("forward stream")
 
 	go io.Copy(rconn, conn)
 	_, err = io.Copy(conn, rconn)
@@ -130,7 +139,7 @@ func (h *StreamHandler) ServeConn(conn net.Conn) {
 		if h.GeoResolver.CityReader != nil {
 			country, city, _ = h.GeoResolver.LookupCity(ctx, net.ParseIP(req.RemoteIP))
 		}
-		h.DataLogger.Log().Str("logger", "stream").Xid("trace_id", req.TraceID).Str("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Str("remote_country", country).Str("remote_city", city).Str("stream_dialer_name", h.Config.Dialer).Msg("")
+		h.DataLogger.Log().Str("logger", "stream").Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Str("remote_country", country).Str("remote_city", city).Str("stream_dialer_name", h.Config.Dialer).Msg("")
 	}
 
 	return
