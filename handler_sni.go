@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/netip"
 	"strings"
 	"text/template"
 
@@ -13,9 +14,9 @@ import (
 )
 
 type SniRequest struct {
-	RemoteAddr string
+	RemoteAddr netip.AddrPort
 	RemoteIP   string
-	ServerAddr string
+	ServerAddr netip.AddrPort
 	ServerName string
 	Port       int
 	TraceID    log.XID
@@ -47,9 +48,17 @@ func (h *SniHandler) ServeConn(ctx context.Context, servername string, header []
 	defer conn.Close()
 
 	var req SniRequest
-	req.RemoteAddr = conn.RemoteAddr().String()
-	req.RemoteIP, _, _ = net.SplitHostPort(req.RemoteAddr)
-	req.ServerAddr = conn.LocalAddr().String()
+	if addr, ok := conn.RemoteAddr().(*net.TCPAddr); ok {
+		req.RemoteAddr = addr.AddrPort()
+	} else {
+		req.RemoteAddr, _ = netip.ParseAddrPort(conn.RemoteAddr().String())
+	}
+	req.RemoteIP = req.RemoteAddr.Addr().String()
+	if addr, ok := conn.LocalAddr().(*net.TCPAddr); ok {
+		req.ServerAddr = addr.AddrPort()
+	} else {
+		req.ServerAddr, _ = netip.ParseAddrPort(conn.LocalAddr().String())
+	}
 	req.ServerName = servername
 	req.TraceID = log.NewXID()
 
