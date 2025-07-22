@@ -94,6 +94,11 @@ func (h *HTTPForwardHandler) Load() error {
 func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	ri := req.Context().Value(RequestInfoContextKey).(*RequestInfo)
 
+	// fix real remote ip
+	if xfr := req.Header.Get("x-forwarded-for"); xfr != "" {
+		ri.RemoteIP = strings.Split(xfr, ",")[0]
+	}
+
 	tunnel := strings.HasPrefix(req.URL.Path, HTTPTunnelConnectTCPPathPrefix)
 	if tunnel {
 		// see https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-connect-tcp-05
