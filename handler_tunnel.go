@@ -85,7 +85,7 @@ func (h *TunnelHandler) handle(ctx context.Context, rconn net.Conn, laddr string
 	if h.MemoryListeners != nil {
 		if v, ok := h.MemoryListeners.Load(h.Config.ProxyPass); ok && v != nil {
 			ln, _ := v.(*MemoryListener)
-			log.Info().Str("remote_host", rconn.RemoteAddr().String()).Str("local_addr", ln.Addr().String()).Msg("tunnel handler memory listener local addr")
+			log.Info().NetAddr("remote_host", rconn.RemoteAddr()).NetAddr("local_addr", ln.Addr()).Msg("tunnel handler memory listener local addr")
 			ln.SendConn(rconn)
 			return
 		}
@@ -117,13 +117,13 @@ func (h *TunnelHandler) handle(ctx context.Context, rconn net.Conn, laddr string
 		defer lconn.Close()
 		_, err := io.Copy(rconn, lconn)
 		if err != nil && !errors.Is(err, net.ErrClosed) {
-			log.Error().Err(err).Stringer("src_addr", lconn.RemoteAddr()).Stringer("dest_addr", rconn.RemoteAddr()).Msg("tunnel forwarding error")
+			log.Error().Err(err).NetAddr("src_addr", lconn.RemoteAddr()).NetAddr("dest_addr", rconn.RemoteAddr()).Msg("tunnel forwarding error")
 		}
 	}()
 
 	_, err = io.Copy(lconn, rconn)
 	if err != nil {
-		log.Error().Err(err).Stringer("src_addr", rconn.RemoteAddr()).Stringer("dest_addr", lconn.RemoteAddr()).Msg("tunnel forwarding error")
+		log.Error().Err(err).NetAddr("src_addr", rconn.RemoteAddr()).NetAddr("dest_addr", lconn.RemoteAddr()).Msg("tunnel forwarding error")
 	}
 }
 

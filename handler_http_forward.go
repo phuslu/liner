@@ -354,12 +354,12 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 					}
 					io.WriteString(lconn, "HTTP/1.1 200 OK\r\n\r\n")
 					ln.SendConn(lconn)
-					log.Info().Context(ri.LogContext).Str("memory_listener_addr", ln.Addr().String()).Msg("http forward handler memory listener local addr")
+					log.Info().Context(ri.LogContext).NetAddr("memory_listener_addr", ln.Addr()).Msg("http forward handler memory listener local addr")
 					return
 				case 2:
 					rw.WriteHeader(http.StatusOK)
 					ln.SendConn(HTTPRequestStream{req.Body, rw, http.NewResponseController(rw), net.TCPAddrFromAddrPort(ri.RemoteAddr), net.TCPAddrFromAddrPort(ri.ServerAddr)})
-					log.Info().Context(ri.LogContext).Str("memory_listener_addr", ln.Addr().String()).Msg("http2 forward handler memory listener local addr")
+					log.Info().Context(ri.LogContext).NetAddr("memory_listener_addr", ln.Addr()).Msg("http2 forward handler memory listener local addr")
 					return
 				}
 			}
@@ -410,7 +410,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			return
 		}
 
-		log.Debug().Context(ri.LogContext).Any("req_header", req.Header).Str("conn_remote_addr", conn.RemoteAddr().String()).Msg("dial host ok")
+		log.Debug().Context(ri.LogContext).Any("req_header", req.Header).NetAddr("conn_remote_addr", conn.RemoteAddr()).Msg("dial host ok")
 
 		var w io.Writer
 		var r io.Reader

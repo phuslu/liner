@@ -145,7 +145,7 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		return
 	}
 
-	log.Info().Context(ri.LogContext).Str("username", user.Username).Stringer("addr", ln.Addr()).Msg("tunnel open tcp listener")
+	log.Info().Context(ri.LogContext).Str("username", user.Username).NetAddr("addr", ln.Addr()).Msg("tunnel open tcp listener")
 
 	defer ln.Close()
 
@@ -247,7 +247,7 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 				return
 			}
 
-			log.Info().Stringer("remote_addr", rconn.RemoteAddr()).Stringer("local_addr", conn.RemoteAddr()).Msg("tunnel forwarding")
+			log.Info().NetAddr("remote_addr", rconn.RemoteAddr()).NetAddr("local_addr", conn.RemoteAddr()).Msg("tunnel forwarding")
 
 			go func(c1, c2 net.Conn) {
 				defer c1.Close()
@@ -257,12 +257,12 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 					defer c2.Close()
 					_, err := io.Copy(c1, c2)
 					if err != nil {
-						log.Error().Err(err).Stringer("src_addr", c2.RemoteAddr()).Stringer("dest_addr", c1.RemoteAddr()).Msg("tunnel forwarding error")
+						log.Error().Err(err).NetAddr("src_addr", c2.RemoteAddr()).NetAddr("dest_addr", c1.RemoteAddr()).Msg("tunnel forwarding error")
 					}
 				}()
 				_, err := io.Copy(c2, c1)
 				if err != nil {
-					log.Error().Err(err).Stringer("src_addr", c1.RemoteAddr()).Stringer("dest_addr", c2.RemoteAddr()).Msg("tunnel forwarding error")
+					log.Error().Err(err).NetAddr("src_addr", c1.RemoteAddr()).NetAddr("dest_addr", c2.RemoteAddr()).Msg("tunnel forwarding error")
 				}
 			}(lconn, rconn)
 		}
@@ -279,11 +279,11 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 				exit <- err
 				return
 			case err != nil:
-				log.Error().Err(err).Str("tunnel_listen", ln.Addr().String()).Str("remote_addr", session.RemoteAddr().String()).Msg("tunnel ping error")
+				log.Error().Err(err).NetAddr("tunnel_listen", ln.Addr()).NetAddr("remote_addr", session.RemoteAddr()).Msg("tunnel ping error")
 				count++
 				seconds = 1 + fastrandn(5)
 			default:
-				log.Trace().Str("tunnel_listen", ln.Addr().String()).Str("remote_addr", session.RemoteAddr().String()).Dur("ping_ms", rtt).Msg("tunnel ping successfully")
+				log.Trace().NetAddr("tunnel_listen", ln.Addr()).NetAddr("remote_addr", session.RemoteAddr()).Dur("ping_ms", rtt).Msg("tunnel ping successfully")
 				count = 0
 				seconds = 5 + fastrandn(30)
 			}

@@ -492,7 +492,7 @@ func main() {
 			log.Fatal().Err(err).Str("address", addr).Msg("net.Listen error")
 		}
 
-		log.Info().Str("version", version).Str("address", ln.Addr().String()).Msg("liner listen and serve tls")
+		log.Info().Str("version", version).NetAddr("address", ln.Addr()).Msg("liner listen and serve tls")
 
 		server := &http.Server{
 			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -657,7 +657,7 @@ func main() {
 			if ln, err = lc.Listen(context.Background(), "tcp", addr); err != nil {
 				log.Fatal().Err(err).Str("address", addr).Msg("net.Listen error")
 			}
-			log.Info().Str("version", version).Str("address", ln.Addr().String()).Msg("liner listen and serve")
+			log.Info().Str("version", version).NetAddr("address", ln.Addr()).Msg("liner listen and serve")
 			ln = TCPListener{
 				TCPListener:     ln.(*net.TCPListener),
 				KeepAlivePeriod: 3 * time.Minute,
@@ -680,7 +680,7 @@ func main() {
 				log.Fatal().Err(err).Str("address", addr).Msg("net.Listen error")
 			}
 
-			log.Info().Str("version", version).Str("address", ln.Addr().String()).Msg("liner listen and serve socks")
+			log.Info().Str("version", version).NetAddr("address", ln.Addr()).Msg("liner listen and serve socks")
 
 			h := &SocksHandler{
 				Config:      socksConfig,
@@ -699,7 +699,7 @@ func main() {
 				for {
 					conn, err := ln.Accept()
 					if err != nil {
-						log.Error().Err(err).Str("version", version).Str("address", ln.Addr().String()).Msg("liner accept socks connection error")
+						log.Error().Err(err).Str("version", version).NetAddr("address", ln.Addr()).Msg("liner accept socks connection error")
 						time.Sleep(10 * time.Millisecond)
 						continue
 					}
@@ -718,7 +718,7 @@ func main() {
 				log.Fatal().Err(err).Str("address", addr).Msg("net.Listen error")
 			}
 
-			log.Info().Str("version", version).Str("address", ln.Addr().String()).Msg("liner listen and forward port")
+			log.Info().Str("version", version).NetAddr("address", ln.Addr()).Msg("liner listen and forward port")
 
 			h := &StreamHandler{
 				Config:      streamConfig,
@@ -736,7 +736,7 @@ func main() {
 				for {
 					conn, err := ln.Accept()
 					if err != nil {
-						log.Error().Err(err).Str("version", version).Str("address", ln.Addr().String()).Msg("liner accept stream connection error")
+						log.Error().Err(err).Str("version", version).NetAddr("address", ln.Addr()).Msg("liner accept stream connection error")
 						time.Sleep(10 * time.Millisecond)
 						continue
 					}
@@ -766,7 +766,7 @@ func main() {
 				if ln, err = lc.Listen(context.Background(), "tcp", addr); err != nil {
 					log.Fatal().Err(err).Str("address", addr).Msg("net.Listen error")
 				}
-				log.Info().Str("version", version).Str("address", ln.Addr().String()).Msg("liner listen and serve ssh")
+				log.Info().Str("version", version).NetAddr("address", ln.Addr()).Msg("liner listen and serve ssh")
 			}
 
 			if err = h.Load(); err != nil {
@@ -819,14 +819,14 @@ func main() {
 				if err != nil {
 					log.Fatal().Err(err).Str("address", addr).Msg("net.Listen error")
 				}
-				log.Info().Str("version", version).Str("address", pc.LocalAddr().String()).Msg("liner listen and serve dns port")
+				log.Info().Str("version", version).NetAddr("address", pc.LocalAddr()).Msg("liner listen and serve dns port")
 				go h.Serve(context.Background(), pc.(*net.UDPConn))
 			case "tcp":
 				ln, err := lc.Listen(context.Background(), "tcp", u.Host)
 				if err != nil {
 					log.Fatal().Err(err).Str("address", addr).Msg("net.Listen error")
 				}
-				log.Info().Str("version", version).Str("address", ln.Addr().String()).Msg("liner listen and serve dns port")
+				log.Info().Str("version", version).NetAddr("address", ln.Addr()).Msg("liner listen and serve dns port")
 				go h.ServeTCP(context.Background(), ln)
 			case "tls":
 				keyfile := &FileLoader[tls.Certificate]{
@@ -854,7 +854,7 @@ func main() {
 						return keyfile.Load(), nil
 					},
 				})
-				log.Info().Str("version", version).Str("address", ln.Addr().String()).Msg("liner listen and serve dns port")
+				log.Info().Str("version", version).NetAddr("address", ln.Addr()).Msg("liner listen and serve dns port")
 				go h.ServeTCP(context.Background(), ln)
 			default:
 				log.Fatal().Err(err).Str("address", addr).Msg("dns handler invalid addr error")
