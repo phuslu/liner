@@ -27,15 +27,15 @@ type HTTPHandler interface {
 }
 
 type HTTPServerHandler struct {
-	Config             HTTPConfig
-	ServerNames        []string
-	ServerNameSuffixes []string
-	ClientHelloMap     *xsync.Map[string, *TLSClientHelloInfo]
-	UserAgentMap       *CachingMap[string, useragent.UserAgent]
-	GeoResolver        *GeoResolver
-	ForwardHandler     HTTPHandler
-	TunnelHandler      HTTPHandler
-	WebHandler         HTTPHandler
+	Config           HTTPConfig
+	Hostnames        []string
+	HostnameSuffixes []string
+	ClientHelloMap   *xsync.Map[string, *TLSClientHelloInfo]
+	UserAgentMap     *CachingMap[string, useragent.UserAgent]
+	GeoResolver      *GeoResolver
+	ForwardHandler   HTTPHandler
+	TunnelHandler    HTTPHandler
+	WebHandler       HTTPHandler
 }
 
 type RequestInfo struct {
@@ -228,26 +228,26 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	req = req.WithContext(context.WithValue(req.Context(), RequestInfoContextKey, ri))
 
 	hostname := req.Host
-	if h, _, err := net.SplitHostPort(req.Host); err == nil {
-		hostname = h
+	if s, _, err := net.SplitHostPort(req.Host); err == nil {
+		hostname = s
 	}
 
-	hostnameMatched := slices.Contains(h.ServerNames, hostname)
-	if !hostnameMatched && len(h.ServerNameSuffixes) != 0 {
-		for _, suffix := range h.ServerNameSuffixes {
+	matched := slices.Contains(h.Hostnames, hostname)
+	if !matched && len(h.HostnameSuffixes) != 0 {
+		for _, suffix := range h.HostnameSuffixes {
 			if strings.HasSuffix(hostname, suffix) {
-				hostnameMatched = true
+				matched = true
 				break
 			}
 		}
 	}
 
 	switch {
-	case hostname != "" && !hostnameMatched:
+	case hostname != "" && !matched:
 		h.ForwardHandler.ServeHTTP(rw, req)
-	case hostnameMatched && strings.HasPrefix(req.URL.Path, HTTPTunnelConnectTCPPathPrefix):
+	case matched && strings.HasPrefix(req.URL.Path, HTTPTunnelConnectTCPPathPrefix):
 		h.ForwardHandler.ServeHTTP(rw, req)
-	case hostnameMatched && h.Config.Tunnel.Enabled && strings.HasPrefix(req.URL.Path, HTTPTunnelReverseTCPPathPrefix):
+	case matched && h.Config.Tunnel.Enabled && strings.HasPrefix(req.URL.Path, HTTPTunnelReverseTCPPathPrefix):
 		h.TunnelHandler.ServeHTTP(rw, req)
 	case req.Method == http.MethodConnect && req.RequestURI[0] != '/':
 		h.ForwardHandler.ServeHTTP(rw, req)

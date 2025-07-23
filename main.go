@@ -415,10 +415,10 @@ func main() {
 				Transport: transport,
 				Functions: functions.FuncMap,
 			},
-			ServerNames: filter(server.ServerName, func(s string) bool {
+			Hostnames: filter(server.ServerName, func(s string) bool {
 				return !strings.Contains(s, "*")
 			}),
-			ServerNameSuffixes: filtermap(server.ServerName, func(s string) (string, bool) {
+			HostnameSuffixes: filtermap(server.ServerName, func(s string) (string, bool) {
 				i, j := strings.IndexByte(s, '*'), strings.LastIndexByte(s, '*')
 				switch {
 				case i < 0:
@@ -597,10 +597,10 @@ func main() {
 				Transport: transport,
 				Functions: functions.FuncMap,
 			},
-			ServerNames: filter(httpConfig.ServerName, func(s string) bool {
+			Hostnames: filter(httpConfig.ServerName, func(s string) bool {
 				return !strings.Contains(s, "*")
 			}),
-			ServerNameSuffixes: filtermap(httpConfig.ServerName, func(s string) (string, bool) {
+			HostnameSuffixes: filtermap(httpConfig.ServerName, func(s string) (string, bool) {
 				i, j := strings.IndexByte(s, '*'), strings.LastIndexByte(s, '*')
 				switch {
 				case i < 0:
