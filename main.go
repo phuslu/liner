@@ -323,6 +323,20 @@ func main() {
 		DisableCompression:    false,
 	}
 
+	// set geosite to geo resolver
+	if true {
+		resolver.GeoSiteCache = lru.NewTTLCache[string, GeoSiteInfo](cmp.Or(config.Global.GeositeCacheSize, 8192))
+		resolver.GeoSiteDLC = &geosite.DomainListCommunity{Transport: transport}
+		resolver.GeoSiteDLC.Load(context.Background(), geosite.InlineTarball)
+		go func() {
+			for range time.Tick(time.Hour) {
+				if err := resolver.GeoSiteDLC.Load(context.Background(), geosite.OnlineTarball); err != nil {
+					log.Error().Err(err).Str("geosite_online_tarball", geosite.OnlineTarball).Msg("geosite load error")
+				}
+			}
+		}()
+	}
+
 	// useragent caching map
 	useragentMap := NewCachingMap(
 		func(key string) (useragent.UserAgent, error) {
@@ -335,9 +349,6 @@ func main() {
 	// template functions
 	functions := &Functions{
 		GeoResolver:    resolver,
-		GeoSiteOnce:    &sync.Once{},
-		GeoSite:        &geosite.DomainListCommunity{Transport: transport},
-		GeoSiteCache:   lru.NewTTLCache[string, *string](cmp.Or(config.Global.GeositeCacheSize, 8192)),
 		FetchUserAgent: ChromeUserAgent,
 		FetchClient:    &http.Client{Transport: transport},
 		FetchCache:     lru.NewTTLCache[string, *FetchResponse](1024),
@@ -348,7 +359,7 @@ func main() {
 	if err := functions.Load(); err != nil {
 		log.Fatal().Err(err).Msgf("%T.Load() fatal", functions)
 	}
-	log.Info().Msgf("%T.Load() ok", functions.GeoSite)
+	log.Info().Msgf("%T.Load() ok", functions)
 
 	lc := ListenConfig{
 		FastOpen:    false,

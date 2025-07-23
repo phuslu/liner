@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/oschwald/maxminddb-golang/v2"
+	"github.com/phuslu/geosite"
 	"github.com/phuslu/lru"
 )
 
@@ -22,6 +23,8 @@ type GeoResolver struct {
 	DomainReader         *maxminddb.Reader
 	ConnectionTypeReader *maxminddb.Reader
 	EnableCJKCityName    bool
+	GeoSiteCache         *lru.TTLCache[string, GeoSiteInfo]
+	GeoSiteDLC           *geosite.DomainListCommunity
 }
 
 func (r *GeoResolver) LookupCity(ctx context.Context, ip netip.Addr) (string, string, error) {
@@ -180,4 +183,23 @@ func (r *GeoResolver) getGeoIPInfo(ctx context.Context, ip netip.Addr) (GeoIPInf
 	}
 
 	return info, 12 * time.Hour, nil
+}
+
+type GeoSiteInfo struct {
+	Site string
+	Atts []string
+}
+
+func (r *GeoResolver) GetGeoSiteInfo(ctx context.Context, domain string) (info GeoSiteInfo) {
+	if r.GeoSiteCache != nil {
+		info, _, _ = r.GeoSiteCache.GetOrLoad(ctx, domain, r.getGeoSiteInfo)
+	} else {
+		info, _, _ = r.getGeoSiteInfo(ctx, domain)
+	}
+	return
+}
+
+func (r *GeoResolver) getGeoSiteInfo(ctx context.Context, domain string) (GeoSiteInfo, time.Duration, error) {
+	site, attrs := r.GeoSiteDLC.SiteAttrs(domain)
+	return GeoSiteInfo{site, attrs}, 12 * time.Hour, nil
 }

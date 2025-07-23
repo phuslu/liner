@@ -12,12 +12,10 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"sync"
 	"text/template"
 	"time"
 
 	"github.com/go-task/slim-sprig/v3"
-	"github.com/phuslu/geosite"
 	"github.com/phuslu/log"
 	"github.com/phuslu/lru"
 	"github.com/puzpuzpuz/xsync/v4"
@@ -27,10 +25,6 @@ import (
 
 type Functions struct {
 	GeoResolver *GeoResolver
-
-	GeoSiteOnce  *sync.Once
-	GeoSite      *geosite.DomainListCommunity
-	GeoSiteCache *lru.TTLCache[string, *string]
 
 	FetchUserAgent string
 	FetchClient    *http.Client
@@ -82,6 +76,10 @@ func (f *Functions) host(hostport string) string {
 		return host
 	}
 	return hostport
+}
+
+func (f *Functions) geosite(domain string) string {
+	return f.GeoResolver.GetGeoSiteInfo(context.Background(), domain).Site
 }
 
 func (f *Functions) geoip(ipStr string) (info GeoIPInfo) {
@@ -245,34 +243,6 @@ func (f *Functions) hasIPv6(host string) bool {
 	}
 
 	return false
-}
-
-func (f *Functions) geosite(domain string) string {
-	f.GeoSiteOnce.Do(func() {
-		f.GeoSite.Load(context.Background(), geosite.InlineTarball)
-
-		go func() {
-			for range time.Tick(time.Hour) {
-				if err := f.GeoSite.Load(context.Background(), geosite.OnlineTarball); err != nil {
-					log.Error().Err(err).Str("geosite_online_tarball", geosite.OnlineTarball).Msg("geosite load error")
-				}
-			}
-		}()
-	})
-
-	if host, _, err := net.SplitHostPort(domain); err == nil {
-		domain = host
-	}
-
-	if v, _ := f.GeoSiteCache.Get(domain); v != nil {
-		return *v
-	}
-
-	site := f.GeoSite.Site(domain)
-
-	f.GeoSiteCache.Set(domain, &site, 24*time.Hour)
-
-	return site
 }
 
 func (f *Functions) readfile(filename string) string {
