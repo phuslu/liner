@@ -82,7 +82,14 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	defer riPool.Put(ri)
 
 	ri.RemoteAddr, _ = netip.ParseAddrPort(req.RemoteAddr)
-	ri.ServerAddr, _ = netip.ParseAddrPort(req.Context().Value(http.LocalAddrContextKey).(net.Addr).String())
+	switch v := req.Context().Value(http.LocalAddrContextKey).(net.Addr).(type) {
+	case *net.TCPAddr:
+		ri.ServerAddr = v.AddrPort()
+	case *net.UDPAddr:
+		ri.ServerAddr = v.AddrPort()
+	default:
+		ri.ServerAddr, _ = netip.ParseAddrPort(v.String())
+	}
 	if req.TLS != nil {
 		ri.ServerName = req.TLS.ServerName
 		ri.TLSVersion = TLSVersion(req.TLS.Version)
@@ -164,7 +171,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 
 	ri.UserAgent, _, _ = h.UserAgentMap.Get(req.Header.Get("User-Agent"))
 	if h.GeoResolver.CityReader != nil {
-		ri.GeoipInfo.Country, ri.GeoipInfo.City, _ = h.GeoResolver.LookupCity(context.Background(), net.IP(ri.RemoteAddr.Addr().AsSlice()))
+		ri.GeoipInfo.Country, ri.GeoipInfo.City, _ = h.GeoResolver.LookupCity(context.Background(), ri.RemoteAddr.Addr())
 	}
 
 	ri.ProxyUserInfo = UserInfo{}

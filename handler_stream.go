@@ -135,7 +135,7 @@ func (h *StreamHandler) ServeConn(conn net.Conn) {
 	if h.Config.Log {
 		var country, city string
 		if h.GeoResolver.CityReader != nil {
-			country, city, _ = h.GeoResolver.LookupCity(ctx, net.IP(req.RemoteAddr.Addr().AsSlice()))
+			country, city, _ = h.GeoResolver.LookupCity(ctx, req.RemoteAddr.Addr())
 		}
 		h.DataLogger.Log().Str("logger", "stream").Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("remote_country", country).Str("remote_city", city).Str("stream_dialer_name", h.Config.Dialer).Msg("")
 	}

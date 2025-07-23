@@ -97,14 +97,14 @@ type GeoipInfo struct {
 
 func (f *Functions) geoip(ipStr string) GeoipInfo {
 	loader := func(ctx context.Context, ipStr string) (*GeoipInfo, time.Duration, error) {
-		ip := net.ParseIP(ipStr)
+		ip, err := netip.ParseAddr(ipStr)
 
-		if ip == nil {
+		if err != nil {
 			ips, _ := f.GeoResolver.Resolver.LookupNetIP(ctx, "ip", ipStr)
 			if len(ips) == 0 {
 				return &GeoipInfo{IP: ipStr, Country: "ZZ"}, time.Minute, nil
 			}
-			ip = net.IP(ips[0].AsSlice())
+			ip = ips[0]
 		}
 
 		var country, city string
@@ -116,7 +116,7 @@ func (f *Functions) geoip(ipStr string) GeoipInfo {
 			return &GeoipInfo{IP: ipStr, Country: "ZZ"}, time.Minute, nil
 		}
 
-		log.Debug().IPAddr("ip", ip).Str("country", country).Str("city", city).Msg("get city by ip")
+		log.Debug().NetIPAddr("ip", ip).Str("country", country).Str("city", city).Msg("get city by ip")
 
 		result := &GeoipInfo{
 			IP:      ipStr,
@@ -128,21 +128,21 @@ func (f *Functions) geoip(ipStr string) GeoipInfo {
 			if isp, asn, err := f.GeoResolver.LookupISP(ctx, ip); err == nil {
 				result.ISP = isp
 				result.ASN = fmt.Sprintf("AS%d", asn)
-				log.Debug().IPAddr("ip", ip).Str("isp", isp).Uint("asn", asn).Msg("get isp by ip")
+				log.Debug().NetIPAddr("ip", ip).Str("isp", isp).Uint("asn", asn).Msg("get isp by ip")
 			}
 		}
 
 		if f.GeoResolver.DomainReader != nil {
 			if domain, err := f.GeoResolver.LookupDomain(ctx, ip); err == nil {
 				result.Domain = domain
-				log.Debug().IPAddr("ip", ip).Str("domain", domain).Msg("get domain by ip")
+				log.Debug().NetIPAddr("ip", ip).Str("domain", domain).Msg("get domain by ip")
 			}
 		}
 
 		if f.GeoResolver.ConnectionTypeReader != nil {
 			if conntype, err := f.GeoResolver.LookupConnectionType(ctx, ip); err == nil {
 				result.ConnectionType = conntype
-				log.Debug().IPAddr("ip", ip).Str("connection_type", conntype).Msg("get connection_type by ip")
+				log.Debug().NetIPAddr("ip", ip).Str("connection_type", conntype).Msg("get connection_type by ip")
 			}
 		}
 

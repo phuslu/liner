@@ -240,7 +240,7 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 	if h.Config.Forward.Log {
 		var country, city string
 		if h.GeoResolver.CityReader != nil {
-			country, city, _ = h.GeoResolver.LookupCity(context.Background(), net.IP(req.RemoteAddr.Addr().AsSlice()))
+			country, city, _ = h.GeoResolver.LookupCity(context.Background(), req.RemoteAddr.Addr())
 		}
 		h.DataLogger.Log().Str("logger", "socks").Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("remote_country", country).Str("remote_city", city).Str("forward_dialer_name", h.Config.Forward.Dialer).Str("socks_host", req.Host).Int("socks_port", req.Port).Int("socks_version", int(req.Version)).Str("forward_dialer_name", dialerName).Msg("")
 	}

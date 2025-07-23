@@ -7,7 +7,7 @@ require (
 	github.com/go-task/slim-sprig/v3 v3.0.0
 	github.com/libp2p/go-yamux/v5 v5.0.1
 	github.com/mileusna/useragent v1.3.5
-	github.com/oschwald/maxminddb-golang v1.13.1
+	github.com/oschwald/maxminddb-golang/v2 v2.0.0-beta.8
 	github.com/phuslu/fastdns v0.12.5
 	github.com/phuslu/geosite v1.0.20250701
 	github.com/phuslu/log v1.0.119

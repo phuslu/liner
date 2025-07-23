@@ -3,10 +3,10 @@ package main
 import (
 	"context"
 	"errors"
-	"net"
+	"net/netip"
 	"strings"
 
-	"github.com/oschwald/maxminddb-golang"
+	"github.com/oschwald/maxminddb-golang/v2"
 )
 
 type GeoResolver struct {
@@ -18,13 +18,9 @@ type GeoResolver struct {
 	EnableCJKCityName    bool
 }
 
-func (r *GeoResolver) LookupCity(ctx context.Context, ip net.IP) (string, string, error) {
+func (r *GeoResolver) LookupCity(ctx context.Context, ip netip.Addr) (string, string, error) {
 	if r.CityReader == nil {
 		return "", "", errors.New("no maxmind city database found")
-	}
-
-	if ip == nil {
-		return "", "", errors.New("invalid ip address")
 	}
 
 	var record struct {
@@ -49,7 +45,10 @@ func (r *GeoResolver) LookupCity(ctx context.Context, ip net.IP) (string, string
 		// } `maxminddb:"subdivisions"`
 	}
 
-	err := r.CityReader.Lookup(ip, &record)
+	err := r.CityReader.Lookup(ip).Decode(&record)
+	if err != nil {
+		return "", "", err
+	}
 
 	code, name := record.Country.ISOCode, record.City.Names.EN
 	if r.EnableCJKCityName {
@@ -61,16 +60,12 @@ func (r *GeoResolver) LookupCity(ctx context.Context, ip net.IP) (string, string
 		}
 	}
 
-	return code, name, err
+	return code, name, nil
 }
 
-func (r *GeoResolver) LookupISP(ctx context.Context, ip net.IP) (string, uint, error) {
+func (r *GeoResolver) LookupISP(ctx context.Context, ip netip.Addr) (string, uint, error) {
 	if r.ISPReader == nil {
 		return "", 0, errors.New("no maxmind isp database found")
-	}
-
-	if ip == nil {
-		return "", 0, errors.New("invalid ip address")
 	}
 
 	var record struct {
@@ -82,53 +77,48 @@ func (r *GeoResolver) LookupISP(ctx context.Context, ip net.IP) (string, uint, e
 		AutonomousSystemNumber       uint   `maxminddb:"autonomous_system_number"`
 	}
 
-	err := r.ISPReader.Lookup(ip, &record)
+	err := r.ISPReader.Lookup(ip).Decode(&record)
+	if err != nil {
+		return "", 0, err
+	}
 
-	return record.ISP, record.AutonomousSystemNumber, err
+	return record.ISP, record.AutonomousSystemNumber, nil
 }
 
-func (r *GeoResolver) LookupDomain(ctx context.Context, ip net.IP) (string, error) {
+func (r *GeoResolver) LookupDomain(ctx context.Context, ip netip.Addr) (string, error) {
 	if r.DomainReader == nil {
 		return "", errors.New("no maxmind domain database found")
 	}
 
-	if ip == nil {
-		return "", errors.New("invalid ip address")
+	var domain string
+	err := r.DomainReader.Lookup(ip).DecodePath(&domain, "domain")
+	if err != nil {
+		return "", err
 	}
 
-	var record struct {
-		Domain string `maxminddb:"domain"`
-	}
-
-	err := r.DomainReader.Lookup(ip, &record)
-
-	return record.Domain, err
+	return domain, nil
 }
 
-func (r *GeoResolver) LookupConnectionType(ctx context.Context, ip net.IP) (string, error) {
+func (r *GeoResolver) LookupConnectionType(ctx context.Context, ip netip.Addr) (string, error) {
 	if r.ConnectionTypeReader == nil {
 		return "", errors.New("no maxmind domain database found")
 	}
 
-	if ip == nil {
-		return "", errors.New("invalid ip address")
+	var connectionType string
+	err := r.ConnectionTypeReader.Lookup(ip).DecodePath(&connectionType, "connection_type")
+	if err != nil {
+		return "", err
 	}
 
-	var record struct {
-		ConnectionType string `maxminddb:"connection_type"`
-	}
-
-	err := r.ConnectionTypeReader.Lookup(ip, &record)
-
-	return record.ConnectionType, err
+	return connectionType, nil
 }
 
-func IsBogusChinaIP(ip net.IP) (ok bool) {
-	ip4 := ip.To4()
-	if ip4 == nil {
+func IsBogusChinaIP(ip netip.Addr) (ok bool) {
+	if ip.Is6() {
 		return false
 	}
 
+	ip4 := ip.As4()
 	n := ((uint(ip4[0])<<8+uint(ip4[1]))<<8+uint(ip4[2]))<<8 + uint(ip4[3])
 
 	_, ok = bogusChinaIP[n]

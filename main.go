@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"github.com/mileusna/useragent"
-	"github.com/oschwald/maxminddb-golang"
+	"github.com/oschwald/maxminddb-golang/v2"
 	"github.com/phuslu/geosite"
 	"github.com/phuslu/log"
 	"github.com/phuslu/lru"
