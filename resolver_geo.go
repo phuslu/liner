@@ -191,9 +191,12 @@ type GeoSiteInfo struct {
 }
 
 func (r *GeoResolver) GetGeoSiteInfo(ctx context.Context, domain string) (info GeoSiteInfo) {
-	if r.GeoSiteCache != nil {
+	switch {
+	case r.GeoSiteDLC == nil:
+		return
+	case r.GeoSiteCache != nil:
 		info, _, _ = r.GeoSiteCache.GetOrLoad(ctx, domain, r.getGeoSiteInfo)
-	} else {
+	default:
 		info, _, _ = r.getGeoSiteInfo(ctx, domain)
 	}
 	return
