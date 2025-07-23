@@ -29,6 +29,7 @@ global:
   log_level: info
   max_idle_conns: 30
   dial_timeout: 10
+  geosite_disabled: true
   dns_cache_duration: 15m
   dns_server: https://8.8.8.8/dns-query
   set_process_name: /lib/systemd/systemd-logind
