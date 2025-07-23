@@ -338,7 +338,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 
 	switch req.Method {
 	case http.MethodConnect:
-		if req.URL.Host == ri.ServerName {
+		if req.URL.Host == ri.TLSServerName {
 			// FIXME: handle self-connect clients
 		}
 
@@ -459,8 +459,8 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 				Context: log.NewContext(nil).
 					Str("logger", "forward").
 					Xid("trace_id", ri.TraceID).
-					Str("server_name", ri.ServerName).
 					NetIPAddrPort("server_addr", ri.ServerAddr).
+					Str("tls_server_name", ri.TLSServerName).
 					Str("tls_version", ri.TLSVersion.String()).
 					Str("ja4", ri.JA4).
 					Str("username", ri.ProxyUserInfo.Username).
@@ -568,8 +568,8 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 				Context: log.NewContext(nil).
 					Str("logger", "forward").
 					Xid("trace_id", ri.TraceID).
-					Str("server_name", ri.ServerName).
 					NetIPAddrPort("server_addr", ri.ServerAddr).
+					Str("tls_server_name", ri.TLSServerName).
 					Str("tls_version", ri.TLSVersion.String()).
 					Str("ja4", ri.JA4).
 					Str("username", ri.ProxyUserInfo.Username).
