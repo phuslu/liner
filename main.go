@@ -126,10 +126,9 @@ func main() {
 	}
 	resolver := &GeoResolver{
 		Resolver:          must(GetResolver(config.Global.DnsServer)),
-		GeoIPCache:        lru.NewTTLCache[netip.Addr, GeoIPInfo](cmp.Or(config.Global.GeoCacheSize, 8192)),
+		Logger:            slog.Default(),
 		EnableCJKCityName: true,
 	}
-	resolver.Resolver.NoIPv6Hosts = lru.NewTTLCache[string, bool](cmp.Or(config.Global.DnsCacheSize, 4096))
 	if names, err := filepath.Glob(filepath.Join(config.Global.Geoip2Dir, "*.mmdb")); err == nil {
 		newerdb := func(r1, r2 *maxminddb.Reader) *maxminddb.Reader {
 			if r1 == nil || r1.Metadata.BuildEpoch < r2.Metadata.BuildEpoch {
@@ -167,6 +166,10 @@ func main() {
 			log.Info().Str("geoip2_database_name", name).Str("geoip2_database_type", reader.Metadata.DatabaseType).Msg("load geoip2 database ok")
 		}
 	}
+	if cmp.Or(resolver.CityReader, resolver.ISPReader, resolver.DomainReader, resolver.ConnectionTypeReader) != nil {
+		resolver.GeoIPCache = lru.NewTTLCache[netip.Addr, GeoIPInfo](cmp.Or(config.Global.GeoCacheSize, 8192))
+	}
+	resolver.Resolver.NoIPv6Hosts = lru.NewTTLCache[string, bool](cmp.Or(config.Global.DnsCacheSize, 4096))
 
 	// global dialer
 	dialer := &LocalDialer{
