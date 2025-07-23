@@ -39,7 +39,6 @@ type HTTPServerHandler struct {
 }
 
 type RequestInfo struct {
-	RemoteIP        string
 	RemoteAddr      netip.AddrPort
 	ServerAddr      netip.AddrPort
 	ServerName      string
@@ -82,7 +81,6 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	ri := riPool.Get().(*RequestInfo)
 	defer riPool.Put(ri)
 
-	ri.RemoteIP, _, _ = net.SplitHostPort(req.RemoteAddr)
 	ri.RemoteAddr, _ = netip.ParseAddrPort(req.RemoteAddr)
 	ri.ServerAddr, _ = netip.ParseAddrPort(req.Context().Value(http.LocalAddrContextKey).(net.Addr).String())
 	if req.TLS != nil {
@@ -166,7 +164,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 
 	ri.UserAgent, _, _ = h.UserAgentMap.Get(req.Header.Get("User-Agent"))
 	if h.GeoResolver.CityReader != nil {
-		ri.GeoipInfo.Country, ri.GeoipInfo.City, _ = h.GeoResolver.LookupCity(context.Background(), net.ParseIP(ri.RemoteIP))
+		ri.GeoipInfo.Country, ri.GeoipInfo.City, _ = h.GeoResolver.LookupCity(context.Background(), net.IP(ri.RemoteAddr.Addr().AsSlice()))
 	}
 
 	ri.ProxyUserInfo = UserInfo{}
@@ -205,7 +203,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		NetIPAddrPort("server_addr", ri.ServerAddr).
 		Str("tls_version", ri.TLSVersion.String()).
 		Str("ja4", ri.JA4).
-		Str("remote_ip", ri.RemoteIP).
+		NetIPAddr("remote_ip", ri.RemoteAddr.Addr()).
 		Str("user_agent", req.UserAgent()).
 		Str("http_method", req.Method).
 		Str("http_proto", req.Proto).

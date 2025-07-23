@@ -16,7 +16,6 @@ import (
 
 type StreamRequest struct {
 	RemoteAddr netip.AddrPort
-	RemoteIP   string
 	ServerAddr netip.AddrPort
 	TraceID    log.XID
 }
@@ -67,7 +66,6 @@ func (h *StreamHandler) ServeConn(conn net.Conn) {
 	} else {
 		req.RemoteAddr, _ = netip.ParseAddrPort(conn.RemoteAddr().String())
 	}
-	req.RemoteIP = req.RemoteAddr.Addr().String()
 	if addr, ok := conn.LocalAddr().(*net.TCPAddr); ok {
 		req.ServerAddr = addr.AddrPort()
 	} else {
@@ -77,14 +75,14 @@ func (h *StreamHandler) ServeConn(conn net.Conn) {
 
 	if tc, _ := conn.(*net.TCPConn); conn != nil && h.Config.SpeedLimit > 0 {
 		err := SetTcpMaxPacingRate(tc, int(h.Config.SpeedLimit))
-		log.DefaultLogger.Err(err).Str("stream_proxy_pass", h.Config.ProxyPass).Str("remote_ip", req.RemoteIP).Str("stream_dialer_name", h.Config.Dialer).Int64("stream_speedlimit", h.Config.SpeedLimit).Msg("set speedlimit")
+		log.DefaultLogger.Err(err).Str("stream_proxy_pass", h.Config.ProxyPass).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("stream_dialer_name", h.Config.Dialer).Int64("stream_speedlimit", h.Config.SpeedLimit).Msg("set speedlimit")
 	}
 
 	if h.tlsConfig != nil {
 		tconn := tls.Server(conn, h.tlsConfig)
 		err := tconn.HandshakeContext(ctx)
 		if err != nil {
-			log.Error().Err(err).Str("stream_proxy_pass", h.Config.ProxyPass).Str("remote_ip", req.RemoteIP).Str("stream_dialer_name", h.Config.Dialer).Msg("connect remote host failed")
+			log.Error().Err(err).Str("stream_proxy_pass", h.Config.ProxyPass).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("stream_dialer_name", h.Config.Dialer).Msg("connect remote host failed")
 			return
 		}
 		conn = tconn
@@ -94,7 +92,7 @@ func (h *StreamHandler) ServeConn(conn net.Conn) {
 	if h.Config.Dialer != "" {
 		dialer, ok := h.Dialers[h.Config.Dialer]
 		if !ok {
-			log.Error().NetIPAddrPort("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Str("stream_dialer_name", h.Config.Dialer).Msg("dialer not exists")
+			log.Error().NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("stream_dialer_name", h.Config.Dialer).Msg("dialer not exists")
 			return
 		}
 		dail = dialer.DialContext
@@ -102,7 +100,7 @@ func (h *StreamHandler) ServeConn(conn net.Conn) {
 
 	rconn, err := func(ctx context.Context) (net.Conn, error) {
 		ctx = context.WithValue(ctx, DialerHTTPHeaderContextKey, http.Header{
-			"X-Forwarded-For": []string{req.RemoteIP},
+			"X-Forwarded-For": []string{req.RemoteAddr.Addr().String()},
 		})
 		if h.Config.DialTimeout > 0 {
 			var cancel context.CancelFunc
@@ -124,12 +122,12 @@ func (h *StreamHandler) ServeConn(conn net.Conn) {
 		}
 	}(ctx)
 	if err != nil {
-		log.Error().Err(err).Str("stream_proxy_pass", h.Config.ProxyPass).Str("remote_ip", req.RemoteIP).Str("stream_dialer_name", h.Config.Dialer).Msg("connect remote host failed")
+		log.Error().Err(err).Str("stream_proxy_pass", h.Config.ProxyPass).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("stream_dialer_name", h.Config.Dialer).Msg("connect remote host failed")
 		return
 	}
 	defer rconn.Close()
 
-	log.Info().Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Str("proxy_pass", h.Config.ProxyPass).Str("stream_dialer_name", h.Config.Dialer).Msg("forward stream")
+	log.Info().Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("proxy_pass", h.Config.ProxyPass).Str("stream_dialer_name", h.Config.Dialer).Msg("forward stream")
 
 	go io.Copy(rconn, conn)
 	_, err = io.Copy(conn, rconn)
@@ -137,9 +135,9 @@ func (h *StreamHandler) ServeConn(conn net.Conn) {
 	if h.Config.Log {
 		var country, city string
 		if h.GeoResolver.CityReader != nil {
-			country, city, _ = h.GeoResolver.LookupCity(ctx, net.ParseIP(req.RemoteIP))
+			country, city, _ = h.GeoResolver.LookupCity(ctx, net.IP(req.RemoteAddr.Addr().AsSlice()))
 		}
-		h.DataLogger.Log().Str("logger", "stream").Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).Str("remote_ip", req.RemoteIP).Str("remote_country", country).Str("remote_city", city).Str("stream_dialer_name", h.Config.Dialer).Msg("")
+		h.DataLogger.Log().Str("logger", "stream").Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("remote_country", country).Str("remote_city", city).Str("stream_dialer_name", h.Config.Dialer).Msg("")
 	}
 
 	return

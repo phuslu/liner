@@ -15,7 +15,6 @@ import (
 
 type SniRequest struct {
 	RemoteAddr netip.AddrPort
-	RemoteIP   string
 	ServerAddr netip.AddrPort
 	ServerName string
 	Port       int
@@ -53,7 +52,6 @@ func (h *SniHandler) ServeConn(ctx context.Context, servername string, header []
 	} else {
 		req.RemoteAddr, _ = netip.ParseAddrPort(conn.RemoteAddr().String())
 	}
-	req.RemoteIP = req.RemoteAddr.Addr().String()
 	if addr, ok := conn.LocalAddr().(*net.TCPAddr); ok {
 		req.ServerAddr = addr.AddrPort()
 	} else {

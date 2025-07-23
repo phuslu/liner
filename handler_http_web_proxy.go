@@ -213,13 +213,13 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	// req.Host = u.Host
 
 	if s := req.Header.Get("x-forwarded-for"); s != "" {
-		req.Header.Set("x-forwarded-for", s+", "+ri.RemoteIP)
+		req.Header.Set("x-forwarded-for", s+", "+ri.RemoteAddr.Addr().String())
 	} else {
-		req.Header.Set("x-forwarded-for", ri.RemoteIP)
+		req.Header.Set("x-forwarded-for", ri.RemoteAddr.Addr().String())
 	}
 
-	if ip, err := netip.ParseAddr(ri.RemoteIP); err == nil && !ip.IsLoopback() && !ip.IsPrivate() {
-		req.Header.Set("x-real-ip", ri.RemoteIP)
+	if !ri.RemoteAddr.Addr().IsLoopback() && !ri.RemoteAddr.Addr().IsPrivate() {
+		req.Header.Set("x-real-ip", ri.RemoteAddr.Addr().String())
 	}
 
 	if ri.TLSVersion != 0 {

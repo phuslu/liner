@@ -96,9 +96,9 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 	ri := req.Context().Value(RequestInfoContextKey).(*RequestInfo)
 
 	// fix real remote ip
-	if xfr := req.Header.Get("x-forwarded-for"); xfr != "" {
-		ri.RemoteIP = strings.Split(xfr, ",")[0]
-	}
+	// if xfr := req.Header.Get("x-forwarded-for"); xfr != "" {
+	// 	ri.RemoteIP = strings.Split(xfr, ",")[0]
+	// }
 
 	tunnel := strings.HasPrefix(req.URL.Path, HTTPTunnelConnectTCPPathPrefix)
 	if tunnel {
@@ -279,7 +279,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 						http.Error(rw, err.Error(), http.StatusBadGateway)
 						return
 					}
-					log.Debug().Str("remote_ip", ri.RemoteIP).Strs("forward_tcp_congestion_options", options).Msg("set forward_tcp_congestion ok")
+					log.Debug().NetIPAddr("remote_ip", ri.RemoteAddr.Addr()).Strs("forward_tcp_congestion_options", options).Msg("set forward_tcp_congestion ok")
 				}
 			default:
 				if err := SetTcpCongestion(ri.ClientTCPConn, name); err != nil {
@@ -387,9 +387,9 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		}
 		if header, _ := ctx.Value(DialerHTTPHeaderContextKey).(http.Header); header != nil {
 			if s := header.Get("x-forwarded-for"); s != "" {
-				header.Set("x-forwarded-for", s+","+ri.RemoteIP)
+				header.Set("x-forwarded-for", s+","+ri.RemoteAddr.Addr().String())
 			} else {
-				header.Set("x-forwarded-for", ri.RemoteIP)
+				header.Set("x-forwarded-for", ri.RemoteAddr.Addr().String())
 			}
 			if s := header.Get("x-forwarded-user"); s != "" {
 				header.Set("x-forwarded-user", s+","+ri.ProxyUserInfo.Username)
@@ -398,7 +398,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			}
 		} else {
 			ctx = context.WithValue(ctx, DialerHTTPHeaderContextKey, http.Header{
-				"x-forwarded-for":  []string{ri.RemoteIP},
+				"x-forwarded-for":  []string{ri.RemoteAddr.Addr().String()},
 				"x-forwarded-user": []string{ri.ProxyUserInfo.Username},
 			})
 		}
@@ -464,7 +464,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 					Str("tls_version", ri.TLSVersion.String()).
 					Str("ja4", ri.JA4).
 					Str("username", ri.ProxyUserInfo.Username).
-					Str("remote_ip", ri.RemoteIP).
+					NetIPAddr("remote_ip", ri.RemoteAddr.Addr()).
 					Str("remote_country", ri.GeoipInfo.Country).
 					Str("remote_city", ri.GeoipInfo.City).
 					Str("http_method", req.Method).
@@ -573,7 +573,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 					Str("tls_version", ri.TLSVersion.String()).
 					Str("ja4", ri.JA4).
 					Str("username", ri.ProxyUserInfo.Username).
-					Str("remote_ip", ri.RemoteIP).
+					NetIPAddr("remote_ip", ri.RemoteAddr.Addr()).
 					Str("remote_country", ri.GeoipInfo.Country).
 					Str("remote_city", ri.GeoipInfo.City).
 					Str("http_method", req.Method).
