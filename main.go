@@ -386,7 +386,7 @@ func main() {
 	// tls inspector
 	tlsConfigurator := &TLSInspector{
 		Logger:         slog.Default(),
-		ClientHelloMap: xsync.NewMap[netip.AddrPort, *TLSClientHelloInfo](xsync.WithSerialResize()),
+		ClientHelloMap: xsync.NewMap[string, *TLSClientHelloInfo](xsync.WithSerialResize()),
 	}
 
 	// sni proxy
