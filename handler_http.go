@@ -53,7 +53,7 @@ type RequestInfo struct {
 	ProxyUserInfo   UserInfo
 	AuthUserBytes   []byte
 	AuthUserInfo    UserInfo
-	GeoipInfo       GeoipInfo
+	GeoIPInfo       GeoIPInfo
 	LogContext      log.Context
 }
 
@@ -171,7 +171,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 
 	ri.UserAgent, _, _ = h.UserAgentMap.Get(req.Header.Get("User-Agent"))
 	if h.GeoResolver.CityReader != nil {
-		ri.GeoipInfo.Country, ri.GeoipInfo.City, _ = h.GeoResolver.LookupCity(context.Background(), ri.RemoteAddr.Addr())
+		ri.GeoIPInfo.Country, ri.GeoIPInfo.City, _ = h.GeoResolver.LookupCity(context.Background(), ri.RemoteAddr.Addr())
 	}
 
 	ri.ProxyUserInfo = UserInfo{}
@@ -221,8 +221,8 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		Str("http_x_forwarded_user", req.Header.Get("x-forwarded-user")).
 		Str("useragent_os", ri.UserAgent.OS+" "+ri.UserAgent.OSVersion).
 		Str("useragent_browser", ri.UserAgent.Name+" "+ri.UserAgent.Version).
-		Str("remote_country", ri.GeoipInfo.Country).
-		Str("remote_city", ri.GeoipInfo.City).
+		Str("remote_country", ri.GeoIPInfo.Country).
+		Str("remote_city", ri.GeoIPInfo.City).
 		Value()
 
 	req = req.WithContext(context.WithValue(req.Context(), RequestInfoContextKey, ri))

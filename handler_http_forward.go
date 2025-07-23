@@ -465,8 +465,8 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 					Str("ja4", ri.JA4).
 					Str("username", ri.ProxyUserInfo.Username).
 					NetIPAddr("remote_ip", ri.RemoteAddr.Addr()).
-					Str("remote_country", ri.GeoipInfo.Country).
-					Str("remote_city", ri.GeoipInfo.City).
+					Str("remote_country", ri.GeoIPInfo.Country).
+					Str("remote_city", ri.GeoIPInfo.City).
 					Str("http_method", req.Method).
 					Str("http_host", host).
 					Str("http_domain", domain).
@@ -574,8 +574,8 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 					Str("ja4", ri.JA4).
 					Str("username", ri.ProxyUserInfo.Username).
 					NetIPAddr("remote_ip", ri.RemoteAddr.Addr()).
-					Str("remote_country", ri.GeoipInfo.Country).
-					Str("remote_city", ri.GeoipInfo.City).
+					Str("remote_country", ri.GeoIPInfo.Country).
+					Str("remote_city", ri.GeoIPInfo.City).
 					Str("http_method", req.Method).
 					Str("http_host", host).
 					Str("http_domain", domain).

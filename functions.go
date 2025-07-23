@@ -27,7 +27,6 @@ import (
 
 type Functions struct {
 	GeoResolver *GeoResolver
-	GeoCache    *lru.TTLCache[string, *GeoipInfo]
 
 	GeoSiteOnce  *sync.Once
 	GeoSite      *geosite.DomainListCommunity
@@ -85,80 +84,11 @@ func (f *Functions) host(hostport string) string {
 	return hostport
 }
 
-type GeoipInfo struct {
-	IP             string
-	Country        string
-	City           string
-	ISP            string
-	ASN            string
-	Domain         string
-	ConnectionType string
-}
-
-func (f *Functions) geoip(ipStr string) GeoipInfo {
-	loader := func(ctx context.Context, ipStr string) (*GeoipInfo, time.Duration, error) {
-		ip, err := netip.ParseAddr(ipStr)
-
-		if err != nil {
-			ips, _ := f.GeoResolver.Resolver.LookupNetIP(ctx, "ip", ipStr)
-			if len(ips) == 0 {
-				return &GeoipInfo{IP: ipStr, Country: "ZZ"}, time.Minute, nil
-			}
-			ip = ips[0]
-		}
-
-		var country, city string
-		if f.GeoResolver.CityReader != nil {
-			country, city, _ = f.GeoResolver.LookupCity(ctx, ip)
-		}
-
-		if country == "CN" && IsBogusChinaIP(ip) {
-			return &GeoipInfo{IP: ipStr, Country: "ZZ"}, time.Minute, nil
-		}
-
-		log.Debug().NetIPAddr("ip", ip).Str("country", country).Str("city", city).Msg("get city by ip")
-
-		result := &GeoipInfo{
-			IP:      ipStr,
-			Country: country,
-			City:    city,
-		}
-
-		if f.GeoResolver.ISPReader != nil {
-			if isp, asn, err := f.GeoResolver.LookupISP(ctx, ip); err == nil {
-				result.ISP = isp
-				result.ASN = fmt.Sprintf("AS%d", asn)
-				log.Debug().NetIPAddr("ip", ip).Str("isp", isp).Uint("asn", asn).Msg("get isp by ip")
-			}
-		}
-
-		if f.GeoResolver.DomainReader != nil {
-			if domain, err := f.GeoResolver.LookupDomain(ctx, ip); err == nil {
-				result.Domain = domain
-				log.Debug().NetIPAddr("ip", ip).Str("domain", domain).Msg("get domain by ip")
-			}
-		}
-
-		if f.GeoResolver.ConnectionTypeReader != nil {
-			if conntype, err := f.GeoResolver.LookupConnectionType(ctx, ip); err == nil {
-				result.ConnectionType = conntype
-				log.Debug().NetIPAddr("ip", ip).Str("connection_type", conntype).Msg("get connection_type by ip")
-			}
-		}
-
-		return result, 12 * time.Hour, nil
+func (f *Functions) geoip(ipStr string) (info GeoIPInfo) {
+	if ip, err := netip.ParseAddr(ipStr); err == nil {
+		info = f.GeoResolver.GetGeoIPInfo(context.Background(), ip)
 	}
-
-	if s, _, err := net.SplitHostPort(ipStr); err == nil {
-		ipStr = s
-	}
-
-	info, _, _ := f.GeoCache.GetOrLoad(context.Background(), ipStr, loader)
-	if info == nil {
-		return GeoipInfo{}
-	}
-
-	return *info
+	return
 }
 
 func (f *Functions) country(ip string) string {

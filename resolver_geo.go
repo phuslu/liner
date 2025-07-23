@@ -3,14 +3,20 @@ package main
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/netip"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/oschwald/maxminddb-golang/v2"
+	"github.com/phuslu/lru"
 )
 
 type GeoResolver struct {
 	Resolver             *Resolver
+	Logger               *slog.Logger
+	GeoIPCache           *lru.TTLCache[netip.Addr, GeoIPInfo]
 	CityReader           *maxminddb.Reader
 	ISPReader            *maxminddb.Reader
 	DomainReader         *maxminddb.Reader
@@ -111,4 +117,63 @@ func (r *GeoResolver) LookupConnectionType(ctx context.Context, ip netip.Addr) (
 	}
 
 	return connectionType, nil
+}
+
+type GeoIPInfo struct {
+	Country        string
+	City           string
+	ISP            string
+	ASN            string
+	Domain         string
+	ConnectionType string
+}
+
+func (r *GeoResolver) GetGeoIPInfo(ctx context.Context, ip netip.Addr) GeoIPInfo {
+	loader := func(ctx context.Context, ip netip.Addr) (GeoIPInfo, time.Duration, error) {
+		var info GeoIPInfo
+		if r.CityReader != nil {
+			info.Country, info.City, _ = r.LookupCity(ctx, ip)
+		}
+
+		// if info.Country == "CN" && IsBogusChinaIP(ip) {
+		// 	return info, time.Minute, nil
+		// }
+
+		if r.Logger != nil {
+			r.Logger.Debug("get city by ip", "ip", ip, "country", info.Country, "city", info.City)
+		}
+
+		if r.ISPReader != nil {
+			if isp, asn, err := r.LookupISP(ctx, ip); err == nil {
+				info.ISP = isp
+				info.ASN = "AS" + strconv.FormatUint(uint64(asn), 10)
+				if r.Logger != nil {
+					r.Logger.Debug("get isp by ip", "ip", ip, "isp", isp, "asn", asn)
+				}
+			}
+		}
+
+		if r.DomainReader != nil {
+			if domain, err := r.LookupDomain(ctx, ip); err == nil {
+				info.Domain = domain
+				if r.Logger != nil {
+					r.Logger.Debug("get domain by ip", "ip", ip, "domain", domain)
+				}
+			}
+		}
+
+		if r.ConnectionTypeReader != nil {
+			if conntype, err := r.LookupConnectionType(ctx, ip); err == nil {
+				info.ConnectionType = conntype
+				if r.Logger != nil {
+					r.Logger.Debug("get connection_type by ip", "ip", ip, "connection_type", conntype)
+				}
+			}
+		}
+
+		return info, 12 * time.Hour, nil
+	}
+
+	info, _, _ := r.GeoIPCache.GetOrLoad(ctx, ip, loader)
+	return info
 }

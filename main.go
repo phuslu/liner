@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os"
 	"os/exec"
@@ -125,6 +126,7 @@ func main() {
 	}
 	resolver := &GeoResolver{
 		Resolver:          must(GetResolver(config.Global.DnsServer)),
+		GeoIPCache:        lru.NewTTLCache[netip.Addr, GeoIPInfo](cmp.Or(config.Global.GeoCacheSize, 8192)),
 		EnableCJKCityName: true,
 	}
 	resolver.Resolver.NoIPv6Hosts = lru.NewTTLCache[string, bool](cmp.Or(config.Global.DnsCacheSize, 4096))
@@ -330,7 +332,6 @@ func main() {
 	// template functions
 	functions := &Functions{
 		GeoResolver:    resolver,
-		GeoCache:       lru.NewTTLCache[string, *GeoipInfo](cmp.Or(config.Global.GeoCacheSize, 8192)),
 		GeoSiteOnce:    &sync.Once{},
 		GeoSite:        &geosite.DomainListCommunity{Transport: transport},
 		GeoSiteCache:   lru.NewTTLCache[string, *string](cmp.Or(config.Global.GeositeCacheSize, 8192)),
