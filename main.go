@@ -420,6 +420,7 @@ func main() {
 				LocalTransport:  transport,
 				Dialers:         dialers,
 				DialerURLs:      config.Dialer,
+				GeoResolver:     resolver,
 				Functions:       functions.FuncMap,
 			},
 			TunnelHandler: &HTTPTunnelHandler{
@@ -602,6 +603,7 @@ func main() {
 				LocalTransport:  transport,
 				Dialers:         dialers,
 				DialerURLs:      config.Dialer,
+				GeoResolver:     resolver,
 				Functions:       functions.FuncMap,
 			},
 			TunnelHandler: &HTTPTunnelHandler{

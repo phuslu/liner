@@ -33,6 +33,7 @@ type HTTPForwardHandler struct {
 	LocalTransport  *http.Transport
 	Dialers         map[string]Dialer
 	DialerURLs      map[string]string
+	GeoResolver     *GeoResolver
 	Functions       template.FuncMap
 
 	policy        *template.Template
@@ -117,6 +118,8 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 	if h, _, err := net.SplitHostPort(req.Host); err == nil {
 		host = h
 	}
+
+	geosite := h.GeoResolver.GetGeoSiteInfo(req.Context(), host)
 
 	var domain string
 	if ip := net.ParseIP(host); ip == nil {
@@ -320,7 +323,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		userLog = false
 	}
 
-	log.Info().Context(ri.LogContext).Str("req_method", req.Method).Str("req_host", req.Host).Any("req_header", req.Header).Str("username", ri.ProxyUserInfo.Username).Any("user_attrs", ri.ProxyUserInfo.Attrs).Str("forward_policy_name", policyName).Str("forward_dialer_value", dialerValue).Str("http_domain", domain).Int64("speed_limit", speedLimit).Msg("forward request")
+	log.Info().Context(ri.LogContext).Str("req_method", req.Method).Str("req_host", req.Host).Str("geosite", geosite.Site).Any("req_header", req.Header).Str("username", ri.ProxyUserInfo.Username).Any("user_attrs", ri.ProxyUserInfo.Attrs).Str("forward_policy_name", policyName).Str("forward_dialer_value", dialerValue).Str("http_domain", domain).Int64("speed_limit", speedLimit).Msg("forward request")
 
 	var dialerName = dialerValue
 	var preferIPv6 = h.Config.Forward.PreferIpv6
@@ -410,7 +413,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			return
 		}
 
-		log.Debug().Context(ri.LogContext).Any("req_header", req.Header).NetAddr("conn_remote_addr", conn.RemoteAddr()).Msg("dial host ok")
+		log.Debug().Context(ri.LogContext).Str("geosite", geosite.Site).Any("req_header", req.Header).NetAddr("conn_remote_addr", conn.RemoteAddr()).Msg("dial host ok")
 
 		var w io.Writer
 		var r io.Reader
@@ -469,10 +472,11 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 					Str("remote_city", ri.GeoIPInfo.City).
 					Str("remote_isp", ri.GeoIPInfo.ISP).
 					Str("remote_connection_type", ri.GeoIPInfo.ConnectionType).
+					Str("http_proto", req.Proto).
 					Str("http_method", req.Method).
 					Str("http_host", host).
 					Str("http_domain", domain).
-					Str("http_proto", req.Proto).
+					Str("geosite", geosite.Site).
 					Str("user_agent", req.UserAgent()).
 					Str("user_agent_os", ri.UserAgent.OS).
 					Str("user_agent_os_version", ri.UserAgent.OSVersion).
@@ -496,7 +500,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		} else {
 			transmitBytes, err = io.Copy(w, conn) // splice to
 		}
-		log.Debug().Context(ri.LogContext).Str("username", ri.ProxyUserInfo.Username).Str("http_domain", domain).Int64("speed_limit", speedLimit).Int64("transmit_bytes", transmitBytes).Err(err).Msg("forward log")
+		log.Debug().Context(ri.LogContext).Str("geosite", geosite.Site).Str("username", ri.ProxyUserInfo.Username).Str("http_domain", domain).Int64("speed_limit", speedLimit).Int64("transmit_bytes", transmitBytes).Err(err).Msg("forward log")
 	default:
 		if req.Host == "" {
 			http.NotFound(rw, req)
@@ -580,10 +584,11 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 					Str("remote_city", ri.GeoIPInfo.City).
 					Str("remote_isp", ri.GeoIPInfo.ISP).
 					Str("remote_connection_type", ri.GeoIPInfo.ConnectionType).
+					Str("http_proto", req.Proto).
 					Str("http_method", req.Method).
 					Str("http_host", host).
 					Str("http_domain", domain).
-					Str("http_proto", req.Proto).
+					Str("geosite", geosite.Site).
 					Str("user_agent", req.UserAgent()).
 					Str("user_agent_os", ri.UserAgent.OS).
 					Str("user_agent_os_version", ri.UserAgent.OSVersion).
@@ -597,7 +602,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		}
 
 		transmitBytes, err := io.CopyBuffer(w, resp.Body, make([]byte, 256*1024)) // buffer size should align to http2.MaxReadFrameSize
-		log.Debug().Context(ri.LogContext).Str("username", ri.ProxyUserInfo.Username).Str("http_domain", domain).Int64("transmit_bytes", transmitBytes).Int64("speed_limit", speedLimit).Err(err).Msg("forward log")
+		log.Debug().Context(ri.LogContext).Str("geosite", geosite.Site).Str("username", ri.ProxyUserInfo.Username).Str("http_domain", domain).Int64("transmit_bytes", transmitBytes).Int64("speed_limit", speedLimit).Err(err).Msg("forward log")
 	}
 }
 
