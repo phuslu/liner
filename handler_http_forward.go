@@ -467,6 +467,8 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 					NetIPAddr("remote_ip", ri.RemoteAddr.Addr()).
 					Str("remote_country", ri.GeoIPInfo.Country).
 					Str("remote_city", ri.GeoIPInfo.City).
+					Str("remote_isp", ri.GeoIPInfo.ISP).
+					Str("remote_connection_type", ri.GeoIPInfo.ConnectionType).
 					Str("http_method", req.Method).
 					Str("http_host", host).
 					Str("http_domain", domain).
@@ -576,6 +578,8 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 					NetIPAddr("remote_ip", ri.RemoteAddr.Addr()).
 					Str("remote_country", ri.GeoIPInfo.Country).
 					Str("remote_city", ri.GeoIPInfo.City).
+					Str("remote_isp", ri.GeoIPInfo.ISP).
+					Str("remote_connection_type", ri.GeoIPInfo.ConnectionType).
 					Str("http_method", req.Method).
 					Str("http_host", host).
 					Str("http_domain", domain).

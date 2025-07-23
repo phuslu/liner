@@ -223,6 +223,8 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		Str("useragent_browser", ri.UserAgent.Name+" "+ri.UserAgent.Version).
 		Str("remote_country", ri.GeoIPInfo.Country).
 		Str("remote_city", ri.GeoIPInfo.City).
+		Str("remote_isp", ri.GeoIPInfo.ISP).
+		Str("remote_connection_type", ri.GeoIPInfo.ConnectionType).
 		Value()
 
 	req = req.WithContext(context.WithValue(req.Context(), RequestInfoContextKey, ri))

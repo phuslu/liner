@@ -242,7 +242,21 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 		if h.GeoResolver.CityReader != nil {
 			info = h.GeoResolver.GetGeoIPInfo(ctx, req.RemoteAddr.Addr())
 		}
-		h.DataLogger.Log().Str("logger", "socks").Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("remote_country", info.Country).Str("remote_city", info.City).Str("forward_dialer_name", h.Config.Forward.Dialer).Str("socks_host", req.Host).Int("socks_port", req.Port).Int("socks_version", int(req.Version)).Str("forward_dialer_name", dialerName).Msg("")
+		h.DataLogger.Log().
+			Str("logger", "socks").
+			Xid("trace_id", req.TraceID).
+			NetIPAddrPort("server_addr", req.ServerAddr).
+			NetIPAddr("remote_ip", req.RemoteAddr.Addr()).
+			Str("remote_country", info.Country).
+			Str("remote_city", info.City).
+			Str("remote_isp", info.ISP).
+			Str("remote_connection_type", info.ConnectionType).
+			Str("forward_dialer_name", h.Config.Forward.Dialer).
+			Str("socks_host", req.Host).
+			Int("socks_port", req.Port).
+			Int("socks_version", int(req.Version)).
+			Str("forward_dialer_name", dialerName).
+			Msg("")
 	}
 
 	return

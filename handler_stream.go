@@ -137,7 +137,17 @@ func (h *StreamHandler) ServeConn(conn net.Conn) {
 		if h.GeoResolver.CityReader != nil {
 			info = h.GeoResolver.GetGeoIPInfo(ctx, req.RemoteAddr.Addr())
 		}
-		h.DataLogger.Log().Str("logger", "stream").Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("remote_country", info.City).Str("remote_city", info.City).Str("stream_dialer_name", h.Config.Dialer).Msg("")
+		h.DataLogger.Log().
+			Str("logger", "stream").
+			Xid("trace_id", req.TraceID).
+			NetIPAddrPort("server_addr", req.ServerAddr).
+			NetIPAddr("remote_ip", req.RemoteAddr.Addr()).
+			Str("remote_country", info.City).
+			Str("remote_city", info.City).
+			Str("remote_isp", info.ISP).
+			Str("remote_connection_type", info.ConnectionType).
+			Str("stream_dialer_name", h.Config.Dialer).
+			Msg("")
 	}
 
 	return
