@@ -159,6 +159,7 @@ type Config struct {
 		TlsInsecure      bool   `json:"tls_insecure" yaml:"tls_insecure"`
 		Geoip2Dir        string `json:"geoip2_dir" yaml:"geoip2_dir"`
 		GeoCacheSize     int    `json:"geo_cache_size" yaml:"geo_cache_size"`
+		GeositeDisabled  bool   `json:"geosite_disabled" yaml:"geosite_disabled"`
 		GeositeCacheSize int    `json:"geosite_cache_size" yaml:"geosite_cache_size"`
 		IdleConnTimeout  int    `json:"idle_conn_timeout" yaml:"idle_conn_timeout"`
 		MaxIdleConns     int    `json:"max_idle_conns" yaml:"max_idle_conns"`
