@@ -30,7 +30,7 @@ type HTTPServerHandler struct {
 	Config           HTTPConfig
 	Hostnames        []string
 	HostnameSuffixes []string
-	ClientHelloMap   *xsync.Map[string, *TLSClientHelloInfo]
+	ClientHelloMap   *xsync.Map[netip.AddrPort, *TLSClientHelloInfo]
 	UserAgentMap     *CachingMap[string, useragent.UserAgent]
 	GeoResolver      *GeoResolver
 	ForwardHandler   HTTPHandler
@@ -105,7 +105,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 			ri.JA4 = b2s(v.JA4[:])
 		}
 	} else {
-		if v, ok := h.ClientHelloMap.Load(req.RemoteAddr); ok {
+		if v, ok := h.ClientHelloMap.Load(ri.RemoteAddr); ok {
 			ri.ClientHelloInfo = v.ClientHelloInfo
 			ri.JA4 = b2s(v.JA4[:])
 			if header := GetMirrorHeader(ri.ClientHelloInfo.Conn); header != nil {

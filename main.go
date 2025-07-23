@@ -374,7 +374,7 @@ func main() {
 
 	// tls inspector
 	tlsConfigurator := &TLSInspector{
-		ClientHelloMap: xsync.NewMap[string, *TLSClientHelloInfo](xsync.WithSerialResize()),
+		ClientHelloMap: xsync.NewMap[netip.AddrPort, *TLSClientHelloInfo](xsync.WithSerialResize()),
 	}
 
 	// sni proxy
