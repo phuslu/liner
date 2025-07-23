@@ -374,6 +374,7 @@ func main() {
 
 	// tls inspector
 	tlsConfigurator := &TLSInspector{
+		Logger:         slog.Default(),
 		ClientHelloMap: xsync.NewMap[netip.AddrPort, *TLSClientHelloInfo](xsync.WithSerialResize()),
 	}
 

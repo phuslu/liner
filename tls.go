@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/netip"
@@ -14,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/phuslu/log"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/quic-go/quic-go"
 	"golang.org/x/crypto/acme/autocert"
@@ -80,6 +80,7 @@ var ErrTLSServerNameNotFound = errors.New("tls server name is not found")
 type TLSServerNameHandle func(ctx context.Context, sni string, data []byte, conn net.Conn) error
 
 type TLSInspector struct {
+	Logger            *slog.Logger
 	DefaultServername string
 
 	Entries             map[string]TLSInspectorEntry // key: TLS ServerName
@@ -276,7 +277,9 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 		cert.OCSPStaple, err = GetOCSPStaple(ctx, http.DefaultTransport, cacert)
 		if err != nil {
 			// just log error
-			log.Error().Err(err).Str("server_name", serverName).Any("tls_config_cache_key", cacheKey).Msg("get ocsp response error")
+			if m.Logger != nil {
+				m.Logger.Error("get ocsp response error", "error", err, "tls_server_name", serverName, "tls_config_cache_key", cacheKey)
+			}
 		}
 	}
 
