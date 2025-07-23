@@ -171,7 +171,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 
 	ri.UserAgent, _, _ = h.UserAgentMap.Get(req.Header.Get("User-Agent"))
 	if h.GeoResolver.CityReader != nil {
-		ri.GeoIPInfo.Country, ri.GeoIPInfo.City, _ = h.GeoResolver.LookupCity(context.Background(), ri.RemoteAddr.Addr())
+		ri.GeoIPInfo = h.GeoResolver.GetGeoIPInfo(req.Context(), ri.RemoteAddr.Addr())
 	}
 
 	ri.ProxyUserInfo = UserInfo{}
