@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"cmp"
+	"context"
 	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -28,6 +29,10 @@ type AuthUserInfo struct {
 	Username string
 	Password string
 	Attrs    map[string]any
+}
+
+type AuthUserLoader interface {
+	LoadAuthUserInfos(context.Context) ([]AuthUserInfo, error)
 }
 
 /*
