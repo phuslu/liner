@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/puzpuzpuz/xsync/v4"
@@ -195,11 +196,21 @@ func GetAuthUserInfoCsvLoader(authTableFile string) (loader *AuthUserCSVLoader) 
 var _ AuthUserLoader = (*AuthUserCmdLoader)(nil)
 
 type AuthUserCmdLoader struct {
-	CommandPath string
+	Command  []string
+	CacheTTL time.Duration
+
+	users atomic.Value // []AuthUserInfo
+	mtime atomic.Int64 // timestamp
 }
 
 func (loader *AuthUserCmdLoader) LoadAuthUsers(ctx context.Context) ([]AuthUserInfo, error) {
-	cmd := exec.CommandContext(ctx, loader.CommandPath)
+	if loader.CacheTTL > 0 {
+		if ts := loader.mtime.Load(); 0 < ts && ts+int64(loader.CacheTTL) < time.Now().UnixNano() {
+			return loader.users.Load().([]AuthUserInfo), nil
+		}
+	}
+
+	cmd := exec.CommandContext(ctx, loader.Command[0], loader.Command[1:]...)
 	cmd.Env = []string{}
 
 	data, err := cmd.CombinedOutput()
@@ -222,6 +233,9 @@ func (loader *AuthUserCmdLoader) LoadAuthUsers(ctx context.Context) ([]AuthUserI
 	}
 
 	slices.SortFunc(users, func(a, b AuthUserInfo) int { return cmp.Compare(a.Username, b.Username) })
+
+	loader.users.Store(users)
+	loader.mtime.Store(time.Now().UnixNano())
 
 	return users, nil
 }
