@@ -49,7 +49,7 @@ func (h *HTTPWebDavHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	if h.userloader != nil {
 		err := LookupAuthUserInfoFromLoader(req.Context(), h.userloader, &ri.AuthUserInfo)
 		if err == nil {
-			if allow, _ := ri.AuthUserInfo.Attrs["allow_webdav"].(string); allow != "1" {
+			if allow := ri.AuthUserInfo.Attrs["allow_webdav"]; allow != "1" {
 				err = fmt.Errorf("webdav is not allow for user: %#v", ri.AuthUserInfo.Username)
 			}
 		}

@@ -72,7 +72,7 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	if h.userloader != nil {
 		err := LookupAuthUserInfoFromLoader(req.Context(), h.userloader, &ri.AuthUserInfo)
 		if err == nil {
-			if allow, _ := ri.AuthUserInfo.Attrs["allow_proxy"].(string); allow != "1" {
+			if allow := ri.AuthUserInfo.Attrs["allow_proxy"]; allow != "1" {
 				err = fmt.Errorf("webdav is not allow for user: %#v", ri.AuthUserInfo.Username)
 			}
 		}

@@ -32,7 +32,7 @@ import (
 type AuthUserInfo struct {
 	Username string
 	Password string
-	Attrs    map[string]any
+	Attrs    map[string]string
 }
 
 type AuthUserLoader interface {
@@ -173,7 +173,7 @@ func GetAuthUserInfoCsvLoader(authTableFile string) (loader *AuthUserCSVLoader) 
 							user.Password = part
 						default:
 							if user.Attrs == nil {
-								user.Attrs = make(map[string]any)
+								user.Attrs = make(map[string]string)
 							}
 							if i >= len(names) {
 								return fmt.Errorf("overflow csv cloumn, names=%v parts=%v", names, parts)

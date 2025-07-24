@@ -87,7 +87,7 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	}
 
 	speedLimit := h.Config.Tunnel.SpeedLimit
-	if s, _ := ri.ProxyUserInfo.Attrs["speed_limit"].(string); s != "" {
+	if s := ri.ProxyUserInfo.Attrs["speed_limit"]; s != "" {
 		n, _ := strconv.ParseInt(s, 10, 64)
 		switch {
 		case n > 0:
@@ -106,7 +106,7 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		}
 	}
 
-	allow, _ := user.Attrs["allow_tunnel"].(string)
+	allow := user.Attrs["allow_tunnel"]
 	if allow == "0" {
 		log.Error().Context(ri.LogContext).Str("username", user.Username).Str("allow_tunnel", allow).Msg("tunnel user permission denied")
 		http.Error(rw, "permission denied", http.StatusForbidden)

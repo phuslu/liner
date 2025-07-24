@@ -218,7 +218,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		return
 	}
 
-	if s, _ := ri.ProxyUserInfo.Attrs["allow_client"].(string); s != "" && s != "1" {
+	if allow := ri.ProxyUserInfo.Attrs["allow_client"]; allow != "" && allow != "1" {
 		browser := strings.HasPrefix(req.UserAgent(), "Mozilla/5.0 ")
 		if ri.ClientHelloInfo != nil && len(ri.ClientHelloInfo.CipherSuites) != 0 {
 			if c := ri.ClientHelloInfo.CipherSuites[0]; !(c&0x0f0f == 0x0a0a && c&0xff == c>>8) {
@@ -232,7 +232,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		}
 	}
 
-	if s, _ := ri.ProxyUserInfo.Attrs["speed_limit"].(string); s != "" {
+	if s := ri.ProxyUserInfo.Attrs["speed_limit"]; s != "" {
 		n, _ := strconv.ParseInt(s, 10, 64)
 		switch {
 		case n > 0:

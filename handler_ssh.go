@@ -76,7 +76,7 @@ func (h *SshHandler) Load() error {
 				Password: string(pass),
 			}
 			err := LookupAuthUserInfoFromLoader(context.Background(), h.userloader, &user)
-			if allow, _ := user.Attrs["allow_ssh"].(string); allow != "" {
+			if allow := user.Attrs["allow_ssh"]; allow != "" {
 				switch allow {
 				case "0":
 					err = fmt.Errorf("wrong permission, allow_ssh is %s: %v", allow, user.Username)
