@@ -109,8 +109,8 @@ func GetAuthUserInfoCsvLoader(authTableFile string) (loader *AuthUserCSVLoader) 
 
 var argon2idRegex = regexp.MustCompile(`^\$argon2id\$v=(\d+)\$m=(\d+),t=(\d+),p=(\d+)\$(.+)\$(.+)$`)
 
-func LookupAuthUserInfoFromCsvLoader(userloader AuthUserLoader, user *AuthUserInfo) (err error) {
-	records, err := userloader.LoadAuthUsers(context.Background())
+func LookupAuthUserInfoFromLoader(ctx context.Context, userloader AuthUserLoader, user *AuthUserInfo) (err error) {
+	records, err := userloader.LoadAuthUsers(ctx)
 	if err != nil {
 		return err
 	}
