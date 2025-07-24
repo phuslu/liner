@@ -17,81 +17,139 @@ import (
 type GeoResolver struct {
 	Resolver             *Resolver
 	Logger               *slog.Logger
+	EnableCJKCityName    bool
 	GeoIPCache           *lru.TTLCache[netip.Addr, GeoIPInfo]
 	CityReader           *maxminddb.Reader
 	ISPReader            *maxminddb.Reader
 	DomainReader         *maxminddb.Reader
 	ConnectionTypeReader *maxminddb.Reader
-	EnableCJKCityName    bool
 	GeoSiteCache         *lru.TTLCache[string, GeoSiteInfo]
 	GeoSiteDLC           *geosite.DomainListCommunity
 }
 
-func (r *GeoResolver) LookupCity(ctx context.Context, ip netip.Addr) (string, string, error) {
-	if r.CityReader == nil {
-		return "", "", errors.New("no maxmind city database found")
-	}
+type GeoIPInfo struct {
+	Country        string
+	City           string
+	ISP            string
+	ASN            string
+	Domain         string
+	ConnectionType string
+}
 
-	var record struct {
-		Country struct {
-			GeoNameID uint   `maxminddb:"geoname_id"`
-			ISOCode   string `maxminddb:"iso_code"`
-		} `maxminddb:"country"`
-		City struct {
-			GeoNameID uint `maxminddb:"geoname_id"`
-			Names     struct {
-				EN string `maxminddb:"en"`
-				JP string `maxminddb:"ja"`
-				CN string `maxminddb:"zh-CN"`
-			} `maxminddb:"names"`
-		} `maxminddb:"city"`
-		// Subdivisions []struct {
-		// 	GeoNameID uint   `maxminddb:"geoname_id"`
-		// 	IsoCode   string `maxminddb:"iso_code"`
-		// 	Names     struct {
-		// 		EN string `maxminddb:"en"`
-		// 	} `maxminddb:"names"`
-		// } `maxminddb:"subdivisions"`
+func (r *GeoResolver) GetGeoIPInfo(ctx context.Context, ip netip.Addr) (info GeoIPInfo) {
+	if r.GeoIPCache != nil {
+		info, _, _ = r.GeoIPCache.GetOrLoad(ctx, ip, r.getGeoIPInfo)
+	} else {
+		info, _, _ = r.getGeoIPInfo(ctx, ip)
 	}
+	return
+}
 
-	err := r.CityReader.Lookup(ip).Decode(&record)
-	if err != nil {
-		return "", "", err
-	}
+func (r *GeoResolver) getGeoIPInfo(ctx context.Context, ip netip.Addr) (GeoIPInfo, time.Duration, error) {
+	var info GeoIPInfo
 
-	code, name := record.Country.ISOCode, record.City.Names.EN
-	if r.EnableCJKCityName {
-		switch code {
-		case "CN", "HK":
-			name = strings.TrimSuffix(record.City.Names.CN, "市")
-		case "JP":
-			name = record.City.Names.JP
+	if r.CityReader != nil {
+		if record, err := r.LookupCity(ctx, ip); err == nil {
+			info.Country, info.City = record.Country.ISOCode, record.City.Names.EN
+			if r.EnableCJKCityName {
+				switch info.Country {
+				case "CN", "HK":
+					info.City = strings.TrimSuffix(record.City.Names.CN, "市")
+				case "JP":
+					info.City = record.City.Names.JP
+				}
+			}
 		}
 	}
 
-	return code, name, nil
+	// if info.Country == "CN" && IsBogusChinaIP(ip) {
+	// 	return info, time.Minute, nil
+	// }
+
+	if r.Logger != nil {
+		r.Logger.Debug("get city by ip", "ip", ip, "country", info.Country, "city", info.City)
+	}
+
+	if r.ISPReader != nil {
+		if record, err := r.LookupISP(ctx, ip); err == nil {
+			info.ISP = record.ISP
+			info.ASN = "AS" + strconv.FormatUint(uint64(record.AutonomousSystemNumber), 10)
+			if r.Logger != nil {
+				r.Logger.Debug("get isp by ip", "ip", ip, "isp", info.ISP, "asn", info.ASN)
+			}
+		}
+	}
+
+	if r.DomainReader != nil {
+		if domain, err := r.LookupDomain(ctx, ip); err == nil {
+			info.Domain = domain
+			if r.Logger != nil {
+				r.Logger.Debug("get domain by ip", "ip", ip, "domain", domain)
+			}
+		}
+	}
+
+	if r.ConnectionTypeReader != nil {
+		if conntype, err := r.LookupConnectionType(ctx, ip); err == nil {
+			info.ConnectionType = conntype
+			if r.Logger != nil {
+				r.Logger.Debug("get connection_type by ip", "ip", ip, "connection_type", conntype)
+			}
+		}
+	}
+
+	return info, 12 * time.Hour, nil
 }
 
-func (r *GeoResolver) LookupISP(ctx context.Context, ip netip.Addr) (string, uint, error) {
+type GeoIPCityRecord struct {
+	Country struct {
+		GeoNameID uint   `maxminddb:"geoname_id"`
+		ISOCode   string `maxminddb:"iso_code"`
+	} `maxminddb:"country"`
+	City struct {
+		GeoNameID uint `maxminddb:"geoname_id"`
+		Names     struct {
+			EN string `maxminddb:"en"`
+			JP string `maxminddb:"ja"`
+			CN string `maxminddb:"zh-CN"`
+		} `maxminddb:"names"`
+	} `maxminddb:"city"`
+	// Subdivisions []struct {
+	// 	GeoNameID uint   `maxminddb:"geoname_id"`
+	// 	IsoCode   string `maxminddb:"iso_code"`
+	// 	Names     struct {
+	// 		EN string `maxminddb:"en"`
+	// 	} `maxminddb:"names"`
+	// } `maxminddb:"subdivisions"`
+}
+
+func (r *GeoResolver) LookupCity(ctx context.Context, ip netip.Addr) (record GeoIPCityRecord, err error) {
+	if r.CityReader == nil {
+		err = errors.New("no maxmind city database found")
+		return
+	}
+
+	err = r.CityReader.Lookup(ip).Decode(&record)
+	return
+}
+
+type GeoIPISPRecord struct {
+	AutonomousSystemOrganization string `maxminddb:"autonomous_system_organization"`
+	ISP                          string `maxminddb:"isp"`
+	MobileCountryCode            string `maxminddb:"mobile_country_code"`
+	MobileNetworkCode            string `maxminddb:"mobile_network_code"`
+	Organization                 string `maxminddb:"organization"`
+	AutonomousSystemNumber       uint   `maxminddb:"autonomous_system_number"`
+}
+
+func (r *GeoResolver) LookupISP(ctx context.Context, ip netip.Addr) (record GeoIPISPRecord, err error) {
 	if r.ISPReader == nil {
-		return "", 0, errors.New("no maxmind isp database found")
+		err = errors.New("no maxmind isp database found")
+		return
 	}
 
-	var record struct {
-		AutonomousSystemOrganization string `maxminddb:"autonomous_system_organization"`
-		ISP                          string `maxminddb:"isp"`
-		MobileCountryCode            string `maxminddb:"mobile_country_code"`
-		MobileNetworkCode            string `maxminddb:"mobile_network_code"`
-		Organization                 string `maxminddb:"organization"`
-		AutonomousSystemNumber       uint   `maxminddb:"autonomous_system_number"`
-	}
-
-	err := r.ISPReader.Lookup(ip).Decode(&record)
-	if err != nil {
-		return "", 0, err
-	}
-
-	return record.ISP, record.AutonomousSystemNumber, nil
+	err = r.ISPReader.Lookup(ip).Decode(&record)
+	return
 }
 
 func (r *GeoResolver) LookupDomain(ctx context.Context, ip netip.Addr) (string, error) {
@@ -120,69 +178,6 @@ func (r *GeoResolver) LookupConnectionType(ctx context.Context, ip netip.Addr) (
 	}
 
 	return connectionType, nil
-}
-
-type GeoIPInfo struct {
-	Country        string
-	City           string
-	ISP            string
-	ASN            string
-	Domain         string
-	ConnectionType string
-}
-
-func (r *GeoResolver) GetGeoIPInfo(ctx context.Context, ip netip.Addr) (info GeoIPInfo) {
-	if r.GeoIPCache != nil {
-		info, _, _ = r.GeoIPCache.GetOrLoad(ctx, ip, r.getGeoIPInfo)
-	} else {
-		info, _, _ = r.getGeoIPInfo(ctx, ip)
-	}
-	return
-}
-
-func (r *GeoResolver) getGeoIPInfo(ctx context.Context, ip netip.Addr) (GeoIPInfo, time.Duration, error) {
-	var info GeoIPInfo
-	if r.CityReader != nil {
-		info.Country, info.City, _ = r.LookupCity(ctx, ip)
-	}
-
-	// if info.Country == "CN" && IsBogusChinaIP(ip) {
-	// 	return info, time.Minute, nil
-	// }
-
-	if r.Logger != nil {
-		r.Logger.Debug("get city by ip", "ip", ip, "country", info.Country, "city", info.City)
-	}
-
-	if r.ISPReader != nil {
-		if isp, asn, err := r.LookupISP(ctx, ip); err == nil {
-			info.ISP = isp
-			info.ASN = "AS" + strconv.FormatUint(uint64(asn), 10)
-			if r.Logger != nil {
-				r.Logger.Debug("get isp by ip", "ip", ip, "isp", isp, "asn", asn)
-			}
-		}
-	}
-
-	if r.DomainReader != nil {
-		if domain, err := r.LookupDomain(ctx, ip); err == nil {
-			info.Domain = domain
-			if r.Logger != nil {
-				r.Logger.Debug("get domain by ip", "ip", ip, "domain", domain)
-			}
-		}
-	}
-
-	if r.ConnectionTypeReader != nil {
-		if conntype, err := r.LookupConnectionType(ctx, ip); err == nil {
-			info.ConnectionType = conntype
-			if r.Logger != nil {
-				r.Logger.Debug("get connection_type by ip", "ip", ip, "connection_type", conntype)
-			}
-		}
-	}
-
-	return info, 12 * time.Hour, nil
 }
 
 type GeoSiteInfo struct {
