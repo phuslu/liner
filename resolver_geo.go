@@ -73,7 +73,9 @@ func (r *GeoResolver) getGeoIPInfo(ctx context.Context, ip netip.Addr) (GeoIPInf
 	if r.ISPReader != nil {
 		if record, err := r.LookupISP(ctx, ip); err == nil {
 			info.ISP = record.ISP
-			info.ASN = "AS" + strconv.FormatUint(uint64(record.AutonomousSystemNumber), 10)
+			if n := record.AutonomousSystemNumber; n > 0 {
+				info.ASN = "AS" + strconv.FormatUint(uint64(n), 10)
+			}
 			if r.Logger != nil {
 				r.Logger.Debug("get isp by ip", "ip", ip, "isp", info.ISP, "asn", info.ASN)
 			}
