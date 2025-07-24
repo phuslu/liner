@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -14,7 +15,7 @@ type HTTPWebDavHandler struct {
 	AuthBasic string
 	AuthTable string
 
-	userloader *FileLoader[[]AuthUserInfo]
+	userloader AuthUserLoader
 	dav        *webdav.Handler
 }
 
@@ -26,11 +27,11 @@ func (h *HTTPWebDavHandler) Load() (err error) {
 
 	if strings.HasSuffix(h.AuthTable, ".csv") {
 		h.userloader = GetAuthUserInfoCsvLoader(h.AuthTable)
-		records := h.userloader.Load()
-		if records == nil {
-			log.Fatal().Str("webdav_root", root).Str("auth_table", h.AuthTable).Msg("load auth_table failed")
+		records, err := h.userloader.LoadAuthUsers(context.Background())
+		if err != nil {
+			log.Fatal().Err(err).Str("webdav_root", root).Str("auth_table", h.AuthTable).Msg("load auth_table failed")
 		}
-		log.Info().Str("webdav_root", root).Str("auth_table", h.AuthTable).Int("auth_table_size", len(*records)).Msg("load auth_table ok")
+		log.Info().Str("webdav_root", root).Str("auth_table", h.AuthTable).Int("auth_table_size", len(records)).Msg("load auth_table ok")
 	}
 
 	h.dav = &webdav.Handler{

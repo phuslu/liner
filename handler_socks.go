@@ -36,7 +36,7 @@ type SocksHandler struct {
 
 	policy     *template.Template
 	dialer     *template.Template
-	userloader *FileLoader[[]AuthUserInfo]
+	userloader AuthUserLoader
 }
 
 func (h *SocksHandler) Load() error {
@@ -58,11 +58,11 @@ func (h *SocksHandler) Load() error {
 
 	if strings.HasSuffix(h.Config.Forward.AuthTable, ".csv") {
 		h.userloader = GetAuthUserInfoCsvLoader(h.Config.Forward.AuthTable)
-		records := h.userloader.Load()
-		if records == nil {
-			log.Fatal().Str("auth_table", h.Config.Forward.AuthTable).Msg("load auth_table failed")
+		records, err := h.userloader.LoadAuthUsers(context.Background())
+		if err != nil {
+			log.Fatal().Err(err).Str("auth_table", h.Config.Forward.AuthTable).Msg("load auth_table failed")
 		}
-		log.Info().Str("auth_table", h.Config.Forward.AuthTable).Int("auth_table_size", len(*records)).Msg("load auth_table ok")
+		log.Info().Str("auth_table", h.Config.Forward.AuthTable).Int("auth_table_size", len(records)).Msg("load auth_table ok")
 	}
 
 	return nil

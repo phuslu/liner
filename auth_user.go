@@ -32,7 +32,7 @@ type AuthUserInfo struct {
 }
 
 type AuthUserLoader interface {
-	LoadAuthUserInfos(context.Context) ([]AuthUserInfo, error)
+	LoadAuthUsers(context.Context) ([]AuthUserInfo, error)
 }
 
 /*
@@ -43,11 +43,19 @@ bar,qwerty,0,0,1,0,0
 
 */
 
-var usercsvloaders = xsync.NewMap[string, *FileLoader[[]AuthUserInfo]](xsync.WithSerialResize())
+type AuthUserCSVLoader struct {
+	FileLoader *FileLoader[[]AuthUserInfo]
+}
 
-func GetAuthUserInfoCsvLoader(authTableFile string) (loader *FileLoader[[]AuthUserInfo]) {
-	loader, _ = usercsvloaders.LoadOrCompute(authTableFile, func() (*FileLoader[[]AuthUserInfo], bool) {
-		return &FileLoader[[]AuthUserInfo]{
+func (loader *AuthUserCSVLoader) LoadAuthUsers(ctx context.Context) ([]AuthUserInfo, error) {
+	return *loader.FileLoader.Load(), nil
+}
+
+var usercsvloaders = xsync.NewMap[string, *AuthUserCSVLoader](xsync.WithSerialResize())
+
+func GetAuthUserInfoCsvLoader(authTableFile string) (loader *AuthUserCSVLoader) {
+	loader, _ = usercsvloaders.LoadOrCompute(authTableFile, func() (*AuthUserCSVLoader, bool) {
+		return &AuthUserCSVLoader{FileLoader: &FileLoader[[]AuthUserInfo]{
 			Filename:     authTableFile,
 			PollDuration: 15 * time.Second,
 			Logger:       slog.Default(),
@@ -94,15 +102,18 @@ func GetAuthUserInfoCsvLoader(authTableFile string) (loader *FileLoader[[]AuthUs
 				})
 				return nil
 			},
-		}, false
+		}}, false
 	})
 	return
 }
 
 var argon2idRegex = regexp.MustCompile(`^\$argon2id\$v=(\d+)\$m=(\d+),t=(\d+),p=(\d+)\$(.+)\$(.+)$`)
 
-func LookupAuthUserInfoFromCsvLoader(userloader *FileLoader[[]AuthUserInfo], user *AuthUserInfo) (err error) {
-	records := *userloader.Load()
+func LookupAuthUserInfoFromCsvLoader(userloader AuthUserLoader, user *AuthUserInfo) (err error) {
+	records, err := userloader.LoadAuthUsers(context.Background())
+	if err != nil {
+		return err
+	}
 	i, ok := slices.BinarySearchFunc(records, *user, func(a, b AuthUserInfo) int { return cmp.Compare(a.Username, b.Username) })
 	switch {
 	case !ok:

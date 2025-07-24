@@ -31,7 +31,7 @@ type HTTPWebProxyHandler struct {
 	SetHeaders  string
 	DumpFailure bool
 
-	userloader *FileLoader[[]AuthUserInfo]
+	userloader AuthUserLoader
 	proxypass  *template.Template
 	headers    *template.Template
 }
@@ -41,11 +41,11 @@ func (h *HTTPWebProxyHandler) Load() error {
 
 	if strings.HasSuffix(h.AuthTable, ".csv") {
 		h.userloader = GetAuthUserInfoCsvLoader(h.AuthTable)
-		records := h.userloader.Load()
-		if records == nil {
-			log.Fatal().Str("proxy_pass", h.Pass).Str("auth_table", h.AuthTable).Msg("load auth_table failed")
+		records, err := h.userloader.LoadAuthUsers(context.Background())
+		if err != nil {
+			log.Fatal().Err(err).Str("proxy_pass", h.Pass).Str("auth_table", h.AuthTable).Msg("load auth_table failed")
 		}
-		log.Info().Str("proxy_pass", h.Pass).Str("auth_table", h.AuthTable).Int("auth_table_size", len(*records)).Msg("load auth_table ok")
+		log.Info().Str("proxy_pass", h.Pass).Str("auth_table", h.AuthTable).Int("auth_table_size", len(records)).Msg("load auth_table ok")
 	}
 
 	h.proxypass, err = template.New(h.Pass).Funcs(h.Functions).Parse(h.Pass)

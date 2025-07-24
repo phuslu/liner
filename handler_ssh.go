@@ -30,7 +30,7 @@ type SshHandler struct {
 	Logger log.Logger
 
 	sshConfig  *ssh.ServerConfig
-	userloader *FileLoader[[]AuthUserInfo]
+	userloader AuthUserLoader
 	keyloader  *FileLoader[[]string]
 	shellPath  string
 
@@ -64,11 +64,11 @@ func (h *SshHandler) Load() error {
 	if strings.HasSuffix(h.Config.AuthTable, ".csv") {
 		h.Config.AuthTable = os.ExpandEnv(h.Config.AuthTable)
 		h.userloader = GetAuthUserInfoCsvLoader(h.Config.AuthTable)
-		records := h.userloader.Load()
-		if records == nil {
+		records, err := h.userloader.LoadAuthUsers(context.Background())
+		if err != nil {
 			return fmt.Errorf("Failed to load auth_table: %#v", h.Config.AuthTable)
 		}
-		log.Info().Str("auth_table", h.Config.AuthTable).Int("auth_table_size", len(*records)).Msg("load auth_table ok")
+		log.Info().Str("auth_table", h.Config.AuthTable).Int("auth_table_size", len(records)).Msg("load auth_table ok")
 
 		h.sshConfig.PasswordCallback = func(c ssh.ConnMetadata, pass []byte) (*ssh.Permissions, error) {
 			user := AuthUserInfo{

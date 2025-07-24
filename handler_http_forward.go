@@ -40,7 +40,7 @@ type HTTPForwardHandler struct {
 	tcpcongestion *template.Template
 	dialer        *template.Template
 	transports    map[string]*http.Transport
-	userloader    *FileLoader[[]AuthUserInfo]
+	userloader    AuthUserLoader
 }
 
 func (h *HTTPForwardHandler) Load() error {
@@ -83,11 +83,11 @@ func (h *HTTPForwardHandler) Load() error {
 
 	if strings.HasSuffix(h.Config.Forward.AuthTable, ".csv") {
 		h.userloader = GetAuthUserInfoCsvLoader(h.Config.Forward.AuthTable)
-		records := h.userloader.Load()
-		if records == nil {
-			log.Fatal().Strs("server_name", h.Config.ServerName).Str("auth_table", h.Config.Forward.AuthTable).Msg("load auth_table failed")
+		records, err := h.userloader.LoadAuthUsers(context.Background())
+		if err != nil {
+			log.Fatal().Err(err).Strs("server_name", h.Config.ServerName).Str("auth_table", h.Config.Forward.AuthTable).Msg("load auth_table failed")
 		}
-		log.Info().Strs("server_name", h.Config.ServerName).Str("auth_table", h.Config.Forward.AuthTable).Int("auth_table_size", len(*records)).Msg("load auth_table ok")
+		log.Info().Strs("server_name", h.Config.ServerName).Str("auth_table", h.Config.Forward.AuthTable).Int("auth_table_size", len(records)).Msg("load auth_table ok")
 	}
 
 	return nil
