@@ -30,9 +30,9 @@ import (
 )
 
 type AuthUserInfo struct {
-	Username string
-	Password string
-	Attrs    map[string]string
+	Username string            `json:"username"`
+	Password string            `json:"password"`
+	Attrs    map[string]string `json:"attrs"`
 }
 
 type AuthUserLoader interface {
@@ -119,6 +119,8 @@ func LookupAuthUserInfoFromLoader(ctx context.Context, userloader AuthUserLoader
 	return
 }
 
+var _ AuthUserLoader = (*AuthUserCSVLoader)(nil)
+
 /*
 
 username,password,speed_limit,allow_tunnel,allow_client,allow_ssh,allow_webdav
@@ -126,8 +128,6 @@ foo,123456,-1,1,0,0,0
 bar,qwerty,0,0,1,0,0
 
 */
-
-var _ AuthUserLoader = (*AuthUserCSVLoader)(nil)
 
 type AuthUserCSVLoader struct {
 	FileLoader *FileLoader[[]AuthUserInfo]
@@ -194,6 +194,13 @@ func GetAuthUserInfoCsvLoader(authTableFile string) (loader *AuthUserCSVLoader) 
 }
 
 var _ AuthUserLoader = (*AuthUserCmdLoader)(nil)
+
+/*
+
+{"username":"foo","password":"123456","attrs":{"speed_limit":"-1","allow_tunnel":"0","allow_client":"0"}}
+{"username":"bar","qwerty":"123456","attrs":{"speed_limit":"0","allow_tunnel":"0","allow_client":"1"}}
+
+*/
 
 type AuthUserCmdLoader struct {
 	Command  []string
