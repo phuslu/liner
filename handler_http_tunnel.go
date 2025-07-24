@@ -24,13 +24,13 @@ type HTTPTunnelHandler struct {
 	TunnelLogger  log.Logger
 	MemoryDialers *sync.Map // map[string]*MemoryDialer
 
-	userloader *FileLoader[[]UserInfo]
+	userloader *FileLoader[[]AuthUserInfo]
 	listens    *netipx.IPSet
 }
 
 func (h *HTTPTunnelHandler) Load() error {
 	if strings.HasSuffix(h.Config.Tunnel.AuthTable, ".csv") {
-		h.userloader = GetUserInfoCsvLoader(h.Config.Tunnel.AuthTable)
+		h.userloader = GetAuthUserInfoCsvLoader(h.Config.Tunnel.AuthTable)
 		records := h.userloader.Load()
 		if records == nil {
 			log.Fatal().Strs("server_name", h.Config.ServerName).Str("auth_table", h.Config.Tunnel.AuthTable).Msg("load auth_table failed")
@@ -79,7 +79,7 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 
 	log.Info().Context(ri.LogContext).Str("username", user.Username).Str("password", user.Password).Msg("tunnel verify user")
 
-	err := LookupUserInfoFromCsvLoader(h.userloader, &user)
+	err := LookupAuthUserInfoFromCsvLoader(h.userloader, &user)
 	if err != nil {
 		log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Msg("tunnel user auth failed")
 		http.Error(rw, err.Error(), http.StatusUnauthorized)

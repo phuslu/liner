@@ -31,7 +31,7 @@ type HTTPWebProxyHandler struct {
 	SetHeaders  string
 	DumpFailure bool
 
-	userloader *FileLoader[[]UserInfo]
+	userloader *FileLoader[[]AuthUserInfo]
 	proxypass  *template.Template
 	headers    *template.Template
 }
@@ -40,7 +40,7 @@ func (h *HTTPWebProxyHandler) Load() error {
 	var err error
 
 	if strings.HasSuffix(h.AuthTable, ".csv") {
-		h.userloader = GetUserInfoCsvLoader(h.AuthTable)
+		h.userloader = GetAuthUserInfoCsvLoader(h.AuthTable)
 		records := h.userloader.Load()
 		if records == nil {
 			log.Fatal().Str("proxy_pass", h.Pass).Str("auth_table", h.AuthTable).Msg("load auth_table failed")
@@ -70,7 +70,7 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	// }
 
 	if h.userloader != nil {
-		err := LookupUserInfoFromCsvLoader(h.userloader, &ri.AuthUserInfo)
+		err := LookupAuthUserInfoFromCsvLoader(h.userloader, &ri.AuthUserInfo)
 		if err == nil {
 			if allow, _ := ri.AuthUserInfo.Attrs["allow_proxy"].(string); allow != "1" {
 				err = fmt.Errorf("webdav is not allow for user: %#v", ri.AuthUserInfo.Username)

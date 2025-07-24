@@ -14,7 +14,7 @@ type HTTPWebDavHandler struct {
 	AuthBasic string
 	AuthTable string
 
-	userloader *FileLoader[[]UserInfo]
+	userloader *FileLoader[[]AuthUserInfo]
 	dav        *webdav.Handler
 }
 
@@ -25,7 +25,7 @@ func (h *HTTPWebDavHandler) Load() (err error) {
 	}
 
 	if strings.HasSuffix(h.AuthTable, ".csv") {
-		h.userloader = GetUserInfoCsvLoader(h.AuthTable)
+		h.userloader = GetAuthUserInfoCsvLoader(h.AuthTable)
 		records := h.userloader.Load()
 		if records == nil {
 			log.Fatal().Str("webdav_root", root).Str("auth_table", h.AuthTable).Msg("load auth_table failed")
@@ -46,7 +46,7 @@ func (h *HTTPWebDavHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	log.Info().Context(ri.LogContext).Any("headers", req.Header).Msg("web dav request")
 
 	if h.userloader != nil {
-		err := LookupUserInfoFromCsvLoader(h.userloader, &ri.AuthUserInfo)
+		err := LookupAuthUserInfoFromCsvLoader(h.userloader, &ri.AuthUserInfo)
 		if err == nil {
 			if allow, _ := ri.AuthUserInfo.Attrs["allow_webdav"].(string); allow != "1" {
 				err = fmt.Errorf("webdav is not allow for user: %#v", ri.AuthUserInfo.Username)

@@ -50,9 +50,9 @@ type RequestInfo struct {
 	TraceID         log.XID
 	UserAgent       useragent.UserAgent
 	ProxyUserBytes  []byte
-	ProxyUserInfo   UserInfo
+	ProxyUserInfo   AuthUserInfo
 	AuthUserBytes   []byte
-	AuthUserInfo    UserInfo
+	AuthUserInfo    AuthUserInfo
 	GeoIPInfo       GeoIPInfo
 	LogContext      log.Context
 }
@@ -174,7 +174,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		ri.GeoIPInfo = h.GeoResolver.GetGeoIPInfo(req.Context(), ri.RemoteAddr.Addr())
 	}
 
-	ri.ProxyUserInfo = UserInfo{}
+	ri.ProxyUserInfo = AuthUserInfo{}
 	if s := req.Header.Get("proxy-authorization"); s != "" {
 		switch t, s, _ := strings.Cut(s, " "); t {
 		case "Basic":
@@ -188,7 +188,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		}
 	}
 
-	ri.AuthUserInfo = UserInfo{}
+	ri.AuthUserInfo = AuthUserInfo{}
 	if s := req.Header.Get("authorization"); s != "" {
 		switch t, s, _ := strings.Cut(s, " "); t {
 		case "Basic":

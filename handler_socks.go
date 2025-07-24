@@ -20,7 +20,7 @@ type SocksRequest struct {
 	Version     SocksVersion
 	ConnectType SocksCommand
 	SupportAuth bool
-	User        UserInfo
+	User        AuthUserInfo
 	Host        string
 	Port        int
 	TraceID     log.XID
@@ -36,7 +36,7 @@ type SocksHandler struct {
 
 	policy     *template.Template
 	dialer     *template.Template
-	userloader *FileLoader[[]UserInfo]
+	userloader *FileLoader[[]AuthUserInfo]
 }
 
 func (h *SocksHandler) Load() error {
@@ -57,7 +57,7 @@ func (h *SocksHandler) Load() error {
 	}
 
 	if strings.HasSuffix(h.Config.Forward.AuthTable, ".csv") {
-		h.userloader = GetUserInfoCsvLoader(h.Config.Forward.AuthTable)
+		h.userloader = GetAuthUserInfoCsvLoader(h.Config.Forward.AuthTable)
 		records := h.userloader.Load()
 		if records == nil {
 			log.Fatal().Str("auth_table", h.Config.Forward.AuthTable).Msg("load auth_table failed")
@@ -114,7 +114,7 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 		req.User.Username = string(b[2 : 2+int(b[1])])
 		req.User.Password = string(b[3+int(b[1]) : 3+int(b[1])+int(b[2+int(b[1])])])
 		// auth plugin
-		err := LookupUserInfoFromCsvLoader(h.userloader, &req.User)
+		err := LookupAuthUserInfoFromCsvLoader(h.userloader, &req.User)
 		if err != nil {
 			log.Warn().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Int("socks_version", int(req.Version)).Msg("auth error")
 			conn.Write([]byte{VersionSocks5, byte(Socks5StatusGeneralFailure)})

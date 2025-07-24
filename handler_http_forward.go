@@ -40,7 +40,7 @@ type HTTPForwardHandler struct {
 	tcpcongestion *template.Template
 	dialer        *template.Template
 	transports    map[string]*http.Transport
-	userloader    *FileLoader[[]UserInfo]
+	userloader    *FileLoader[[]AuthUserInfo]
 }
 
 func (h *HTTPForwardHandler) Load() error {
@@ -82,7 +82,7 @@ func (h *HTTPForwardHandler) Load() error {
 	}
 
 	if strings.HasSuffix(h.Config.Forward.AuthTable, ".csv") {
-		h.userloader = GetUserInfoCsvLoader(h.Config.Forward.AuthTable)
+		h.userloader = GetAuthUserInfoCsvLoader(h.Config.Forward.AuthTable)
 		records := h.userloader.Load()
 		if records == nil {
 			log.Fatal().Strs("server_name", h.Config.ServerName).Str("auth_table", h.Config.Forward.AuthTable).Msg("load auth_table failed")
@@ -139,7 +139,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 
 	var proxyAuthError error
 	if ri.ProxyUserInfo.Username != "" && h.Config.Forward.AuthTable != "" {
-		proxyAuthError = LookupUserInfoFromCsvLoader(h.userloader, &ri.ProxyUserInfo)
+		proxyAuthError = LookupAuthUserInfoFromCsvLoader(h.userloader, &ri.ProxyUserInfo)
 	}
 
 	bb := bytebufferpool.Get()
@@ -153,7 +153,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			Request         *http.Request
 			ClientHelloInfo *tls.ClientHelloInfo
 			JA4             string
-			UserInfo        UserInfo
+			User            AuthUserInfo
 			UserAgent       *useragent.UserAgent
 			ServerAddr      netip.AddrPort
 		}{req, ri.ClientHelloInfo, ri.JA4, ri.ProxyUserInfo, &ri.UserAgent, ri.ServerAddr})
@@ -253,7 +253,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 				JA4             string
 				UserAgent       *useragent.UserAgent
 				ServerAddr      netip.AddrPort
-				User            UserInfo
+				User            AuthUserInfo
 			}{req, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr, ri.ProxyUserInfo})
 			if err != nil {
 				log.Error().Err(err).Context(ri.LogContext).Str("forward_tcp_congestion", h.Config.Forward.TcpCongestion).Msg("execute forward_tcp_congestion error")
@@ -308,7 +308,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			JA4             string
 			UserAgent       *useragent.UserAgent
 			ServerAddr      netip.AddrPort
-			User            UserInfo
+			User            AuthUserInfo
 		}{req, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr, ri.ProxyUserInfo})
 		if err != nil {
 			log.Error().Err(err).Context(ri.LogContext).Str("forward_dialer_name", h.Config.Forward.Dialer).Msg("execute forward_dialer error")

@@ -24,7 +24,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-type UserInfo struct {
+type AuthUserInfo struct {
 	Username string
 	Password string
 	Attrs    map[string]any
@@ -38,18 +38,18 @@ bar,qwerty,0,0,1,0,0
 
 */
 
-var usercsvloaders = xsync.NewMap[string, *FileLoader[[]UserInfo]](xsync.WithSerialResize())
+var usercsvloaders = xsync.NewMap[string, *FileLoader[[]AuthUserInfo]](xsync.WithSerialResize())
 
-func GetUserInfoCsvLoader(authTableFile string) (loader *FileLoader[[]UserInfo]) {
-	loader, _ = usercsvloaders.LoadOrCompute(authTableFile, func() (*FileLoader[[]UserInfo], bool) {
-		return &FileLoader[[]UserInfo]{
+func GetAuthUserInfoCsvLoader(authTableFile string) (loader *FileLoader[[]AuthUserInfo]) {
+	loader, _ = usercsvloaders.LoadOrCompute(authTableFile, func() (*FileLoader[[]AuthUserInfo], bool) {
+		return &FileLoader[[]AuthUserInfo]{
 			Filename:     authTableFile,
 			PollDuration: 15 * time.Second,
 			Logger:       slog.Default(),
 			Unmarshal: func(data []byte, v any) error {
-				infos, ok := v.(*[]UserInfo)
+				infos, ok := v.(*[]AuthUserInfo)
 				if !ok {
-					return fmt.Errorf("*[]UserInfo required, found %T", v)
+					return fmt.Errorf("*[]AuthUserInfo required, found %T", v)
 				}
 
 				records, err := csv.NewReader(bytes.NewReader(data)).ReadAll()
@@ -65,7 +65,7 @@ func GetUserInfoCsvLoader(authTableFile string) (loader *FileLoader[[]UserInfo])
 					if len(parts) <= 1 {
 						continue
 					}
-					var user UserInfo
+					var user AuthUserInfo
 					for i, part := range parts {
 						switch i {
 						case 0:
@@ -84,7 +84,7 @@ func GetUserInfoCsvLoader(authTableFile string) (loader *FileLoader[[]UserInfo])
 					}
 					*infos = append(*infos, user)
 				}
-				slices.SortFunc(*infos, func(a, b UserInfo) int {
+				slices.SortFunc(*infos, func(a, b AuthUserInfo) int {
 					return cmp.Compare(a.Username, b.Username)
 				})
 				return nil
@@ -96,9 +96,9 @@ func GetUserInfoCsvLoader(authTableFile string) (loader *FileLoader[[]UserInfo])
 
 var argon2idRegex = regexp.MustCompile(`^\$argon2id\$v=(\d+)\$m=(\d+),t=(\d+),p=(\d+)\$(.+)\$(.+)$`)
 
-func LookupUserInfoFromCsvLoader(userloader *FileLoader[[]UserInfo], user *UserInfo) (err error) {
+func LookupAuthUserInfoFromCsvLoader(userloader *FileLoader[[]AuthUserInfo], user *AuthUserInfo) (err error) {
 	records := *userloader.Load()
-	i, ok := slices.BinarySearchFunc(records, *user, func(a, b UserInfo) int { return cmp.Compare(a.Username, b.Username) })
+	i, ok := slices.BinarySearchFunc(records, *user, func(a, b AuthUserInfo) int { return cmp.Compare(a.Username, b.Username) })
 	switch {
 	case !ok:
 		err = fmt.Errorf("invalid username: %v", user.Username)
