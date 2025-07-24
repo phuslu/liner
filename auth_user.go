@@ -11,8 +11,10 @@ import (
 	"encoding/binary"
 	"encoding/csv"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os/exec"
 	"regexp"
 	"slices"
 	"strconv"
@@ -188,4 +190,38 @@ func GetAuthUserInfoCsvLoader(authTableFile string) (loader *AuthUserCSVLoader) 
 		}}, false
 	})
 	return
+}
+
+var _ AuthUserLoader = (*AuthUserCmdLoader)(nil)
+
+type AuthUserCmdLoader struct {
+	CommandPath string
+}
+
+func (loader *AuthUserCmdLoader) LoadAuthUsers(ctx context.Context) ([]AuthUserInfo, error) {
+	cmd := exec.CommandContext(ctx, loader.CommandPath)
+	cmd.Env = []string{}
+
+	data, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, err
+	}
+
+	users := make([]AuthUserInfo, strings.Count(b2s(data), "\n"))
+	for line := range bytes.Lines(data) {
+		line = bytes.TrimSpace(line)
+		if len(line) == 0 {
+			continue
+		}
+		var user AuthUserInfo
+		err := json.Unmarshal(line, &user)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, user)
+	}
+
+	slices.SortFunc(users, func(a, b AuthUserInfo) int { return cmp.Compare(a.Username, b.Username) })
+
+	return users, nil
 }
