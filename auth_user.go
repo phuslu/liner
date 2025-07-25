@@ -35,14 +35,22 @@ type AuthUserInfo struct {
 	Attrs    map[string]string `json:"attrs"`
 }
 
+type AuthUserChecker interface {
+	CheckAuthUser(context.Context, *AuthUserInfo) error
+}
+
 type AuthUserLoader interface {
 	LoadAuthUsers(context.Context) ([]AuthUserInfo, error)
 }
 
-func LookupAuthUserInfoFromLoader(ctx context.Context, userloader AuthUserLoader, user *AuthUserInfo) (err error) {
-	records, err := userloader.LoadAuthUsers(ctx)
+type AuthUserLoadChecker struct {
+	AuthUserLoader
+}
+
+func (c *AuthUserLoadChecker) CheckAuthUser(ctx context.Context, user *AuthUserInfo) (err error) {
+	records, err := c.AuthUserLoader.LoadAuthUsers(ctx)
 	if err != nil {
-		return fmt.Errorf("userloader %T error: %w", userloader, err)
+		return fmt.Errorf("userloader %T error: %w", c.AuthUserLoader, err)
 	}
 
 	i, ok := slices.BinarySearchFunc(records, *user, func(a, b AuthUserInfo) int { return cmp.Compare(a.Username, b.Username) })

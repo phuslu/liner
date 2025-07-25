@@ -15,8 +15,8 @@ type HTTPWebDavHandler struct {
 	AuthBasic string
 	AuthTable string
 
-	userloader AuthUserLoader
-	dav        *webdav.Handler
+	userchecker AuthUserChecker
+	dav         *webdav.Handler
 }
 
 func (h *HTTPWebDavHandler) Load() (err error) {
@@ -26,8 +26,8 @@ func (h *HTTPWebDavHandler) Load() (err error) {
 	}
 
 	if strings.HasSuffix(h.AuthTable, ".csv") {
-		h.userloader = GetAuthUserInfoCsvLoader(h.AuthTable)
-		records, err := h.userloader.LoadAuthUsers(context.Background())
+		h.userchecker = &AuthUserLoadChecker{GetAuthUserInfoCsvLoader(h.AuthTable)}
+		records, err := h.userchecker.(*AuthUserLoadChecker).LoadAuthUsers(context.Background())
 		if err != nil {
 			log.Fatal().Err(err).Str("webdav_root", root).Str("auth_table", h.AuthTable).Msg("load auth_table failed")
 		}
@@ -46,8 +46,8 @@ func (h *HTTPWebDavHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	ri := req.Context().Value(RequestInfoContextKey).(*RequestInfo)
 	log.Info().Context(ri.LogContext).Any("headers", req.Header).Msg("web dav request")
 
-	if h.userloader != nil {
-		err := LookupAuthUserInfoFromLoader(req.Context(), h.userloader, &ri.AuthUserInfo)
+	if h.userchecker != nil {
+		err := h.userchecker.CheckAuthUser(req.Context(), &ri.AuthUserInfo)
 		if err == nil {
 			if allow := ri.AuthUserInfo.Attrs["allow_webdav"]; allow != "1" {
 				err = fmt.Errorf("webdav is not allow for user: %#v", ri.AuthUserInfo.Username)

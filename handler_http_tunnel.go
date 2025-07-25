@@ -24,14 +24,14 @@ type HTTPTunnelHandler struct {
 	TunnelLogger  log.Logger
 	MemoryDialers *sync.Map // map[string]*MemoryDialer
 
-	userloader AuthUserLoader
-	listens    *netipx.IPSet
+	userchecker AuthUserChecker
+	listens     *netipx.IPSet
 }
 
 func (h *HTTPTunnelHandler) Load() error {
 	if strings.HasSuffix(h.Config.Tunnel.AuthTable, ".csv") {
-		h.userloader = GetAuthUserInfoCsvLoader(h.Config.Tunnel.AuthTable)
-		records, err := h.userloader.LoadAuthUsers(context.Background())
+		h.userchecker = &AuthUserLoadChecker{GetAuthUserInfoCsvLoader(h.Config.Tunnel.AuthTable)}
+		records, err := h.userchecker.(*AuthUserLoadChecker).LoadAuthUsers(context.Background())
 		if err != nil {
 			log.Fatal().Err(err).Strs("server_name", h.Config.ServerName).Str("auth_table", h.Config.Tunnel.AuthTable).Msg("load auth_table failed")
 		}
@@ -79,7 +79,7 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 
 	log.Info().Context(ri.LogContext).Str("username", user.Username).Str("password", user.Password).Msg("tunnel verify user")
 
-	err := LookupAuthUserInfoFromLoader(req.Context(), h.userloader, &user)
+	err := h.userchecker.CheckAuthUser(req.Context(), &user)
 	if err != nil {
 		log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Msg("tunnel user auth failed")
 		http.Error(rw, err.Error(), http.StatusUnauthorized)

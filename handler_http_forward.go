@@ -40,7 +40,7 @@ type HTTPForwardHandler struct {
 	tcpcongestion *template.Template
 	dialer        *template.Template
 	transports    map[string]*http.Transport
-	userloader    AuthUserLoader
+	userchecker   AuthUserChecker
 }
 
 func (h *HTTPForwardHandler) Load() error {
@@ -82,8 +82,8 @@ func (h *HTTPForwardHandler) Load() error {
 	}
 
 	if strings.HasSuffix(h.Config.Forward.AuthTable, ".csv") {
-		h.userloader = GetAuthUserInfoCsvLoader(h.Config.Forward.AuthTable)
-		records, err := h.userloader.LoadAuthUsers(context.Background())
+		h.userchecker = &AuthUserLoadChecker{GetAuthUserInfoCsvLoader(h.Config.Forward.AuthTable)}
+		records, err := h.userchecker.(*AuthUserLoadChecker).LoadAuthUsers(context.Background())
 		if err != nil {
 			log.Fatal().Err(err).Strs("server_name", h.Config.ServerName).Str("auth_table", h.Config.Forward.AuthTable).Msg("load auth_table failed")
 		}
@@ -139,7 +139,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 
 	var proxyAuthError error
 	if ri.ProxyUserInfo.Username != "" && h.Config.Forward.AuthTable != "" {
-		proxyAuthError = LookupAuthUserInfoFromLoader(req.Context(), h.userloader, &ri.ProxyUserInfo)
+		proxyAuthError = h.userchecker.CheckAuthUser(req.Context(), &ri.ProxyUserInfo)
 	}
 
 	bb := bytebufferpool.Get()

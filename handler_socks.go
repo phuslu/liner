@@ -34,9 +34,9 @@ type SocksHandler struct {
 	Dialers     map[string]Dialer
 	Functions   template.FuncMap
 
-	policy     *template.Template
-	dialer     *template.Template
-	userloader AuthUserLoader
+	policy      *template.Template
+	dialer      *template.Template
+	userchecker AuthUserChecker
 }
 
 func (h *SocksHandler) Load() error {
@@ -57,8 +57,8 @@ func (h *SocksHandler) Load() error {
 	}
 
 	if strings.HasSuffix(h.Config.Forward.AuthTable, ".csv") {
-		h.userloader = GetAuthUserInfoCsvLoader(h.Config.Forward.AuthTable)
-		records, err := h.userloader.LoadAuthUsers(context.Background())
+		h.userchecker = &AuthUserLoadChecker{GetAuthUserInfoCsvLoader(h.Config.Forward.AuthTable)}
+		records, err := h.userchecker.(*AuthUserLoadChecker).LoadAuthUsers(context.Background())
 		if err != nil {
 			log.Fatal().Err(err).Str("auth_table", h.Config.Forward.AuthTable).Msg("load auth_table failed")
 		}
@@ -114,7 +114,7 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 		req.User.Username = string(b[2 : 2+int(b[1])])
 		req.User.Password = string(b[3+int(b[1]) : 3+int(b[1])+int(b[2+int(b[1])])])
 		// auth plugin
-		err := LookupAuthUserInfoFromLoader(ctx, h.userloader, &req.User)
+		err := h.userchecker.CheckAuthUser(ctx, &req.User)
 		if err != nil {
 			log.Warn().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Int("socks_version", int(req.Version)).Msg("auth error")
 			conn.Write([]byte{VersionSocks5, byte(Socks5StatusGeneralFailure)})
