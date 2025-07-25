@@ -127,15 +127,13 @@ func (c *AuthUserLoadChecker) CheckAuthUser(ctx context.Context, user *AuthUserI
 	return
 }
 
-var _ AuthUserLoader = (*AuthUserCSVLoader)(nil)
-
 /*
-
 username,password,speed_limit,allow_tunnel,allow_client,allow_ssh,allow_webdav
 foo,123456,-1,1,0,0,0
 bar,qwerty,0,0,1,0,0
-
 */
+
+var _ AuthUserLoader = (*AuthUserCSVLoader)(nil)
 
 type AuthUserCSVLoader struct {
 	Filename string
@@ -205,8 +203,6 @@ func (loader *AuthUserCSVLoader) LoadAuthUsers(ctx context.Context) ([]AuthUserI
 	return *loader.csvloader.Load(), nil
 }
 
-var _ AuthUserLoader = (*AuthUserCmdLoader)(nil)
-
 /*
 
 {"username":"foo","password":"123456","attrs":{"speed_limit":"-1","allow_tunnel":"0","allow_client":"0"}}
@@ -214,7 +210,9 @@ var _ AuthUserLoader = (*AuthUserCmdLoader)(nil)
 
 */
 
-type AuthUserCmdLoader struct {
+var _ AuthUserLoader = (*AuthUserCMDLoader)(nil)
+
+type AuthUserCMDLoader struct {
 	Command  string
 	CacheTTL time.Duration
 
@@ -222,7 +220,7 @@ type AuthUserCmdLoader struct {
 	mtime atomic.Int64 // timestamp
 }
 
-func (loader *AuthUserCmdLoader) LoadAuthUsers(ctx context.Context) ([]AuthUserInfo, error) {
+func (loader *AuthUserCMDLoader) LoadAuthUsers(ctx context.Context) ([]AuthUserInfo, error) {
 	if loader.CacheTTL > 0 {
 		if ts := loader.mtime.Load(); 0 < ts && ts+int64(loader.CacheTTL) < time.Now().UnixNano() {
 			return loader.users.Load().([]AuthUserInfo), nil
@@ -230,7 +228,7 @@ func (loader *AuthUserCmdLoader) LoadAuthUsers(ctx context.Context) ([]AuthUserI
 	}
 
 	if len(loader.Command) == 0 {
-		return nil, fmt.Errorf("AuthUserCmdLoader: command is not configured")
+		return nil, fmt.Errorf("AuthUserCMDLoader: command is not configured")
 	}
 
 	cmd := exec.CommandContext(ctx, loader.Command)
@@ -263,15 +261,15 @@ func (loader *AuthUserCmdLoader) LoadAuthUsers(ctx context.Context) ([]AuthUserI
 	return users, nil
 }
 
-var _ AuthUserChecker = (*AuthUserCmdChecker)(nil)
+var _ AuthUserChecker = (*AuthUserCMDChecker)(nil)
 
-type AuthUserCmdChecker struct {
+type AuthUserCMDChecker struct {
 	Command string
 }
 
-func (loader *AuthUserCmdChecker) CheckAuthUser(ctx context.Context, user *AuthUserInfo) error {
+func (loader *AuthUserCMDChecker) CheckAuthUser(ctx context.Context, user *AuthUserInfo) error {
 	if len(loader.Command) == 0 {
-		return fmt.Errorf("AuthUserCmdChecker: command is not configured")
+		return fmt.Errorf("AuthUserCMDChecker: command is not configured")
 	}
 
 	cmd := exec.CommandContext(ctx, loader.Command)
