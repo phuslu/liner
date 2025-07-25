@@ -63,12 +63,13 @@ func (h *SshHandler) Load() error {
 
 	if strings.HasSuffix(h.Config.AuthTable, ".csv") {
 		h.Config.AuthTable = os.ExpandEnv(h.Config.AuthTable)
-		h.userchecker = &AuthUserLoadChecker{GetAuthUserInfoCsvLoader(h.Config.AuthTable)}
-		records, err := h.userchecker.(*AuthUserLoadChecker).LoadAuthUsers(context.Background())
+		csvloader := GetAuthUserInfoCsvLoader(h.Config.AuthTable)
+		records, err := csvloader.LoadAuthUsers(context.Background())
 		if err != nil {
 			return fmt.Errorf("Failed to load auth_table: %#v", h.Config.AuthTable)
 		}
 		log.Info().Str("auth_table", h.Config.AuthTable).Int("auth_table_size", len(records)).Msg("load auth_table ok")
+		h.userchecker = &AuthUserLoadChecker{csvloader}
 
 		h.sshConfig.PasswordCallback = func(c ssh.ConnMetadata, pass []byte) (*ssh.Permissions, error) {
 			user := AuthUserInfo{
