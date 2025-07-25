@@ -138,67 +138,75 @@ bar,qwerty,0,0,1,0,0
 */
 
 type AuthUserCSVLoader struct {
-	FileLoader *FileLoader[[]AuthUserInfo]
+	Filename string
+
+	csvloader *FileLoader[[]AuthUserInfo]
 }
+
+var csvloaders = xsync.NewMap[string, *FileLoader[[]AuthUserInfo]](xsync.WithSerialResize())
 
 func (loader *AuthUserCSVLoader) LoadAuthUsers(ctx context.Context) ([]AuthUserInfo, error) {
-	return *loader.FileLoader.Load(), nil
+	if loader.csvloader == nil {
+		loader.csvloader = sync.OnceValue(func() *FileLoader[[]AuthUserInfo] {
+			csvloader, _ := csvloaders.LoadOrCompute(loader.Filename, func() (*FileLoader[[]AuthUserInfo], bool) {
+				return &FileLoader[[]AuthUserInfo]{
+					Filename:     loader.Filename,
+					PollDuration: 15 * time.Second,
+					Logger:       slog.Default(),
+					Unmarshal: func(data []byte, v any) error {
+						infos, ok := v.(*[]AuthUserInfo)
+						if !ok {
+							return fmt.Errorf("*[]AuthUserInfo required, found %T", v)
+						}
+
+						records, err := csv.NewReader(bytes.NewReader(data)).ReadAll()
+						if err != nil {
+							return err
+						}
+						if len(records) <= 1 {
+							return fmt.Errorf("no csv rows in %q", data)
+						}
+
+						names := records[0]
+						for _, parts := range records[1:] {
+							if len(parts) <= 1 {
+								continue
+							}
+							var user AuthUserInfo
+							for i, part := range parts {
+								switch i {
+								case 0:
+									user.Username = part
+								case 1:
+									user.Password = part
+								default:
+									if user.Attrs == nil {
+										user.Attrs = make(map[string]string)
+									}
+									if i >= len(names) {
+										return fmt.Errorf("overflow csv cloumn, names=%v parts=%v", names, parts)
+									}
+									user.Attrs[names[i]] = part
+								}
+							}
+							*infos = append(*infos, user)
+						}
+						slices.SortFunc(*infos, func(a, b AuthUserInfo) int {
+							return cmp.Compare(a.Username, b.Username)
+						})
+						return nil
+					},
+				}, false
+			})
+			return csvloader
+		})()
+	}
+
+	return *loader.csvloader.Load(), nil
 }
 
-var usercsvloaders = xsync.NewMap[string, *AuthUserCSVLoader](xsync.WithSerialResize())
-
-func GetAuthUserInfoCsvLoader(authTableFile string) (loader *AuthUserCSVLoader) {
-	loader, _ = usercsvloaders.LoadOrCompute(authTableFile, func() (*AuthUserCSVLoader, bool) {
-		return &AuthUserCSVLoader{FileLoader: &FileLoader[[]AuthUserInfo]{
-			Filename:     authTableFile,
-			PollDuration: 15 * time.Second,
-			Logger:       slog.Default(),
-			Unmarshal: func(data []byte, v any) error {
-				infos, ok := v.(*[]AuthUserInfo)
-				if !ok {
-					return fmt.Errorf("*[]AuthUserInfo required, found %T", v)
-				}
-
-				records, err := csv.NewReader(bytes.NewReader(data)).ReadAll()
-				if err != nil {
-					return err
-				}
-				if len(records) <= 1 {
-					return fmt.Errorf("no csv rows in %q", data)
-				}
-
-				names := records[0]
-				for _, parts := range records[1:] {
-					if len(parts) <= 1 {
-						continue
-					}
-					var user AuthUserInfo
-					for i, part := range parts {
-						switch i {
-						case 0:
-							user.Username = part
-						case 1:
-							user.Password = part
-						default:
-							if user.Attrs == nil {
-								user.Attrs = make(map[string]string)
-							}
-							if i >= len(names) {
-								return fmt.Errorf("overflow csv cloumn, names=%v parts=%v", names, parts)
-							}
-							user.Attrs[names[i]] = part
-						}
-					}
-					*infos = append(*infos, user)
-				}
-				slices.SortFunc(*infos, func(a, b AuthUserInfo) int {
-					return cmp.Compare(a.Username, b.Username)
-				})
-				return nil
-			},
-		}}, false
-	})
-	return
+func GetAuthUserInfoCsvLoader(filename string) *AuthUserCSVLoader {
+	return &AuthUserCSVLoader{Filename: filename}
 }
 
 var _ AuthUserLoader = (*AuthUserCmdLoader)(nil)
