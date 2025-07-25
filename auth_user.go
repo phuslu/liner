@@ -225,16 +225,20 @@ func (loader *AuthUserCmdLoader) LoadAuthUsers(ctx context.Context) ([]AuthUserI
 		}
 	}
 
+	if len(loader.Command) == 0 {
+		return nil, fmt.Errorf("AuthUserCmdLoader: command is not configured")
+	}
+
 	cmd := exec.CommandContext(ctx, loader.Command[0], loader.Command[1:]...)
 	cmd.Env = []string{}
 
-	data, err := cmd.CombinedOutput()
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load auth users failed: %w: %s", err, string(output))
 	}
 
-	users := make([]AuthUserInfo, strings.Count(b2s(data), "\n"))
-	for line := range bytes.Lines(data) {
+	users := make([]AuthUserInfo, strings.Count(b2s(output), "\n"))
+	for line := range bytes.Lines(output) {
 		line = bytes.TrimSpace(line)
 		if len(line) == 0 {
 			continue
@@ -253,4 +257,33 @@ func (loader *AuthUserCmdLoader) LoadAuthUsers(ctx context.Context) ([]AuthUserI
 	loader.mtime.Store(time.Now().UnixNano())
 
 	return users, nil
+}
+
+var _ AuthUserChecker = (*AuthUserCmdChecker)(nil)
+
+type AuthUserCmdChecker struct {
+	Command []string
+}
+
+func (loader *AuthUserCmdChecker) CheckAuthUser(ctx context.Context, user *AuthUserInfo) error {
+	if len(loader.Command) == 0 {
+		return fmt.Errorf("AuthUserCmdChecker: command is not configured")
+	}
+
+	cmd := exec.CommandContext(ctx, loader.Command[0], loader.Command[1:]...)
+	cmd.Env = []string{
+		"USERNAME=" + user.Username,
+		"PASSWORD=" + user.Password,
+	}
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("authentication failed for user %q: %w: %s", user.Username, err, output)
+	}
+
+	if err := json.Unmarshal(output, user); err != nil {
+		return fmt.Errorf("failed to parse user attributes from command output for user %q: %w: %s", user.Username, err, string(output))
+	}
+
+	return nil
 }
