@@ -127,80 +127,83 @@ func (c *AuthUserLoadChecker) CheckAuthUser(ctx context.Context, user *AuthUserI
 	return
 }
 
+var _ AuthUserLoader = (*AuthUserFileLoader)(nil)
+
+type AuthUserFileLoader struct {
+	Filename  string
+	Unmarshal func(data []byte, v any) error
+
+	fileloader *FileLoader[[]AuthUserInfo]
+}
+
+var authfileloaders = xsync.NewMap[string, *FileLoader[[]AuthUserInfo]](xsync.WithSerialResize())
+
+func (loader *AuthUserFileLoader) LoadAuthUsers(ctx context.Context) ([]AuthUserInfo, error) {
+	if loader.fileloader == nil {
+		loader.fileloader = sync.OnceValue(func() *FileLoader[[]AuthUserInfo] {
+			fileloader, _ := authfileloaders.LoadOrCompute(loader.Filename, func() (*FileLoader[[]AuthUserInfo], bool) {
+				return &FileLoader[[]AuthUserInfo]{
+					Filename:     loader.Filename,
+					Unmarshal:    loader.Unmarshal,
+					PollDuration: 15 * time.Second,
+					Logger:       slog.Default(),
+				}, false
+			})
+			return fileloader
+		})()
+	}
+
+	return *loader.fileloader.Load(), nil
+}
+
 /*
 username,password,speed_limit,allow_tunnel,allow_client,allow_ssh,allow_webdav
 foo,123456,-1,1,0,0,0
 bar,qwerty,0,0,1,0,0
 */
 
-var _ AuthUserLoader = (*AuthUserCSVLoader)(nil)
-
-type AuthUserCSVLoader struct {
-	Filename string
-
-	csvloader *FileLoader[[]AuthUserInfo]
-}
-
-var csvloaders = xsync.NewMap[string, *FileLoader[[]AuthUserInfo]](xsync.WithSerialResize())
-
-func (loader *AuthUserCSVLoader) LoadAuthUsers(ctx context.Context) ([]AuthUserInfo, error) {
-	if loader.csvloader == nil {
-		loader.csvloader = sync.OnceValue(func() *FileLoader[[]AuthUserInfo] {
-			csvloader, _ := csvloaders.LoadOrCompute(loader.Filename, func() (*FileLoader[[]AuthUserInfo], bool) {
-				return &FileLoader[[]AuthUserInfo]{
-					Filename:     loader.Filename,
-					PollDuration: 15 * time.Second,
-					Logger:       slog.Default(),
-					Unmarshal: func(data []byte, v any) error {
-						infos, ok := v.(*[]AuthUserInfo)
-						if !ok {
-							return fmt.Errorf("*[]AuthUserInfo required, found %T", v)
-						}
-
-						records, err := csv.NewReader(bytes.NewReader(data)).ReadAll()
-						if err != nil {
-							return err
-						}
-						if len(records) <= 1 {
-							return fmt.Errorf("no csv rows in %q", data)
-						}
-
-						names := records[0]
-						for _, parts := range records[1:] {
-							if len(parts) <= 1 {
-								continue
-							}
-							var user AuthUserInfo
-							for i, part := range parts {
-								switch i {
-								case 0:
-									user.Username = part
-								case 1:
-									user.Password = part
-								default:
-									if user.Attrs == nil {
-										user.Attrs = make(map[string]string)
-									}
-									if i >= len(names) {
-										return fmt.Errorf("overflow csv cloumn, names=%v parts=%v", names, parts)
-									}
-									user.Attrs[names[i]] = part
-								}
-							}
-							*infos = append(*infos, user)
-						}
-						slices.SortFunc(*infos, func(a, b AuthUserInfo) int {
-							return cmp.Compare(a.Username, b.Username)
-						})
-						return nil
-					},
-				}, false
-			})
-			return csvloader
-		})()
+func AuthUserFileCSVUnmarshaler(data []byte, v any) error {
+	infos, ok := v.(*[]AuthUserInfo)
+	if !ok {
+		return fmt.Errorf("*[]AuthUserInfo required, found %T", v)
 	}
 
-	return *loader.csvloader.Load(), nil
+	records, err := csv.NewReader(bytes.NewReader(data)).ReadAll()
+	if err != nil {
+		return err
+	}
+	if len(records) <= 1 {
+		return fmt.Errorf("no csv rows in %q", data)
+	}
+
+	names := records[0]
+	for _, parts := range records[1:] {
+		if len(parts) <= 1 {
+			continue
+		}
+		var user AuthUserInfo
+		for i, part := range parts {
+			switch i {
+			case 0:
+				user.Username = part
+			case 1:
+				user.Password = part
+			default:
+				if user.Attrs == nil {
+					user.Attrs = make(map[string]string)
+				}
+				if i >= len(names) {
+					return fmt.Errorf("overflow csv cloumn, names=%v parts=%v", names, parts)
+				}
+				user.Attrs[names[i]] = part
+			}
+		}
+		*infos = append(*infos, user)
+	}
+
+	slices.SortFunc(*infos, func(a, b AuthUserInfo) int { return cmp.Compare(a.Username, b.Username) })
+
+	return nil
 }
 
 /*
@@ -210,9 +213,9 @@ func (loader *AuthUserCSVLoader) LoadAuthUsers(ctx context.Context) ([]AuthUserI
 
 */
 
-var _ AuthUserLoader = (*AuthUserCMDLoader)(nil)
+var _ AuthUserLoader = (*AuthUserCommandLoader)(nil)
 
-type AuthUserCMDLoader struct {
+type AuthUserCommandLoader struct {
 	Command  string
 	CacheTTL time.Duration
 
@@ -220,7 +223,7 @@ type AuthUserCMDLoader struct {
 	mtime atomic.Int64 // timestamp
 }
 
-func (loader *AuthUserCMDLoader) LoadAuthUsers(ctx context.Context) ([]AuthUserInfo, error) {
+func (loader *AuthUserCommandLoader) LoadAuthUsers(ctx context.Context) ([]AuthUserInfo, error) {
 	if loader.CacheTTL > 0 {
 		if ts := loader.mtime.Load(); 0 < ts && ts+int64(loader.CacheTTL) < time.Now().UnixNano() {
 			return loader.users.Load().([]AuthUserInfo), nil
@@ -228,7 +231,7 @@ func (loader *AuthUserCMDLoader) LoadAuthUsers(ctx context.Context) ([]AuthUserI
 	}
 
 	if len(loader.Command) == 0 {
-		return nil, fmt.Errorf("AuthUserCMDLoader: command is not configured")
+		return nil, fmt.Errorf("AuthUserCommandLoader: command is not configured")
 	}
 
 	cmd := exec.CommandContext(ctx, loader.Command)
@@ -261,15 +264,15 @@ func (loader *AuthUserCMDLoader) LoadAuthUsers(ctx context.Context) ([]AuthUserI
 	return users, nil
 }
 
-var _ AuthUserChecker = (*AuthUserCMDChecker)(nil)
+var _ AuthUserChecker = (*AuthUserCommandChecker)(nil)
 
-type AuthUserCMDChecker struct {
+type AuthUserCommandChecker struct {
 	Command string
 }
 
-func (loader *AuthUserCMDChecker) CheckAuthUser(ctx context.Context, user *AuthUserInfo) error {
+func (loader *AuthUserCommandChecker) CheckAuthUser(ctx context.Context, user *AuthUserInfo) error {
 	if len(loader.Command) == 0 {
-		return fmt.Errorf("AuthUserCMDChecker: command is not configured")
+		return fmt.Errorf("AuthUserCommandChecker: command is not configured")
 	}
 
 	cmd := exec.CommandContext(ctx, loader.Command)

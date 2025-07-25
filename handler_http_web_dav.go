@@ -28,9 +28,9 @@ func (h *HTTPWebDavHandler) Load() (err error) {
 	if h.AuthTable != "" {
 		var loader AuthUserLoader
 		if strings.HasSuffix(h.AuthTable, ".csv") {
-			loader = &AuthUserCSVLoader{Filename: h.AuthTable}
+			loader = &AuthUserFileLoader{Filename: h.AuthTable, Unmarshal: AuthUserFileCSVUnmarshaler}
 		} else {
-			loader = &AuthUserCMDLoader{Command: h.AuthTable}
+			loader = &AuthUserCommandLoader{Command: h.AuthTable}
 		}
 		records, err := loader.LoadAuthUsers(context.Background())
 		if err != nil {

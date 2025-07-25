@@ -59,9 +59,9 @@ func (h *SocksHandler) Load() error {
 	if h.Config.Forward.AuthTable != "" {
 		var loader AuthUserLoader
 		if strings.HasSuffix(h.Config.Forward.AuthTable, ".csv") {
-			loader = &AuthUserCSVLoader{Filename: h.Config.Forward.AuthTable}
+			loader = &AuthUserFileLoader{Filename: h.Config.Forward.AuthTable, Unmarshal: AuthUserFileCSVUnmarshaler}
 		} else {
-			loader = &AuthUserCMDLoader{Command: h.Config.Forward.AuthTable}
+			loader = &AuthUserCommandLoader{Command: h.Config.Forward.AuthTable}
 		}
 		records, err := loader.LoadAuthUsers(context.Background())
 		if err != nil {

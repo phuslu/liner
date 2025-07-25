@@ -32,9 +32,9 @@ func (h *HTTPTunnelHandler) Load() error {
 	if h.Config.Tunnel.AuthTable != "" {
 		var loader AuthUserLoader
 		if strings.HasSuffix(h.Config.Tunnel.AuthTable, ".csv") {
-			loader = &AuthUserCSVLoader{Filename: h.Config.Tunnel.AuthTable}
+			loader = &AuthUserFileLoader{Filename: h.Config.Tunnel.AuthTable, Unmarshal: AuthUserFileCSVUnmarshaler}
 		} else {
-			loader = &AuthUserCMDLoader{Command: h.Config.Tunnel.AuthTable}
+			loader = &AuthUserCommandLoader{Command: h.Config.Tunnel.AuthTable}
 		}
 		records, err := loader.LoadAuthUsers(context.Background())
 		if err != nil {
