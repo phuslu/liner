@@ -100,7 +100,7 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 		}
 	}
 
-	if h.Config.Forward.AuthTable != "" {
+	if h.userchecker != nil {
 		if !req.SupportAuth {
 			log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Msg("socks client not support auth")
 			return

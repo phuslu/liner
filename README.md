@@ -1,1 +1,1 @@
-Valar Morghulis, Valar Dohaeris.
+Everything That Has A Beginning Has An End.

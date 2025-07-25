@@ -139,7 +139,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 	}
 
 	var proxyAuthError error
-	if ri.ProxyUserInfo.Username != "" && h.Config.Forward.AuthTable != "" {
+	if h.userchecker != nil && ri.ProxyUserInfo.Username != "" {
 		proxyAuthError = h.userchecker.CheckAuthUser(req.Context(), &ri.ProxyUserInfo)
 	}
 

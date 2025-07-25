@@ -72,7 +72,7 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 
 	user := ri.AuthUserInfo
 
-	if user.Username == "" || user.Password == "" {
+	if user.Username == "" || user.Password == "" || h.userchecker == nil {
 		log.Error().Context(ri.LogContext).Str("username", user.Username).Msg("tunnel user authorization required")
 		http.Error(rw, "Authorization Required", http.StatusUnauthorized)
 		return
