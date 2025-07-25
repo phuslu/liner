@@ -157,9 +157,11 @@ func (loader *AuthUserFileLoader) LoadAuthUsers(ctx context.Context) ([]AuthUser
 }
 
 /*
+
 username,password,speed_limit,allow_tunnel,allow_client,allow_ssh,allow_webdav
 foo,123456,-1,1,0,0,0
 bar,qwerty,0,0,1,0,0
+
 */
 
 func AuthUserFileCSVUnmarshaler(data []byte, v any) error {
@@ -213,6 +215,30 @@ func AuthUserFileCSVUnmarshaler(data []byte, v any) error {
 
 */
 
+func AuthUserFileJSONUnmarshaler(data []byte, v any) error {
+	infos, ok := v.(*[]AuthUserInfo)
+	if !ok {
+		return fmt.Errorf("*[]AuthUserInfo required, found %T", v)
+	}
+
+	for line := range bytes.Lines(data) {
+		line = bytes.TrimSpace(line)
+		if len(line) == 0 {
+			continue
+		}
+		var info AuthUserInfo
+		err := json.Unmarshal(line, &info)
+		if err != nil {
+			return err
+		}
+		*infos = append(*infos, info)
+	}
+
+	slices.SortFunc(*infos, func(a, b AuthUserInfo) int { return cmp.Compare(a.Username, b.Username) })
+
+	return nil
+}
+
 var _ AuthUserLoader = (*AuthUserCommandLoader)(nil)
 
 type AuthUserCommandLoader struct {
@@ -242,21 +268,15 @@ func (loader *AuthUserCommandLoader) LoadAuthUsers(ctx context.Context) ([]AuthU
 		return nil, fmt.Errorf("load auth users failed: %w: %s", err, string(output))
 	}
 
-	users := make([]AuthUserInfo, strings.Count(b2s(output), "\n"))
-	for line := range bytes.Lines(output) {
-		line = bytes.TrimSpace(line)
-		if len(line) == 0 {
-			continue
-		}
-		var user AuthUserInfo
-		err := json.Unmarshal(line, &user)
-		if err != nil {
-			return nil, err
-		}
-		users = append(users, user)
+	users := make([]AuthUserInfo, strings.Count(b2s(output), "\n")+1)
+	if bytes.HasPrefix(output, []byte{'{'}) {
+		err = AuthUserFileJSONUnmarshaler(output, &users)
+	} else {
+		err = AuthUserFileCSVUnmarshaler(output, &users)
 	}
-
-	slices.SortFunc(users, func(a, b AuthUserInfo) int { return cmp.Compare(a.Username, b.Username) })
+	if err != nil {
+		return nil, err
+	}
 
 	loader.users.Store(users)
 	loader.mtime.Store(time.Now().UnixNano())
