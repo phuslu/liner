@@ -211,7 +211,7 @@ var _ AuthUserLoader = (*AuthUserCmdLoader)(nil)
 */
 
 type AuthUserCmdLoader struct {
-	Command  []string
+	Command  string
 	CacheTTL time.Duration
 
 	users atomic.Value // []AuthUserInfo
@@ -229,7 +229,7 @@ func (loader *AuthUserCmdLoader) LoadAuthUsers(ctx context.Context) ([]AuthUserI
 		return nil, fmt.Errorf("AuthUserCmdLoader: command is not configured")
 	}
 
-	cmd := exec.CommandContext(ctx, loader.Command[0], loader.Command[1:]...)
+	cmd := exec.CommandContext(ctx, loader.Command)
 	cmd.Env = []string{}
 
 	output, err := cmd.CombinedOutput()
@@ -262,7 +262,7 @@ func (loader *AuthUserCmdLoader) LoadAuthUsers(ctx context.Context) ([]AuthUserI
 var _ AuthUserChecker = (*AuthUserCmdChecker)(nil)
 
 type AuthUserCmdChecker struct {
-	Command []string
+	Command string
 }
 
 func (loader *AuthUserCmdChecker) CheckAuthUser(ctx context.Context, user *AuthUserInfo) error {
@@ -270,7 +270,7 @@ func (loader *AuthUserCmdChecker) CheckAuthUser(ctx context.Context, user *AuthU
 		return fmt.Errorf("AuthUserCmdChecker: command is not configured")
 	}
 
-	cmd := exec.CommandContext(ctx, loader.Command[0], loader.Command[1:]...)
+	cmd := exec.CommandContext(ctx, loader.Command)
 	cmd.Env = []string{
 		"USERNAME=" + user.Username,
 		"PASSWORD=" + user.Password,
