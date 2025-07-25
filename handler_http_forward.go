@@ -82,7 +82,7 @@ func (h *HTTPForwardHandler) Load() error {
 	}
 
 	if strings.HasSuffix(h.Config.Forward.AuthTable, ".csv") {
-		csvloader := GetAuthUserInfoCsvLoader(h.Config.Forward.AuthTable)
+		csvloader := &AuthUserCSVLoader{Filename: h.Config.Forward.AuthTable}
 		records, err := csvloader.LoadAuthUsers(context.Background())
 		if err != nil {
 			log.Fatal().Err(err).Strs("server_name", h.Config.ServerName).Str("auth_table", h.Config.Forward.AuthTable).Msg("load auth_table failed")

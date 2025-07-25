@@ -57,7 +57,7 @@ func (h *SocksHandler) Load() error {
 	}
 
 	if strings.HasSuffix(h.Config.Forward.AuthTable, ".csv") {
-		csvloader := GetAuthUserInfoCsvLoader(h.Config.Forward.AuthTable)
+		csvloader := &AuthUserCSVLoader{Filename: h.Config.Forward.AuthTable}
 		records, err := csvloader.LoadAuthUsers(context.Background())
 		if err != nil {
 			log.Fatal().Err(err).Str("auth_table", h.Config.Forward.AuthTable).Msg("load auth_table failed")

@@ -26,7 +26,7 @@ func (h *HTTPWebDavHandler) Load() (err error) {
 	}
 
 	if strings.HasSuffix(h.AuthTable, ".csv") {
-		csvloader := GetAuthUserInfoCsvLoader(h.AuthTable)
+		csvloader := &AuthUserCSVLoader{Filename: h.AuthTable}
 		records, err := csvloader.LoadAuthUsers(context.Background())
 		if err != nil {
 			log.Fatal().Err(err).Str("webdav_root", root).Str("auth_table", h.AuthTable).Msg("load auth_table failed")

@@ -40,7 +40,7 @@ func (h *HTTPWebProxyHandler) Load() error {
 	var err error
 
 	if strings.HasSuffix(h.AuthTable, ".csv") {
-		csvloader := GetAuthUserInfoCsvLoader(h.AuthTable)
+		csvloader := &AuthUserCSVLoader{Filename: h.AuthTable}
 		records, err := csvloader.LoadAuthUsers(context.Background())
 		if err != nil {
 			log.Fatal().Err(err).Str("proxy_pass", h.Pass).Str("auth_table", h.AuthTable).Msg("load auth_table failed")

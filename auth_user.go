@@ -205,10 +205,6 @@ func (loader *AuthUserCSVLoader) LoadAuthUsers(ctx context.Context) ([]AuthUserI
 	return *loader.csvloader.Load(), nil
 }
 
-func GetAuthUserInfoCsvLoader(filename string) *AuthUserCSVLoader {
-	return &AuthUserCSVLoader{Filename: filename}
-}
-
 var _ AuthUserLoader = (*AuthUserCmdLoader)(nil)
 
 /*

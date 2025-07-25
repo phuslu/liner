@@ -63,7 +63,7 @@ func (h *SshHandler) Load() error {
 
 	if strings.HasSuffix(h.Config.AuthTable, ".csv") {
 		h.Config.AuthTable = os.ExpandEnv(h.Config.AuthTable)
-		csvloader := GetAuthUserInfoCsvLoader(h.Config.AuthTable)
+		csvloader := &AuthUserCSVLoader{Filename: h.Config.AuthTable}
 		records, err := csvloader.LoadAuthUsers(context.Background())
 		if err != nil {
 			return fmt.Errorf("Failed to load auth_table: %#v", h.Config.AuthTable)
