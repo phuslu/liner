@@ -81,14 +81,19 @@ func (h *HTTPForwardHandler) Load() error {
 		}
 	}
 
-	if strings.HasSuffix(h.Config.Forward.AuthTable, ".csv") {
-		csvloader := &AuthUserCSVLoader{Filename: h.Config.Forward.AuthTable}
-		records, err := csvloader.LoadAuthUsers(context.Background())
+	if h.Config.Forward.AuthTable != "" {
+		var loader AuthUserLoader
+		if strings.HasSuffix(h.Config.Forward.AuthTable, ".csv") {
+			loader = &AuthUserCSVLoader{Filename: h.Config.Forward.AuthTable}
+		} else {
+			loader = &AuthUserCMDLoader{Command: h.Config.Forward.AuthTable}
+		}
+		records, err := loader.LoadAuthUsers(context.Background())
 		if err != nil {
 			log.Fatal().Err(err).Strs("server_name", h.Config.ServerName).Str("auth_table", h.Config.Forward.AuthTable).Msg("load auth_table failed")
 		}
 		log.Info().Strs("server_name", h.Config.ServerName).Str("auth_table", h.Config.Forward.AuthTable).Int("auth_table_size", len(records)).Msg("load auth_table ok")
-		h.userchecker = &AuthUserLoadChecker{csvloader}
+		h.userchecker = &AuthUserLoadChecker{loader}
 	}
 
 	return nil
