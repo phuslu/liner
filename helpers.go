@@ -108,32 +108,6 @@ func filtermap[T any, R any](items []T, mapper func(T) (R, bool)) []R {
 	return result
 }
 
-type IPInt uint32
-
-func NewIPInt(ip string) IPInt {
-	var dots int
-	var i, j IPInt
-	for k := range ip {
-		switch ip[k] {
-		case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
-			j = j*10 + IPInt(ip[k]-'0')
-		case '.':
-			if j >= 256 {
-				return 0
-			}
-			i = i*256 + j
-			j = 0
-			dots++
-		default:
-			return 0
-		}
-	}
-	if dots != 3 || j >= 256 {
-		return 0
-	}
-	return i*256 + j
-}
-
 // AppendToLower appends the ASCII-lowercased version of string s to dst,
 // and returns the resulting slice.
 //

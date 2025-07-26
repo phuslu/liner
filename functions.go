@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
@@ -196,8 +197,13 @@ func (f *Functions) ipRange(cidr string) (result IPRange) {
 	return
 }
 
-func (f *Functions) ipInt(ipStr string) uint {
-	return uint(NewIPInt(ipStr))
+func (f *Functions) ipInt(ipStr string) uint32 {
+	ip, err := netip.ParseAddr(ipStr)
+	if err != nil || !ip.Is4() {
+		return 0
+	}
+	b := ip.As4()
+	return binary.BigEndian.Uint32(b[:])
 }
 
 func (f *Functions) isInNet(host, cidr string) bool {
