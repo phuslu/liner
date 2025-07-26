@@ -999,6 +999,42 @@ func GetPreferedLocalIP() (net.IP, error) {
 	return net.ParseIP(s), nil
 }
 
+type PlainAddr struct {
+	Addr [16]byte
+	Port uint16
+}
+
+func (addr PlainAddr) AddrPort() netip.AddrPort {
+	var ip netip.Addr
+	a := (*[2]uint64)((unsafe.Pointer)(&addr))
+	if a[0] == 0 && a[1]&0xffffffff00000000 == 0x0000ffff00000000 {
+		ip = netip.AddrFrom4([4]byte{addr.Addr[11], addr.Addr[10], addr.Addr[9], addr.Addr[8]})
+	} else {
+		ip = netip.AddrFrom16(addr.Addr)
+	}
+	return netip.AddrPortFrom(ip, addr.Port)
+}
+
+func PlainAddrFromAddrPort(addrport netip.AddrPort) (addr PlainAddr) {
+	addr.Addr = *(*[16]byte)((unsafe.Pointer)(&addrport))
+	addr.Port = addrport.Port()
+	return
+}
+
+func PlainAddrFromTCPAddr(na *net.TCPAddr) (addr PlainAddr) {
+	ip, _ := netip.AddrFromSlice(na.IP)
+	addr.Addr = *(*[16]byte)((unsafe.Pointer)(&ip))
+	addr.Port = uint16(na.Port)
+	return
+}
+
+func PlainAddrFromUDPAddr(na *net.UDPAddr) (addr PlainAddr) {
+	ip, _ := netip.AddrFromSlice(na.IP)
+	addr.Addr = *(*[16]byte)((unsafe.Pointer)(&ip))
+	addr.Port = uint16(na.Port)
+	return
+}
+
 // see https://en.wikipedia.org/wiki/Reserved_IP_addresses
 func IsReservedIP(ip net.IP) bool {
 	if ip == nil {
