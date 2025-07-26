@@ -132,6 +132,7 @@ var _ AuthUserLoader = (*AuthUserFileLoader)(nil)
 type AuthUserFileLoader struct {
 	Filename  string
 	Unmarshal func(data []byte, v any) error
+	Logger    *slog.Logger
 
 	fileloader *FileLoader[[]AuthUserInfo]
 }
@@ -145,8 +146,8 @@ func (loader *AuthUserFileLoader) LoadAuthUsers(ctx context.Context) ([]AuthUser
 				return &FileLoader[[]AuthUserInfo]{
 					Filename:     loader.Filename,
 					Unmarshal:    loader.Unmarshal,
+					Logger:       cmp.Or(loader.Logger, slog.Default()),
 					PollDuration: 15 * time.Second,
-					Logger:       slog.Default(),
 				}, false
 			})
 			return fileloader
@@ -243,6 +244,7 @@ var _ AuthUserLoader = (*AuthUserCommandLoader)(nil)
 
 type AuthUserCommandLoader struct {
 	Command  string
+	Logger   *slog.Logger
 	CacheTTL time.Duration
 
 	users atomic.Value // []AuthUserInfo
@@ -288,6 +290,7 @@ var _ AuthUserChecker = (*AuthUserCommandChecker)(nil)
 
 type AuthUserCommandChecker struct {
 	Command string
+	Logger  *slog.Logger
 }
 
 func (loader *AuthUserCommandChecker) CheckAuthUser(ctx context.Context, user *AuthUserInfo) error {
