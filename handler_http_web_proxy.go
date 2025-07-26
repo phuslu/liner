@@ -39,18 +39,13 @@ type HTTPWebProxyHandler struct {
 func (h *HTTPWebProxyHandler) Load() error {
 	var err error
 
-	if h.AuthTable != "" {
-		var loader AuthUserLoader
-		if strings.HasSuffix(h.AuthTable, ".csv") {
-			loader = &AuthUserFileLoader{Filename: h.AuthTable, Unmarshal: AuthUserFileCSVUnmarshaler}
-		} else {
-			loader = &AuthUserCommandLoader{Command: h.AuthTable}
-		}
+	if table := h.AuthTable; table != "" {
+		loader := NewAuthUserLoaderFromTable(table)
 		records, err := loader.LoadAuthUsers(context.Background())
 		if err != nil {
-			log.Fatal().Err(err).Str("proxy_pass", h.Pass).Str("auth_table", h.AuthTable).Msg("load auth_table failed")
+			log.Fatal().Err(err).Str("proxy_pass", h.Pass).Str("auth_table", table).Msg("load auth_table failed")
 		}
-		log.Info().Str("proxy_pass", h.Pass).Str("auth_table", h.AuthTable).Int("auth_table_size", len(records)).Msg("load auth_table ok")
+		log.Info().Str("proxy_pass", h.Pass).Str("auth_table", table).Int("auth_table_size", len(records)).Msg("load auth_table ok")
 		h.userchecker = &AuthUserLoadChecker{loader}
 	}
 

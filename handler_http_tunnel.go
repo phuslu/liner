@@ -29,18 +29,13 @@ type HTTPTunnelHandler struct {
 }
 
 func (h *HTTPTunnelHandler) Load() error {
-	if h.Config.Tunnel.AuthTable != "" {
-		var loader AuthUserLoader
-		if strings.HasSuffix(h.Config.Tunnel.AuthTable, ".csv") {
-			loader = &AuthUserFileLoader{Filename: h.Config.Tunnel.AuthTable, Unmarshal: AuthUserFileCSVUnmarshaler}
-		} else {
-			loader = &AuthUserCommandLoader{Command: h.Config.Tunnel.AuthTable}
-		}
+	if table := h.Config.Tunnel.AuthTable; table != "" {
+		loader := NewAuthUserLoaderFromTable(table)
 		records, err := loader.LoadAuthUsers(context.Background())
 		if err != nil {
-			log.Fatal().Err(err).Strs("server_name", h.Config.ServerName).Str("auth_table", h.Config.Tunnel.AuthTable).Msg("load auth_table failed")
+			log.Fatal().Err(err).Strs("server_name", h.Config.ServerName).Str("auth_table", table).Msg("load auth_table failed")
 		}
-		log.Info().Strs("server_name", h.Config.ServerName).Str("auth_table", h.Config.Tunnel.AuthTable).Int("auth_table_size", len(records)).Msg("load auth_table ok")
+		log.Info().Strs("server_name", h.Config.ServerName).Str("auth_table", table).Int("auth_table_size", len(records)).Msg("load auth_table ok")
 		h.userchecker = &AuthUserLoadChecker{loader}
 	}
 

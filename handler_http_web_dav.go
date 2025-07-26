@@ -25,18 +25,13 @@ func (h *HTTPWebDavHandler) Load() (err error) {
 		root = "/"
 	}
 
-	if h.AuthTable != "" {
-		var loader AuthUserLoader
-		if strings.HasSuffix(h.AuthTable, ".csv") {
-			loader = &AuthUserFileLoader{Filename: h.AuthTable, Unmarshal: AuthUserFileCSVUnmarshaler}
-		} else {
-			loader = &AuthUserCommandLoader{Command: h.AuthTable}
-		}
+	if table := h.AuthTable; table != "" {
+		loader := NewAuthUserLoaderFromTable(table)
 		records, err := loader.LoadAuthUsers(context.Background())
 		if err != nil {
-			log.Fatal().Err(err).Str("webdav_root", root).Str("auth_table", h.AuthTable).Msg("load auth_table failed")
+			log.Fatal().Err(err).Str("webdav_root", root).Str("auth_table", table).Msg("load auth_table failed")
 		}
-		log.Info().Str("webdav_root", root).Str("auth_table", h.AuthTable).Int("auth_table_size", len(records)).Msg("load auth_table ok")
+		log.Info().Str("webdav_root", root).Str("auth_table", table).Int("auth_table_size", len(records)).Msg("load auth_table ok")
 		h.userchecker = &AuthUserLoadChecker{loader}
 	}
 

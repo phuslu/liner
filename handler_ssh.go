@@ -62,19 +62,15 @@ func (h *SshHandler) Load() error {
 	h.sshConfig.AddHostKey(privkey)
 
 	if h.Config.AuthTable != "" {
-		h.Config.AuthTable = os.ExpandEnv(h.Config.AuthTable)
-		var loader AuthUserLoader
-		if strings.HasSuffix(h.Config.AuthTable, ".csv") {
-			loader = &AuthUserFileLoader{Filename: h.Config.AuthTable, Unmarshal: AuthUserFileCSVUnmarshaler}
-		} else {
-			loader = &AuthUserCommandLoader{Command: h.Config.AuthTable}
+		if table := os.ExpandEnv(h.Config.AuthTable); table != "" {
+			loader := NewAuthUserLoaderFromTable(table)
+			records, err := loader.LoadAuthUsers(context.Background())
+			if err != nil {
+				log.Fatal().Err(err).Strs("ssh_listens", h.Config.Listen).Str("auth_table", table).Msg("load auth_table failed")
+			}
+			log.Info().Strs("ssh_listens", h.Config.Listen).Str("auth_table", table).Int("auth_table_size", len(records)).Msg("load auth_table ok")
+			h.userchecker = &AuthUserLoadChecker{loader}
 		}
-		records, err := loader.LoadAuthUsers(context.Background())
-		if err != nil {
-			return fmt.Errorf("Failed to load auth_table: %#v", h.Config.AuthTable)
-		}
-		log.Info().Str("auth_table", h.Config.AuthTable).Int("auth_table_size", len(records)).Msg("load auth_table ok")
-		h.userchecker = &AuthUserLoadChecker{loader}
 
 		h.sshConfig.PasswordCallback = func(c ssh.ConnMetadata, pass []byte) (*ssh.Permissions, error) {
 			user := AuthUserInfo{

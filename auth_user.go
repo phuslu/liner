@@ -312,3 +312,17 @@ func (loader *AuthUserCommandChecker) CheckAuthUser(ctx context.Context, user *A
 
 	return nil
 }
+
+// NewAuthUserLoaderFromTable is a helper function for handlers
+func NewAuthUserLoaderFromTable(table string) AuthUserLoader {
+	var loader AuthUserLoader
+	switch {
+	case strings.HasSuffix(table, ".csv") && !strings.Contains(table, " "):
+		loader = &AuthUserFileLoader{Filename: table, Unmarshal: AuthUserFileCSVUnmarshaler}
+	case strings.HasSuffix(table, ".json") && !strings.Contains(table, " "):
+		loader = &AuthUserFileLoader{Filename: table, Unmarshal: AuthUserFileJSONUnmarshaler}
+	default:
+		loader = &AuthUserCommandLoader{Command: table}
+	}
+	return loader
+}
