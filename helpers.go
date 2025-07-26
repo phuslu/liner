@@ -999,6 +999,17 @@ func GetPreferedLocalIP() (net.IP, error) {
 	return net.ParseIP(s), nil
 }
 
+type PlainAddr struct {
+	Addr [2]uint64
+	Port uint16
+}
+
+func PlainAddrFromAddrPort(addrport netip.AddrPort) (addr PlainAddr) {
+	addr.Addr = *(*[2]uint64)((unsafe.Pointer)(&addrport))
+	addr.Port = addrport.Port()
+	return
+}
+
 // see https://en.wikipedia.org/wiki/Reserved_IP_addresses
 func IsReservedIP(ip net.IP) bool {
 	if ip == nil {
