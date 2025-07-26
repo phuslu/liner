@@ -1010,6 +1010,20 @@ func PlainAddrFromAddrPort(addrport netip.AddrPort) (addr PlainAddr) {
 	return
 }
 
+func PlainAddrFromTCPAddr(na *net.TCPAddr) (addr PlainAddr) {
+	ip, _ := netip.AddrFromSlice(na.IP)
+	addr.Addr = *(*[2]uint64)((unsafe.Pointer)(&ip))
+	addr.Port = uint16(na.Port)
+	return
+}
+
+func PlainAddrFromUDPAddr(na *net.UDPAddr) (addr PlainAddr) {
+	ip, _ := netip.AddrFromSlice(na.IP)
+	addr.Addr = *(*[2]uint64)((unsafe.Pointer)(&ip))
+	addr.Port = uint16(na.Port)
+	return
+}
+
 // see https://en.wikipedia.org/wiki/Reserved_IP_addresses
 func IsReservedIP(ip net.IP) bool {
 	if ip == nil {

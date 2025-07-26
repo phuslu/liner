@@ -188,17 +188,17 @@ func (m *TLSInspector) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certific
 }
 
 func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Config, error) {
-	var addr netip.AddrPort
+	var addr PlainAddr
 	switch v := hello.Conn.RemoteAddr().(type) {
 	case *net.TCPAddr:
-		addr = v.AddrPort()
+		addr = PlainAddrFromTCPAddr(v)
 	case *net.UDPAddr:
-		addr = v.AddrPort()
+		addr = PlainAddrFromUDPAddr(v)
 	default:
-		addr, _ = netip.ParseAddrPort(v.String())
+		addr = PlainAddrFromAddrPort(netip.MustParseAddrPort(v.String()))
 	}
 
-	m.ClientHelloMap.Store(PlainAddrFromAddrPort(addr), &TLSClientHelloInfo{ClientHelloInfo: hello})
+	m.ClientHelloMap.Store(addr, &TLSClientHelloInfo{ClientHelloInfo: hello})
 
 	if host, _, err := net.SplitHostPort(hello.ServerName); err == nil {
 		hello.ServerName = host
@@ -315,37 +315,37 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 var HTTP3ClientHelloInfoContextKey = struct{}{}
 
 func (m *TLSInspector) HTTP3ConnContext(ctx context.Context, conn *quic.Conn) context.Context {
-	var addr netip.AddrPort
+	var addr PlainAddr
 	switch v := conn.RemoteAddr().(type) {
 	case *net.TCPAddr:
-		addr = v.AddrPort()
+		addr = PlainAddrFromTCPAddr(v)
 	case *net.UDPAddr:
-		addr = v.AddrPort()
+		addr = PlainAddrFromUDPAddr(v)
 	default:
-		addr, _ = netip.ParseAddrPort(v.String())
+		addr = PlainAddrFromAddrPort(netip.MustParseAddrPort(v.String()))
 	}
-	if info, ok := m.ClientHelloMap.Load(PlainAddrFromAddrPort(addr)); ok {
+	if info, ok := m.ClientHelloMap.Load(addr); ok {
 		AppendJA4Fingerprint(info.JA4[:0], TLSVersion(conn.ConnectionState().TLS.Version), info.ClientHelloInfo, true)
 		ctx = context.WithValue(ctx, HTTP3ClientHelloInfoContextKey, info)
-		m.ClientHelloMap.Delete(PlainAddrFromAddrPort(addr))
+		m.ClientHelloMap.Delete(addr)
 	}
 
 	return ctx
 }
 
 func (m *TLSInspector) HTTPConnState(c net.Conn, cs http.ConnState) {
-	var addr netip.AddrPort
+	var addr PlainAddr
 	switch v := c.RemoteAddr().(type) {
 	case *net.TCPAddr:
-		addr = v.AddrPort()
+		addr = PlainAddrFromTCPAddr(v)
 	case *net.UDPAddr:
-		addr = v.AddrPort()
+		addr = PlainAddrFromUDPAddr(v)
 	default:
-		addr, _ = netip.ParseAddrPort(v.String())
+		addr = PlainAddrFromAddrPort(netip.MustParseAddrPort(v.String()))
 	}
 	switch cs {
 	case http.StateActive:
-		if info, ok := m.ClientHelloMap.Load(PlainAddrFromAddrPort(addr)); ok {
+		if info, ok := m.ClientHelloMap.Load(addr); ok {
 			if tc, ok := c.(interface {
 				ConnectionState() tls.ConnectionState
 			}); ok {
@@ -354,6 +354,6 @@ func (m *TLSInspector) HTTPConnState(c net.Conn, cs http.ConnState) {
 			}
 		}
 	case http.StateHijacked, http.StateClosed:
-		m.ClientHelloMap.Delete(PlainAddrFromAddrPort(addr))
+		m.ClientHelloMap.Delete(addr)
 	}
 }
