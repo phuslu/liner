@@ -43,6 +43,8 @@ type AuthUserLoader interface {
 	LoadAuthUsers(context.Context) ([]AuthUserInfo, error)
 }
 
+var _ AuthUserChecker = (*AuthUserLoadChecker)(nil)
+
 type AuthUserLoadChecker struct {
 	AuthUserLoader
 }
