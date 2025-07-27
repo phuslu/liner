@@ -98,14 +98,15 @@ type SocksConfig struct {
 }
 
 type StreamConfig struct {
-	Listen      []string `json:"listen" yaml:"listen"`
-	Keyfile     string   `json:"keyfile" yaml:"keyfile"`
-	Certfile    string   `json:"certfile" yaml:"certfile"`
-	ProxyPass   string   `json:"proxy_pass" yaml:"proxy_pass"`
-	DialTimeout int      `json:"dial_timeout" yaml:"dial_timeout"`
-	Dialer      string   `json:"dialer" yaml:"dialer"`
-	SpeedLimit  int64    `json:"speed_limit" yaml:"speed_limit"`
-	Log         bool     `json:"log" yaml:"log"`
+	Listen        []string `json:"listen" yaml:"listen"`
+	Keyfile       string   `json:"keyfile" yaml:"keyfile"`
+	Certfile      string   `json:"certfile" yaml:"certfile"`
+	ProxyPass     string   `json:"proxy_pass" yaml:"proxy_pass"`
+	ProxyProtocol uint     `json:"proxy_protocol" yaml:"proxy_protocol"`
+	DialTimeout   int      `json:"dial_timeout" yaml:"dial_timeout"`
+	Dialer        string   `json:"dialer" yaml:"dialer"`
+	SpeedLimit    int64    `json:"speed_limit" yaml:"speed_limit"`
+	Log           bool     `json:"log" yaml:"log"`
 }
 
 type TunnelConfig struct {

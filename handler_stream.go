@@ -129,6 +129,23 @@ func (h *StreamHandler) ServeConn(conn net.Conn) {
 
 	log.Info().Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("proxy_pass", h.Config.ProxyPass).Str("stream_dialer_name", h.Config.Dialer).Msg("forward stream")
 
+	switch h.Config.ProxyProtocol {
+	case 1:
+		host, port, _ := net.SplitHostPort(h.Config.ProxyPass)
+		b := AppendableBytes(make([]byte, 0, 64))
+		if req.RemoteAddr.Addr().Is6() {
+			b = b.Str("PROXY TCP6 ")
+		} else {
+			b = b.Str("PROXY TCP4 ")
+		}
+		b = b.NetIPAddr(req.RemoteAddr.Addr()).Byte(' ').Str(host).Byte(' ').Uint64(uint64(req.RemoteAddr.Port()), 10).Byte(' ').Str(port).Str("\r\n")
+		_, err = rconn.Write(b)
+		if err != nil {
+			log.Error().Err(err).Str("stream_proxy_pass", h.Config.ProxyPass).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Bytes("proxy_protocol_v1", b).Str("stream_dialer_name", h.Config.Dialer).Msg("write proxy protocol v1 header error")
+			return
+		}
+	}
+
 	go io.Copy(rconn, conn)
 	_, err = io.Copy(conn, rconn)
 
