@@ -185,6 +185,14 @@ func (b AppendableBytes) Hex(data []byte) AppendableBytes {
 	return hex.AppendEncode(b, data)
 }
 
+func (b AppendableBytes) NetIPAddr(ip netip.Addr) AppendableBytes {
+	return ip.AppendTo(b)
+}
+
+func (b AppendableBytes) NetIPAddrPort(addr netip.AddrPort) AppendableBytes {
+	return addr.AppendTo(b)
+}
+
 func (b AppendableBytes) Uint64(i uint64, base int) AppendableBytes {
 	return strconv.AppendUint(b, i, base)
 }
