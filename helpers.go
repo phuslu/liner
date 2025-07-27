@@ -1081,6 +1081,8 @@ func PlainAddrFromNetAddr(na net.Addr) (addr PlainAddr) {
 		addr = PlainAddrFromTCPAddr(v)
 	case *net.UDPAddr:
 		addr = PlainAddrFromUDPAddr(v)
+	case PlainAddr:
+		addr = v
 	default:
 		addr = PlainAddrFromAddrPort(netip.MustParseAddrPort(v.String()))
 	}
