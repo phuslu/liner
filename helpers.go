@@ -108,6 +108,11 @@ func filtermap[T any, R any](items []T, mapper func(T) (R, bool)) []R {
 	return result
 }
 
+var IsLittleEndian = func() bool {
+	var i uint16 = 0x1234
+	return *(*byte)(unsafe.Pointer(&i)) == 0x34
+}()
+
 // AppendToLower appends the ASCII-lowercased version of string s to dst,
 // and returns the resulting slice.
 //
@@ -1010,7 +1015,11 @@ func (addr PlainAddr) AddrPort() netip.AddrPort {
 	var ip netip.Addr
 	a := (*[2]uint64)((unsafe.Pointer)(&addr))
 	if a[0] == 0 && a[1]&0xffffffff00000000 == 0x0000ffff00000000 {
-		ip = netip.AddrFrom4([4]byte{addr.Addr[11], addr.Addr[10], addr.Addr[9], addr.Addr[8]})
+		if IsLittleEndian {
+			ip = netip.AddrFrom4([4]byte{addr.Addr[11], addr.Addr[10], addr.Addr[9], addr.Addr[8]})
+		} else {
+			ip = netip.AddrFrom4([4]byte{addr.Addr[12], addr.Addr[13], addr.Addr[14], addr.Addr[15]})
+		}
 	} else {
 		ip = netip.AddrFrom16(addr.Addr)
 	}
