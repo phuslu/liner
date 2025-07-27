@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -188,17 +187,7 @@ func (m *TLSInspector) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certific
 }
 
 func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Config, error) {
-	var addr PlainAddr
-	switch v := hello.Conn.RemoteAddr().(type) {
-	case *net.TCPAddr:
-		addr = PlainAddrFromTCPAddr(v)
-	case *net.UDPAddr:
-		addr = PlainAddrFromUDPAddr(v)
-	default:
-		addr = PlainAddrFromAddrPort(netip.MustParseAddrPort(v.String()))
-	}
-
-	m.ClientHelloMap.Store(addr, &TLSClientHelloInfo{ClientHelloInfo: hello})
+	m.ClientHelloMap.Store(PlainAddrFromNetAddr(hello.Conn.RemoteAddr()), &TLSClientHelloInfo{ClientHelloInfo: hello})
 
 	if host, _, err := net.SplitHostPort(hello.ServerName); err == nil {
 		hello.ServerName = host
@@ -315,15 +304,7 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 var HTTP3ClientHelloInfoContextKey = struct{}{}
 
 func (m *TLSInspector) HTTP3ConnContext(ctx context.Context, conn *quic.Conn) context.Context {
-	var addr PlainAddr
-	switch v := conn.RemoteAddr().(type) {
-	case *net.TCPAddr:
-		addr = PlainAddrFromTCPAddr(v)
-	case *net.UDPAddr:
-		addr = PlainAddrFromUDPAddr(v)
-	default:
-		addr = PlainAddrFromAddrPort(netip.MustParseAddrPort(v.String()))
-	}
+	addr := PlainAddrFromNetAddr(conn.RemoteAddr())
 	if info, ok := m.ClientHelloMap.Load(addr); ok {
 		AppendJA4Fingerprint(info.JA4[:0], TLSVersion(conn.ConnectionState().TLS.Version), info.ClientHelloInfo, true)
 		ctx = context.WithValue(ctx, HTTP3ClientHelloInfoContextKey, info)
@@ -334,15 +315,7 @@ func (m *TLSInspector) HTTP3ConnContext(ctx context.Context, conn *quic.Conn) co
 }
 
 func (m *TLSInspector) HTTPConnState(c net.Conn, cs http.ConnState) {
-	var addr PlainAddr
-	switch v := c.RemoteAddr().(type) {
-	case *net.TCPAddr:
-		addr = PlainAddrFromTCPAddr(v)
-	case *net.UDPAddr:
-		addr = PlainAddrFromUDPAddr(v)
-	default:
-		addr = PlainAddrFromAddrPort(netip.MustParseAddrPort(v.String()))
-	}
+	addr := PlainAddrFromNetAddr(c.RemoteAddr())
 	switch cs {
 	case http.StateActive:
 		if info, ok := m.ClientHelloMap.Load(addr); ok {

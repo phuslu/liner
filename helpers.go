@@ -999,6 +999,8 @@ func GetPreferedLocalIP() (net.IP, error) {
 	return net.ParseIP(s), nil
 }
 
+var _ net.Addr = PlainAddr{}
+
 type PlainAddr struct {
 	Addr [16]byte
 	Port uint16
@@ -1013,6 +1015,35 @@ func (addr PlainAddr) AddrPort() netip.AddrPort {
 		ip = netip.AddrFrom16(addr.Addr)
 	}
 	return netip.AddrPortFrom(ip, addr.Port)
+}
+
+func (addr PlainAddr) AppendTo(b []byte) []byte {
+	a := (*[2]uint64)((unsafe.Pointer)(&addr))
+	if a[0] == 0 && a[1]&0xffffffff00000000 == 0x0000ffff00000000 {
+		b = strconv.AppendUint(b, uint64(addr.Addr[11]), 10)
+		b = append(b, '.')
+		b = strconv.AppendUint(b, uint64(addr.Addr[10]), 10)
+		b = append(b, '.')
+		b = strconv.AppendUint(b, uint64(addr.Addr[9]), 10)
+		b = append(b, '.')
+		b = strconv.AppendUint(b, uint64(addr.Addr[8]), 10)
+		b = append(b, ':')
+		b = strconv.AppendUint(b, uint64(addr.Port), 10)
+	} else {
+		b = append(b, '[')
+		b = netip.AddrFrom16(addr.Addr).AppendTo(b)
+		b = append(b, ']', ':')
+		b = strconv.AppendUint(b, uint64(addr.Port), 10)
+	}
+	return b
+}
+
+func (addr PlainAddr) String() string {
+	return string(addr.AppendTo(make([]byte, 0, 48)))
+}
+
+func (addr PlainAddr) Network() string {
+	return ""
 }
 
 func PlainAddrFromAddrPort(addrport netip.AddrPort) (addr PlainAddr) {
@@ -1032,6 +1063,18 @@ func PlainAddrFromUDPAddr(na *net.UDPAddr) (addr PlainAddr) {
 	ip, _ := netip.AddrFromSlice(na.IP)
 	addr.Addr = *(*[16]byte)((unsafe.Pointer)(&ip))
 	addr.Port = uint16(na.Port)
+	return
+}
+
+func PlainAddrFromNetAddr(na net.Addr) (addr PlainAddr) {
+	switch v := na.(type) {
+	case *net.TCPAddr:
+		addr = PlainAddrFromTCPAddr(v)
+	case *net.UDPAddr:
+		addr = PlainAddrFromUDPAddr(v)
+	default:
+		addr = PlainAddrFromAddrPort(netip.MustParseAddrPort(v.String()))
+	}
 	return
 }
 
