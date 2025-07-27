@@ -1,9 +1,11 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/phuslu/log"
@@ -22,7 +24,7 @@ type HTTPWebDavHandler struct {
 func (h *HTTPWebDavHandler) Load() (err error) {
 	root := h.Root
 	if root == "" {
-		root = "/"
+		root = cmp.Or(first(os.UserHomeDir()), "/")
 	}
 
 	if table := h.AuthTable; table != "" {
