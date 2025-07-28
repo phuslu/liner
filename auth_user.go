@@ -16,7 +16,6 @@ import (
 	"log/slog"
 	"os/exec"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -40,7 +39,7 @@ type AuthUserChecker interface {
 }
 
 type AuthUserLoader interface {
-	LoadAuthUsers(context.Context) ([]AuthUserInfo, error)
+	LoadAuthUsers(context.Context) (map[string]AuthUserInfo, error)
 }
 
 var _ AuthUserChecker = (*AuthUserLoadChecker)(nil)
@@ -55,66 +54,66 @@ func (c *AuthUserLoadChecker) CheckAuthUser(ctx context.Context, user *AuthUserI
 		return fmt.Errorf("userloader %T error: %w", c.AuthUserLoader, err)
 	}
 
-	i, ok := slices.BinarySearchFunc(records, *user, func(a, b AuthUserInfo) int { return cmp.Compare(a.Username, b.Username) })
+	record, ok := records[user.Username]
 	switch {
 	case !ok:
 		err = fmt.Errorf("invalid username: %v", user.Username)
-	case user.Password == records[i].Password:
-		*user = records[i]
-	case strings.HasPrefix(records[i].Password, "0x"):
+	case user.Password == record.Password:
+		*user = record
+	case strings.HasPrefix(record.Password, "0x"):
 		var b []byte
-		b, err = hex.AppendDecode(make([]byte, 0, 64), s2b(records[i].Password[2:]))
+		b, err = hex.AppendDecode(make([]byte, 0, 64), s2b(record.Password[2:]))
 		if err != nil {
-			err = fmt.Errorf("invalid sha1/sha256 password: %v", records[i].Password)
+			err = fmt.Errorf("invalid sha1/sha256 password: %v", record.Password)
 			return
 		}
 		switch len(b) {
 		case 8:
 			if binary.BigEndian.Uint64(b) == wyhash.HashString(user.Password, 0) {
-				*user = records[i]
+				*user = record
 				return
 			}
 		case 20:
 			if *(*[20]byte)(b) == sha1.Sum(s2b(user.Password)) {
-				*user = records[i]
+				*user = record
 				return
 			}
 		case 32:
 			if *(*[32]byte)(b) == sha256.Sum256(s2b(user.Password)) {
-				*user = records[i]
+				*user = record
 				return
 			}
 		}
-		err = fmt.Errorf("invalid md5/sha1/sha256 password: %v", records[i].Password)
+		err = fmt.Errorf("invalid md5/sha1/sha256 password: %v", record.Password)
 		return
-	case strings.HasPrefix(records[i].Password, "$2y$"):
-		err = bcrypt.CompareHashAndPassword([]byte(records[i].Password), []byte(user.Password))
+	case strings.HasPrefix(record.Password, "$2y$"):
+		err = bcrypt.CompareHashAndPassword([]byte(record.Password), []byte(user.Password))
 		if err == nil {
-			*user = records[i]
+			*user = record
 		} else {
 			err = fmt.Errorf("wrong password: %v: %w", user.Username, err)
 		}
-	case strings.HasPrefix(records[i].Password, "$argon2id$"):
+	case strings.HasPrefix(record.Password, "$argon2id$"):
 		// see https://github.com/alexedwards/argon2id
 		// $argon2id$v=19$m=65536,t=3,p=2$c29tZXNhbHQ$RdescudvJCsgt3ub+b+dWRWJTmaaJObG
 		argon2idRegex := sync.OnceValue(func() *regexp.Regexp {
 			return regexp.MustCompile(`^\$argon2id\$v=(\d+)\$m=(\d+),t=(\d+),p=(\d+)\$(.+)\$(.+)$`)
 		})()
-		ms := argon2idRegex.FindStringSubmatch(records[i].Password)
+		ms := argon2idRegex.FindStringSubmatch(record.Password)
 		if ms == nil {
-			err = fmt.Errorf("invalid argon2id password: %v", records[i].Password)
+			err = fmt.Errorf("invalid argon2id password: %v", record.Password)
 			return
 		}
 		m, t, p := first(strconv.Atoi(ms[2])), first(strconv.Atoi(ms[3])), first(strconv.Atoi(ms[4]))
 		var salt, key []byte
 		salt, err = base64.RawStdEncoding.Strict().DecodeString(ms[5])
 		if err != nil {
-			err = fmt.Errorf("invalid argon2id password: %v : %w", records[i].Password, err)
+			err = fmt.Errorf("invalid argon2id password: %v : %w", record.Password, err)
 			return
 		}
 		key, err = base64.RawStdEncoding.Strict().DecodeString(ms[6])
 		if err != nil {
-			err = fmt.Errorf("invalid argon2id password: %v : %w", records[i].Password, err)
+			err = fmt.Errorf("invalid argon2id password: %v : %w", record.Password, err)
 			return
 		}
 		idkey := argon2.IDKey([]byte(user.Password), salt, uint32(t), uint32(m), uint8(p), uint32(len(key)))
@@ -136,16 +135,16 @@ type AuthUserFileLoader struct {
 	Unmarshal func(data []byte, v any) error
 	Logger    *slog.Logger
 
-	fileloader *FileLoader[[]AuthUserInfo]
+	fileloader *FileLoader[map[string]AuthUserInfo]
 }
 
-var authfileloaders = xsync.NewMap[string, *FileLoader[[]AuthUserInfo]](xsync.WithSerialResize())
+var authfileloaders = xsync.NewMap[string, *FileLoader[map[string]AuthUserInfo]](xsync.WithSerialResize())
 
-func (loader *AuthUserFileLoader) LoadAuthUsers(ctx context.Context) ([]AuthUserInfo, error) {
+func (loader *AuthUserFileLoader) LoadAuthUsers(ctx context.Context) (map[string]AuthUserInfo, error) {
 	if loader.fileloader == nil {
-		loader.fileloader = sync.OnceValue(func() *FileLoader[[]AuthUserInfo] {
-			fileloader, _ := authfileloaders.LoadOrCompute(loader.Filename, func() (*FileLoader[[]AuthUserInfo], bool) {
-				return &FileLoader[[]AuthUserInfo]{
+		loader.fileloader = sync.OnceValue(func() *FileLoader[map[string]AuthUserInfo] {
+			fileloader, _ := authfileloaders.LoadOrCompute(loader.Filename, func() (*FileLoader[map[string]AuthUserInfo], bool) {
+				return &FileLoader[map[string]AuthUserInfo]{
 					Filename:     loader.Filename,
 					Unmarshal:    loader.Unmarshal,
 					Logger:       cmp.Or(loader.Logger, slog.Default()),
@@ -168,9 +167,9 @@ bar,qwerty,0,0,1,0,0
 */
 
 func AuthUserFileCSVUnmarshaler(data []byte, v any) error {
-	infos, ok := v.(*[]AuthUserInfo)
+	infos, ok := v.(*map[string]AuthUserInfo)
 	if !ok {
-		return fmt.Errorf("*[]AuthUserInfo required, found %T", v)
+		return fmt.Errorf("*map[string]AuthUserInfo required, found %T", v)
 	}
 
 	records, err := csv.NewReader(bytes.NewReader(data)).ReadAll()
@@ -203,10 +202,11 @@ func AuthUserFileCSVUnmarshaler(data []byte, v any) error {
 				user.Attrs[names[i]] = part
 			}
 		}
-		*infos = append(*infos, user)
+		if *infos == nil {
+			*infos = make(map[string]AuthUserInfo)
+		}
+		(*infos)[user.Username] = user
 	}
-
-	slices.SortFunc(*infos, func(a, b AuthUserInfo) int { return cmp.Compare(a.Username, b.Username) })
 
 	return nil
 }
@@ -219,9 +219,9 @@ func AuthUserFileCSVUnmarshaler(data []byte, v any) error {
 */
 
 func AuthUserFileJSONUnmarshaler(data []byte, v any) error {
-	infos, ok := v.(*[]AuthUserInfo)
+	infos, ok := v.(*map[string]AuthUserInfo)
 	if !ok {
-		return fmt.Errorf("*[]AuthUserInfo required, found %T", v)
+		return fmt.Errorf("*map[string]AuthUserInfo required, found %T", v)
 	}
 
 	for line := range bytes.Lines(data) {
@@ -229,15 +229,16 @@ func AuthUserFileJSONUnmarshaler(data []byte, v any) error {
 		if len(line) == 0 {
 			continue
 		}
-		var info AuthUserInfo
-		err := json.Unmarshal(line, &info)
+		var user AuthUserInfo
+		err := json.Unmarshal(line, &user)
 		if err != nil {
 			return err
 		}
-		*infos = append(*infos, info)
+		if *infos == nil {
+			*infos = make(map[string]AuthUserInfo)
+		}
+		(*infos)[user.Username] = user
 	}
-
-	slices.SortFunc(*infos, func(a, b AuthUserInfo) int { return cmp.Compare(a.Username, b.Username) })
 
 	return nil
 }
@@ -253,10 +254,10 @@ type AuthUserCommandLoader struct {
 	mtime atomic.Int64 // timestamp
 }
 
-func (loader *AuthUserCommandLoader) LoadAuthUsers(ctx context.Context) ([]AuthUserInfo, error) {
+func (loader *AuthUserCommandLoader) LoadAuthUsers(ctx context.Context) (map[string]AuthUserInfo, error) {
 	if loader.CacheTTL > 0 {
 		if ts := loader.mtime.Load(); 0 < ts && ts+int64(loader.CacheTTL) < time.Now().UnixNano() {
-			return loader.users.Load().([]AuthUserInfo), nil
+			return loader.users.Load().(map[string]AuthUserInfo), nil
 		}
 	}
 
@@ -272,7 +273,7 @@ func (loader *AuthUserCommandLoader) LoadAuthUsers(ctx context.Context) ([]AuthU
 		return nil, fmt.Errorf("load auth users failed: %w: %s", err, string(output))
 	}
 
-	users := make([]AuthUserInfo, strings.Count(b2s(output), "\n")+1)
+	users := make(map[string]AuthUserInfo)
 	if bytes.HasPrefix(output, []byte{'{'}) {
 		err = AuthUserFileJSONUnmarshaler(output, &users)
 	} else {
