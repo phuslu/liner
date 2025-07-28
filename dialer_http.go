@@ -125,7 +125,7 @@ func (d *HTTPDialer) DialContext(ctx context.Context, network, addr string) (net
 		}
 		tlsConfig := d.tlsConfig
 		if d.ECH {
-			https, err := d.Resolver.LookupHTTPS(ctx, d.Host)
+			https, err := d.Resolver.Client.LookupHTTPS(ctx, d.Host)
 			if err != nil {
 				return nil, fmt.Errorf("lookup https %v error: %w", d.Host, err)
 			}

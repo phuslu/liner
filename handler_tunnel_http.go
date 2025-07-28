@@ -36,8 +36,8 @@ func (h *TunnelHandler) h1tunnel(ctx context.Context, dialer string) (net.Listen
 
 	host, port, ech := u.Hostname(), u.Port(), []byte{}
 	if u.Query().Get("ech") == "true" {
-		https, err := h.Resolver.LookupHTTPS(ctx, host)
-		log.Debug().Str("dns_server", h.Resolver.Addr).Interface("https", https).AnErr("error", err).Msg("lookup https records")
+		https, err := h.Resolver.Client.LookupHTTPS(ctx, host)
+		log.Debug().Str("dns_server", h.Resolver.Client.Addr).Interface("https", https).AnErr("error", err).Msg("lookup https records")
 		if len(https) == 0 && err == nil {
 			err = fmt.Errorf("lookup https %v error: emtpy record", host)
 		}

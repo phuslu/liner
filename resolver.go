@@ -13,12 +13,11 @@ import (
 )
 
 type Resolver struct {
-	*fastdns.Client
+	Client        *fastdns.Client
 	Logger        *slog.Logger
+	LRUCache      *lru.TTLCache[string, []netip.Addr]
 	CacheDuration time.Duration
 	NoIPv6Hosts   *lru.TTLCache[string, bool]
-
-	LRUCache *lru.TTLCache[string, []netip.Addr]
 }
 
 func (r *Resolver) LookupNetIP(ctx context.Context, network, host string) (ips []netip.Addr, err error) {
