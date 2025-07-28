@@ -252,23 +252,15 @@ func main() {
 				Websocket: strings.HasSuffix(u.Scheme, "+wss"),
 				Logger:    slog.Default(),
 			}
-		case "socks4", "socks4a":
-			return &Socks4Dialer{
+		case "socks4", "socks4a", "socks", "socks5", "socks5h":
+			return &SocksDialer{
 				Username: u.User.Username(),
 				Password: first(u.User.Password()),
 				Host:     u.Hostname(),
 				Port:     u.Port(),
+				Socks4:   u.Scheme == "socks4" || u.Scheme == "socks4a",
 				Socks4A:  u.Scheme == "socks4a",
-				Logger:   slog.Default(),
-				Resolver: resolver.Resolver,
-				Dialer:   underlay,
-			}
-		case "socks", "socks5", "socks5h":
-			return &Socks5Dialer{
-				Username: u.User.Username(),
-				Password: first(u.User.Password()),
-				Host:     u.Hostname(),
-				Port:     u.Port(),
+				Socks5:   u.Scheme == "socks" || u.Scheme == "socks5" || u.Scheme == "socks5h",
 				Socks5H:  u.Scheme == "socks5h",
 				Logger:   slog.Default(),
 				Resolver: resolver.Resolver,

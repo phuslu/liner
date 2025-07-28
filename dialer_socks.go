@@ -1,0 +1,310 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"net"
+	"net/netip"
+	"strconv"
+	"sync"
+	"time"
+)
+
+var _ Dialer = (*SocksDialer)(nil)
+
+type SocksDialer struct {
+	Username string
+	Password string
+	Host     string
+	Port     string
+	Socks4   bool
+	Socks4A  bool
+	Socks5   bool
+	Socks5H  bool
+	Logger   *slog.Logger
+	Resolver *Resolver
+	Dialer   Dialer
+}
+
+func (d *SocksDialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	switch {
+	case d.Socks4, d.Socks4A:
+		return d.dialsocks4(ctx, network, addr)
+	case d.Socks5, d.Socks5H:
+		return d.dialsocks5(ctx, network, addr)
+	}
+	return nil, errors.New("invaild socks dialer")
+}
+
+func (d *SocksDialer) dialsocks4(ctx context.Context, network, addr string) (net.Conn, error) {
+	switch network {
+	case "tcp", "tcp4", "tcp6":
+	default:
+		return nil, errors.New("socksdialer: no support for SOCKS4 proxy connections of type " + network)
+	}
+
+	dialer := d.Dialer
+	if m, ok := ctx.Value(DialerMemoryDialersContextKey).(*sync.Map); ok && m != nil {
+		if v, ok := m.Load(addr); ok && d != nil {
+			if md, ok := v.(*MemoryDialer); ok && md != nil {
+				if d.Logger != nil {
+					d.Logger.Info("socks4 dialer switch to memory dialer", "memory_dialer_address", md.Address)
+				}
+				dialer = md
+			}
+		}
+	}
+
+	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(d.Host, d.Port))
+	if err != nil {
+		return nil, err
+	}
+	closeConn := &conn
+	defer func() {
+		if closeConn != nil {
+			(*closeConn).Close()
+		}
+	}()
+
+	host, portStr, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, err
+	}
+
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return nil, errors.New("socksdialer: failed to parse port number: " + portStr)
+	}
+	if port < 1 || port > 0xffff {
+		return nil, errors.New("socksdialer: port number out of range: " + portStr)
+	}
+
+	if d.Resolver != nil {
+		if ips, err := d.Resolver.LookupNetIP(ctx, "ip", host); err == nil && len(ips) > 0 {
+			host = ips[0].String()
+		}
+	}
+
+	buf := make([]byte, 0, 1024)
+
+	switch network {
+	case "tcp", "tcp6", "tcp4":
+		buf = append(buf, VersionSocks4, SocksCommandConnectTCP)
+	case "udp", "udp6", "udp4":
+		buf = append(buf, VersionSocks4, SocksCommandConnectUDP)
+	default:
+		return nil, errors.New("socksdialer: no support for SOCKS5 proxy connections of type " + network)
+	}
+
+	buf = append(buf, byte(port>>8), byte(port))
+	if d.Socks4A {
+		buf = append(buf, 0, 0, 0, 1, 0)
+		buf = append(buf, []byte(host+"\x00")...)
+	} else {
+		ips, err := d.Resolver.LookupNetIP(ctx, "ip", host)
+		if err != nil {
+			return nil, err
+		}
+		if len(ips) == 0 {
+			return nil, fmt.Errorf("socksdialer: resolve %s return empty ip list", host)
+		}
+		if !ips[0].Is4() {
+			return nil, errors.New("socksdialer: resolve ip address out of range: " + ips[0].String())
+		}
+		ip4 := ips[0].As4()
+		buf = append(buf, ip4[0], ip4[1], ip4[2], ip4[3], 0)
+	}
+
+	if deadline, ok := ctx.Deadline(); ok {
+		conn.SetDeadline(deadline)
+		defer conn.SetDeadline(time.Time{})
+	}
+
+	_, err = conn.Write(buf)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp [8]byte
+	_, err = conn.Read(resp[:])
+	if err != nil && err != io.EOF {
+		return nil, err
+	}
+
+	if status := Socks4Status(resp[1]); status > 0 {
+		return nil, errors.New("socksdialer: SOCKS4 proxy at " + d.Host + " failed to connect: " + status.String())
+	}
+
+	closeConn = nil
+	return conn, nil
+}
+
+func (d *SocksDialer) dialsocks5(ctx context.Context, network, addr string) (net.Conn, error) {
+	dialer := d.Dialer
+	if m, ok := ctx.Value(DialerMemoryDialersContextKey).(*sync.Map); ok && m != nil {
+		if v, ok := m.Load(addr); ok && d != nil {
+			if md, ok := v.(*MemoryDialer); ok && md != nil {
+				if d.Logger != nil {
+					d.Logger.Info("socks5 dialer switch to memory dialer", "memory_dialer_address", md.Address)
+				}
+				dialer = md
+			}
+		}
+	}
+
+	conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(d.Host, d.Port))
+	if err != nil {
+		return nil, err
+	}
+	closeConn := &conn
+	defer func() {
+		if closeConn != nil {
+			(*closeConn).Close()
+		}
+	}()
+
+	host, portStr, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, err
+	}
+
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return nil, errors.New("socksdialer: failed to parse port number: " + portStr)
+	}
+	if port < 1 || port > 0xffff {
+		return nil, errors.New("socksdialer: port number out of range: " + portStr)
+	}
+
+	if !d.Socks5H && d.Resolver != nil {
+		ips, err := d.Resolver.LookupNetIP(ctx, "ip", host)
+		if err == nil && len(ips) > 0 {
+			host = ips[0].String()
+		}
+	}
+
+	// the size here is just an estimate
+	buf := make([]byte, 0, 6+len(host))
+
+	buf = append(buf, VersionSocks5)
+	if len(d.Username) > 0 && len(d.Username) < 256 && len(d.Password) < 256 {
+		buf = append(buf, 2 /* num auth methods */, Socks5AuthMethodNone, Socks5AuthMethodPassword)
+	} else {
+		buf = append(buf, 1 /* num auth methods */, Socks5AuthMethodNone)
+	}
+
+	if _, err := conn.Write(buf); err != nil {
+		return nil, errors.New("socksdialer: failed to write greeting to SOCKS5 proxy at " + d.Host + ": " + err.Error())
+	}
+
+	if _, err := io.ReadFull(conn, buf[:2]); err != nil {
+		return nil, errors.New("socksdialer: failed to read greeting from SOCKS5 proxy at " + d.Host + ": " + err.Error())
+	}
+	if buf[0] != 5 {
+		return nil, errors.New("socksdialer: SOCKS5 proxy at " + d.Host + " has unexpected version " + strconv.Itoa(int(buf[0])))
+	}
+	if buf[1] == 0xff {
+		return nil, errors.New("socksdialer: SOCKS5 proxy at " + d.Host + " requires authentication")
+	}
+
+	if buf[1] == byte(Socks5AuthMethodPassword) {
+		buf = buf[:0]
+		buf = append(buf, 1 /* password protocol version */)
+		buf = append(buf, uint8(len(d.Username)))
+		buf = append(buf, d.Username...)
+		buf = append(buf, uint8(len(d.Password)))
+		buf = append(buf, d.Password...)
+
+		if _, err := conn.Write(buf); err != nil {
+			return nil, errors.New("socksdialer: failed to write authentication request to SOCKS5 proxy at " + d.Host + ": " + err.Error())
+		}
+
+		if _, err := io.ReadFull(conn, buf[:2]); err != nil {
+			return nil, errors.New("socksdialer: failed to read authentication reply from SOCKS5 proxy at " + d.Host + ": " + err.Error())
+		}
+
+		if buf[1] != 0 {
+			return nil, errors.New("socksdialer: SOCKS5 proxy at " + d.Host + " rejected username/password")
+		}
+	}
+
+	buf = buf[:0]
+	switch network {
+	case "tcp", "tcp6", "tcp4":
+		buf = append(buf, VersionSocks5, SocksCommandConnectTCP, 0 /* reserved */)
+	case "udp", "udp6", "udp4":
+		buf = append(buf, VersionSocks5, SocksCommandConnectUDP, 0 /* reserved */)
+	default:
+		return nil, errors.New("socksdialer: no support for SOCKS5 proxy connections of type " + network)
+	}
+
+	if ip, err := netip.ParseAddr(host); err == nil {
+		if ip.Is4() {
+			buf = append(buf, Socks5IPv4Address)
+		} else {
+			buf = append(buf, Socks5IPv6Address)
+		}
+		buf = append(buf, ip.AsSlice()...)
+	} else {
+		if len(host) > 255 {
+			return nil, errors.New("socksdialer: destination hostname too long: " + host)
+		}
+		buf = append(buf, Socks5DomainName)
+		buf = append(buf, byte(len(host)))
+		buf = append(buf, host...)
+	}
+	buf = append(buf, byte(port>>8), byte(port))
+
+	if deadline, ok := ctx.Deadline(); ok {
+		conn.SetDeadline(deadline)
+		defer conn.SetDeadline(time.Time{})
+	}
+
+	if _, err := conn.Write(buf); err != nil {
+		return nil, errors.New("socksdialer: failed to write connect request to SOCKS5 proxy at " + d.Host + ": " + err.Error())
+	}
+
+	if _, err := io.ReadFull(conn, buf[:4]); err != nil {
+		return nil, errors.New("socksdialer: failed to read connect reply from SOCKS5 proxy at " + d.Host + ": " + err.Error())
+	}
+
+	if status := Socks5Status(buf[1]); status > 0 {
+		return nil, errors.New("socksdialer: SOCKS5 proxy at " + d.Host + " failed to connect: " + status.String())
+	}
+
+	bytesToDiscard := 0
+	switch buf[3] {
+	case Socks5IPv4Address:
+		bytesToDiscard = net.IPv4len
+	case Socks5IPv6Address:
+		bytesToDiscard = net.IPv6len
+	case Socks5DomainName:
+		_, err := io.ReadFull(conn, buf[:1])
+		if err != nil {
+			return nil, errors.New("socksdialer: failed to read domain length from SOCKS5 proxy at " + d.Host + ": " + err.Error())
+		}
+		bytesToDiscard = int(buf[0])
+	default:
+		return nil, errors.New("socksdialer: got unknown address type " + strconv.Itoa(int(buf[3])) + " from SOCKS5 proxy at " + d.Host)
+	}
+
+	if cap(buf) < bytesToDiscard {
+		buf = make([]byte, bytesToDiscard)
+	} else {
+		buf = buf[:bytesToDiscard]
+	}
+	if _, err := io.ReadFull(conn, buf); err != nil {
+		return nil, errors.New("socksdialer: failed to read address from SOCKS5 proxy at " + d.Host + ": " + err.Error())
+	}
+
+	// Also need to discard the port number
+	if _, err := io.ReadFull(conn, buf[:2]); err != nil {
+		return nil, errors.New("socksdialer: failed to read port from SOCKS5 proxy at " + d.Host + ": " + err.Error())
+	}
+
+	closeConn = nil
+	return conn, nil
+}
