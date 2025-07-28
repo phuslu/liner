@@ -18,13 +18,6 @@ import (
 	"unsafe"
 )
 
-const (
-	SO_REUSEPORT            = 15
-	SO_MAX_PACING_RATE      = 47
-	TCP_FASTOPEN            = 23
-	IP_BIND_ADDRESS_NO_PORT = 24
-)
-
 type ListenConfig struct {
 	ReusePort   bool
 	FastOpen    bool
@@ -32,6 +25,8 @@ type ListenConfig struct {
 }
 
 func (lc ListenConfig) Listen(ctx context.Context, network, address string) (net.Listener, error) {
+	const SO_REUSEPORT = 15
+	const TCP_FASTOPEN = 23
 	ln := &net.ListenConfig{
 		Control: func(network, address string, conn syscall.RawConn) error {
 			return conn.Control(func(fd uintptr) {
@@ -52,6 +47,7 @@ func (lc ListenConfig) Listen(ctx context.Context, network, address string) (net
 }
 
 func (lc ListenConfig) ListenPacket(ctx context.Context, network, address string) (net.PacketConn, error) {
+	const SO_REUSEPORT = 15
 	ln := &net.ListenConfig{
 		Control: func(network, address string, conn syscall.RawConn) error {
 			return conn.Control(func(fd uintptr) {
@@ -164,6 +160,7 @@ func SetTcpCongestion(tc *net.TCPConn, name string, values ...any) (err error) {
 }
 
 func SetTcpMaxPacingRate(tc *net.TCPConn, rate int) (err error) {
+	const SO_MAX_PACING_RATE = 47
 	var c syscall.RawConn
 	c, err = tc.SyscallConn()
 	if err != nil {
