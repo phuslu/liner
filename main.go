@@ -139,7 +139,7 @@ func main() {
 		for _, name := range names {
 			reader, err := maxminddb.Open(name)
 			if err != nil {
-				log.Fatal().Err(err).Str("geoip2_database_name", name).Msg("load geoip2 database error")
+				log.Fatal().Err(err).Str("geoip_database_name", name).Msg("load geoip database error")
 			}
 			switch reader.Metadata.DatabaseType {
 			case "GeoIP2-City":
@@ -163,7 +163,7 @@ func main() {
 			case "GeoLite2-ASN":
 				break
 			}
-			log.Info().Str("geoip2_database_name", name).Str("geoip2_database_type", reader.Metadata.DatabaseType).Msg("load geoip2 database ok")
+			log.Info().Str("geoip_database_name", name).Str("geoip_database_type", reader.Metadata.DatabaseType).Msg("load geoip database ok")
 		}
 	}
 	if cmp.Or(resolver.CityReader, resolver.ISPReader, resolver.DomainReader, resolver.ConnectionTypeReader) != nil {
