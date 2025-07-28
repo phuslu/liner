@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"crypto/rand"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -23,6 +24,7 @@ import (
 	"github.com/creack/pty"
 	"github.com/phuslu/log"
 	"github.com/pkg/sftp"
+	"golang.org/x/crypto/ed25519"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -41,24 +43,34 @@ func (h *SshHandler) Load() error {
 	if len(h.Config.Listen) != 1 {
 		return fmt.Errorf("invalid ssh listen: %v", h.Config.Listen)
 	}
-	if h.Config.HostKey == "" {
-		return fmt.Errorf("invalid ssh host_key: %v", h.Config.HostKey)
+
+	var sshSigner ssh.Signer
+	if h.Config.HostKey != "" {
+		key, err := os.ReadFile(h.Config.HostKey)
+		if err != nil {
+			return fmt.Errorf("Failed to load private key (%s): %w", h.Config.HostKey, err)
+		}
+		sshSigner, err = ssh.ParsePrivateKey(key)
+		if err != nil {
+			return fmt.Errorf("Failed to parse private key; %w", err)
+		}
+	} else {
+		log.Warn().Strs("ssh_listens", h.Config.Listen).Msg("host_key is not configured, generating ssh key.")
+		_, key, err := ed25519.GenerateKey(rand.Reader)
+		if err != nil {
+			return fmt.Errorf("Failed to generate ed25519 key; %w", err)
+		}
+		sshSigner, err = ssh.NewSignerFromKey(key)
+		if err != nil {
+			return fmt.Errorf("Failed to create ssh private key; %w", err)
+		}
 	}
 
 	h.sshConfig = &ssh.ServerConfig{
 		ServerVersion: cmp.Or(h.Config.ServerVersion, fmt.Sprintf("SSH-2.0-liner-%s", version)),
 		MaxAuthTries:  3,
 	}
-
-	privdata, err := os.ReadFile(h.Config.HostKey)
-	if err != nil {
-		return fmt.Errorf("Failed to load private key (%s): %w", h.Config.HostKey, err)
-	}
-	privkey, err := ssh.ParsePrivateKey(privdata)
-	if err != nil {
-		return fmt.Errorf("Failed to parse private key; %w", err)
-	}
-	h.sshConfig.AddHostKey(privkey)
+	h.sshConfig.AddHostKey(sshSigner)
 
 	if h.Config.AuthTable != "" {
 		if table := os.ExpandEnv(h.Config.AuthTable); table != "" {
