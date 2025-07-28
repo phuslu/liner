@@ -16,6 +16,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -33,9 +34,7 @@ type SshHandler struct {
 	userchecker AuthUserChecker
 	keyloader   *FileLoader[[]string]
 	shellPath   string
-
-	mu     sync.Mutex
-	closed bool
+	closed      atomic.Bool
 }
 
 func (h *SshHandler) Load() error {
@@ -153,7 +152,7 @@ func (s *SshHandler) Serve(ctx context.Context, ln net.Listener) error {
 	for {
 		tcpConn, err := ln.Accept()
 		if err != nil {
-			if s.isClosed() {
+			if s.closed.Load() {
 				return nil
 			}
 			return fmt.Errorf("accept incoming connection: %s", err)
@@ -188,13 +187,6 @@ func (s *SshHandler) handleConn(ctx context.Context, tcpConn net.Conn) {
 	go ssh.DiscardRequests(reqs)
 	// Accept all channels
 	go s.handleChannels(ctx, chans)
-}
-
-func (s *SshHandler) isClosed() bool {
-	s.mu.Lock()
-	closed := s.closed
-	s.mu.Unlock()
-	return closed
 }
 
 func (s *SshHandler) handleChannels(ctx context.Context, chans <-chan ssh.NewChannel) {
