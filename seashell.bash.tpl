@@ -13,8 +13,8 @@ goosarch=$(grep -q 'CPU architecture: 8' /proc/cpuinfo && echo linux_arm64 || ec
 linerurl=$(curl -s https://api.github.com/repos/phuslu/liner/releases/tags/v0.0.0 | awk -v goosarch="$goosarch" '$0 ~ goosarch {f=1} f && /browser_download_url/ {gsub(/.*: "|",?/, ""); print; exit}')
 curl -sSLf $linerurl | tar xvz -C . -T <(echo liner)
 
+# echo '{{ readFile `/home/phuslu/web/server/ssh_host_ed25519_key` | trim }}' | tee ssh_host_ed25519_key
 echo '{{ readFile `/home/phuslu/.ssh/id_ed25519.pub` | trim }}' | tee authorized_keys
-echo '{{ readFile `/home/phuslu/web/server/ssh_host_ed25519_key` | trim }}' | tee ssh_host_ed25519_key
 
 # see https://cloud.phus.lu/seashell-sg-99-123456-8000.bash
 {{ $pathparts := .Request.URL.Path | trimPrefix "/" | trimSuffix ".bash" | split "-" }}
@@ -42,7 +42,7 @@ tunnel:
     dial_timeout: 5
 ssh:
   - listen: ['240.0.0.1:22']
-    host_key: ssh_host_ed25519_key
+    # host_key: /etc/ssh/ssh_host_ed25519_key
     authorized_keys: authorized_keys
     shell: /bin/bash
     log: true
