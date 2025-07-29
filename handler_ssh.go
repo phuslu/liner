@@ -362,7 +362,8 @@ func (s *SshHandler) handleChannel(ctx context.Context, newChannel ssh.NewChanne
 				}
 			case "subsystem":
 				switch {
-				case strings.HasPrefix(b2s(req.Payload), "sftp"):
+				case strings.HasSuffix(b2s(req.Payload), "sftp"):
+					s.Logger.Printf("sftp server serving: %s", req.Payload)
 					go func() {
 						defer connection.Close()
 						server, err := sftp.NewServer(connection)
@@ -379,6 +380,7 @@ func (s *SshHandler) handleChannel(ctx context.Context, newChannel ssh.NewChanne
 					}()
 					req.Reply(true, nil)
 				default:
+					s.Logger.Printf("ssh subsystem request %#v not supportted", req)
 					req.Reply(false, append([]byte("ssh subsystem is not supportted: "), req.Payload...))
 				}
 			case "keepalive@openssh.com":
