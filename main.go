@@ -71,7 +71,7 @@ func main() {
 
 	// main and data logger
 	var dataLogger log.Logger
-	if config.Global.LogLevel == "disabled" {
+	if config.Global.LogLevel == "discard" {
 		log.DefaultLogger = log.Logger{
 			Level:  log.ParseLevel("error"),
 			Writer: log.IOWriter{io.Discard},
@@ -880,7 +880,7 @@ func main() {
 		cronOptions = append(cronOptions, cron.WithLocation(time.UTC))
 	}
 	runner := cron.New(cronOptions...)
-	if config.Global.LogLevel != "disabled" && !log.IsTerminal(os.Stderr.Fd()) {
+	if config.Global.LogLevel != "discard" && !log.IsTerminal(os.Stderr.Fd()) {
 		runner.AddFunc("0 0 0 * * *", func() { log.DefaultLogger.Writer.(*log.FileWriter).Rotate() })
 		if slices.ContainsFunc(config.Http, func(c HTTPConfig) bool { return c.Forward.Log }) ||
 			slices.ContainsFunc(config.Https, func(c HTTPConfig) bool { return c.Forward.Log }) ||
