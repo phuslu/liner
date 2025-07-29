@@ -163,7 +163,7 @@ func main() {
 			case "GeoLite2-ASN":
 				break
 			}
-			log.Info().Str("geoip_database_name", name).Str("geoip_database_type", reader.Metadata.DatabaseType).Msg("load geoip database ok")
+			log.Info().Str("geoip_database_name", name).Str("geoip_database_type", reader.Metadata.DatabaseType).Time("geoip_database_date", time.Unix(int64(reader.Metadata.BuildEpoch), 0)).Msg("load geoip database ok")
 		}
 	}
 	if cmp.Or(resolver.CityReader, resolver.ISPReader, resolver.DomainReader, resolver.ConnectionTypeReader) != nil {
