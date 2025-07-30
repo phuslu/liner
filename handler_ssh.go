@@ -15,7 +15,6 @@ import (
 	"os"
 	"os/exec"
 	"slices"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -343,7 +342,7 @@ func (s *SshHandler) handleChannel(ctx context.Context, newChannel ssh.NewChanne
 					}
 				}
 			case "pty-req":
-				length := req.Payload[3]
+				length := int(binary.BigEndian.Uint32(req.Payload))
 				width = binary.BigEndian.Uint32(req.Payload[length+4:])
 				height = binary.BigEndian.Uint32(req.Payload[length+8:])
 				s.Logger.Info().Str("req_type", req.Type).Uint32("width", width).Uint32("height", height).Msg("handle ssh request")
@@ -361,8 +360,10 @@ func (s *SshHandler) handleChannel(ctx context.Context, newChannel ssh.NewChanne
 					SetTermWindowSize(shellfile.Fd(), uint16(width), uint16(height))
 				}
 			case "subsystem":
-				switch {
-				case strings.HasSuffix(b2s(req.Payload), "sftp"):
+				length := int(binary.BigEndian.Uint32(req.Payload))
+				subsystem := b2s(req.Payload[4 : 4+length])
+				switch subsystem {
+				case "sftp", "internal-sftp":
 					s.Logger.Printf("sftp server serving: %s", req.Payload)
 					go func() {
 						defer connection.Close()
