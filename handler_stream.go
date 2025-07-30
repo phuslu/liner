@@ -61,16 +61,8 @@ func (h *StreamHandler) ServeConn(conn net.Conn) {
 	defer conn.Close()
 
 	var req StreamRequest
-	if addr, ok := conn.RemoteAddr().(*net.TCPAddr); ok {
-		req.RemoteAddr = addr.AddrPort()
-	} else {
-		req.RemoteAddr, _ = netip.ParseAddrPort(conn.RemoteAddr().String())
-	}
-	if addr, ok := conn.LocalAddr().(*net.TCPAddr); ok {
-		req.ServerAddr = addr.AddrPort()
-	} else {
-		req.ServerAddr, _ = netip.ParseAddrPort(conn.LocalAddr().String())
-	}
+	req.RemoteAddr = AddrPortFromNetAddr(conn.RemoteAddr())
+	req.ServerAddr = AddrPortFromNetAddr(conn.LocalAddr())
 	req.TraceID = log.NewXID()
 
 	if tc, _ := conn.(*net.TCPConn); conn != nil && h.Config.SpeedLimit > 0 {

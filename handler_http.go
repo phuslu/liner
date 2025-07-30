@@ -82,14 +82,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	defer riPool.Put(ri)
 
 	ri.RemoteAddr, _ = netip.ParseAddrPort(req.RemoteAddr)
-	switch v := req.Context().Value(http.LocalAddrContextKey).(net.Addr).(type) {
-	case *net.TCPAddr:
-		ri.ServerAddr = v.AddrPort()
-	case *net.UDPAddr:
-		ri.ServerAddr = v.AddrPort()
-	default:
-		ri.ServerAddr, _ = netip.ParseAddrPort(v.String())
-	}
+	ri.ServerAddr = AddrPortFromNetAddr(req.Context().Value(http.LocalAddrContextKey).(net.Addr))
 	if req.TLS != nil {
 		ri.TLSServerName = req.TLS.ServerName
 		ri.TLSVersion = TLSVersion(req.TLS.Version)

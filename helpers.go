@@ -1012,6 +1012,18 @@ func GetPreferedLocalIP() (net.IP, error) {
 	return net.ParseIP(s), nil
 }
 
+func AddrPortFromNetAddr(addr net.Addr) (addrport netip.AddrPort) {
+	switch v := addr.(type) {
+	case *net.TCPAddr:
+		addrport = v.AddrPort()
+	case *net.UDPAddr:
+		addrport = v.AddrPort()
+	default:
+		addrport, _ = netip.ParseAddrPort(v.String())
+	}
+	return
+}
+
 var _ net.Addr = PlainAddr{}
 
 type PlainAddr struct {
