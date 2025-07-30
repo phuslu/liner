@@ -54,7 +54,7 @@ func (h *SshHandler) Load() error {
 			return fmt.Errorf("Failed to parse private key; %w", err)
 		}
 	} else {
-		log.Warn().Strs("ssh_listens", h.Config.Listen).Msg("host_key is not configured, generating ssh key.")
+		h.Logger.Warn().Strs("ssh_listens", h.Config.Listen).Msg("host_key is not configured, generating ssh key.")
 		_, key, err := ed25519.GenerateKey(rand.Reader)
 		if err != nil {
 			return fmt.Errorf("Failed to generate ed25519 key; %w", err)
@@ -76,9 +76,9 @@ func (h *SshHandler) Load() error {
 			loader := NewAuthUserLoaderFromTable(table)
 			records, err := loader.LoadAuthUsers(context.Background())
 			if err != nil {
-				log.Fatal().Err(err).Strs("ssh_listens", h.Config.Listen).Str("auth_table", table).Msg("load auth_table failed")
+				h.Logger.Fatal().Err(err).Strs("ssh_listens", h.Config.Listen).Str("auth_table", table).Msg("load auth_table failed")
 			}
-			log.Info().Strs("ssh_listens", h.Config.Listen).Str("auth_table", table).Int("auth_table_size", len(records)).Msg("load auth_table ok")
+			h.Logger.Info().Strs("ssh_listens", h.Config.Listen).Str("auth_table", table).Int("auth_table_size", len(records)).Msg("load auth_table ok")
 			h.userchecker = &AuthUserLoadChecker{loader}
 		}
 
@@ -125,7 +125,7 @@ func (h *SshHandler) Load() error {
 				return nil
 			},
 			PollDuration: 30 * time.Second,
-			Logger:       log.DefaultLogger.Slog(),
+			Logger:       h.Logger.Slog(),
 		}
 		h.sshConfig.PublicKeyCallback = func(c ssh.ConnMetadata, pub ssh.PublicKey) (*ssh.Permissions, error) {
 			records := *h.keyloader.Load()
@@ -159,18 +159,18 @@ func (h *SshHandler) Load() error {
 }
 
 // ListenAndServe let the server listen and serve.
-func (s *SshHandler) Serve(ctx context.Context, ln net.Listener) error {
+func (h *SshHandler) Serve(ctx context.Context, ln net.Listener) error {
 	for {
-		tcpConn, err := ln.Accept()
+		netConn, err := ln.Accept()
 		if err != nil {
-			if s.closed.Load() {
+			if h.closed.Load() {
 				return nil
 			}
 			return fmt.Errorf("accept incoming connection: %s", err)
 		}
-		if c, ok := tcpConn.(*net.TCPConn); ok {
-			c.SetReadBuffer(cmp.Or(s.Config.TcpReadBuffer, 65536))
-			if !s.Config.DisableKeepalive {
+		if c, ok := netConn.(*net.TCPConn); ok {
+			c.SetReadBuffer(cmp.Or(h.Config.TcpReadBuffer, 65536))
+			if !h.Config.DisableKeepalive {
 				c.SetKeepAliveConfig(net.KeepAliveConfig{
 					Enable:   true,
 					Idle:     15 * time.Second,
@@ -180,34 +180,34 @@ func (s *SshHandler) Serve(ctx context.Context, ln net.Listener) error {
 			}
 		}
 		// Before use, a handshake must be performed on the incoming net.Conn.
-		go s.handleConn(ctx, tcpConn)
+		go h.handleConn(ctx, netConn)
 	}
 }
 
-func (s *SshHandler) handleConn(ctx context.Context, tcpConn net.Conn) {
+func (h *SshHandler) handleConn(ctx context.Context, netConn net.Conn) {
 	// Before use, a handshake must be performed on the incoming net.Conn.
-	sshConn, chans, reqs, err := ssh.NewServerConn(tcpConn, s.sshConfig)
+	conn, chans, reqs, err := ssh.NewServerConn(netConn, h.sshConfig)
 	if err != nil {
 		if err != io.EOF {
-			log.Printf("Failed to handshake (%s)", err)
+			h.Logger.Printf("Failed to handshake (%s)", err)
 		}
 		return
 	}
-	log.Printf("New SSH connection from %s (%s)", sshConn.RemoteAddr(), sshConn.ClientVersion())
+	h.Logger.Printf("New SSH connection from %s (%s)", conn.RemoteAddr(), conn.ClientVersion())
 	// Discard all global out-of-band Requests
 	go ssh.DiscardRequests(reqs)
 	// Accept all channels
-	go s.handleChannels(ctx, chans)
+	go h.handleChannels(ctx, chans, conn)
 }
 
-func (s *SshHandler) handleChannels(ctx context.Context, chans <-chan ssh.NewChannel) {
+func (h *SshHandler) handleChannels(ctx context.Context, chans <-chan ssh.NewChannel, conn *ssh.ServerConn) {
 	// Service the incoming Channel channel in go routine
 	for newChannel := range chans {
-		go s.handleChannel(ctx, newChannel)
+		go h.handleChannel(ctx, newChannel, conn)
 	}
 }
 
-func (s *SshHandler) handleChannel(ctx context.Context, newChannel ssh.NewChannel) {
+func (h *SshHandler) handleChannel(ctx context.Context, newChannel ssh.NewChannel, conn *ssh.ServerConn) {
 	// Since we're handling a shell, we expect a
 	// channel type of "session". The also describes
 	// "x11", "direct-tcpip" and "forwarded-tcpip"
@@ -218,10 +218,10 @@ func (s *SshHandler) handleChannel(ctx context.Context, newChannel ssh.NewChanne
 	}
 
 	// At this point, we have the opportunity to reject the client's
-	// request for another logical connection
-	connection, requests, err := newChannel.Accept()
+	// request for another logical channel
+	channel, requests, err := newChannel.Accept()
 	if err != nil {
-		s.Logger.Printf("Could not accept channel (%s)", err)
+		h.Logger.Printf("Could not accept channel (%s)", err)
 		return
 	}
 
@@ -232,7 +232,7 @@ func (s *SshHandler) handleChannel(ctx context.Context, newChannel ssh.NewChanne
 		envs := map[string]string{}
 
 		for req := range requests {
-			//fmt.Printf("req=%+v\n", req)
+			h.Logger.Info().NetAddr("remote_addr", conn.RemoteAddr()).Any("request", req).Msg("process ssh channel request")
 			switch req.Type {
 			case "exec":
 				req.Reply(true, nil)
@@ -240,10 +240,10 @@ func (s *SshHandler) handleChannel(ctx context.Context, newChannel ssh.NewChanne
 				length := int(binary.BigEndian.Uint32(req.Payload))
 				command := string(req.Payload[4:])
 				if len(command) != length {
-					log.Fatal().Msgf("command length unmatch, got=%d, want=%d", len(command), length)
+					h.Logger.Fatal().Msgf("command length unmatch, got=%d, want=%d", len(command), length)
 				}
 
-				shellcmd := exec.CommandContext(ctx, s.shellPath, "-c", command)
+				shellcmd := exec.CommandContext(ctx, h.shellPath, "-c", command)
 
 				var err error
 				var in io.WriteCloser
@@ -266,28 +266,28 @@ func (s *SshHandler) handleChannel(ctx context.Context, newChannel ssh.NewChanne
 					}
 					var b bytes.Buffer
 					binary.Write(&b, binary.BigEndian, exitStatus)
-					connection.SendRequest("exit-status", false, b.Bytes())
-					connection.Close()
-					s.Logger.Printf("Session closed")
+					channel.SendRequest("exit-status", false, b.Bytes())
+					channel.Close()
+					h.Logger.Printf("Session closed")
 				}
 
 				in, err = shellcmd.StdinPipe()
 				if err != nil {
-					s.Logger.Printf("Could not get stdin pipe (%s)", err)
+					h.Logger.Printf("Could not get stdin pipe (%s)", err)
 					close()
 					return
 				}
 
 				out, err = shellcmd.StdoutPipe()
 				if err != nil {
-					s.Logger.Printf("Could not get stdout pipe (%s)", err)
+					h.Logger.Printf("Could not get stdout pipe (%s)", err)
 					close()
 					return
 				}
 
 				err = shellcmd.Start()
 				if err != nil {
-					s.Logger.Printf("Could not start pty (%s)", err)
+					h.Logger.Printf("Could not start pty (%s)", err)
 					close()
 					return
 				}
@@ -295,23 +295,23 @@ func (s *SshHandler) handleChannel(ctx context.Context, newChannel ssh.NewChanne
 				//pipe session to shell and visa-versa
 				var once sync.Once
 				go func() {
-					io.Copy(connection, out)
+					io.Copy(channel, out)
 					once.Do(close)
 				}()
 				go func() {
-					io.Copy(in, connection)
+					io.Copy(in, channel)
 					once.Do(close)
 				}()
 			case "env":
 				if len(req.Payload) == 0 {
 					if len(req.Payload) < 8 {
-						s.Logger.Warn().Msg("Invalid env request payload")
+						h.Logger.Warn().Msg("Invalid env request payload")
 						req.Reply(false, nil)
 						continue
 					}
 					keylen := binary.BigEndian.Uint32(req.Payload[0:4])
 					if len(req.Payload) < 4+int(keylen)+4 {
-						s.Logger.Warn().Msg("Invalid env request payload")
+						h.Logger.Warn().Msg("Invalid env request payload")
 						req.Reply(false, nil)
 						continue
 					}
@@ -319,7 +319,7 @@ func (s *SshHandler) handleChannel(ctx context.Context, newChannel ssh.NewChanne
 					valuelen := binary.BigEndian.Uint32(req.Payload[4+keylen:])
 					value := string(req.Payload[4+keylen+4 : 4+keylen+4+valuelen])
 					envs[key] = value
-					s.Logger.Info().Str("req_type", req.Type).Str("key", key).Str("value", value).Msg("handle ssh request")
+					h.Logger.Info().Str("req_type", req.Type).Str("key", key).Str("value", value).Msg("handle ssh request")
 				}
 				req.Reply(true, nil)
 			case "shell":
@@ -330,9 +330,9 @@ func (s *SshHandler) handleChannel(ctx context.Context, newChannel ssh.NewChanne
 
 					var err error
 					// Fire up bash for this session
-					shellfile, err = s.startShell(ctx, s.shellPath, envs, connection)
+					shellfile, err = h.startShell(ctx, h.shellPath, envs, channel)
 					if err != nil {
-						s.Logger.Error().Err(err).Str("req_type", req.Type).Str("shell", s.shellPath).Any("envs", envs).Msg("handle ssh request")
+						h.Logger.Error().Err(err).Str("req_type", req.Type).Str("shell", h.shellPath).Any("envs", envs).Msg("handle ssh request")
 						req.Reply(false, nil)
 					}
 
@@ -345,7 +345,7 @@ func (s *SshHandler) handleChannel(ctx context.Context, newChannel ssh.NewChanne
 				length := int(binary.BigEndian.Uint32(req.Payload))
 				width = binary.BigEndian.Uint32(req.Payload[length+4:])
 				height = binary.BigEndian.Uint32(req.Payload[length+8:])
-				s.Logger.Info().Str("req_type", req.Type).Uint32("width", width).Uint32("height", height).Msg("handle ssh request")
+				h.Logger.Info().Str("req_type", req.Type).Uint32("width", width).Uint32("height", height).Msg("handle ssh request")
 				if shellfile != nil {
 					SetTermWindowSize(shellfile.Fd(), uint16(width), uint16(height))
 				}
@@ -355,7 +355,7 @@ func (s *SshHandler) handleChannel(ctx context.Context, newChannel ssh.NewChanne
 			case "window-change":
 				width = binary.BigEndian.Uint32(req.Payload[0:])
 				height = binary.BigEndian.Uint32(req.Payload[4:])
-				s.Logger.Info().Str("req_type", req.Type).Uint32("width", width).Uint32("height", height).Msg("handle ssh request")
+				h.Logger.Info().Str("req_type", req.Type).Uint32("width", width).Uint32("height", height).Msg("handle ssh request")
 				if shellfile != nil {
 					SetTermWindowSize(shellfile.Fd(), uint16(width), uint16(height))
 				}
@@ -364,24 +364,24 @@ func (s *SshHandler) handleChannel(ctx context.Context, newChannel ssh.NewChanne
 				subsystem := b2s(req.Payload[4 : 4+length])
 				switch subsystem {
 				case "sftp", "internal-sftp":
-					s.Logger.Printf("sftp server serving: %s", req.Payload)
+					h.Logger.Printf("sftp server serving: %s", req.Payload)
 					go func() {
-						defer connection.Close()
-						server, err := sftp.NewServer(connection)
+						defer channel.Close()
+						server, err := sftp.NewServer(channel)
 						if err != nil {
-							s.Logger.Printf("could not start sftp server: %s", err)
+							h.Logger.Printf("could not start sftp server: %s", err)
 							return
 						}
 						if err := server.Serve(); err == io.EOF {
 							server.Close()
-							s.Logger.Printf("sftp client exited session.")
+							h.Logger.Printf("sftp client exited session.")
 						} else if err != nil {
-							s.Logger.Printf("sftp server exited with error: %s", err)
+							h.Logger.Printf("sftp server exited with error: %s", err)
 						}
 					}()
 					req.Reply(true, nil)
 				default:
-					s.Logger.Printf("ssh subsystem request %#v not supportted", req)
+					h.Logger.Printf("ssh subsystem request %#v not supportted", req)
 					req.Reply(false, append([]byte("ssh subsystem is not supportted: "), req.Payload...))
 				}
 			case "keepalive@openssh.com":
@@ -393,12 +393,12 @@ func (s *SshHandler) handleChannel(ctx context.Context, newChannel ssh.NewChanne
 	}()
 }
 
-func (s *SshHandler) startShell(ctx context.Context, shellPath string, envs map[string]string, connection ssh.Channel) (*os.File, error) {
+func (h *SshHandler) startShell(ctx context.Context, shellPath string, envs map[string]string, channel ssh.Channel) (*os.File, error) {
 	shell := exec.CommandContext(ctx, shellPath)
-	shell.Dir = os.ExpandEnv(cmp.Or(s.Config.Home, "$HOME"))
+	shell.Dir = os.ExpandEnv(cmp.Or(h.Config.Home, "$HOME"))
 	shell.Env = []string{
 		"SHELL=" + shellPath,
-		"HOME=" + cmp.Or(s.Config.Home, os.Getenv("HOME"), "/"),
+		"HOME=" + cmp.Or(h.Config.Home, os.Getenv("HOME"), "/"),
 		"TERM=" + "linux",
 	}
 	for key, value := range envs {
@@ -412,19 +412,19 @@ func (s *SshHandler) startShell(ctx context.Context, shellPath string, envs map[
 			timer := time.AfterFunc(time.Minute, func() { shell.Process.Signal(os.Kill) })
 			defer timer.Stop()
 		}
-		connection.Close()
+		channel.Close()
 		_, err := shell.Process.Wait()
 		if err != nil {
-			s.Logger.Printf("Failed to exit shell (%s)", err)
+			h.Logger.Printf("Failed to exit shell (%s)", err)
 		}
-		s.Logger.Printf("Session closed")
+		h.Logger.Printf("Session closed")
 	}
 
 	// Allocate a terminal for this channel
-	s.Logger.Printf("Creating pty...")
+	h.Logger.Printf("Creating pty...")
 	file, err := pty.Start(shell)
 	if err != nil {
-		s.Logger.Printf("Could not start pty (%s)", err)
+		h.Logger.Printf("Could not start pty (%s)", err)
 		close()
 		return nil, err
 	}
@@ -432,11 +432,11 @@ func (s *SshHandler) startShell(ctx context.Context, shellPath string, envs map[
 	//pipe session to shell and visa-versa
 	var once sync.Once
 	go func() {
-		io.Copy(connection, file)
+		io.Copy(channel, file)
 		once.Do(close)
 	}()
 	go func() {
-		io.Copy(file, connection)
+		io.Copy(file, channel)
 		once.Do(close)
 	}()
 
