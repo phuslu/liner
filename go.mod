@@ -5,7 +5,7 @@ go 1.24
 require (
 	github.com/creack/pty v1.1.24
 	github.com/go-task/slim-sprig/v3 v3.0.0
-	github.com/libp2p/go-yamux/v5 v5.0.1
+	github.com/libp2p/go-yamux/v5 v5.1.0
 	github.com/mileusna/useragent v1.3.5
 	github.com/oschwald/maxminddb-golang/v2 v2.0.0-beta.8
 	github.com/phuslu/fastdns v0.12.5

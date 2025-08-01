@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/libp2p/go-yamux/v5"
 	"github.com/phuslu/log"
 )
 
@@ -130,6 +131,13 @@ func (h *TunnelHandler) handle(ctx context.Context, rconn net.Conn, laddr string
 type TunnelListener struct {
 	net.Listener
 	Closer io.Closer
+}
+
+func (ln *TunnelListener) Accept() (net.Conn, error) {
+	if session, ok := ln.Listener.(*yamux.Session); ok {
+		log.Info().NetAddr("remote_addr", session.RemoteAddr()).Dur("rtt", session.RTT()).Msg("yamux session accept conn")
+	}
+	return ln.Listener.Accept()
 }
 
 func (ln *TunnelListener) Close() (err error) {
