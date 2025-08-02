@@ -48,6 +48,10 @@ type AuthUserLoadChecker struct {
 	AuthUserLoader
 }
 
+// see https://github.com/alexedwards/argon2id
+// $argon2id$v=19$m=65536,t=3,p=2$c29tZXNhbHQ$RdescudvJCsgt3ub+b+dWRWJTmaaJObG
+var argon2idRegex = regexp.MustCompile(`^\$argon2id\$v=(\d+)\$m=(\d+),t=(\d+),p=(\d+)\$(.+)\$(.+)$`)
+
 func (c *AuthUserLoadChecker) CheckAuthUser(ctx context.Context, user *AuthUserInfo) (err error) {
 	records, err := c.AuthUserLoader.LoadAuthUsers(ctx)
 	if err != nil {
@@ -94,11 +98,6 @@ func (c *AuthUserLoadChecker) CheckAuthUser(ctx context.Context, user *AuthUserI
 			err = fmt.Errorf("wrong password: %v: %w", user.Username, err)
 		}
 	case strings.HasPrefix(record.Password, "$argon2id$"):
-		// see https://github.com/alexedwards/argon2id
-		// $argon2id$v=19$m=65536,t=3,p=2$c29tZXNhbHQ$RdescudvJCsgt3ub+b+dWRWJTmaaJObG
-		argon2idRegex := sync.OnceValue(func() *regexp.Regexp {
-			return regexp.MustCompile(`^\$argon2id\$v=(\d+)\$m=(\d+),t=(\d+),p=(\d+)\$(.+)\$(.+)$`)
-		})()
 		ms := argon2idRegex.FindStringSubmatch(record.Password)
 		if ms == nil {
 			err = fmt.Errorf("invalid argon2id password: %v", record.Password)
@@ -135,25 +134,27 @@ type AuthUserFileLoader struct {
 	Unmarshal func(data []byte, v any) error
 	Logger    *slog.Logger
 
+	onceloader sync.Once
 	fileloader *FileLoader[map[string]AuthUserInfo]
 }
 
 var authfileloaders = xsync.NewMap[string, *FileLoader[map[string]AuthUserInfo]](xsync.WithSerialResize())
 
 func (loader *AuthUserFileLoader) LoadAuthUsers(ctx context.Context) (map[string]AuthUserInfo, error) {
-	if loader.fileloader == nil {
-		loader.fileloader = sync.OnceValue(func() *FileLoader[map[string]AuthUserInfo] {
-			fileloader, _ := authfileloaders.LoadOrCompute(loader.Filename, func() (*FileLoader[map[string]AuthUserInfo], bool) {
-				return &FileLoader[map[string]AuthUserInfo]{
-					Filename:     loader.Filename,
-					Unmarshal:    loader.Unmarshal,
-					Logger:       cmp.Or(loader.Logger, slog.Default()),
-					PollDuration: 15 * time.Second,
-				}, false
-			})
-			return fileloader
-		})()
+	if loader.fileloader != nil {
+		return *loader.fileloader.Load(), nil
 	}
+
+	loader.onceloader.Do(func() {
+		loader.fileloader, _ = authfileloaders.LoadOrCompute(loader.Filename, func() (*FileLoader[map[string]AuthUserInfo], bool) {
+			return &FileLoader[map[string]AuthUserInfo]{
+				Filename:     loader.Filename,
+				Unmarshal:    loader.Unmarshal,
+				Logger:       cmp.Or(loader.Logger, slog.Default()),
+				PollDuration: 15 * time.Second,
+			}, false
+		})
+	})
 
 	return *loader.fileloader.Load(), nil
 }
