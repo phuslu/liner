@@ -15,7 +15,6 @@ case $(uname -m) in
     ;;
 esac
 
-domain=$(curl -sS whatismyip.akamai.com | tr . -).sslip.io
 checksum=$(curl -L https://github.com/phuslu/liner/releases/download/v0.0.0/checksums.txt | grep -E "liner_linux_${arch}-[0-9]+.tar.gz")
 filename=$(echo $checksum | awk '{print $2}')
 pacfile=$(head /dev/urandom | tr -dc '1-9' | head -c 6).pac
@@ -43,6 +42,8 @@ fi
 
 tar xvzf $filename
 rm -rf $filename
+
+domain=$(curl -sS whatismyip.akamai.com | tr . -).sslip.io
 
 cat <<EOF > production.yaml
 global:
