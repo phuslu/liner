@@ -131,6 +131,9 @@ https:
           file: /home/phuslu/liner/china.pac
       - location: /
         proxy:
+          set_headers: |
+            x-http-proto: {{ .Request.Proto }}
+            x-ja4: {{ .JA4 }}
           pass: 'http://127.0.0.1:80'
   - listen: [':443']
     server_name: ['fly.example.org']
