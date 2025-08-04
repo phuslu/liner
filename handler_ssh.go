@@ -304,7 +304,7 @@ func (h *SshHandler) handleChannel(ctx context.Context, newChannel ssh.NewChanne
 					once.Do(close)
 				}()
 			case "env":
-				if len(req.Payload) == 0 {
+				if len(req.Payload) != 0 {
 					if len(req.Payload) < 8 {
 						h.Logger.Warn().Msg("Invalid env request payload")
 						req.Reply(false, nil)
@@ -340,6 +340,7 @@ func (h *SshHandler) handleChannel(ctx context.Context, newChannel ssh.NewChanne
 					// Set window size
 					if width > 0 && height > 0 {
 						SetTermWindowSize(shellfile.Fd(), uint16(width), uint16(height))
+						h.Logger.Info().Str("req_type", req.Type).Str("shell", h.shellPath).Uint32("width", width).Uint32("height", height).Msg("set term windows size")
 					}
 				}
 			case "pty-req":
