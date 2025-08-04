@@ -204,6 +204,8 @@ func (h *SshHandler) handleConn(ctx context.Context, netConn net.Conn) {
 func (h *SshHandler) handleChannels(ctx context.Context, chans <-chan ssh.NewChannel, conn *ssh.ServerConn) {
 	for newChannel := range chans {
 		switch newChannel.ChannelType() {
+		case "direct-tcpip":
+			go h.handleDirectTCPIP(ctx, newChannel, conn)
 		case "session":
 			go func(ctx context.Context, newChannel ssh.NewChannel, conn *ssh.ServerConn) {
 				channel, requests, err := newChannel.Accept()
@@ -214,8 +216,6 @@ func (h *SshHandler) handleChannels(ctx context.Context, chans <-chan ssh.NewCha
 				// Sessions have out-of-band requests such as "shell", "pty-req" and "env"
 				go h.handleSession(ctx, channel, requests, conn)
 			}(ctx, newChannel, conn)
-		case "direct-tcpip":
-			fallthrough
 		case "forwarded-tcpip":
 			fallthrough
 		case "x11":
@@ -224,6 +224,61 @@ func (h *SshHandler) handleChannels(ctx context.Context, chans <-chan ssh.NewCha
 			go newChannel.Reject(ssh.UnknownChannelType, fmt.Sprintf("unknown channel type: %s", newChannel.ChannelType()))
 		}
 	}
+}
+
+func (h *SshHandler) handleDirectTCPIP(ctx context.Context, newChannel ssh.NewChannel, conn *ssh.ServerConn) {
+	// directTCPIPPayload is the payload for a direct-tcpip channel request.
+	// See RFC 4254, section 7.2.
+	var payload struct {
+		HostToConnect       string
+		PortToConnect       uint32
+		OriginatorIPAddress string
+		OriginatorPort      uint32
+	}
+
+	if err := ssh.Unmarshal(newChannel.ExtraData(), &payload); err != nil {
+		h.Logger.Error().Err(err).Msg("handleDirectTCPIP: failed to parse payload")
+		newChannel.Reject(ssh.ConnectionFailed, "failed to parse payload")
+		return
+	}
+
+	targetAddr := net.JoinHostPort(payload.HostToConnect, fmt.Sprintf("%d", payload.PortToConnect))
+
+	rconn, err := net.Dial("tcp", targetAddr)
+	if err != nil {
+		h.Logger.Error().Err(err).Str("target_addr", targetAddr).Msg("handleDirectTCPIP: failed to dial target")
+		newChannel.Reject(ssh.ConnectionFailed, err.Error())
+		return
+	}
+
+	channel, requests, err := newChannel.Accept()
+	if err != nil {
+		h.Logger.Error().Err(err).Msg("handleDirectTCPIP: could not accept channel")
+		rconn.Close()
+		return
+	}
+	go ssh.DiscardRequests(requests)
+
+	h.Logger.Info().NetAddr("remote_addr", conn.RemoteAddr()).Str("target_addr", targetAddr).Msg("handleDirectTCPIP: accepted connection")
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		defer rconn.Close()
+		defer channel.Close()
+		io.Copy(rconn, channel)
+	}()
+	go func() {
+		defer wg.Done()
+		defer rconn.Close()
+		defer channel.Close()
+		io.Copy(channel, rconn)
+	}()
+
+	wg.Wait()
+	h.Logger.Info().NetAddr("remote_addr", conn.RemoteAddr()).Str("target_addr", targetAddr).Msg("handleDirectTCPIP: connection closed")
 }
 
 func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, requests <-chan *ssh.Request, conn *ssh.ServerConn) {
