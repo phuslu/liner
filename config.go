@@ -132,6 +132,7 @@ type SshConfig struct {
 	Listen           []string `json:"listen" yaml:"listen"`
 	ServerVersion    string   `json:"server_version" yaml:"server_version"`
 	TcpReadBuffer    int      `json:"tcp_read_buffer" yaml:"tcp_read_buffer"`
+	TcpWriteBuffer   int      `json:"tcp_write_buffer" yaml:"tcp_write_buffer"`
 	DisableKeepalive bool     `json:"disable_keepalive" yaml:"disable_keepalive"`
 	HostKey          string   `json:"host_key" yaml:"host_key"`
 	AuthTable        string   `json:"auth_table" yaml:"auth_table"`

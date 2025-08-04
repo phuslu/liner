@@ -169,7 +169,8 @@ func (h *SshHandler) Serve(ctx context.Context, ln net.Listener) error {
 			return fmt.Errorf("accept incoming connection: %s", err)
 		}
 		if c, ok := netConn.(*net.TCPConn); ok {
-			c.SetReadBuffer(cmp.Or(h.Config.TcpReadBuffer, 65536))
+			c.SetReadBuffer(cmp.Or(h.Config.TcpReadBuffer, 128*1024))
+			c.SetWriteBuffer(cmp.Or(h.Config.TcpWriteBuffer, 128*1024))
 			if !h.Config.DisableKeepalive {
 				c.SetKeepAliveConfig(net.KeepAliveConfig{
 					Enable:   true,

@@ -27,6 +27,8 @@ type SSHDialer struct {
 	UserKnownHostsFile    string
 	MaxClients            int
 	Timeout               time.Duration
+	TcpReadBuffer         int
+	TcpWriteBuffer        int
 	Logger                *slog.Logger
 	Dialer                Dialer
 
@@ -82,6 +84,14 @@ func (d *SSHDialer) DialContext(ctx context.Context, network, addr string) (net.
 		conn, err := dialer.DialContext(ctx, "tcp", hostport)
 		if err != nil {
 			return nil, err
+		}
+		if tc, ok := conn.(*net.TCPConn); ok {
+			if d.TcpReadBuffer > 0 {
+				tc.SetReadBuffer(d.TcpReadBuffer)
+			}
+			if d.TcpWriteBuffer > 0 {
+				tc.SetWriteBuffer(d.TcpWriteBuffer)
+			}
 		}
 		c, chans, reqs, err := ssh.NewClientConn(conn, addr, config)
 		if err != nil {
