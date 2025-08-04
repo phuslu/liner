@@ -293,15 +293,13 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 		case "exec":
 			req.Reply(true, nil)
 
-			var payload struct {
-				Command string
-			}
-			if err := ssh.Unmarshal(req.Payload, &payload); err != nil {
-				h.Logger.Error().Err(err).Hex("payload", req.Payload).Msg("handleSession exec: failed to parse payload")
-				return
+			length := int(binary.BigEndian.Uint32(req.Payload))
+			command := string(req.Payload[4:])
+			if len(command) != length {
+				h.Logger.Fatal().Msgf("command length unmatch, got=%d, want=%d", len(command), length)
 			}
 
-			shellcmd := exec.CommandContext(ctx, h.shellPath, "-c", payload.Command)
+			shellcmd := exec.CommandContext(ctx, h.shellPath, "-c", command)
 
 			var err error
 			var in io.WriteCloser
@@ -362,16 +360,22 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 			}()
 		case "env":
 			if len(req.Payload) != 0 {
-				var payload struct {
-					Key   string
-					Value string
+				if len(req.Payload) < 8 {
+					h.Logger.Warn().Msg("Invalid env request payload")
+					req.Reply(false, nil)
+					continue
 				}
-				if err := ssh.Unmarshal(req.Payload, &payload); err != nil {
-					h.Logger.Error().Err(err).Hex("payload", req.Payload).Msg("handleSession env: failed to parse payload")
-					return
+				keylen := binary.BigEndian.Uint32(req.Payload[0:4])
+				if len(req.Payload) < 4+int(keylen)+4 {
+					h.Logger.Warn().Msg("Invalid env request payload")
+					req.Reply(false, nil)
+					continue
 				}
-				envs[payload.Key] = payload.Value
-				h.Logger.Info().Str("req_type", req.Type).Str("key", payload.Key).Str("value", payload.Value).Msg("handle ssh request")
+				key := string(req.Payload[4 : 4+keylen])
+				valuelen := binary.BigEndian.Uint32(req.Payload[4+keylen:])
+				value := string(req.Payload[4+keylen+4 : 4+keylen+4+valuelen])
+				envs[key] = value
+				h.Logger.Info().Str("req_type", req.Type).Str("key", key).Str("value", value).Msg("handle ssh request")
 			}
 			req.Reply(true, nil)
 		case "shell":
@@ -395,17 +399,10 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 				}
 			}
 		case "pty-req":
-			var payload struct {
-				Term   string
-				Width  uint32
-				Height uint32
-			}
-			if err := ssh.Unmarshal(req.Payload, &payload); err != nil {
-				h.Logger.Error().Err(err).Hex("payload", req.Payload).Msg("handleSession pty-req: failed to parse payload")
-				return
-			}
-
-			h.Logger.Info().Str("req_type", req.Type).Str("term", payload.Term).Uint32("width", payload.Width).Uint32("height", payload.Height).Msg("handle ssh request")
+			length := int(binary.BigEndian.Uint32(req.Payload))
+			width = binary.BigEndian.Uint32(req.Payload[length+4:])
+			height = binary.BigEndian.Uint32(req.Payload[length+8:])
+			h.Logger.Info().Str("req_type", req.Type).Uint32("width", width).Uint32("height", height).Msg("handle ssh request")
 			if shellfile != nil {
 				SetTermWindowSize(shellfile.Fd(), uint16(width), uint16(height))
 			}
@@ -413,27 +410,16 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 			// know we have a pty ready for input
 			req.Reply(true, nil)
 		case "window-change":
-			var payload struct {
-				Width  uint32
-				Height uint32
-			}
-			if err := ssh.Unmarshal(req.Payload, &payload); err != nil {
-				h.Logger.Error().Err(err).Hex("payload", req.Payload).Msg("handleSession window-change: failed to parse payload")
-				return
-			}
-			h.Logger.Info().Str("req_type", req.Type).Uint32("width", payload.Width).Uint32("height", payload.Height).Msg("handle ssh request")
+			width = binary.BigEndian.Uint32(req.Payload[0:])
+			height = binary.BigEndian.Uint32(req.Payload[4:])
+			h.Logger.Info().Str("req_type", req.Type).Uint32("width", width).Uint32("height", height).Msg("handle ssh request")
 			if shellfile != nil {
 				SetTermWindowSize(shellfile.Fd(), uint16(width), uint16(height))
 			}
 		case "subsystem":
-			var payload struct {
-				SubSystem string
-			}
-			if err := ssh.Unmarshal(req.Payload, &payload); err != nil {
-				h.Logger.Error().Err(err).Hex("payload", req.Payload).Msg("handleSession subsystem: failed to parse payload")
-				return
-			}
-			switch payload.SubSystem {
+			length := int(binary.BigEndian.Uint32(req.Payload))
+			subsystem := b2s(req.Payload[4 : 4+length])
+			switch subsystem {
 			case "sftp", "internal-sftp":
 				h.Logger.Printf("sftp server serving: %s", req.Payload)
 				go func() {
