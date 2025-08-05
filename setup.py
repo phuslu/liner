@@ -38,7 +38,7 @@ liner_extension = setuptools.Extension(
 )
 
 setuptools.setup(
-    name='liner',
+    name='liner-py',
     version=revsion,
     description='python bindings for liner',
     long_description='python bindings for liner.',

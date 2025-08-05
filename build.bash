@@ -71,23 +71,23 @@ function wheel() {
 
 	python3 -m venv ~/.venv
 	~/.venv/bin/pip install auditwheel
-	~/.venv/bin/auditwheel repair wheel/dist/liner-*.whl
+	~/.venv/bin/auditwheel repair wheel/dist/liner*.whl
 
 	mkdir -p build
-	mv wheelhouse/liner-*.whl build/
+	mv wheelhouse/liner*.whl build/
 }
 
 function release() {
 	pushd build
 
-	if ls liner_*; then
+	if ls liner_*.whl; then
+		gh release upload v0.0.0 liner_*.whl --clobber
+	elif ls liner_*; then
 		sha1sum liner* >checksums.txt
 		git log --oneline --pretty=format:"%h %s" -5 | tee changelog.txt
-		gh release view v0.0.0 --json assets --jq .assets[].name | egrep '^liner_' | xargs -i gh release delete-asset v0.0.0 {} --yes
+		gh release view v0.0.0 --json assets --jq .assets[].name | egrep '^liner_' | egrep -v '^liner_py-' | xargs -i gh release delete-asset v0.0.0 {} --yes
 		gh release upload v0.0.0 liner_* checksums.txt --clobber
 		gh release edit v0.0.0 --notes-file changelog.txt
-	elif ls liner-*.whl; then
-		gh release upload v0.0.0 liner-*.whl --clobber
 	fi
 
 	popd
