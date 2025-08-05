@@ -284,8 +284,8 @@ func (h *SshHandler) handleDirectTCPIP(ctx context.Context, newChannel ssh.NewCh
 func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, requests <-chan *ssh.Request, conn *ssh.ServerConn) {
 	// Sessions have out-of-band requests such as "shell", "pty-req" and "env"
 	var shellfile *os.File
-	var width, height uint32
-	envs := map[string]string{}
+	var window struct{ Width, Height uint32 }
+	var envs = map[string]string{}
 
 	for req := range requests {
 		h.Logger.Info().NetAddr("remote_addr", conn.RemoteAddr()).Any("request", req).Msg("process ssh channel request")
@@ -293,13 +293,15 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 		case "exec":
 			req.Reply(true, nil)
 
-			length := int(binary.BigEndian.Uint32(req.Payload))
-			command := string(req.Payload[4:])
-			if len(command) != length {
-				h.Logger.Fatal().Msgf("command length unmatch, got=%d, want=%d", len(command), length)
+			var payload struct {
+				Command string
+			}
+			if err := ssh.Unmarshal(req.Payload, &payload); err != nil {
+				h.Logger.Error().Err(err).Msgf("ssh exec unmarshal error")
+				continue
 			}
 
-			shellcmd := exec.CommandContext(ctx, h.shellPath, "-c", command)
+			shellcmd := exec.CommandContext(ctx, h.shellPath, "-c", payload.Command)
 
 			var err error
 			var in io.WriteCloser
@@ -360,22 +362,16 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 			}()
 		case "env":
 			if len(req.Payload) != 0 {
-				if len(req.Payload) < 8 {
-					h.Logger.Warn().Msg("Invalid env request payload")
-					req.Reply(false, nil)
+				var payload struct {
+					Key   string
+					Value string
+				}
+				if err := ssh.Unmarshal(req.Payload, &payload); err != nil {
+					h.Logger.Error().Err(err).Msgf("ssh env unmarshal error")
 					continue
 				}
-				keylen := binary.BigEndian.Uint32(req.Payload[0:4])
-				if len(req.Payload) < 4+int(keylen)+4 {
-					h.Logger.Warn().Msg("Invalid env request payload")
-					req.Reply(false, nil)
-					continue
-				}
-				key := string(req.Payload[4 : 4+keylen])
-				valuelen := binary.BigEndian.Uint32(req.Payload[4+keylen:])
-				value := string(req.Payload[4+keylen+4 : 4+keylen+4+valuelen])
-				envs[key] = value
-				h.Logger.Info().Str("req_type", req.Type).Str("key", key).Str("value", value).Msg("handle ssh request")
+				envs[payload.Key] = payload.Value
+				h.Logger.Info().Str("req_type", req.Type).Str("key", payload.Key).Str("value", payload.Value).Msg("handle ssh request")
 			}
 			req.Reply(true, nil)
 		case "shell":
@@ -393,33 +389,49 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 				}
 
 				// Set window size
-				if width > 0 && height > 0 {
-					SetTermWindowSize(shellfile.Fd(), uint16(width), uint16(height))
-					h.Logger.Info().Str("req_type", req.Type).Str("shell", h.shellPath).Uint32("width", width).Uint32("height", height).Msg("set term windows size")
+				if window.Width > 0 && window.Height > 0 {
+					SetTermWindowSize(shellfile.Fd(), uint16(window.Width), uint16(window.Height))
+					h.Logger.Info().Str("req_type", req.Type).Str("shell", h.shellPath).Uint32("width", window.Width).Uint32("height", window.Height).Msg("set term windows size")
 				}
 			}
 		case "pty-req":
+			if len(req.Payload) < 4 {
+				h.Logger.Error().Msgf("ssh pty-req payload length error")
+			}
 			length := int(binary.BigEndian.Uint32(req.Payload))
-			width = binary.BigEndian.Uint32(req.Payload[length+4:])
-			height = binary.BigEndian.Uint32(req.Payload[length+8:])
-			h.Logger.Info().Str("req_type", req.Type).Uint32("width", width).Uint32("height", height).Msg("handle ssh request")
+			if len(req.Payload) < 4+length+4+4 {
+				h.Logger.Error().Msgf("ssh pty-req payload length error")
+			}
+			window.Width = binary.BigEndian.Uint32(req.Payload[length+4:])
+			window.Height = binary.BigEndian.Uint32(req.Payload[length+8:])
+			h.Logger.Info().Str("req_type", req.Type).Uint32("width", window.Width).Uint32("height", window.Height).Msg("handle ssh request")
 			if shellfile != nil {
-				SetTermWindowSize(shellfile.Fd(), uint16(width), uint16(height))
+				SetTermWindowSize(shellfile.Fd(), uint16(window.Width), uint16(window.Height))
 			}
 			// Responding true (OK) here will let the client
 			// know we have a pty ready for input
 			req.Reply(true, nil)
 		case "window-change":
-			width = binary.BigEndian.Uint32(req.Payload[0:])
-			height = binary.BigEndian.Uint32(req.Payload[4:])
-			h.Logger.Info().Str("req_type", req.Type).Uint32("width", width).Uint32("height", height).Msg("handle ssh request")
+			if len(req.Payload) < 8 {
+				h.Logger.Error().Msgf("ssh window-change payload length error")
+			}
+			if err := ssh.Unmarshal(req.Payload[:8], &window); err != nil {
+				h.Logger.Error().Err(err).Msgf("ssh window-change unmarshal error")
+				continue
+			}
+			h.Logger.Info().Str("req_type", req.Type).Uint32("width", window.Width).Uint32("height", window.Height).Msg("handle ssh request")
 			if shellfile != nil {
-				SetTermWindowSize(shellfile.Fd(), uint16(width), uint16(height))
+				SetTermWindowSize(shellfile.Fd(), uint16(window.Width), uint16(window.Height))
 			}
 		case "subsystem":
-			length := int(binary.BigEndian.Uint32(req.Payload))
-			subsystem := b2s(req.Payload[4 : 4+length])
-			switch subsystem {
+			var payload struct {
+				SubSystem string
+			}
+			if err := ssh.Unmarshal(req.Payload, &payload); err != nil {
+				h.Logger.Error().Err(err).Msgf("ssh subsystem unmarshal error")
+				continue
+			}
+			switch payload.SubSystem {
 			case "sftp", "internal-sftp":
 				h.Logger.Printf("sftp server serving: %s", req.Payload)
 				go func() {
