@@ -142,11 +142,11 @@ func (d *HTTP3Dialer) DialContext(ctx context.Context, network, addr string) (ne
 
 	resp, err := d.transport.RoundTripOpt(req, http3.RoundTripOpt{OnlyCachedConn: false})
 	if err != nil {
-		if errmsg := err.Error(); strings.Contains(errmsg, "timeout: ") || strings.Contains(errmsg, "context deadline exceeded") || strings.Contains(errmsg, "context canceled") {
-			if d.Logger != nil {
-				d.Logger.Warn("close underlying http3 connection", "error", err)
-			}
-		}
+		// if errmsg := err.Error(); strings.Contains(errmsg, "timeout: ") || strings.Contains(errmsg, "context deadline exceeded") || strings.Contains(errmsg, "context canceled") {
+		// 	if d.Logger != nil {
+		// 		d.Logger.Warn("close underlying http3 connection", "error", err)
+		// 	}
+		// }
 		return nil, err
 	}
 
