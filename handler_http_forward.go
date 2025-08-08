@@ -20,7 +20,6 @@ import (
 
 	"github.com/mileusna/useragent"
 	"github.com/phuslu/log"
-	"github.com/valyala/bytebufferpool"
 	"golang.org/x/net/publicsuffix"
 )
 
@@ -143,14 +142,11 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		proxyAuthError = h.userchecker.CheckAuthUser(req.Context(), &ri.ProxyUserInfo)
 	}
 
-	bb := bytebufferpool.Get()
-	defer bytebufferpool.Put(bb)
-
 	policyName := h.Config.Forward.Policy
 	speedLimit := h.Config.Forward.SpeedLimit
 	if h.policy != nil {
-		bb.Reset()
-		err = h.policy.Execute(bb, struct {
+		ri.SmallBuffer.Reset()
+		err = h.policy.Execute(&ri.SmallBuffer, struct {
 			Request         *http.Request
 			ClientHelloInfo *tls.ClientHelloInfo
 			JA4             string
@@ -164,7 +160,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			return
 		}
 
-		policyName = strings.TrimSpace(bb.String())
+		policyName = strings.TrimSpace(b2s(ri.SmallBuffer.B))
 		log.Debug().Context(ri.LogContext).Interface("client_hello_info", ri.ClientHelloInfo).Interface("tls_connection_state", req.TLS).Str("forward_policy_name", policyName).Msg("execute forward_policy ok")
 
 		switch policyName {
@@ -247,8 +243,8 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 	if ri.ClientTCPConn != nil && h.Config.Forward.TcpCongestion != "" {
 		var tcpCongestion = h.Config.Forward.TcpCongestion
 		if h.tcpcongestion != nil {
-			bb.Reset()
-			err := h.tcpcongestion.Execute(bb, struct {
+			ri.SmallBuffer.Reset()
+			err := h.tcpcongestion.Execute(&ri.SmallBuffer, struct {
 				Request         *http.Request
 				ClientHelloInfo *tls.ClientHelloInfo
 				JA4             string
@@ -261,7 +257,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 				http.Error(rw, err.Error(), http.StatusBadGateway)
 				return
 			}
-			tcpCongestion = bb.String()
+			tcpCongestion = b2s(ri.SmallBuffer.B)
 		}
 		if options := strings.Fields(tcpCongestion); len(options) >= 1 {
 			switch name := options[0]; name {
@@ -302,8 +298,8 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 
 	var dialerValue = h.Config.Forward.Dialer
 	if h.dialer != nil {
-		bb.Reset()
-		err := h.dialer.Execute(bb, struct {
+		ri.SmallBuffer.Reset()
+		err := h.dialer.Execute(&ri.SmallBuffer, struct {
 			Request         *http.Request
 			ClientHelloInfo *tls.ClientHelloInfo
 			JA4             string
@@ -316,7 +312,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			http.NotFound(rw, req)
 			return
 		}
-		dialerValue = strings.TrimSpace(bb.String())
+		dialerValue = strings.TrimSpace(b2s(ri.SmallBuffer.B))
 	}
 
 	var userLog = h.Config.Forward.Log
