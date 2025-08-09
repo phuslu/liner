@@ -373,6 +373,29 @@ func AppendReadFrom(dst []byte, r io.Reader) ([]byte, int64, error) {
 	}
 }
 
+var _ io.Writer = (*WritableBytes)(nil)
+
+type WritableBytes struct {
+	B []byte
+}
+
+func (w *WritableBytes) Write(b []byte) (int, error) {
+	w.B = append(w.B, b...)
+	return len(b), nil
+}
+
+func (w *WritableBytes) Reset() {
+	if cap(w.B) <= 1024 {
+		w.B = w.B[:0]
+	} else {
+		w.B = nil
+	}
+}
+
+func (w *WritableBytes) StringTo(dst []byte) string {
+	return string(append(dst, w.B...))
+}
+
 func AESCBCBase64Decrypt(text string, ekey []byte, ikey []byte) ([]byte, error) {
 	if n := len(text) % 4; n > 0 {
 		text += string([]byte{'=', '=', '='}[:4-n])

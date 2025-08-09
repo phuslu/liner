@@ -13,7 +13,6 @@ import (
 
 	"github.com/phuslu/fastdns"
 	"github.com/phuslu/log"
-	"github.com/valyala/bytebufferpool"
 )
 
 type HTTPWebDohHandler struct {
@@ -84,11 +83,8 @@ func (h *HTTPWebDohHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		dr.Domain = b2s(AppendToLower(make([]byte, 0, 256), b2s(dr.Message.Domain)))
 		dr.QType = dr.Message.Question.Type.String()
 
-		bb := bytebufferpool.Get()
-		defer bytebufferpool.Put(bb)
-
-		bb.Reset()
-		err = h.policy.Execute(bb, struct {
+		ri.SmallBuffer.Reset()
+		err = h.policy.Execute(&ri.SmallBuffer, struct {
 			Request *http.Request
 			Dns     *DnsRequest
 		}{req, dr})
@@ -97,7 +93,7 @@ func (h *HTTPWebDohHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 			return
 		}
 
-		policyName := strings.TrimSpace(bb.String())
+		policyName := strings.TrimSpace(ri.SmallBuffer.StringTo(make([]byte, 0, 64)))
 
 		if code, _ := strconv.Atoi(policyName); 100 <= code && code <= 999 {
 			// msg := fmt.Sprintf("%d %s", code, http.StatusText(code))

@@ -86,18 +86,15 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		}
 	}
 
-	bb := bytebufferpool.Get()
-	defer bytebufferpool.Put(bb)
-
-	bb.Reset()
-	h.proxypass.Execute(bb, struct {
+	ri.SmallBuffer.Reset()
+	h.proxypass.Execute(&ri.SmallBuffer, struct {
 		Request    *http.Request
 		JA4        string
 		UserAgent  *useragent.UserAgent
 		ServerAddr netip.AddrPort
 	}{req, ri.JA4, &ri.UserAgent, ri.ServerAddr})
 
-	proxypass := strings.TrimSpace(bb.String())
+	proxypass := strings.TrimSpace(ri.SmallBuffer.StringTo(make([]byte, 0, 512)))
 	if code, _ := strconv.Atoi(proxypass); 100 <= code && code <= 999 {
 		http.Error(rw, fmt.Sprintf("%d %s", code, http.StatusText(code)), code)
 		return

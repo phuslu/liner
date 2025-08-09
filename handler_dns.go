@@ -16,7 +16,6 @@ import (
 
 	"github.com/phuslu/fastdns"
 	"github.com/phuslu/log"
-	"github.com/valyala/bytebufferpool"
 )
 
 type DnsHandler struct {
@@ -29,19 +28,21 @@ type DnsHandler struct {
 }
 
 type DnsRequest struct {
-	LogContext log.Context
-	LocalAddr  netip.AddrPort
-	RemoteAddr netip.AddrPort
-	Message    *fastdns.Message
-	Proto      string
-	Domain     string
-	QType      string
+	LogContext  log.Context
+	LocalAddr   netip.AddrPort
+	RemoteAddr  netip.AddrPort
+	Message     *fastdns.Message
+	SmallBuffer WritableBytes
+	Proto       string
+	Domain      string
+	QType       string
 }
 
 var drPool = sync.Pool{
 	New: func() interface{} {
 		r := new(DnsRequest)
 		r.Message = fastdns.AcquireMessage()
+		r.SmallBuffer.B = make([]byte, 0, 256)
 		return r
 	},
 }
@@ -79,6 +80,7 @@ func (h *DnsHandler) Serve(ctx context.Context, conn *net.UDPConn) {
 			continue
 		}
 		req.Message.Raw = req.Message.Raw[:n]
+		req.SmallBuffer.Reset()
 
 		req.LocalAddr = laddr
 		req.RemoteAddr = addr
@@ -160,11 +162,8 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, rw fastdns.ResponseWriter, re
 		req.Domain = b2s(AppendToLower(make([]byte, 0, 256), b2s(req.Message.Domain)))
 		req.QType = req.Message.Question.Type.String()
 
-		bb := bytebufferpool.Get()
-		defer bytebufferpool.Put(bb)
-
-		bb.Reset()
-		err = h.policy.Execute(bb, struct {
+		req.SmallBuffer.Reset()
+		err = h.policy.Execute(&req.SmallBuffer, struct {
 			Request *DnsRequest
 		}{req})
 		if err != nil {
@@ -172,7 +171,7 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, rw fastdns.ResponseWriter, re
 			return
 		}
 
-		policyName := strings.TrimSpace(bb.String())
+		policyName := strings.TrimSpace(req.SmallBuffer.StringTo(make([]byte, 0, 256)))
 		log.Debug().Context(req.LogContext).Str("req_domain", req.Domain).Str("req_qtype", req.QType).Str("forward_policy_name", policyName).Msg("execute forward_policy ok")
 
 		toaddrs := func(dst []netip.Addr, ss []string) []netip.Addr {

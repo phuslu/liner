@@ -55,6 +55,7 @@ type RequestInfo struct {
 	AuthUserInfo    AuthUserInfo
 	GeoIPInfo       GeoIPInfo
 	LogContext      log.Context
+	SmallBuffer     WritableBytes
 }
 
 var RequestInfoContextKey = struct {
@@ -219,6 +220,8 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		Str("remote_isp", ri.GeoIPInfo.ISP).
 		Str("remote_connection_type", ri.GeoIPInfo.ConnectionType).
 		Value()
+
+	ri.SmallBuffer.Reset()
 
 	req = req.WithContext(context.WithValue(req.Context(), RequestInfoContextKey, ri))
 
