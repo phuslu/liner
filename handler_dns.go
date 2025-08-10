@@ -33,9 +33,13 @@ type DnsRequest struct {
 	RemoteAddr  netip.AddrPort
 	Message     *fastdns.Message
 	SmallBuffer WritableBytes
+	domain      []byte
 	Proto       string
-	Domain      string
 	QType       string
+}
+
+func (req *DnsRequest) Domain() string {
+	return b2s(req.domain)
 }
 
 var drPool = sync.Pool{
@@ -43,6 +47,7 @@ var drPool = sync.Pool{
 		r := new(DnsRequest)
 		r.Message = fastdns.AcquireMessage()
 		r.SmallBuffer.B = make([]byte, 0, 256)
+		r.domain = make([]byte, 0, 256)
 		return r
 	},
 }
@@ -81,13 +86,11 @@ func (h *DnsHandler) Serve(ctx context.Context, conn *net.UDPConn) {
 		}
 		req.Message.Raw = req.Message.Raw[:n]
 		req.SmallBuffer.Reset()
-
+		req.domain = req.domain[:0]
+		req.Proto = "dns"
+		req.QType = ""
 		req.LocalAddr = laddr
 		req.RemoteAddr = addr
-		req.Proto = "dns"
-		req.Domain = ""
-		req.QType = ""
-
 		rw := dnsResponseWriter{conn, req.LocalAddr, req.RemoteAddr}
 
 		go h.ServeDNS(ctx, rw, req)
@@ -128,11 +131,11 @@ func (h *DnsHandler) ServeTCP(ctx context.Context, ln net.Listener) {
 					return
 				}
 
+				req.domain = req.domain[:0]
+				req.Proto = "dot"
+				req.QType = ""
 				req.LocalAddr = laddr
 				req.RemoteAddr = raddr
-				req.Proto = "dot"
-				req.Domain = ""
-				req.QType = ""
 
 				rw := dotResponseWriter{conn, req.LocalAddr, req.RemoteAddr}
 
@@ -159,7 +162,7 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, rw fastdns.ResponseWriter, re
 			return
 		}
 
-		req.Domain = b2s(AppendToLower(make([]byte, 0, 256), b2s(req.Message.Domain)))
+		req.domain = AppendToLower(req.domain[:0], b2s(req.Message.Domain))
 		req.QType = req.Message.Question.Type.String()
 
 		req.SmallBuffer.Reset()
@@ -172,7 +175,7 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, rw fastdns.ResponseWriter, re
 		}
 
 		policyName := strings.TrimSpace(req.SmallBuffer.StringTo(make([]byte, 0, 256)))
-		log.Debug().Context(req.LogContext).Str("req_domain", req.Domain).Str("req_qtype", req.QType).Str("forward_policy_name", policyName).Msg("execute forward_policy ok")
+		log.Debug().Context(req.LogContext).Str("req_domain", req.Domain()).Str("req_qtype", req.QType).Str("forward_policy_name", policyName).Msg("execute forward_policy ok")
 
 		toaddrs := func(dst []netip.Addr, ss []string) []netip.Addr {
 			for _, s := range ss {
@@ -192,16 +195,16 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, rw fastdns.ResponseWriter, re
 			}
 			rcode, err := fastdns.ParseRcode(parts[1])
 			if err != nil {
-				log.Error().Err(err).Context(req.LogContext).Str("req_domain", req.Domain).Str("req_qtype", req.QType).Msg("dns policy parse rcode error")
+				log.Error().Err(err).Context(req.LogContext).Str("req_domain", req.Domain()).Str("req_qtype", req.QType).Msg("dns policy parse rcode error")
 				fastdns.Error(rw, req.Message, fastdns.RcodeServFail)
 				return
 			}
-			log.Debug().Context(req.LogContext).Str("req_domain", req.Domain).Str("req_qtype", req.QType).Stringer("rcode", rcode).Msg("dns policy error executed")
+			log.Debug().Context(req.LogContext).Str("req_domain", req.Domain()).Str("req_qtype", req.QType).Stringer("rcode", rcode).Msg("dns policy error executed")
 			fastdns.Error(rw, req.Message, rcode)
 			return
 		case "HOST", "host":
 			addrs := toaddrs(make([]netip.Addr, 0, 4), parts[1:])
-			log.Debug().Context(req.LogContext).Str("req_domain", req.Domain).Str("req_qtype", req.QType).NetIPAddrs("hosts", addrs).Msg("dns policy host executed")
+			log.Debug().Context(req.LogContext).Str("req_domain", req.Domain()).Str("req_qtype", req.QType).NetIPAddrs("hosts", addrs).Msg("dns policy host executed")
 			fastdns.HOST(rw, req.Message, 300, addrs)
 			return
 		case "CNAME", "cname":
@@ -210,7 +213,7 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, rw fastdns.ResponseWriter, re
 				return
 			}
 			cnames := strings.Split(parts[1], ",")
-			log.Debug().Context(req.LogContext).Str("req_domain", req.Domain).Str("req_qtype", req.QType).Strs("cnames", cnames).Msg("dns policy cname executed")
+			log.Debug().Context(req.LogContext).Str("req_domain", req.Domain()).Str("req_qtype", req.QType).Strs("cnames", cnames).Msg("dns policy cname executed")
 			fastdns.CNAME(rw, req.Message, 300, cnames, nil)
 			return
 		case "TXT", "txt":
@@ -219,7 +222,7 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, rw fastdns.ResponseWriter, re
 				return
 			}
 			txt := parts[1]
-			log.Debug().Context(req.LogContext).Str("req_domain", req.Domain).Str("req_qtype", req.QType).Str("txt", txt).Msg("dns policy txt executed")
+			log.Debug().Context(req.LogContext).Str("req_domain", req.Domain()).Str("req_qtype", req.QType).Str("txt", txt).Msg("dns policy txt executed")
 			fastdns.TXT(rw, req.Message, 300, txt)
 			return
 		case "PROXY_PASS", "proxy_pass":
@@ -227,15 +230,15 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, rw fastdns.ResponseWriter, re
 				proxypass = parts[1]
 				resolver, err := GetResolver(proxypass)
 				if err != nil {
-					log.Error().Err(err).Context(req.LogContext).Str("req_domain", req.Domain).Str("req_qtype", req.QType).Str("proxy_pass", proxypass).Msg("dns policy parse proxy_pass error")
+					log.Error().Err(err).Context(req.LogContext).Str("req_domain", req.Domain()).Str("req_qtype", req.QType).Str("proxy_pass", proxypass).Msg("dns policy parse proxy_pass error")
 					fastdns.Error(rw, req.Message, fastdns.RcodeServFail)
 					return
 				}
 				dialer = resolver.Client.Dialer
-				log.Debug().Context(req.LogContext).Str("req_domain", req.Domain).Str("req_qtype", req.QType).Str("proxy_pass", proxypass).Msg("dns policy proxy_pass executed")
+				log.Debug().Context(req.LogContext).Str("req_domain", req.Domain()).Str("req_qtype", req.QType).Str("proxy_pass", proxypass).Msg("dns policy proxy_pass executed")
 			}
 		}
-		defer h.DataLogger.Log().Str("logger", "dns").Context(req.LogContext).Str("req_domain", req.Domain).Str("req_qtype", req.QType).Str("proxy_pass", proxypass).Msg("")
+		defer h.DataLogger.Log().Str("logger", "dns").Context(req.LogContext).Str("req_domain", req.Domain()).Str("req_qtype", req.QType).Str("proxy_pass", proxypass).Msg("")
 	} else {
 		defer func() {
 			err := fastdns.ParseMessage(req.Message, req.Message.Raw, false)
