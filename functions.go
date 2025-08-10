@@ -88,6 +88,11 @@ func (f *Functions) geosite(domain string) string {
 }
 
 func (f *Functions) geoip(ipStr string) (info GeoIPInfo) {
+	if strings.IndexByte(ipStr, ':') > 0 {
+		if host, _, err := net.SplitHostPort(ipStr); err == nil {
+			ipStr = host
+		}
+	}
 	if ip, err := netip.ParseAddr(ipStr); err == nil {
 		info = f.GeoResolver.GetGeoIPInfo(context.Background(), ip)
 	}
