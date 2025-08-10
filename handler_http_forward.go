@@ -269,7 +269,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 				case "brutal":
 					if len(options) < 2 {
 						log.Error().Context(ri.LogContext).Strs("forward_tcp_congestion_options", options).Msg("parse forward_tcp_congestion error")
-						http.Error(rw, err.Error(), http.StatusBadGateway)
+						http.Error(rw, "invalid tcp_congestion value", http.StatusBadGateway)
 						return
 					}
 					if rate, _ := strconv.Atoi(options[1]); rate > 0 {
