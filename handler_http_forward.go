@@ -160,7 +160,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			return
 		}
 
-		policyName = strings.TrimSpace(ri.SmallBuffer.StringTo(make([]byte, 0, 64)))
+		policyName = ri.SmallBuffer.StringTo(make([]byte, 0, 64))
 		log.Debug().Context(ri.LogContext).Interface("client_hello_info", ri.ClientHelloInfo).Interface("tls_connection_state", req.TLS).Str("forward_policy_name", policyName).Msg("execute forward_policy ok")
 
 		switch policyName {

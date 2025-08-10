@@ -174,7 +174,7 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, rw fastdns.ResponseWriter, re
 			return
 		}
 
-		policyName := strings.TrimSpace(req.SmallBuffer.StringTo(make([]byte, 0, 256)))
+		policyName := strings.TrimSpace(b2s(req.SmallBuffer.B))
 		log.Debug().Context(req.LogContext).Str("req_domain", req.Domain()).Str("req_qtype", req.QType).Str("forward_policy_name", policyName).Msg("execute forward_policy ok")
 
 		toaddrs := func(dst []netip.Addr, ss []string) []netip.Addr {
