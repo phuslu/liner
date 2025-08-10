@@ -42,7 +42,7 @@ func (h *TunnelHandler) h1tunnel(ctx context.Context, dialer string) (net.Listen
 			err = fmt.Errorf("lookup https %v error: emtpy record", host)
 		}
 		if err != nil {
-			log.Error().Err(err).Str("tunnel_host", host).Stringer("tunnel_url", u).Msg("lookup https error")
+			log.Error().Err(err).Str("tunnel_host", host).Str("tunnel_url", u.String()).Msg("lookup https error")
 			return nil, err
 		}
 		if len(https[0].ECH) > 0 {

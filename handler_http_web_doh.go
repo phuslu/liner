@@ -127,7 +127,7 @@ func (h *HTTPWebDohHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 				fastdns.Error(drw, dr.Message, fastdns.RcodeServFail)
 				return
 			}
-			log.Debug().Context(ri.LogContext).Str("doh_req_domain", dr.Domain()).Str("doh_req_qtype", dr.QType).Stringer("rcode", rcode).Msg("dns policy error executed")
+			log.Debug().Context(ri.LogContext).Str("doh_req_domain", dr.Domain()).Str("doh_req_qtype", dr.QType).Str("rcode", rcode.String()).Msg("dns policy error executed")
 			fastdns.Error(drw, dr.Message, rcode)
 			return
 		case "HOST", "host":

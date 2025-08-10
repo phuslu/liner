@@ -199,7 +199,7 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, rw fastdns.ResponseWriter, re
 				fastdns.Error(rw, req.Message, fastdns.RcodeServFail)
 				return
 			}
-			log.Debug().Context(req.LogContext).Str("req_domain", req.Domain()).Str("req_qtype", req.QType).Stringer("rcode", rcode).Msg("dns policy error executed")
+			log.Debug().Context(req.LogContext).Str("req_domain", req.Domain()).Str("req_qtype", req.QType).Str("rcode", rcode.String()).Msg("dns policy error executed")
 			fastdns.Error(rw, req.Message, rcode)
 			return
 		case "HOST", "host":
