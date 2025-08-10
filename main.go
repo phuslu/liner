@@ -390,7 +390,7 @@ func main() {
 			GeoResolver: resolver,
 			LocalDialer: dialer,
 			Dialers:     dialers,
-			Functions:   functions.FuncMap,
+			Functions:   functions.FuncMap(),
 		}
 		err = handler.Load()
 		if err != nil {
@@ -415,7 +415,7 @@ func main() {
 				Dialers:         dialers,
 				DialerURLs:      config.Dialer,
 				GeoResolver:     resolver,
-				Functions:       functions.FuncMap,
+				Functions:       functions.FuncMap(),
 			},
 			TunnelHandler: &HTTPTunnelHandler{
 				Config:        server,
@@ -424,7 +424,7 @@ func main() {
 			WebHandler: &HTTPWebHandler{
 				Config:    server,
 				Transport: transport,
-				Functions: functions.FuncMap,
+				Functions: functions.FuncMap(),
 			},
 			Hostnames: filter(server.ServerName, func(s string) bool {
 				return !strings.Contains(s, "*")
@@ -598,7 +598,7 @@ func main() {
 				Dialers:         dialers,
 				DialerURLs:      config.Dialer,
 				GeoResolver:     resolver,
-				Functions:       functions.FuncMap,
+				Functions:       functions.FuncMap(),
 			},
 			TunnelHandler: &HTTPTunnelHandler{
 				Config:        httpConfig,
@@ -607,7 +607,7 @@ func main() {
 			WebHandler: &HTTPWebHandler{
 				Config:    httpConfig,
 				Transport: transport,
-				Functions: functions.FuncMap,
+				Functions: functions.FuncMap(),
 			},
 			Hostnames: filter(httpConfig.ServerName, func(s string) bool {
 				return !strings.Contains(s, "*")
@@ -700,7 +700,7 @@ func main() {
 				GeoResolver: resolver,
 				LocalDialer: dialer,
 				Dialers:     dialers,
-				Functions:   functions.FuncMap,
+				Functions:   functions.FuncMap(),
 			}
 
 			if err = h.Load(); err != nil {
@@ -763,7 +763,7 @@ func main() {
 		for _, addr := range ssh.Listen {
 			h := &SshHandler{
 				Config: ssh,
-				// Functions: functions.FuncMap,
+				// Functions: functions.FuncMap(),
 				Logger: log.DefaultLogger,
 			}
 
@@ -818,7 +818,7 @@ func main() {
 
 			h := &DnsHandler{
 				Config:     dns,
-				Functions:  functions.FuncMap,
+				Functions:  functions.FuncMap(),
 				DataLogger: dataLogger,
 			}
 			if err = h.Load(); err != nil {

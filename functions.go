@@ -35,39 +35,43 @@ type Functions struct {
 	FileLineCache  *xsync.Map[string, *FileLoader[[]string]]
 	FileIPSetCache *xsync.Map[string, *FileLoader[*netipx.IPSet]]
 
-	FuncMap template.FuncMap
+	funcs template.FuncMap
+}
+
+func (f *Functions) FuncMap() template.FuncMap {
+	return f.funcs
 }
 
 func (f *Functions) Load() error {
-	f.FuncMap = template.FuncMap(sprig.GenericFuncMap())
+	f.funcs = template.FuncMap(sprig.GenericFuncMap())
 
 	// sprig supplement
-	f.FuncMap["hasPrefixes"] = f.hasPrefixes
-	f.FuncMap["hasSuffixes"] = f.hasSuffixes
-	f.FuncMap["regexMatch"] = f.regexMatch
-	f.FuncMap["wildcardMatch"] = f.wildcardMatch
+	f.funcs["hasPrefixes"] = f.hasPrefixes
+	f.funcs["hasSuffixes"] = f.hasSuffixes
+	f.funcs["regexMatch"] = f.regexMatch
+	f.funcs["wildcardMatch"] = f.wildcardMatch
 
 	// http related
-	f.FuncMap["country"] = f.country
-	f.FuncMap["dnsResolve"] = f.dnsResolve
-	f.FuncMap["domain"] = f.domain
-	f.FuncMap["fetch"] = f.fetch
-	f.FuncMap["geoip"] = f.geoip
-	f.FuncMap["geosite"] = f.geosite
-	f.FuncMap["greased"] = f.greased
-	f.FuncMap["hasIPv6"] = f.hasIPv6
-	f.FuncMap["host"] = f.host
-	f.FuncMap["ipInt"] = f.ipInt
-	f.FuncMap["ipRange"] = f.ipRange
-	f.FuncMap["isInNet"] = f.isInNet
+	f.funcs["country"] = f.country
+	f.funcs["dnsResolve"] = f.dnsResolve
+	f.funcs["domain"] = f.domain
+	f.funcs["fetch"] = f.fetch
+	f.funcs["geoip"] = f.geoip
+	f.funcs["geosite"] = f.geosite
+	f.funcs["greased"] = f.greased
+	f.funcs["hasIPv6"] = f.hasIPv6
+	f.funcs["host"] = f.host
+	f.funcs["ipInt"] = f.ipInt
+	f.funcs["ipRange"] = f.ipRange
+	f.funcs["isInNet"] = f.isInNet
 
 	// pattern matching with file
-	f.FuncMap["inFileLine"] = f.inFileLine
-	f.FuncMap["inFileIPSet"] = f.inFileIPSet
+	f.funcs["inFileLine"] = f.inFileLine
+	f.funcs["inFileIPSet"] = f.inFileIPSet
 
 	// file related
-	f.FuncMap["readFile"] = f.readfile
-	f.FuncMap["readfile"] = f.readfile
+	f.funcs["readFile"] = f.readfile
+	f.funcs["readfile"] = f.readfile
 
 	return nil
 }
