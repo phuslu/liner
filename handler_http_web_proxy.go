@@ -49,14 +49,18 @@ func (h *HTTPWebProxyHandler) Load() error {
 		h.userchecker = &AuthUserLoadChecker{loader}
 	}
 
-	h.proxypass, err = template.New(h.Pass).Funcs(h.Functions).Parse(h.Pass)
-	if err != nil {
-		return err
+	if strings.Contains(h.Pass, "{{") {
+		h.proxypass, err = template.New(h.Pass).Funcs(h.Functions).Parse(h.Pass)
+		if err != nil {
+			return err
+		}
 	}
 
-	h.headers, err = template.New(h.SetHeaders).Funcs(h.Functions).Parse(h.SetHeaders)
-	if err != nil {
-		return err
+	if strings.Contains(h.SetHeaders, "{{") {
+		h.headers, err = template.New(h.SetHeaders).Funcs(h.Functions).Parse(h.SetHeaders)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -86,15 +90,19 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		}
 	}
 
-	ri.SmallBuffer.Reset()
-	h.proxypass.Execute(&ri.SmallBuffer, struct {
-		Request    *http.Request
-		JA4        string
-		UserAgent  *useragent.UserAgent
-		ServerAddr netip.AddrPort
-	}{req, ri.JA4, &ri.UserAgent, ri.ServerAddr})
-
-	proxypass := strings.TrimSpace(ri.SmallBuffer.StringTo(make([]byte, 0, 512)))
+	var proxypass string
+	if h.proxypass != nil {
+		ri.SmallBuffer.Reset()
+		h.proxypass.Execute(&ri.SmallBuffer, struct {
+			Request    *http.Request
+			JA4        string
+			UserAgent  *useragent.UserAgent
+			ServerAddr netip.AddrPort
+		}{req, ri.JA4, &ri.UserAgent, ri.ServerAddr})
+		proxypass = strings.TrimSpace(ri.SmallBuffer.StringTo(make([]byte, 0, 512)))
+	} else {
+		proxypass = strings.TrimSpace(h.Pass)
+	}
 	if code, _ := strconv.Atoi(proxypass); 100 <= code && code <= 999 {
 		http.Error(rw, fmt.Sprintf("%d %s", code, http.StatusText(code)), code)
 		return
@@ -315,18 +323,23 @@ func (h *HTTPWebProxyHandler) setHeaders(req *http.Request, ri *RequestInfo) {
 		return
 	}
 
-	bb := bytebufferpool.Get()
-	defer bytebufferpool.Put(bb)
+	var headers string
+	if h.headers != nil {
+		bb := bytebufferpool.Get()
+		defer bytebufferpool.Put(bb)
+		bb.Reset()
+		h.headers.Execute(bb, struct {
+			Request    *http.Request
+			JA4        string
+			UserAgent  *useragent.UserAgent
+			ServerAddr netip.AddrPort
+		}{req, ri.JA4, &ri.UserAgent, ri.ServerAddr})
+		headers = bb.String()
+	} else {
+		headers = h.SetHeaders
+	}
 
-	bb.Reset()
-	h.headers.Execute(bb, struct {
-		Request    *http.Request
-		JA4        string
-		UserAgent  *useragent.UserAgent
-		ServerAddr netip.AddrPort
-	}{req, ri.JA4, &ri.UserAgent, ri.ServerAddr})
-
-	for line := range strings.Lines(bb.String()) {
+	for line := range strings.Lines(headers) {
 		parts := strings.Split(line, ":")
 		if len(parts) != 2 {
 			continue
