@@ -393,7 +393,7 @@ func (w *WritableBytes) Reset() {
 }
 
 func (w *WritableBytes) StringTo(dst []byte) string {
-	return string(append(dst, w.B...))
+	return b2s(append(dst, w.B...))
 }
 
 func AESCBCBase64Decrypt(text string, ekey []byte, ikey []byte) ([]byte, error) {
