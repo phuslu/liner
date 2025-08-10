@@ -92,14 +92,14 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 
 	var proxypass string
 	if h.proxypass != nil {
-		ri.SmallBuffer.Reset()
-		h.proxypass.Execute(&ri.SmallBuffer, struct {
+		ri.PolicyBuffer.Reset()
+		h.proxypass.Execute(&ri.PolicyBuffer, struct {
 			Request    *http.Request
 			JA4        string
 			UserAgent  *useragent.UserAgent
 			ServerAddr netip.AddrPort
 		}{req, ri.JA4, &ri.UserAgent, ri.ServerAddr})
-		proxypass = strings.TrimSpace(ri.SmallBuffer.StringTo(make([]byte, 0, 512)))
+		proxypass = strings.TrimSpace(b2s(ri.PolicyBuffer.B))
 	} else {
 		proxypass = strings.TrimSpace(h.Pass)
 	}

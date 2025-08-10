@@ -145,8 +145,8 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 	policyName := h.Config.Forward.Policy
 	speedLimit := h.Config.Forward.SpeedLimit
 	if h.policy != nil {
-		ri.SmallBuffer.Reset()
-		err = h.policy.Execute(&ri.SmallBuffer, struct {
+		ri.PolicyBuffer.Reset()
+		err = h.policy.Execute(&ri.PolicyBuffer, struct {
 			Request         *http.Request
 			ClientHelloInfo *tls.ClientHelloInfo
 			JA4             string
@@ -160,7 +160,8 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			return
 		}
 
-		policyName = ri.SmallBuffer.StringTo(make([]byte, 0, 64))
+		var tmp [64]byte
+		policyName = strings.TrimSpace(b2s(append(tmp[:0], ri.PolicyBuffer.B...)))
 		log.Debug().Context(ri.LogContext).Interface("client_hello_info", ri.ClientHelloInfo).Interface("tls_connection_state", req.TLS).Str("forward_policy_name", policyName).Msg("execute forward_policy ok")
 
 		switch policyName {
@@ -243,8 +244,8 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 	if ri.ClientTCPConn != nil && h.Config.Forward.TcpCongestion != "" {
 		var tcpCongestion = h.Config.Forward.TcpCongestion
 		if h.tcpcongestion != nil {
-			ri.SmallBuffer.Reset()
-			err := h.tcpcongestion.Execute(&ri.SmallBuffer, struct {
+			ri.PolicyBuffer.Reset()
+			err := h.tcpcongestion.Execute(&ri.PolicyBuffer, struct {
 				Request         *http.Request
 				ClientHelloInfo *tls.ClientHelloInfo
 				JA4             string
@@ -257,7 +258,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 				http.Error(rw, err.Error(), http.StatusBadGateway)
 				return
 			}
-			tcpCongestion = ri.SmallBuffer.StringTo(make([]byte, 0, 64))
+			tcpCongestion = b2s(ri.PolicyBuffer.B)
 		}
 		if options := strings.Fields(tcpCongestion); len(options) >= 1 {
 			switch name := options[0]; name {
@@ -298,8 +299,8 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 
 	var dialerValue = h.Config.Forward.Dialer
 	if h.dialer != nil {
-		ri.SmallBuffer.Reset()
-		err := h.dialer.Execute(&ri.SmallBuffer, struct {
+		ri.PolicyBuffer.Reset()
+		err := h.dialer.Execute(&ri.PolicyBuffer, struct {
 			Request         *http.Request
 			ClientHelloInfo *tls.ClientHelloInfo
 			JA4             string
@@ -312,7 +313,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			http.NotFound(rw, req)
 			return
 		}
-		dialerValue = strings.TrimSpace(ri.SmallBuffer.StringTo(make([]byte, 0, 128)))
+		dialerValue = strings.TrimSpace(b2s(ri.PolicyBuffer.B))
 	}
 
 	var userLog = h.Config.Forward.Log

@@ -28,14 +28,14 @@ type DnsHandler struct {
 }
 
 type DnsRequest struct {
-	LogContext  log.Context
-	LocalAddr   netip.AddrPort
-	RemoteAddr  netip.AddrPort
-	Message     *fastdns.Message
-	SmallBuffer WritableBytes
-	domain      []byte
-	Proto       string
-	QType       string
+	LogContext   log.Context
+	LocalAddr    netip.AddrPort
+	RemoteAddr   netip.AddrPort
+	Message      *fastdns.Message
+	PolicyBuffer WritableBytes
+	domain       []byte
+	Proto        string
+	QType        string
 }
 
 func (req *DnsRequest) Domain() string {
@@ -46,7 +46,7 @@ var drPool = sync.Pool{
 	New: func() interface{} {
 		r := new(DnsRequest)
 		r.Message = fastdns.AcquireMessage()
-		r.SmallBuffer.B = make([]byte, 0, 256)
+		r.PolicyBuffer.B = make([]byte, 0, 256)
 		r.domain = make([]byte, 0, 256)
 		return r
 	},
@@ -85,7 +85,7 @@ func (h *DnsHandler) Serve(ctx context.Context, conn *net.UDPConn) {
 			continue
 		}
 		req.Message.Raw = req.Message.Raw[:n]
-		req.SmallBuffer.Reset()
+		req.PolicyBuffer.Reset()
 		req.domain = req.domain[:0]
 		req.Proto = "dns"
 		req.QType = ""
@@ -165,8 +165,8 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, rw fastdns.ResponseWriter, re
 		req.domain = AppendToLower(req.domain[:0], b2s(req.Message.Domain))
 		req.QType = req.Message.Question.Type.String()
 
-		req.SmallBuffer.Reset()
-		err = h.policy.Execute(&req.SmallBuffer, struct {
+		req.PolicyBuffer.Reset()
+		err = h.policy.Execute(&req.PolicyBuffer, struct {
 			Request *DnsRequest
 		}{req})
 		if err != nil {
@@ -174,7 +174,7 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, rw fastdns.ResponseWriter, re
 			return
 		}
 
-		policyName := strings.TrimSpace(b2s(req.SmallBuffer.B))
+		policyName := strings.TrimSpace(b2s(req.PolicyBuffer.B))
 		log.Debug().Context(req.LogContext).Str("req_domain", req.Domain()).Str("req_qtype", req.QType).Str("forward_policy_name", policyName).Msg("execute forward_policy ok")
 
 		toaddrs := func(dst []netip.Addr, ss []string) []netip.Addr {

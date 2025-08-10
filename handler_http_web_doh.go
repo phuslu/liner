@@ -83,8 +83,8 @@ func (h *HTTPWebDohHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		dr.domain = AppendToLower(dr.domain[:0], b2s(dr.Message.Domain))
 		dr.QType = dr.Message.Question.Type.String()
 
-		ri.SmallBuffer.Reset()
-		err = h.policy.Execute(&ri.SmallBuffer, struct {
+		ri.PolicyBuffer.Reset()
+		err = h.policy.Execute(&ri.PolicyBuffer, struct {
 			Request *http.Request
 			Dns     *DnsRequest
 		}{req, dr})
@@ -93,7 +93,7 @@ func (h *HTTPWebDohHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 			return
 		}
 
-		policyName := strings.TrimSpace(ri.SmallBuffer.StringTo(make([]byte, 0, 64)))
+		policyName := strings.TrimSpace(b2s(ri.PolicyBuffer.B))
 
 		if code, _ := strconv.Atoi(policyName); 100 <= code && code <= 999 {
 			// msg := fmt.Sprintf("%d %s", code, http.StatusText(code))

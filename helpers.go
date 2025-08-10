@@ -392,10 +392,6 @@ func (w *WritableBytes) Reset() {
 	}
 }
 
-func (w *WritableBytes) StringTo(dst []byte) string {
-	return b2s(append(dst, w.B...))
-}
-
 func AESCBCBase64Decrypt(text string, ekey []byte, ikey []byte) ([]byte, error) {
 	if n := len(text) % 4; n > 0 {
 		text += string([]byte{'=', '=', '='}[:4-n])
