@@ -105,17 +105,15 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 			if header := GetMirrorHeader(ri.ClientHelloInfo.Conn); header != nil {
 				ri.ClientHelloRaw = header
 			}
-			if req.ProtoMajor <= 2 {
-				conn := ri.ClientHelloInfo.Conn
-				if c, ok := conn.(*tls.Conn); ok && c != nil {
-					conn = c.NetConn()
-				}
-				if c, ok := conn.(*MirrorHeaderConn); ok && c != nil {
-					conn = c.Conn
-				}
-				if tc, ok := conn.(*net.TCPConn); ok && tc != nil {
-					ri.ClientTCPConn = tc
-				}
+			conn := v.Conn
+			if c, ok := conn.(*tls.Conn); ok && c != nil {
+				conn = c.NetConn()
+			}
+			if c, ok := conn.(*MirrorHeaderConn); ok && c != nil {
+				conn = c.Conn
+			}
+			if tc, ok := conn.(*net.TCPConn); ok && tc != nil {
+				ri.ClientTCPConn = tc
 			}
 		}
 	}

@@ -71,7 +71,8 @@ type TLSInspectorCacheValue[T any] struct {
 
 type TLSClientHelloInfo struct {
 	*tls.ClientHelloInfo
-	JA4 [36]byte
+	JA4  [36]byte
+	Conn net.Conn
 }
 
 var ErrTLSServerNameNotFound = errors.New("tls server name is not found")
@@ -325,6 +326,9 @@ func (m *TLSInspector) HTTPConnState(c net.Conn, cs http.ConnState) {
 				cs := tc.ConnectionState()
 				AppendJA4Fingerprint(info.JA4[:0], TLSVersion(cs.Version), info.ClientHelloInfo, false)
 			}
+			info.Conn = c
+		} else {
+			m.ClientHelloMap.Store(addr, &TLSClientHelloInfo{Conn: c})
 		}
 	case http.StateHijacked, http.StateClosed:
 		m.ClientHelloMap.Delete(addr)
