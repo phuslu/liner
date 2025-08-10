@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -186,7 +185,6 @@ type Config struct {
 func NewConfig(filename string) (*Config, error) {
 	datas := [][]byte{}
 	if data, err := ReadFile(filename); err == nil {
-		data = regexp.MustCompilePOSIX(`^( *)upstream:`).ReplaceAll(data, []byte("${1}dialer:"))
 		datas = append(datas, data)
 	}
 

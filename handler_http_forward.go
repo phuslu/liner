@@ -242,7 +242,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 
 	// eval tcp_congestion template
 	if ri.ClientTCPConn != nil && h.Config.Forward.TcpCongestion != "" {
-		var tcpCongestion = h.Config.Forward.TcpCongestion
+		var tcpCongestion string
 		if h.tcpcongestion != nil {
 			ri.PolicyBuffer.Reset()
 			err := h.tcpcongestion.Execute(&ri.PolicyBuffer, struct {
@@ -259,34 +259,39 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 				return
 			}
 			tcpCongestion = b2s(ri.PolicyBuffer.B)
+		} else {
+			tcpCongestion = h.Config.Forward.TcpCongestion
 		}
-		if options := strings.Fields(tcpCongestion); len(options) >= 1 {
-			switch name := options[0]; name {
-			case "brutal":
-				if len(options) < 2 {
-					log.Error().Context(ri.LogContext).Strs("forward_tcp_congestion_options", options).Msg("parse forward_tcp_congestion error")
-					http.Error(rw, err.Error(), http.StatusBadGateway)
-					return
-				}
-				if rate, _ := strconv.Atoi(options[1]); rate > 0 {
-					gain := 20 // hysteria2 default
-					if len(options) >= 3 {
-						if n, _ := strconv.Atoi(options[2]); n > 0 {
-							gain = n
-						}
+		if tcpCongestion != "" {
+			log.Debug().Context(ri.LogContext).Str("forward_tcp_congestion", tcpCongestion).Msg("execute forward_tcp_congestion ok")
+			if options := strings.Fields(tcpCongestion); len(options) >= 1 {
+				switch name := options[0]; name {
+				case "brutal":
+					if len(options) < 2 {
+						log.Error().Context(ri.LogContext).Strs("forward_tcp_congestion_options", options).Msg("parse forward_tcp_congestion error")
+						http.Error(rw, err.Error(), http.StatusBadGateway)
+						return
 					}
-					if err := SetTcpCongestion(ri.ClientTCPConn, name, uint64(rate), uint32(gain)); err != nil {
+					if rate, _ := strconv.Atoi(options[1]); rate > 0 {
+						gain := 20 // hysteria2 default
+						if len(options) >= 3 {
+							if n, _ := strconv.Atoi(options[2]); n > 0 {
+								gain = n
+							}
+						}
+						if err := SetTcpCongestion(ri.ClientTCPConn, name, uint64(rate), uint32(gain)); err != nil {
+							log.Error().Context(ri.LogContext).Strs("forward_tcp_congestion_options", options).Msg("set forward_tcp_congestion error")
+							http.Error(rw, err.Error(), http.StatusBadGateway)
+							return
+						}
+						log.Debug().NetIPAddr("remote_ip", ri.RemoteAddr.Addr()).Strs("forward_tcp_congestion_options", options).Msg("set forward_tcp_congestion ok")
+					}
+				default:
+					if err := SetTcpCongestion(ri.ClientTCPConn, name); err != nil {
 						log.Error().Context(ri.LogContext).Strs("forward_tcp_congestion_options", options).Msg("set forward_tcp_congestion error")
 						http.Error(rw, err.Error(), http.StatusBadGateway)
 						return
 					}
-					log.Debug().NetIPAddr("remote_ip", ri.RemoteAddr.Addr()).Strs("forward_tcp_congestion_options", options).Msg("set forward_tcp_congestion ok")
-				}
-			default:
-				if err := SetTcpCongestion(ri.ClientTCPConn, name); err != nil {
-					log.Error().Context(ri.LogContext).Strs("forward_tcp_congestion_options", options).Msg("set forward_tcp_congestion error")
-					http.Error(rw, err.Error(), http.StatusBadGateway)
-					return
 				}
 			}
 		}
