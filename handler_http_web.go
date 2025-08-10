@@ -1,13 +1,17 @@
 package main
 
 import (
+	"crypto/tls"
 	"expvar"
 	"net"
 	"net/http"
 	"net/http/pprof"
+	"net/netip"
+	"strconv"
 	"strings"
 	"text/template"
 
+	"github.com/mileusna/useragent"
 	"github.com/phuslu/log"
 )
 
@@ -31,58 +35,54 @@ func (h *HTTPWebHandler) Load() error {
 
 	var routers []router
 	for _, web := range h.Config.Web {
+		router := router{
+			location: web.Location,
+		}
 		switch {
 		case web.Cgi.Enabled:
-			routers = append(routers, router{
-				web.Location,
-				&HTTPWebCgiHandler{
-					Location:   web.Location,
-					Root:       web.Cgi.Root,
-					DefaultApp: web.Cgi.DefaultAPP,
-				},
-			})
+			router.handler = &HTTPWebCgiHandler{
+				Location:   web.Location,
+				Root:       web.Cgi.Root,
+				DefaultApp: web.Cgi.DefaultAPP,
+			}
 		case web.Dav.Enabled:
-			routers = append(routers, router{
-				web.Location,
-				&HTTPWebDavHandler{
-					Root:      web.Dav.Root,
-					AuthTable: web.Dav.AuthTable,
-				},
-			})
+			router.handler = &HTTPWebDavHandler{
+				Root:      web.Dav.Root,
+				AuthTable: web.Dav.AuthTable,
+			}
 		case web.Doh.Enabled:
-			routers = append(routers, router{
-				web.Location,
-				&HTTPWebDohHandler{
-					Policy:    web.Doh.Policy,
-					ProxyPass: web.Doh.ProxyPass,
-					Functions: h.Functions,
-				},
-			})
+			router.handler = &HTTPWebDohHandler{
+				Policy:    web.Doh.Policy,
+				ProxyPass: web.Doh.ProxyPass,
+				Functions: h.Functions,
+			}
 		case web.Index.Root != "" || web.Index.Body != "" || web.Index.File != "":
-			routers = append(routers, router{
-				web.Location,
-				&HTTPWebIndexHandler{
-					Functions: h.Functions,
-					Location:  web.Location,
-					Root:      web.Index.Root,
-					Headers:   web.Index.Headers,
-					Body:      web.Index.Body,
-					File:      web.Index.File,
-				},
-			})
+			router.handler = &HTTPWebIndexHandler{
+				Functions: h.Functions,
+				Location:  web.Location,
+				Root:      web.Index.Root,
+				Headers:   web.Index.Headers,
+				Body:      web.Index.Body,
+				File:      web.Index.File,
+			}
 		case web.Proxy.Pass != "":
-			routers = append(routers, router{
-				web.Location,
-				&HTTPWebProxyHandler{
-					Transport:   h.Transport,
-					Functions:   h.Functions,
-					Pass:        web.Proxy.Pass,
-					AuthTable:   web.Proxy.AuthTable,
-					SetHeaders:  web.Proxy.SetHeaders,
-					DumpFailure: web.Proxy.DumpFailure,
-				},
-			})
+			router.handler = &HTTPWebProxyHandler{
+				Transport:   h.Transport,
+				Functions:   h.Functions,
+				Pass:        web.Proxy.Pass,
+				AuthTable:   web.Proxy.AuthTable,
+				SetHeaders:  web.Proxy.SetHeaders,
+				DumpFailure: web.Proxy.DumpFailure,
+			}
 		}
+		if tcpcongestion := strings.TrimSpace(web.TcpCongestion); tcpcongestion != "" {
+			router.handler = &HTTPWebMiddlewareTcpCongestion{
+				TcpCongestion: tcpcongestion,
+				Functions:     h.Functions,
+				Handler:       router.handler,
+			}
+		}
+		routers = append(routers, router)
 	}
 
 	var root HTTPHandler
@@ -155,4 +155,86 @@ func (h *HTTPWebHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		}
 	}
 	h.mux.ServeHTTP(rw, req)
+}
+
+var _ HTTPHandler = (*HTTPWebMiddlewareTcpCongestion)(nil)
+
+type HTTPWebMiddlewareTcpCongestion struct {
+	TcpCongestion string
+	Functions     template.FuncMap
+	Handler       HTTPHandler
+
+	template *template.Template
+}
+
+func (m *HTTPWebMiddlewareTcpCongestion) Load() error {
+	if strings.Contains(m.TcpCongestion, "{{") {
+		tmpl, err := template.New(m.TcpCongestion).Funcs(m.Functions).Parse(m.TcpCongestion)
+		if err != nil {
+			return err
+		}
+		m.template = tmpl
+	}
+	return m.Handler.Load()
+}
+
+func (m *HTTPWebMiddlewareTcpCongestion) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	ri := req.Context().Value(RequestInfoContextKey).(*RequestInfo)
+
+	if ri.ClientTCPConn != nil && m.TcpCongestion != "" {
+		var tcpCongestion string
+		if m.template != nil {
+			ri.PolicyBuffer.Reset()
+			err := m.template.Execute(&ri.PolicyBuffer, struct {
+				Request         *http.Request
+				ClientHelloInfo *tls.ClientHelloInfo
+				JA4             string
+				UserAgent       *useragent.UserAgent
+				ServerAddr      netip.AddrPort
+				User            AuthUserInfo
+			}{req, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr, ri.ProxyUserInfo})
+			if err != nil {
+				log.Error().Err(err).Context(ri.LogContext).Str("forward_tcp_congestion", m.TcpCongestion).Msg("execute forward_tcp_congestion error")
+				http.Error(rw, err.Error(), http.StatusBadGateway)
+				return
+			}
+			tcpCongestion = strings.TrimSpace(b2s(ri.PolicyBuffer.B))
+		} else {
+			tcpCongestion = m.TcpCongestion
+		}
+		if tcpCongestion != "" {
+			log.Debug().Context(ri.LogContext).Str("forward_tcp_congestion", tcpCongestion).Msg("execute forward_tcp_congestion ok")
+			if options := strings.Fields(tcpCongestion); len(options) >= 1 {
+				switch name := options[0]; name {
+				case "brutal":
+					if len(options) < 2 {
+						log.Error().Context(ri.LogContext).Strs("forward_tcp_congestion_options", options).Msg("parse forward_tcp_congestion error")
+						http.Error(rw, "invalid tcp_congestion value", http.StatusBadGateway)
+						return
+					}
+					if rate, _ := strconv.Atoi(options[1]); rate > 0 {
+						gain := 20 // hysteria2 default
+						if len(options) >= 3 {
+							if n, _ := strconv.Atoi(options[2]); n > 0 {
+								gain = n
+							}
+						}
+						if err := SetTcpCongestion(ri.ClientTCPConn, name, uint64(rate), uint32(gain)); err != nil {
+							log.Error().Context(ri.LogContext).Strs("forward_tcp_congestion_options", options).Msg("set forward_tcp_congestion error")
+							http.Error(rw, err.Error(), http.StatusBadGateway)
+							return
+						}
+						log.Debug().NetIPAddr("remote_ip", ri.RemoteAddr.Addr()).Strs("forward_tcp_congestion_options", options).Msg("set forward_tcp_congestion ok")
+					}
+				default:
+					if err := SetTcpCongestion(ri.ClientTCPConn, name); err != nil {
+						log.Error().Context(ri.LogContext).Strs("forward_tcp_congestion_options", options).Msg("set forward_tcp_congestion error")
+						http.Error(rw, err.Error(), http.StatusBadGateway)
+						return
+					}
+				}
+			}
+		}
+	}
+	m.Handler.ServeHTTP(rw, req)
 }

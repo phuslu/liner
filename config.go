@@ -46,8 +46,9 @@ type HTTPConfig struct {
 		Log             bool     `json:"log" yaml:"log"`
 	} `json:"tunnel" yaml:"tunnel"`
 	Web []struct {
-		Location string `json:"location" yaml:"location"`
-		Cgi      struct {
+		Location      string `json:"location" yaml:"location"`
+		TcpCongestion string `json:"tcp_congestion" yaml:"tcp_congestion"`
+		Cgi           struct {
 			Enabled    bool   `json:"enabled" yaml:"enabled"`
 			Root       string `json:"root" yaml:"root"`
 			DefaultAPP string `json:"default_app" yaml:"default_app"`
