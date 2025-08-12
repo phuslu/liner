@@ -302,7 +302,7 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 	return config, nil
 }
 
-var HTTP3ClientHelloInfoContextKey = struct{}{}
+var HTTP3ClientHelloInfoContextKey any = &HTTPContextKey{"http3-clienthello-info"}
 
 func (m *TLSInspector) HTTP3ConnContext(ctx context.Context, conn *quic.Conn) context.Context {
 	addr := PlainAddrFromNetAddr(conn.RemoteAddr())

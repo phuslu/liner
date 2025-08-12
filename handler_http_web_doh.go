@@ -43,7 +43,7 @@ func (h *HTTPWebDohHandler) Load() error {
 }
 
 func (h *HTTPWebDohHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	ri := req.Context().Value(RequestInfoContextKey).(*RequestInfo)
+	ri := req.Context().Value(HTTPRequestInfoContextKey).(*HTTPRequestInfo)
 
 	if req.Header.Get("Content-Type") != "application/dns-message" {
 		http.Error(rw, "Unsupported content type", http.StatusUnsupportedMediaType)

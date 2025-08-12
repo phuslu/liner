@@ -67,7 +67,7 @@ func (h *HTTPWebProxyHandler) Load() error {
 }
 
 func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	ri := req.Context().Value(RequestInfoContextKey).(*RequestInfo)
+	ri := req.Context().Value(HTTPRequestInfoContextKey).(*HTTPRequestInfo)
 
 	// if req.Method == http.MethodConnect {
 	// 	RejectRequest(rw, req)
@@ -318,7 +318,7 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	}
 }
 
-func (h *HTTPWebProxyHandler) setHeaders(req *http.Request, ri *RequestInfo) {
+func (h *HTTPWebProxyHandler) setHeaders(req *http.Request, ri *HTTPRequestInfo) {
 	if h.SetHeaders == "" {
 		return
 	}

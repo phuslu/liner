@@ -94,7 +94,7 @@ func (h *HTTPForwardHandler) Load() error {
 }
 
 func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	ri := req.Context().Value(RequestInfoContextKey).(*RequestInfo)
+	ri := req.Context().Value(HTTPRequestInfoContextKey).(*HTTPRequestInfo)
 
 	// fix real remote ip
 	// if xfr := req.Header.Get("x-forwarded-for"); xfr != "" {

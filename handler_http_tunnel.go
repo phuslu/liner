@@ -68,7 +68,7 @@ func (h *HTTPTunnelHandler) Load() error {
 }
 
 func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	ri := req.Context().Value(RequestInfoContextKey).(*RequestInfo)
+	ri := req.Context().Value(HTTPRequestInfoContextKey).(*HTTPRequestInfo)
 
 	user := ri.AuthUserInfo
 

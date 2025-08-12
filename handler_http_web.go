@@ -108,7 +108,7 @@ func (h *HTTPWebHandler) Load() error {
 	}
 
 	h.mux.HandleFunc("/debug/", func(rw http.ResponseWriter, req *http.Request) {
-		ri := req.Context().Value(RequestInfoContextKey).(*RequestInfo)
+		ri := req.Context().Value(HTTPRequestInfoContextKey).(*HTTPRequestInfo)
 		if !ri.RemoteAddr.Addr().IsLoopback() && !ri.RemoteAddr.Addr().IsPrivate() {
 			http.Error(rw, "403 forbidden", http.StatusForbidden)
 			return
@@ -179,7 +179,7 @@ func (m *HTTPWebMiddlewareTcpCongestion) Load() error {
 }
 
 func (m *HTTPWebMiddlewareTcpCongestion) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	ri := req.Context().Value(RequestInfoContextKey).(*RequestInfo)
+	ri := req.Context().Value(HTTPRequestInfoContextKey).(*HTTPRequestInfo)
 
 	if ri.ClientTCPConn != nil && m.TcpCongestion != "" {
 		var tcpCongestion string

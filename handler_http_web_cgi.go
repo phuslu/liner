@@ -37,7 +37,7 @@ func (h *HTTPWebCgiHandler) Load() (err error) {
 }
 
 func (h *HTTPWebCgiHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	ri := req.Context().Value(RequestInfoContextKey).(*RequestInfo)
+	ri := req.Context().Value(HTTPRequestInfoContextKey).(*HTTPRequestInfo)
 
 	filename := req.URL.Path
 	if strings.HasSuffix(filename, "/") {

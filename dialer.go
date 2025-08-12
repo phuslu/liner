@@ -21,12 +21,10 @@ type DialerContextKey struct {
 	name string
 }
 
-func (k *DialerContextKey) String() string { return "dialer context value " + k.name }
-
 var (
-	DialerHTTPHeaderContextKey    = &DialerContextKey{"dailer-http-header"}
-	DialerPreferIPv6ContextKey    = &DialerContextKey{"dailer-prefer-ipv6"}
-	DialerMemoryDialersContextKey = &DialerContextKey{"dailer-memory-dialers"}
+	DialerHTTPHeaderContextKey    any = &DialerContextKey{"dailer-http-header"}
+	DialerPreferIPv6ContextKey    any = &DialerContextKey{"dailer-prefer-ipv6"}
+	DialerMemoryDialersContextKey any = &DialerContextKey{"dailer-memory-dialers"}
 )
 
 var _ Dialer = (*LocalDialer)(nil)

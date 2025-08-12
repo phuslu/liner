@@ -44,7 +44,7 @@ func (h *HTTPWebDavHandler) Load() (err error) {
 }
 
 func (h *HTTPWebDavHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	ri := req.Context().Value(RequestInfoContextKey).(*RequestInfo)
+	ri := req.Context().Value(HTTPRequestInfoContextKey).(*HTTPRequestInfo)
 	log.Info().Context(ri.LogContext).Any("headers", req.Header).Msg("web dav request")
 
 	if h.userchecker != nil {

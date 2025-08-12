@@ -38,7 +38,7 @@ type HTTPServerHandler struct {
 	WebHandler       HTTPHandler
 }
 
-type RequestInfo struct {
+type HTTPRequestInfo struct {
 	RemoteAddr      netip.AddrPort
 	ServerAddr      netip.AddrPort
 	TLSServerName   string
@@ -58,13 +58,15 @@ type RequestInfo struct {
 	PolicyBuffer    WritableBytes
 }
 
-var RequestInfoContextKey = struct {
+type HTTPContextKey struct {
 	name string
-}{"request-info"}
+}
 
-var riPool = sync.Pool{
+var HTTPRequestInfoContextKey any = &HTTPContextKey{"http-request-info"}
+
+var hrPool = sync.Pool{
 	New: func() interface{} {
-		return new(RequestInfo)
+		return new(HTTPRequestInfo)
 	},
 }
 
@@ -79,8 +81,8 @@ func (h *HTTPServerHandler) Load() error {
 }
 
 func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	ri := riPool.Get().(*RequestInfo)
-	defer riPool.Put(ri)
+	ri := hrPool.Get().(*HTTPRequestInfo)
+	defer hrPool.Put(ri)
 
 	ri.RemoteAddr, _ = netip.ParseAddrPort(req.RemoteAddr)
 	ri.ServerAddr = AddrPortFromNetAddr(req.Context().Value(http.LocalAddrContextKey).(net.Addr))
@@ -221,7 +223,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 
 	ri.PolicyBuffer.Reset()
 
-	req = req.WithContext(context.WithValue(req.Context(), RequestInfoContextKey, ri))
+	req = req.WithContext(context.WithValue(req.Context(), HTTPRequestInfoContextKey, ri))
 
 	hostname := req.Host
 	if s, _, err := net.SplitHostPort(req.Host); err == nil {

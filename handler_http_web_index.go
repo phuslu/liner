@@ -50,7 +50,7 @@ func (h *HTTPWebIndexHandler) Load() (err error) {
 }
 
 func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	ri := req.Context().Value(RequestInfoContextKey).(*RequestInfo)
+	ri := req.Context().Value(HTTPRequestInfoContextKey).(*HTTPRequestInfo)
 
 	log.Debug().Context(ri.LogContext).Interface("headers", req.Header).Msg("web index request")
 
@@ -277,7 +277,7 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	rw.Write(b.Bytes())
 }
 
-func (h *HTTPWebIndexHandler) addHeaders(rw http.ResponseWriter, req *http.Request, ri *RequestInfo) {
+func (h *HTTPWebIndexHandler) addHeaders(rw http.ResponseWriter, req *http.Request, ri *HTTPRequestInfo) {
 	bb := bytebufferpool.Get()
 	defer bytebufferpool.Put(bb)
 	bb.Reset()
