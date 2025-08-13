@@ -3,7 +3,6 @@
 package main
 
 import (
-	"bytes"
 	"cmp"
 	"context"
 	"crypto/rand"
@@ -301,6 +300,8 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 				continue
 			}
 
+			h.Logger.Info().Str("command", payload.Command).Msg("ssh exec command")
+
 			shellcmd := exec.CommandContext(ctx, h.shellPath, "-c", payload.Command)
 
 			var err error
@@ -322,11 +323,10 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 						}
 					}
 				}
-				var b bytes.Buffer
-				binary.Write(&b, binary.BigEndian, exitStatus)
-				channel.SendRequest("exit-status", false, b.Bytes())
+				b := [4]byte{byte(exitStatus >> 24), byte(exitStatus >> 16), byte(exitStatus >> 8), byte(exitStatus)}
+				channel.SendRequest("exit-status", false, b[:])
 				channel.Close()
-				h.Logger.Printf("Session closed")
+				h.Logger.Info().Int32("exit_status", exitStatus).Msg("ssh exec session closed")
 			}
 
 			in, err = shellcmd.StdinPipe()
