@@ -261,20 +261,18 @@ func (h *SshHandler) handleDirectTCPIP(ctx context.Context, newChannel ssh.NewCh
 	h.Logger.Info().NetAddr("remote_addr", conn.RemoteAddr()).Str("target_addr", targetAddr).Msg("handleDirectTCPIP: accepted connection")
 
 	var wg sync.WaitGroup
-	wg.Add(2)
 
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		defer rconn.Close()
 		defer channel.Close()
 		io.Copy(rconn, channel)
-	}()
-	go func() {
-		defer wg.Done()
+	})
+
+	wg.Go(func() {
 		defer rconn.Close()
 		defer channel.Close()
 		io.Copy(channel, rconn)
-	}()
+	})
 
 	wg.Wait()
 	h.Logger.Info().NetAddr("remote_addr", conn.RemoteAddr()).Str("target_addr", targetAddr).Msg("handleDirectTCPIP: connection closed")
