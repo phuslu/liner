@@ -89,7 +89,7 @@ func (h *HTTPWebDohHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 			Dns     *DnsRequest
 		}{req, dr})
 		if err != nil {
-			log.Error().Context(ri.LogContext).Err(err).Context(ri.LogContext).Msg("dns execute policy error")
+			log.Error().Context(ri.LogContext).Err(err).Msg("dns execute policy error")
 			return
 		}
 
@@ -123,7 +123,7 @@ func (h *HTTPWebDohHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 			}
 			rcode, err := fastdns.ParseRcode(parts[1])
 			if err != nil {
-				log.Error().Context(ri.LogContext).Err(err).Context(ri.LogContext).Str("doh_req_domain", dr.Domain()).Str("doh_req_qtype", dr.QType).Msg("dns policy parse rcode error")
+				log.Error().Context(ri.LogContext).Err(err).Str("doh_req_domain", dr.Domain()).Str("doh_req_qtype", dr.QType).Msg("dns policy parse rcode error")
 				fastdns.Error(drw, dr.Message, fastdns.RcodeServFail)
 				return
 			}
@@ -158,7 +158,7 @@ func (h *HTTPWebDohHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 				proxypass = parts[1]
 				resolver, err := GetResolver(proxypass)
 				if err != nil {
-					log.Error().Context(ri.LogContext).Err(err).Context(ri.LogContext).Str("doh_req_domain", dr.Domain()).Str("doh_req_qtype", dr.QType).Str("proxy_pass", proxypass).Msg("dns policy parse proxy_pass error")
+					log.Error().Context(ri.LogContext).Err(err).Str("doh_req_domain", dr.Domain()).Str("doh_req_qtype", dr.QType).Str("proxy_pass", proxypass).Msg("dns policy parse proxy_pass error")
 					fastdns.Error(drw, dr.Message, fastdns.RcodeServFail)
 					return
 				}
@@ -180,7 +180,7 @@ func (h *HTTPWebDohHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 
 	conn, err := dialer.DialContext(req.Context(), "", "")
 	if err != nil {
-		log.Error().Context(ri.LogContext).Err(err).Context(ri.LogContext).Str("proxy_pass", proxypass).Msg("doh dial error")
+		log.Error().Context(ri.LogContext).Err(err).Str("proxy_pass", proxypass).Msg("doh dial error")
 		http.Error(rw, "DNS internal error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -192,14 +192,14 @@ func (h *HTTPWebDohHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 
 	_, err = conn.Write(dr.Message.Raw)
 	if err != nil {
-		log.Error().Context(ri.LogContext).Err(err).Context(ri.LogContext).Str("proxy_pass", proxypass).Msg("doh dial error")
+		log.Error().Context(ri.LogContext).Err(err).Str("proxy_pass", proxypass).Msg("doh dial error")
 		http.Error(rw, "DNS internal error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	dr.Message.Raw, _, err = AppendReadFrom(dr.Message.Raw[:0], conn)
 	if err != nil {
-		log.Error().Context(ri.LogContext).Err(err).Context(ri.LogContext).Str("proxy_pass", proxypass).Msg("doh read raw data error")
+		log.Error().Context(ri.LogContext).Err(err).Str("proxy_pass", proxypass).Msg("doh read raw data error")
 		http.Error(rw, "DNS internal error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
