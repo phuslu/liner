@@ -144,7 +144,7 @@ func (h *HTTPWebHandler) Load() error {
 }
 
 func (h *HTTPWebHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	if config, _ := h.Config.ServerConfig[req.Host]; !config.DisableHttp3 && req.ProtoMajor != 3 {
+	if config, _ := h.Config.ServerConfig[req.Host]; !config.DisableHttp3 && req.ProtoMajor != 3 && req.TLS != nil {
 		_, port, _ := net.SplitHostPort(req.Context().Value(http.LocalAddrContextKey).(net.Addr).String())
 		rw.Header().Add("Alt-Svc", `h3=":`+port+`"; ma=2592000,h3-29=":`+port+`"; ma=2592000`)
 	}
