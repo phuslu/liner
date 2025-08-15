@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"net/netip"
 	"strconv"
 	"strings"
@@ -11,12 +10,13 @@ import (
 
 	"github.com/oschwald/maxminddb-golang/v2"
 	"github.com/phuslu/geosite"
+	"github.com/phuslu/log"
 	"github.com/phuslu/lru"
 )
 
 type GeoResolver struct {
 	Resolver             *Resolver
-	Logger               *slog.Logger
+	Logger               *log.Logger
 	EnableCJKCityName    bool
 	GeoIPCache           *lru.TTLCache[netip.Addr, GeoIPInfo]
 	CityReader           *maxminddb.Reader
@@ -67,7 +67,7 @@ func (r *GeoResolver) getGeoIPInfo(ctx context.Context, ip netip.Addr) (GeoIPInf
 	// }
 
 	if r.Logger != nil {
-		r.Logger.Debug("get city by ip", "ip", ip, "country", info.Country, "city", info.City)
+		r.Logger.Debug().NetIPAddr("ip", ip).Str("country", info.Country).Str("city", info.City).Msg("get city by ip")
 	}
 
 	if r.ISPReader != nil {
@@ -77,7 +77,7 @@ func (r *GeoResolver) getGeoIPInfo(ctx context.Context, ip netip.Addr) (GeoIPInf
 				info.ASN = "AS" + strconv.FormatUint(uint64(n), 10)
 			}
 			if r.Logger != nil {
-				r.Logger.Debug("get isp by ip", "ip", ip, "isp", info.ISP, "asn", info.ASN)
+				r.Logger.Debug().NetIPAddr("ip", ip).Str("isp", info.ISP).Str("asn", info.ASN).Msg("get isp by ip")
 			}
 		}
 	}
@@ -86,7 +86,7 @@ func (r *GeoResolver) getGeoIPInfo(ctx context.Context, ip netip.Addr) (GeoIPInf
 		if domain, err := r.LookupDomain(ctx, ip); err == nil {
 			info.Domain = domain
 			if r.Logger != nil {
-				r.Logger.Debug("get domain by ip", "ip", ip, "domain", domain)
+				r.Logger.Debug().NetIPAddr("ip", ip).Str("domain", domain).Msg("get domain by ip")
 			}
 		}
 	}
@@ -95,7 +95,7 @@ func (r *GeoResolver) getGeoIPInfo(ctx context.Context, ip netip.Addr) (GeoIPInf
 		if conntype, err := r.LookupConnectionType(ctx, ip); err == nil {
 			info.ConnectionType = conntype
 			if r.Logger != nil {
-				r.Logger.Debug("get connection_type by ip", "ip", ip, "connection_type", conntype)
+				r.Logger.Debug().NetIPAddr("ip", ip).Str("connection_type", conntype).Msg("get connection_type by ip")
 			}
 		}
 	}

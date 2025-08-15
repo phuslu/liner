@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"crypto/tls"
 	"fmt"
-	"log/slog"
 	"net"
 	"net/http"
 	"net/netip"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/phuslu/fastdns"
+	"github.com/phuslu/log"
 	"github.com/phuslu/lru"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/quic-go/quic-go"
@@ -33,7 +33,7 @@ func GetResolver(addr string) (r *Resolver, err error) {
 			Client: &fastdns.Client{
 				Addr: addr,
 			},
-			Logger:        slog.Default(),
+			Logger:        &log.DefaultLogger,
 			CacheDuration: 10 * time.Minute,
 			LRUCache:      lru.NewTTLCache[string, []netip.Addr](64 * 1024),
 		}

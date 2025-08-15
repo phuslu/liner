@@ -3,18 +3,18 @@ package main
 import (
 	"cmp"
 	"context"
-	"log/slog"
 	"net/netip"
 	"slices"
 	"time"
 
 	"github.com/phuslu/fastdns"
+	"github.com/phuslu/log"
 	"github.com/phuslu/lru"
 )
 
 type Resolver struct {
 	Client        *fastdns.Client
-	Logger        *slog.Logger
+	Logger        *log.Logger
 	LRUCache      *lru.TTLCache[string, []netip.Addr]
 	CacheDuration time.Duration
 	NoIPv6Hosts   *lru.TTLCache[string, bool]
@@ -51,7 +51,7 @@ func (r *Resolver) LookupNetIP(ctx context.Context, network, host string) (ips [
 	}
 
 	if r.Logger != nil {
-		r.Logger.Debug("LookupNetIP", "host", host, "dns_server", r.Client.Addr, "ips", ips)
+		r.Logger.Debug().Str("host", host).Str("dns_server", r.Client.Addr).NetIPAddrs("ips", ips).Msg("LookupNetIP")
 	}
 
 	return ips, nil

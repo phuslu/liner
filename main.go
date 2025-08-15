@@ -126,7 +126,7 @@ func main() {
 	}
 	resolver := &GeoResolver{
 		Resolver:          must(GetResolver(config.Global.DnsServer)),
-		Logger:            slog.Default(),
+		Logger:            &log.DefaultLogger,
 		EnableCJKCityName: true,
 	}
 	if names, err := filepath.Glob(filepath.Join(config.Global.GeoipDir, "*.mmdb")); err == nil {
