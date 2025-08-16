@@ -1053,7 +1053,8 @@ type PlainAddr struct {
 func (addr PlainAddr) AddrPort() netip.AddrPort {
 	var ip netip.Addr
 	a := (*[2]uint64)((unsafe.Pointer)(&addr))
-	if a[0] == 0 && a[1]&0xffffffff00000000 == 0x0000ffff00000000 {
+	// see https://cs.opensource.google/go/go/+/refs/tags/go1.25.0:src/net/netip/netip.go;l=469
+	if a[0] == 0 && a[1]>>32 == 0xffff {
 		if IsLittleEndian {
 			ip = netip.AddrFrom4([4]byte{addr.Addr[11], addr.Addr[10], addr.Addr[9], addr.Addr[8]})
 		} else {
@@ -1067,7 +1068,8 @@ func (addr PlainAddr) AddrPort() netip.AddrPort {
 
 func (addr PlainAddr) AppendTo(b []byte) []byte {
 	a := (*[2]uint64)((unsafe.Pointer)(&addr))
-	if a[0] == 0 && a[1]&0xffffffff00000000 == 0x0000ffff00000000 {
+	// see https://cs.opensource.google/go/go/+/refs/tags/go1.25.0:src/net/netip/netip.go;l=469
+	if a[0] == 0 && a[1]>>32 == 0xffff {
 		b = strconv.AppendUint(b, uint64(addr.Addr[11]), 10)
 		b = append(b, '.')
 		b = strconv.AppendUint(b, uint64(addr.Addr[10]), 10)
