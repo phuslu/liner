@@ -89,15 +89,17 @@ func main() {
 		}
 		dataLogger = log.DefaultLogger
 	} else {
+		logDir := cmp.Or(config.Global.LogDir, filepath.Dir(must(os.Executable())))
 		// main logger
 		log.DefaultLogger = log.Logger{
 			Level:  log.ParseLevel(cmp.Or(config.Global.LogLevel, "info")),
 			Caller: 1,
 			Writer: &log.FileWriter{
-				Filename:   "liner.log",
-				MaxBackups: 1,
-				MaxSize:    cmp.Or(config.Global.LogMaxsize, 10*1024*1024),
-				LocalTime:  config.Global.LogLocaltime,
+				Filename:     filepath.Join(logDir, "liner.log"),
+				MaxBackups:   1,
+				MaxSize:      cmp.Or(config.Global.LogMaxsize, 10*1024*1024),
+				LocalTime:    config.Global.LogLocaltime,
+				EnsureFolder: true,
 			},
 		}
 		// data logger
@@ -105,10 +107,11 @@ func main() {
 			Writer: &log.AsyncWriter{
 				ChannelSize: cmp.Or(config.Global.LogChannelSize, 8192),
 				Writer: &log.FileWriter{
-					Filename:   "data.log",
-					MaxBackups: cmp.Or(config.Global.LogBackups, 2),
-					MaxSize:    cmp.Or(config.Global.LogMaxsize, 20*1024*1024),
-					LocalTime:  config.Global.LogLocaltime,
+					Filename:     filepath.Join(logDir, "data.log"),
+					MaxBackups:   cmp.Or(config.Global.LogBackups, 2),
+					MaxSize:      cmp.Or(config.Global.LogMaxsize, 20*1024*1024),
+					LocalTime:    config.Global.LogLocaltime,
+					EnsureFolder: true,
 				},
 			},
 		}

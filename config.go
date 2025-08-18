@@ -144,6 +144,7 @@ type SshConfig struct {
 
 type Config struct {
 	Global struct {
+		LogDir           string `json:"log_dir" yaml:"log_dir"`
 		LogLevel         string `json:"log_level" yaml:"log_level"`
 		LogBackups       int    `json:"log_backups" yaml:"log_backups"`
 		LogMaxsize       int64  `json:"log_maxsize" yaml:"log_maxsize"`
