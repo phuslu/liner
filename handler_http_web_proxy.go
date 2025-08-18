@@ -28,6 +28,7 @@ type HTTPWebProxyHandler struct {
 	Pass        string
 	AuthBasic   string
 	AuthTable   string
+	StripPrefix string
 	SetHeaders  string
 	DumpFailure bool
 
@@ -217,6 +218,11 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	req.URL.Scheme = u.Scheme
 	req.URL.Host = u.Host
 	// req.Host = u.Host
+
+	if prefix := h.StripPrefix; prefix != "" {
+		req.URL.Path = strings.TrimPrefix(req.URL.Path, prefix)
+		req.RequestURI = strings.TrimPrefix(req.RequestURI, prefix)
+	}
 
 	if s := req.Header.Get("x-forwarded-for"); s != "" {
 		req.Header.Set("x-forwarded-for", s+", "+ri.RemoteAddr.Addr().String())
