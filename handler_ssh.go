@@ -65,8 +65,13 @@ func (h *SshHandler) Load() error {
 	}
 
 	h.sshConfig = &ssh.ServerConfig{
-		ServerVersion: cmp.Or(h.Config.ServerVersion, fmt.Sprintf("SSH-2.0-liner-%s", version)),
 		MaxAuthTries:  3,
+		ServerVersion: cmp.Or(h.Config.ServerVersion, fmt.Sprintf("SSH-2.0-liner-%s", version)),
+		PreAuthConnCallback: func(conn ssh.ServerPreAuthConn) {
+			if data, err := os.ReadFile(cmp.Or(h.Config.BannerFile, "/etc/motd")); err == nil {
+				_ = conn.SendAuthBanner(string(data))
+			}
+		},
 	}
 	h.sshConfig.AddHostKey(sshSigner)
 
