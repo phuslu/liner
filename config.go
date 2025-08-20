@@ -243,6 +243,8 @@ func NewConfig(filename string) (*Config, error) {
 		config.Socks = append(config.Socks, c.Socks...)
 		config.Tunnel = append(config.Tunnel, c.Tunnel...)
 		config.Stream = append(config.Stream, c.Stream...)
+		config.Dns = append(config.Dns, c.Dns...)
+		config.Ssh = append(config.Ssh, c.Ssh...)
 	}
 
 	read := func(s string) string {
