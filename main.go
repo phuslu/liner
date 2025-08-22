@@ -484,9 +484,6 @@ func main() {
 					PreferChacha20: config.PreferChacha20,
 					DisableOCSP:    config.DisableOcsp,
 				})
-				if tlsConfigurator.DefaultServername == "" {
-					tlsConfigurator.DefaultServername = name
-				}
 				hs, ok := h2handlers[listen]
 				if !ok {
 					hs = make(map[string]HTTPHandler)
@@ -513,15 +510,10 @@ func main() {
 				if s, _, err := net.SplitHostPort(r.TLS.ServerName); err == nil {
 					r.TLS.ServerName = s
 				}
-				var serverName = r.TLS.ServerName
-				if serverName == "" {
-					serverName = tlsConfigurator.DefaultServername
-				}
-
-				h, _ := handlers[serverName]
+				h, _ := handlers[r.TLS.ServerName]
 				if h == nil {
 					for key, value := range handlers {
-						if key != "" && key[0] == '*' && strings.HasSuffix(serverName, key[1:]) {
+						if key != "" && key[0] == '*' && strings.HasSuffix(r.TLS.ServerName, key[1:]) {
 							h = value
 							break
 						}

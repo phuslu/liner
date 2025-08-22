@@ -80,9 +80,7 @@ var ErrTLSServerNameNotFound = errors.New("tls server name is not found")
 type TLSServerNameHandle func(ctx context.Context, sni string, data []byte, conn net.Conn) error
 
 type TLSInspector struct {
-	Logger            *log.Logger
-	DefaultServername string
-
+	Logger              *log.Logger
 	Entries             map[string]TLSInspectorEntry // key: TLS ServerName
 	AutoCert            *autocert.Manager
 	RootCA              *RootCA
@@ -190,17 +188,13 @@ func (m *TLSInspector) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certific
 func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Config, error) {
 	m.ClientHelloMap.Store(PlainAddrFromNetAddr(hello.Conn.RemoteAddr()), &TLSClientHelloInfo{ClientHelloInfo: hello})
 
-	if host, _, err := net.SplitHostPort(hello.ServerName); err == nil {
-		hello.ServerName = host
-	}
-
-	var serverName = hello.ServerName
-	if serverName == "" {
-		serverName = m.DefaultServername
+	serverName := hello.ServerName
+	if host, _, err := net.SplitHostPort(serverName); err == nil {
+		serverName = host
 	}
 
 	var preferChacha20, disableTLS11, disableHTTP2, disableOCSP bool
-	if entry, ok := m.Entries[hello.ServerName]; ok {
+	if entry, ok := m.Entries[serverName]; ok {
 		preferChacha20 = entry.PreferChacha20
 		disableHTTP2 = entry.DisableHTTP2
 		disableTLS11 = entry.DisableTLS11
@@ -247,13 +241,13 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 	if err != nil {
 		if err == ErrTLSServerNameNotFound && m.TLSServerNameHandle != nil {
 			if mc, ok := hello.Conn.(*MirrorHeaderConn); ok {
-				err := m.TLSServerNameHandle(hello.Context(), hello.ServerName, mc.Header, mc.Conn)
+				err := m.TLSServerNameHandle(hello.Context(), serverName, mc.Header, mc.Conn)
 				if err != nil {
 					return nil, err
 				}
 			}
 		}
-		return nil, fmt.Errorf("tls inspector cannot handle server name %#v: %w", hello.ServerName, err)
+		return nil, fmt.Errorf("tls inspector cannot handle server name %#v: %w", serverName, err)
 	}
 
 	cacert := cert.Leaf
