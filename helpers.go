@@ -474,6 +474,58 @@ func Chacha20NewStreamCipher(passphrase []byte, nonce uint64) (cipher *chacha20.
 	return
 }
 
+var _ net.Conn = (*Chacha20NetConn)(nil)
+
+type Chacha20NetConn struct {
+	Conn   net.Conn
+	Writer *chacha20.Cipher
+	Reader *chacha20.Cipher
+}
+
+func (c *Chacha20NetConn) NetConn() net.Conn {
+	return c.Conn
+}
+
+func (c *Chacha20NetConn) Read(b []byte) (n int, err error) {
+	n, err = c.Conn.Read(b)
+	if c.Reader != nil {
+		c.Reader.XORKeyStream(b, b)
+	}
+	return
+}
+
+func (c *Chacha20NetConn) Write(b []byte) (n int, err error) {
+	if c.Writer != nil {
+		c.Writer.XORKeyStream(b, b)
+	}
+	n, err = c.Conn.Write(b)
+	return
+}
+
+func (c *Chacha20NetConn) Close() (err error) {
+	return c.Conn.Close()
+}
+
+func (c *Chacha20NetConn) RemoteAddr() net.Addr {
+	return c.Conn.RemoteAddr()
+}
+
+func (c *Chacha20NetConn) LocalAddr() net.Addr {
+	return c.Conn.LocalAddr()
+}
+
+func (c *Chacha20NetConn) SetDeadline(t time.Time) error {
+	return c.Conn.SetDeadline(t)
+}
+
+func (c *Chacha20NetConn) SetReadDeadline(t time.Time) error {
+	return c.Conn.SetReadDeadline(t)
+}
+
+func (c *Chacha20NetConn) SetWriteDeadline(t time.Time) error {
+	return c.Conn.SetWriteDeadline(t)
+}
+
 type HTTPFlushWriter struct {
 	http.ResponseWriter
 	*http.ResponseController

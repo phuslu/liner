@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"crypto/sha1"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,6 +29,7 @@ type HTTPDialer struct {
 	Port        string
 	TLS         bool
 	Chacha20Key string
+	ChaCha20All bool
 	Websocket   bool
 	Insecure    bool
 	ECH         bool
@@ -142,6 +145,16 @@ func (d *HTTPDialer) DialContext(ctx context.Context, network, addr string) (net
 			return nil, err
 		}
 		conn = tlsConn
+	}
+
+	if d.ChaCha20All {
+		sha1sum := sha1.Sum(s2b(d.Chacha20Key))
+		nonce := binary.LittleEndian.Uint64(sha1sum[:8])
+		conn = &Chacha20NetConn{
+			Conn:   conn,
+			Writer: must(Chacha20NewStreamCipher(s2b(d.Chacha20Key), nonce)),
+			Reader: must(Chacha20NewStreamCipher(s2b(d.Chacha20Key), nonce)),
+		}
 	}
 
 	buf := AppendableBytes(make([]byte, 0, 2048))
