@@ -2,17 +2,14 @@ package main
 
 import (
 	"bytes"
-	"cmp"
 	"context"
 	"crypto/tls"
 	_ "embed"
 	"encoding/base64"
-	"encoding/json"
 	"net"
 	"net/http"
 	"net/netip"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -71,7 +68,7 @@ var hrPool = sync.Pool{
 }
 
 const (
-	HTTPTunnelEncryptedPathPrefix  = "/t/20151012/"
+	HTTPWellknownBase64PathPrefix  = "/.well-known/base64/"
 	HTTPTunnelConnectTCPPathPrefix = "/.well-known/masque/tcp/"
 	HTTPTunnelReverseTCPPathPrefix = "/.well-known/reverse/tcp/"
 )
@@ -120,39 +117,19 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		}
 	}
 
+	// decode base64 url
+	if strings.HasPrefix(req.RequestURI, HTTPWellknownBase64PathPrefix) {
+		payload, err := base64.StdEncoding.AppendDecode(make([]byte, 0, 1024), s2b(req.RequestURI[len(HTTPWellknownBase64PathPrefix):]))
+		if err == nil {
+			req.RequestURI = string(payload)
+			req.URL.Path = req.RequestURI
+			req.URL.RawPath = req.RequestURI
+		}
+	}
+
 	// fix http3 request
 	if req.Proto == "" && ri.ClientHelloInfo != nil && len(ri.ClientHelloInfo.SupportedProtos) > 0 && ri.ClientHelloInfo.SupportedProtos[0] == "h3" {
 		req.Proto, req.ProtoMajor, req.ProtoMinor = "HTTP/3.0", 3, 0
-	}
-
-	// decode encrypted url
-	if strings.HasPrefix(req.RequestURI, HTTPTunnelEncryptedPathPrefix) {
-		passphrase := cmp.Or(h.Config.Chacha20Key, HTTPTunnelEncryptedPathPrefix[3:len(HTTPTunnelEncryptedPathPrefix)-1])
-		s1, s2, _ := strings.Cut(req.RequestURI[len(HTTPTunnelEncryptedPathPrefix):], "/")
-		nonce, err1 := strconv.ParseUint(s1, 10, 64)
-		payload, err2 := base64.StdEncoding.AppendDecode(make([]byte, 0, 2048), s2b(s2))
-		if err := cmp.Or(err1, err2); err == nil {
-			if cipher, err := Chacha20NewStreamCipher(s2b(passphrase), nonce); err == nil {
-				cipher.XORKeyStream(payload, payload)
-				var info struct {
-					Time   int64       `json:"time"`
-					Header http.Header `json:"header"`
-					Method string      `json:"method"`
-					URI    string      `json:"uri"`
-				}
-				if err := json.Unmarshal(payload, &info); err == nil {
-					for key, values := range info.Header {
-						for _, value := range values {
-							req.Header.Add(key, value)
-						}
-					}
-					req.Method = cmp.Or(info.Method, req.Method)
-					req.RequestURI = info.URI
-					req.URL.Path = req.RequestURI
-					req.URL.RawPath = req.RequestURI
-				}
-			}
-		}
 	}
 
 	// fix http3 tunnel request

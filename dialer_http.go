@@ -9,7 +9,6 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/binary"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -29,7 +28,6 @@ type HTTPDialer struct {
 	Port        string
 	TLS         bool
 	Chacha20Key string
-	ChaCha20All bool
 	Websocket   bool
 	Insecure    bool
 	ECH         bool
@@ -147,13 +145,13 @@ func (d *HTTPDialer) DialContext(ctx context.Context, network, addr string) (net
 		conn = tlsConn
 	}
 
-	if d.ChaCha20All {
+	if d.Chacha20Key != "" {
 		sha1sum := sha1.Sum(s2b(d.Chacha20Key))
 		nonce := binary.LittleEndian.Uint64(sha1sum[:8])
 		conn = &Chacha20NetConn{
 			Conn:   conn,
-			Writer: must(Chacha20NewStreamCipher(s2b(d.Chacha20Key), nonce)),
-			Reader: must(Chacha20NewStreamCipher(s2b(d.Chacha20Key), nonce)),
+			Writer: must(Chacha20NewStreamCipher([]byte(d.Chacha20Key), nonce)),
+			Reader: must(Chacha20NewStreamCipher([]byte(d.Chacha20Key), nonce)),
 		}
 	}
 
@@ -166,39 +164,14 @@ func (d *HTTPDialer) DialContext(ctx context.Context, network, addr string) (net
 		// see https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-connect-tcp-05
 		host, port, _ := net.SplitHostPort(addr)
 		key := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%x%x\n", fastrandn(1<<32-1), fastrandn(1<<32-1))))
-		if d.TLS && d.Chacha20Key == "" {
-			buf = buf.Str("GET ").Str(HTTPTunnelConnectTCPPathPrefix).Str(host).Byte('/').Str(port).Str("/ HTTP/1.1\r\n")
-		} else {
-			header := http.Header{}
-			if d.Username != "" {
-				header.Set("Proxy-Authorization", "Basic "+base64.StdEncoding.EncodeToString(s2b(d.Username+":"+d.Password)))
-			}
-			payload, _ := json.Marshal(struct {
-				Time   int64       `json:"time"`
-				Header http.Header `json:"header"`
-				Method string      `json:"method"`
-				URI    string      `json:"uri"`
-			}{
-				Time:   time.Now().Unix(),
-				Header: header,
-				Method: http.MethodGet,
-				URI:    fmt.Sprintf("%s%s/%s/", HTTPTunnelConnectTCPPathPrefix, host, port),
-			})
-			nonce := fastrand64()
-			cipher, err := Chacha20NewStreamCipher(s2b(d.Chacha20Key), nonce)
-			if err != nil {
-				return nil, err
-			}
-			cipher.XORKeyStream(payload, payload)
-			buf = buf.Str("GET ").Str(HTTPTunnelEncryptedPathPrefix).Uint64(nonce, 10).Byte('/').Base64(payload).Str(" HTTP/1.1\r\n")
-		}
+		buf = buf.Str("GET ").Str(HTTPWellknownBase64PathPrefix).Base64(s2b(HTTPTunnelConnectTCPPathPrefix + host + "/" + port + "/")).Str(" HTTP/1.1\r\n")
 		buf = buf.Str("Host: ").Str(d.Host).Str("\r\n")
 		buf = buf.Str("Connection: Upgrade\r\n")
 		buf = buf.Str("Upgrade: websocket\r\n")
 		buf = buf.Str("Sec-WebSocket-Version: 13\r\n")
 		buf = buf.Str("Sec-WebSocket-Key: ").Str(key).Str("\r\n")
 	}
-	if d.Username != "" && d.Chacha20Key == "" {
+	if d.Username != "" {
 		buf = buf.Str("Proxy-Authorization: Basic ").Base64(s2b(d.Username + ":" + d.Password)).Str("\r\n")
 	}
 	if header, _ := ctx.Value(DialerHTTPHeaderContextKey).(http.Header); header != nil {

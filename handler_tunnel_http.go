@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -123,40 +121,11 @@ func (h *TunnelHandler) h1tunnel(ctx context.Context, dialer string) (net.Listen
 		return nil, fmt.Errorf("invalid remote addr: %s", h.Config.Listen[0])
 	}
 
-	chacha20Key := u.Query().Get("chacha20_key")
-
 	// see https://www.ietf.org/archive/id/draft-kazuho-httpbis-reverse-tunnel-00.html
 	buf := AppendableBytes(make([]byte, 0, 2048))
-	if chacha20Key != "" {
-		header := http.Header{}
-		if username := u.User.Username(); username != "" {
-			header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString(s2b(username+":"+first(u.User.Password()))))
-		}
-		payload, _ := json.Marshal(struct {
-			Time   int64       `json:"time"`
-			Header http.Header `json:"header"`
-			Method string      `json:"method"`
-			URI    string      `json:"uri"`
-		}{
-			Time:   time.Now().Unix(),
-			Header: header,
-			Method: http.MethodGet,
-			URI:    fmt.Sprintf("%s%s/%s/", HTTPTunnelReverseTCPPathPrefix, targetHost, targetPort),
-		})
-		nonce := fastrand64()
-		cipher, err := Chacha20NewStreamCipher(s2b(chacha20Key), 10)
-		if err != nil {
-			return nil, err
-		}
-		cipher.XORKeyStream(payload, payload)
-		buf = buf.Str("GET ").Str(HTTPTunnelEncryptedPathPrefix).Uint64(nonce, 10).Byte('/').Base64(payload).Str(" HTTP/1.1\r\n")
-	} else {
-		buf = buf.Str("GET ").Str(HTTPTunnelReverseTCPPathPrefix).Str(targetHost).Byte('/').Str(targetPort).Str("/ HTTP/1.1\r\n")
-	}
+	buf = buf.Str("GET ").Str(HTTPWellknownBase64PathPrefix).Base64(s2b(HTTPTunnelReverseTCPPathPrefix + targetHost + "/" + targetPort + "/")).Str(" HTTP/1.1\r\n")
 	buf = buf.Str("Host: ").Str(u.Hostname()).Str("\r\n")
-	if chacha20Key == "" {
-		buf = buf.Str("Authorization: Basic ").Base64(AppendableBytes(make([]byte, 0, 128)).Str(u.User.Username()).Byte(':').Str(first(u.User.Password()))).Str("\r\n")
-	}
+	buf = buf.Str("Authorization: Basic ").Base64(AppendableBytes(make([]byte, 0, 128)).Str(u.User.Username()).Byte(':').Str(first(u.User.Password()))).Str("\r\n")
 	buf = buf.Str("User-Agent: ").Str(DefaultUserAgent).Str("\r\n")
 	switch u.Scheme {
 	case "ws", "wss":
