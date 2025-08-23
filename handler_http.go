@@ -7,12 +7,12 @@ import (
 	"crypto/tls"
 	_ "embed"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"net"
 	"net/http"
 	"net/netip"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -129,10 +129,10 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	if strings.HasPrefix(req.RequestURI, HTTPTunnelEncryptedPathPrefix) {
 		passphrase := cmp.Or(h.Config.Chacha20Key, HTTPTunnelEncryptedPathPrefix[3:len(HTTPTunnelEncryptedPathPrefix)-1])
 		s1, s2, _ := strings.Cut(req.RequestURI[len(HTTPTunnelEncryptedPathPrefix):], "/")
-		nonce, err1 := hex.AppendDecode(make([]byte, 0, 32), s2b(s1))
+		nonce, err1 := strconv.ParseUint(s1, 10, 64)
 		payload, err2 := base64.StdEncoding.AppendDecode(make([]byte, 0, 2048), s2b(s2))
 		if err := cmp.Or(err1, err2); err == nil {
-			if cipher, err := Chacha20NewDecryptStreamCipher(s2b(passphrase), nonce); err == nil {
+			if cipher, err := Chacha20NewStreamCipher(s2b(passphrase), nonce); err == nil {
 				cipher.XORKeyStream(payload, payload)
 				var info struct {
 					Time   int64       `json:"time"`

@@ -43,6 +43,12 @@ import (
 //go:linkname fastrand runtime.cheaprand
 func fastrand() uint32
 
+// fastrand returns a pseudorandom uint64.
+//
+//go:noescape
+//go:linkname fastrand64 runtime.fastrand64
+func fastrand64() uint64
+
 // fastrandn returns a pseudorandom uint32 in [0,n).
 //
 //go:noescape
@@ -455,27 +461,15 @@ func AppendAESCBCBase64Encryption(dst []byte, text []byte, key, iv []byte) []byt
 	return dst[:old+need]
 }
 
-func Chacha20NewEncryptStreamCipher(passphrase []byte) (cipher *chacha20.Cipher, nonce []byte, err error) {
+func Chacha20NewStreamCipher(passphrase []byte, nonce uint64) (cipher *chacha20.Cipher, err error) {
 	var key []byte
 	key, err = hkdf.Key(sha256.New, passphrase, nil, "20151012", 32)
 	if err != nil {
 		return
 	}
-	nonce = make([]byte, 12)
-	binary.NativeEndian.PutUint32(nonce[0:], fastrand())
-	binary.NativeEndian.PutUint32(nonce[4:], fastrand())
-	binary.NativeEndian.PutUint32(nonce[8:], fastrand())
-	cipher, err = chacha20.NewUnauthenticatedCipher(key, nonce)
-	return
-}
-
-func Chacha20NewDecryptStreamCipher(passphrase []byte, nonce []byte) (cipher *chacha20.Cipher, err error) {
-	var key []byte
-	key, err = hkdf.Key(sha256.New, passphrase, nil, "20151012", 32)
-	if err != nil {
-		return
-	}
-	cipher, err = chacha20.NewUnauthenticatedCipher(key, nonce)
+	var b [12]byte
+	binary.LittleEndian.PutUint64(b[0:], nonce)
+	cipher, err = chacha20.NewUnauthenticatedCipher(key, b[:])
 	return
 }
 

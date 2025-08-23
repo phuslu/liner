@@ -171,12 +171,13 @@ func (d *HTTPDialer) DialContext(ctx context.Context, network, addr string) (net
 				Method: http.MethodGet,
 				URI:    fmt.Sprintf("%s%s/%s/", HTTPTunnelConnectTCPPathPrefix, host, port),
 			})
-			cipher, nonce, err := Chacha20NewEncryptStreamCipher(s2b(d.Chacha20Key))
+			nonce := fastrand64()
+			cipher, err := Chacha20NewStreamCipher(s2b(d.Chacha20Key), nonce)
 			if err != nil {
 				return nil, err
 			}
 			cipher.XORKeyStream(payload, payload)
-			buf = buf.Str("GET ").Str(HTTPTunnelEncryptedPathPrefix).Hex(nonce).Byte('/').Base64(payload).Str(" HTTP/1.1\r\n")
+			buf = buf.Str("GET ").Str(HTTPTunnelEncryptedPathPrefix).Uint64(nonce, 10).Byte('/').Base64(payload).Str(" HTTP/1.1\r\n")
 		}
 		buf = buf.Str("Host: ").Str(d.Host).Str("\r\n")
 		buf = buf.Str("Connection: Upgrade\r\n")

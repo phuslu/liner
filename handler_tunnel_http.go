@@ -143,12 +143,13 @@ func (h *TunnelHandler) h1tunnel(ctx context.Context, dialer string) (net.Listen
 			Method: http.MethodGet,
 			URI:    fmt.Sprintf("%s%s/%s/", HTTPTunnelReverseTCPPathPrefix, targetHost, targetPort),
 		})
-		cipher, nonce, err := Chacha20NewEncryptStreamCipher(s2b(chacha20Key))
+		nonce := fastrand64()
+		cipher, err := Chacha20NewStreamCipher(s2b(chacha20Key), 10)
 		if err != nil {
 			return nil, err
 		}
 		cipher.XORKeyStream(payload, payload)
-		buf = buf.Str("GET ").Str(HTTPTunnelEncryptedPathPrefix).Hex(nonce).Byte('/').Base64(payload).Str(" HTTP/1.1\r\n")
+		buf = buf.Str("GET ").Str(HTTPTunnelEncryptedPathPrefix).Uint64(nonce, 10).Byte('/').Base64(payload).Str(" HTTP/1.1\r\n")
 	} else {
 		buf = buf.Str("GET ").Str(HTTPTunnelReverseTCPPathPrefix).Str(targetHost).Byte('/').Str(targetPort).Str("/ HTTP/1.1\r\n")
 	}
