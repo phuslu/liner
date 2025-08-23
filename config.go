@@ -294,5 +294,11 @@ func NewConfig(filename string) (*Config, error) {
 		fmt.Fprintf(os.Stderr, "%s WAN 1 config.go:122 > liner is running in the development mode.\n", timeNow().Format("15:04:05"))
 	}
 
+	for _, server := range config.Https {
+		if server.Chacha20Key != "" {
+			return nil, fmt.Errorf("invalid chacha20_key option in https handler: server_name=%#v, chacha_key=%#v", server.ServerName, server.Chacha20Key)
+		}
+	}
+
 	return config, nil
 }
