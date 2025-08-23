@@ -573,6 +573,7 @@ func main() {
 	// listen and serve http
 	h1handlers := map[string]struct {
 		HTTPHandler HTTPHandler
+		Chacha20Key string
 	}{}
 	for _, httpConfig := range config.Http {
 		httpConfig.ServerName = append(httpConfig.ServerName, "", "localhost", "127.0.0.1")
@@ -639,8 +640,10 @@ func main() {
 		for _, listen := range httpConfig.Listen {
 			h1handlers[listen] = struct {
 				HTTPHandler HTTPHandler
+				Chacha20Key string
 			}{
 				HTTPHandler: handler,
+				Chacha20Key: httpConfig.Chacha20Key,
 			}
 		}
 	}
@@ -670,6 +673,7 @@ func main() {
 				KeepAlivePeriod: 3 * time.Minute,
 				ReadBufferSize:  config.Global.TcpReadBuffer,
 				WriteBufferSize: config.Global.TcpWriteBuffer,
+				Chacha20Key:     handler.Chacha20Key,
 			}
 		}
 
