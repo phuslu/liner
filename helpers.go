@@ -34,6 +34,7 @@ import (
 	"unsafe"
 
 	"github.com/libp2p/go-yamux/v5"
+	"github.com/valyala/bytebufferpool"
 	"golang.org/x/crypto/chacha20"
 	"golang.org/x/crypto/ocsp"
 )
@@ -496,9 +497,14 @@ func (c *Chacha20NetConn) Read(b []byte) (n int, err error) {
 
 func (c *Chacha20NetConn) Write(b []byte) (n int, err error) {
 	if c.Writer != nil {
-		c.Writer.XORKeyStream(b, b)
+		bb := bytebufferpool.Get()
+		defer bytebufferpool.Put(bb)
+		bb.Write(b)
+		c.Writer.XORKeyStream(bb.B, bb.B)
+		n, err = c.Conn.Write(bb.B)
+	} else {
+		n, err = c.Conn.Write(b)
 	}
-	n, err = c.Conn.Write(b)
 	return
 }
 
