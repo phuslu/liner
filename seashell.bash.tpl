@@ -7,11 +7,12 @@ set -ex
 
 test -x ~/service/liner/run && exit 0
 
-cd && mkdir -p liner && cd liner
+test $(pwd) = '/' && cd || true
+mkdir -p liner && cd liner
 
-goosarch=$(grep -q 'CPU architecture: 8' /proc/cpuinfo && echo linux_arm64 || echo linux_amd64)
-linerurl=$(curl -s https://api.github.com/repos/phuslu/liner/releases/tags/v0.0.0 | awk -v goosarch="$goosarch" '$0 ~ goosarch {f=1} f && /browser_download_url/ {gsub(/.*: "|",?/, ""); print; exit}')
-curl -sSLf $linerurl | tar xvz -C . -T <(echo liner)
+go_os_arch=$(grep -q 'CPU architecture: 8' /proc/cpuinfo && echo linux_arm64 || echo linux_amd64)
+download_url=$(wget -O- https://api.github.com/repos/phuslu/liner/releases/tags/v0.0.0 | awk -v go_os_arch="$go_os_arch" '$0 ~ go_os_arch {f=1} f && /browser_download_url/ {gsub(/.*: "|",?/, ""); print; exit}')
+wget ${download_url} -O 1.tar.gz && tar xvzf 1.tar.gz && rm -f 1.tar.gz
 
 # echo '{{ readFile `/home/phuslu/web/server/ssh_host_ed25519_key` | trim }}' | tee ssh_host_ed25519_key
 echo '{{ readFile `/home/phuslu/.ssh/id_ed25519.pub` | trim }}' | tee authorized_keys
@@ -32,7 +33,7 @@ global:
   geosite_disabled: true
   dns_cache_duration: 15m
   dns_server: https://8.8.8.8/dns-query
-  set_process_name: /lib/systemd/systemd-logind
+  set_process_name: /bin/sleep 60
 dialer:
   wss: "wss://edge:{{ $password }}@cloud.phus.lu/?ech=true&insecure=false"
 tunnel:
