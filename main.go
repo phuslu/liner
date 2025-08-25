@@ -580,7 +580,7 @@ func main() {
 		if name, err := os.Hostname(); err == nil {
 			httpConfig.ServerName = append(httpConfig.ServerName, name)
 		}
-		if ip, err := GetPreferedLocalIP(); err == nil {
+		if ip, err := GetPreferedLocalIP("1.1.1.1"); err == nil {
 			httpConfig.ServerName = append(httpConfig.ServerName, ip.String())
 		}
 		handler := &HTTPServerHandler{

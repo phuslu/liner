@@ -1079,19 +1079,14 @@ func AppendJA4Fingerprint(dst []byte, version TLSVersion, info *tls.ClientHelloI
 	return b
 }
 
-func GetPreferedLocalIP() (net.IP, error) {
-	conn, err := net.Dial("udp", "8.8.8.8:53")
+func GetPreferedLocalIP(remote string) (netip.Addr, error) {
+	conn, err := net.Dial("udp", net.JoinHostPort(remote, "443"))
 	if err != nil {
-		return nil, err
+		return netip.Addr{}, err
 	}
 	defer conn.Close()
 
-	s, _, err := net.SplitHostPort(conn.LocalAddr().String())
-	if err != nil {
-		return nil, err
-	}
-
-	return net.ParseIP(s), nil
+	return AddrPortFromNetAddr(conn.LocalAddr()).Addr(), nil
 }
 
 func AddrPortFromNetAddr(addr net.Addr) (addrport netip.AddrPort) {
