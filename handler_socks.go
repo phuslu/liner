@@ -133,11 +133,11 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 	var addressType = Socks5AddressType(b[3])
 	switch addressType {
 	case Socks5IPv4Address:
-		req.Host = net.IP(b[4:8]).String()
+		req.Host = netip.AddrFrom4(*(*[4]byte)(b[4:8])).String()
 	case Socks5DomainName:
 		req.Host = string(b[5 : 5+int(b[4])]) //b[4]表示域名的长度
 	case Socks5IPv6Address:
-		req.Host = net.IP(b[4:20]).String()
+		req.Host = netip.AddrFrom16(*(*[16]byte)(b[4:20])).String()
 	}
 	req.Port = int(b[n-2])<<8 | int(b[n-1])
 
