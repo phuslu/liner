@@ -761,9 +761,9 @@ func main() {
 	for _, ssh := range config.Ssh {
 		for _, addr := range ssh.Listen {
 			h := &SshHandler{
-				Config: ssh,
-				// Functions: functions.FuncMap(),
-				Logger: log.DefaultLogger,
+				Config:    ssh,
+				Functions: functions.FuncMap(),
+				Logger:    log.DefaultLogger,
 			}
 
 			var ln net.Listener

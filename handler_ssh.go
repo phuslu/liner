@@ -14,9 +14,11 @@ import (
 	"os"
 	"os/exec"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"text/template"
 	"time"
 
 	"github.com/creack/pty"
@@ -27,8 +29,9 @@ import (
 )
 
 type SshHandler struct {
-	Config SshConfig
-	Logger log.Logger
+	Config    SshConfig
+	Functions template.FuncMap
+	Logger    log.Logger
 
 	sshConfig   *ssh.ServerConfig
 	userchecker AuthUserChecker
@@ -69,7 +72,29 @@ func (h *SshHandler) Load() error {
 		ServerVersion: cmp.Or(h.Config.ServerVersion, fmt.Sprintf("SSH-2.0-liner-%s", version)),
 		PreAuthConnCallback: func(conn ssh.ServerPreAuthConn) {
 			if data, err := os.ReadFile(cmp.Or(h.Config.BannerFile, "/etc/motd")); err == nil {
-				_ = conn.SendAuthBanner(string(data))
+				if strings.Contains(b2s(data), "{{") {
+					if banner, err := template.New("ssh_banner_file").Funcs(h.Functions).Parse(string(data)); err == nil {
+						var sb strings.Builder
+						banner.Execute(&sb, struct {
+							User          string
+							SessionID     string
+							ClientVersion string
+							ServerVersion string
+							RemoteAddr    string
+							LocalAddr     string
+						}{
+							User:          conn.User(),
+							SessionID:     string(conn.SessionID()),
+							ClientVersion: string(conn.ClientVersion()),
+							ServerVersion: string(conn.ServerVersion()),
+							RemoteAddr:    conn.RemoteAddr().String(),
+							LocalAddr:     conn.LocalAddr().String(),
+						})
+						_ = conn.SendAuthBanner(sb.String())
+					}
+				} else {
+					_ = conn.SendAuthBanner(string(data))
+				}
 			}
 		},
 	}
