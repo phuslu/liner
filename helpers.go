@@ -532,6 +532,59 @@ func (c *Chacha20NetConn) SetWriteDeadline(t time.Time) error {
 	return c.Conn.SetWriteDeadline(t)
 }
 
+type IdleTimeoutConn struct {
+	Conn        net.Conn
+	IdleTimeout time.Duration
+
+	readat, writeat int64
+}
+
+func (c *IdleTimeoutConn) Read(b []byte) (n int, err error) {
+	if c.IdleTimeout > 0 {
+		now := time.Now()
+		if ts := now.Unix(); ts > c.readat {
+			c.Conn.SetReadDeadline(now.Add(c.IdleTimeout))
+			c.readat = ts
+		}
+	}
+	return c.Conn.Read(b)
+}
+
+func (c *IdleTimeoutConn) Write(b []byte) (n int, err error) {
+	if c.IdleTimeout > 0 {
+		now := time.Now()
+		if ts := now.Unix(); ts > c.writeat {
+			c.Conn.SetWriteDeadline(now.Add(c.IdleTimeout))
+			c.writeat = ts
+		}
+	}
+	return c.Conn.Write(b)
+}
+
+func (c *IdleTimeoutConn) Close() error {
+	return c.Conn.Close()
+}
+
+func (c *IdleTimeoutConn) LocalAddr() net.Addr {
+	return c.Conn.LocalAddr()
+}
+
+func (c *IdleTimeoutConn) RemoteAddr() net.Addr {
+	return c.Conn.RemoteAddr()
+}
+
+func (c *IdleTimeoutConn) SetDeadline(t time.Time) error {
+	return c.Conn.SetDeadline(t)
+}
+
+func (c *IdleTimeoutConn) SetReadDeadline(t time.Time) error {
+	return c.Conn.SetReadDeadline(t)
+}
+
+func (c *IdleTimeoutConn) SetWriteDeadline(t time.Time) error {
+	return c.Conn.SetWriteDeadline(t)
+}
+
 type HTTPFlushWriter struct {
 	http.ResponseWriter
 	*http.ResponseController

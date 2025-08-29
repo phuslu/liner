@@ -36,6 +36,7 @@ type HTTPConfig struct {
 		Log              bool   `json:"log" yaml:"log"`
 		LogInterval      int64  `json:"log_interval" yaml:"log_interval"`
 		IoCopyBuffer     int    `json:"io_copy_buffer" yaml:"io_copy_buffer"`
+		IdleTimeout      int64  `json:"idle_timeout" yaml:"idle_timeout"`
 	} `json:"forward" yaml:"forward"`
 	Tunnel struct {
 		Enabled         bool     `json:"enabled" yaml:"enabled"`

@@ -416,6 +416,13 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			return
 		}
 
+		if h.Config.Forward.IdleTimeout > 0 {
+			conn = &IdleTimeoutConn{
+				Conn:        conn,
+				IdleTimeout: time.Duration(h.Config.Forward.IdleTimeout) * time.Second,
+			}
+		}
+
 		log.Debug().Context(ri.LogContext).Str("geosite", geosite.Site).Any("req_header", req.Header).NetAddr("conn_remote_addr", conn.RemoteAddr()).Msg("dial host ok")
 
 		var w io.Writer

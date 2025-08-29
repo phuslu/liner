@@ -115,6 +115,8 @@ https:
       auth_table: authuser.csv
       deny_domains_table: deny_domains.csv
       speed_limit: 10000000
+      io_copy_buffer: 65536
+      idle_timeout: 600
     tunnel:
       enabled: true
       auth_table: authuser.csv

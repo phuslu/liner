@@ -57,7 +57,8 @@ https:
     forward:
       log: true
       prefer_ipv6: false
-      io_copy_buffer: 131072
+      io_copy_buffer: 65536
+      idle_timeout: 600
       policy: |
         {{if all (.Request.ProtoAtLeast 2 0) (eq .Request.TLS.Version 0x0304) (greased .ClientHelloInfo)}}
             bypass_auth
