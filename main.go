@@ -172,7 +172,6 @@ func main() {
 	if cmp.Or(resolver.CityReader, resolver.ISPReader, resolver.DomainReader, resolver.ConnectionTypeReader) != nil {
 		resolver.GeoIPCache = lru.NewTTLCache[netip.Addr, GeoIPInfo](cmp.Or(config.Global.GeoipCacheSize, 8192))
 	}
-	resolver.Resolver.NoIPv6Hosts = lru.NewTTLCache[string, bool](cmp.Or(config.Global.DnsCacheSize, 4096))
 
 	// global dialer
 	dialer := &LocalDialer{

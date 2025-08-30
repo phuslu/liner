@@ -110,12 +110,6 @@ func (d *LocalDialer) dialContext(ctx context.Context, network, address string, 
 				d.Logger.Warn("retrying dial to ip4", "network", network, "host", host, "ips", ips, "ip4", ip4)
 			}
 			conn, err = dial(ctx, network, host, ip4, uint16(port), tlsConfig)
-			if err == nil && d.Resolver.NoIPv6Hosts != nil {
-				if d.Logger != nil {
-					d.Logger.Warn("dialed to ip4 and disable ipv6", "network", network, "host", host, "ips", ips, "ip4", ip4)
-				}
-				d.Resolver.NoIPv6Hosts.Set(host, true, 12*time.Hour)
-			}
 		}
 	}
 	return conn, err
