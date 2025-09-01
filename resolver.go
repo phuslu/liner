@@ -3,14 +3,19 @@ package main
 import (
 	"cmp"
 	"context"
+	"net"
 	"net/netip"
+	"os"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/phuslu/fastdns"
 	"github.com/phuslu/log"
 	"github.com/phuslu/lru"
 )
+
+var godebugnetdns = strings.Contains(os.Getenv("GODEBUG"), "netdns=")
 
 type Resolver struct {
 	Client        *fastdns.Client
@@ -30,9 +35,18 @@ func (r *Resolver) LookupNetIP(ctx context.Context, network, host string) (ips [
 		return []netip.Addr{ip}, nil
 	}
 
-	ips, err = r.Client.AppendLookupNetIP(ips, ctx, network, host)
+	if !godebugnetdns {
+		ips, err = r.Client.AppendLookupNetIP(ips, ctx, network, host)
+	} else {
+		ips, err = (&net.Resolver{}).LookupNetIP(ctx, network, host)
+	}
 	if err != nil {
-		return nil, err
+		if r.Logger != nil {
+			r.Logger.Error().Err(err).Str("host", host).Str("dns_server", r.Client.Addr).NetIPAddrs("ips", ips).Msg("LookupNetIP")
+		}
+		if len(ips) == 0 {
+			return nil, err
+		}
 	}
 
 	slices.SortStableFunc(ips, func(a, b netip.Addr) int { return cmp.Compare(btoi(b.Is4()), btoi(a.Is4())) })
