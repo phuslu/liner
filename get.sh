@@ -105,7 +105,7 @@ EOF
   sudo systemctl restart liner
 else
   pgrep liner && pkill -9 liner
-  echo 'while :; do "$@"; sleep 2; done' >keepalive
+  echo 'while :; do env $(cat .env) "$@"; sleep 2; done' >keepalive
   (/bin/sh keepalive $(pwd)/liner production.yaml &) </dev/null &>/dev/null
 fi
 
