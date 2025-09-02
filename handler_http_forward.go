@@ -416,10 +416,10 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			return
 		}
 
-		if h.Config.Forward.IdleTimeout > 0 {
+		if timeout := cmp.Or(h.Config.Forward.IdleTimeout, 600); timeout > 0 {
 			conn = &IdleTimeoutConn{
 				Conn:        conn,
-				IdleTimeout: time.Duration(h.Config.Forward.IdleTimeout) * time.Second,
+				IdleTimeout: time.Duration(timeout) * time.Second,
 			}
 		}
 
