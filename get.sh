@@ -103,6 +103,12 @@ WantedBy=multi-user.target
 EOF
   sudo systemctl enable $(pwd)/liner.service
   sudo systemctl restart liner
+elif type -p rc-update; then
+  rc-update add local
+  echo 'while :; do env $(cat .env) "$@"; sleep 2; done' >keepalive
+  printf '#!/bin/sh\n\n(cd "%s" && /bin/sh keepalive "%s/liner" production.yaml &) </dev/null &>/dev/null\n' "$(pwd)" "$(pwd)" | tee /etc/local.d/10-liner.start
+  chmod +x /etc/local.d/10-liner.start
+  /etc/local.d/10-liner.start
 else
   pgrep liner && pkill -9 liner
   echo 'while :; do env $(cat .env) "$@"; sleep 2; done' >keepalive
