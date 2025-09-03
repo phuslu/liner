@@ -15,7 +15,13 @@ case $(uname -m) in
     ;;
 esac
 
-checksum=$(wget -O- https://github.com/phuslu/liner/releases/download/v0.0.0/checksums.txt | grep -E "liner_linux_${arch}-[0-9]+.tar.gz")
+if type -p curl; then
+  getcurl="curl -sSLf"
+else
+  getcurl="wget -O-"
+fi
+
+checksum=$($getcurl https://github.com/phuslu/liner/releases/download/v0.0.0/checksums.txt | grep -E "liner_linux_${arch}-[0-9]+.tar.gz")
 filename=$(echo $checksum | awk '{print $2}')
 pacfile=$(head /dev/urandom | tr -dc '1-9' | head -c 6).pac
 
@@ -27,7 +33,12 @@ else
   mkdir liner && cd liner
 fi
 
-wget https://github.com/phuslu/liner/releases/download/v0.0.0/$filename -O $filename
+if type -p curl; then
+  curl -L https://github.com/phuslu/liner/releases/download/v0.0.0/$filename > $filename
+else
+  wget https://github.com/phuslu/liner/releases/download/v0.0.0/$filename -O $filename
+fi
+
 if test "$(sha1sum $filename)" != "$checksum"; then
   echo "$filename sha1sum mismatched, please check your network!"
   rm -rf $filename
@@ -43,7 +54,7 @@ fi
 tar xvzf $filename
 rm -rf $filename
 
-domain=$(wget -O- whatismyip.akamai.com | tr . -).sslip.io
+domain=$($getcurl whatismyip.akamai.com | tr . -).sslip.io
 
 cat <<EOF > production.yaml
 global:
