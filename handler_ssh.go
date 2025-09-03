@@ -464,7 +464,10 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 				h.Logger.Printf("sftp server serving: %s", req.Payload)
 				go func() {
 					defer channel.Close()
-					server, err := sftp.NewServer(channel)
+					opts := []sftp.ServerOption{
+						sftp.WithServerWorkingDirectory(cmp.Or(h.Config.Home, os.Getenv("HOME"), "/")),
+					}
+					server, err := sftp.NewServer(channel, opts...)
 					if err != nil {
 						h.Logger.Printf("could not start sftp server: %s", err)
 						return
