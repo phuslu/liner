@@ -331,6 +331,7 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 			h.Logger.Info().Str("command", payload.Command).Msg("ssh exec command")
 
 			shellcmd := exec.CommandContext(ctx, h.shellPath, "-c", "cd; "+payload.Command)
+			shellcmd.Dir = cmp.Or(h.Config.Home, "/")
 
 			var err error
 			var in io.WriteCloser
