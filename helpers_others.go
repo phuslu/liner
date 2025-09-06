@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net"
 	"syscall"
+	"time"
 )
 
 type ListenConfig struct {
@@ -39,6 +40,14 @@ func (dc DailerController) Control(network, address string, c syscall.RawConn) e
 
 type TCPConn struct {
 	tc *net.TCPConn
+}
+
+type TCPInfo struct {
+	RTT time.Duration
+}
+
+func (c *TCPConn) GetTcpInfo() (TCPInfo, error) {
+	return TCPInfo{}, nil
 }
 
 func (tc *TCPConn) SetTcpCongestion(name string, values ...any) error {

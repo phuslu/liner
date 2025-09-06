@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -100,6 +101,40 @@ func (dc DailerController) Control(network, addr string, c syscall.RawConn) (err
 
 type TCPConn struct {
 	tc *net.TCPConn
+}
+
+type TCPInfo struct {
+	RTT time.Duration
+}
+
+func (tc *TCPConn) GetTcpInfo() (tcpinfo TCPInfo, err error) {
+	if tc == nil || tc.tc == nil {
+		return
+	}
+	var c syscall.RawConn
+	c, err = tc.tc.SyscallConn()
+	if err != nil {
+		return
+	}
+	err = c.Control(func(fd uintptr) {
+		var info syscall.TCPInfo
+		var size uint32 = syscall.SizeofTCPInfo
+		_, _, errno := syscall.Syscall6(
+			syscall.SYS_GETSOCKOPT,
+			fd,
+			uintptr(syscall.IPPROTO_TCP),
+			uintptr(syscall.TCP_INFO),
+			uintptr(unsafe.Pointer(&info)),
+			uintptr(unsafe.Pointer(&size)),
+			0,
+		)
+		if errno != 0 {
+			err = errno
+		}
+		// tcp info conversion
+		tcpinfo.RTT = time.Duration(info.Rtt) * time.Microsecond
+	})
+	return
 }
 
 //go:linkname setsockopt syscall.setsockopt
