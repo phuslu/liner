@@ -43,7 +43,7 @@ type HTTPRequestInfo struct {
 	JA4             string
 	ClientHelloInfo *tls.ClientHelloInfo
 	ClientHelloRaw  []byte
-	ClientTCPConn   *net.TCPConn
+	ClientTCPConn   *TCPConn
 	TraceID         log.XID
 	UserAgent       useragent.UserAgent
 	ProxyUserBytes  []byte
@@ -112,7 +112,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 				conn = c.Conn
 			}
 			if tc, ok := conn.(*net.TCPConn); ok && tc != nil {
-				ri.ClientTCPConn = tc
+				ri.ClientTCPConn = &TCPConn{tc}
 			}
 		}
 	}

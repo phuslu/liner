@@ -100,7 +100,7 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 
 	if speedLimit > 0 {
 		if ri.ClientTCPConn != nil {
-			err := SetTcpMaxPacingRate(ri.ClientTCPConn, int(speedLimit))
+			err := ri.ClientTCPConn.SetTcpMaxPacingRate(int(speedLimit))
 			log.DefaultLogger.Err(err).Context(ri.LogContext).Int64("tunnel_speedlimit", speedLimit).Msg("set tunnel_speedlimit")
 		} else {
 			// TODO: speed limiter in user space
