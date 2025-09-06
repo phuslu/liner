@@ -37,11 +37,15 @@ func (dc DailerController) Control(network, address string, c syscall.RawConn) e
 	return nil
 }
 
-func SetTcpCongestion(tc *net.TCPConn, name string, values ...any) error {
+type TCPConn struct {
+	tc *net.TCPConn
+}
+
+func (tc *TCPConn) SetTcpCongestion(name string, values ...any) error {
 	return nil
 }
 
-func SetTcpMaxPacingRate(tc *net.TCPConn, rate int) (err error) {
+func (tc *TCPConn) SetTcpMaxPacingRate(rate int) (err error) {
 	return nil
 }
 

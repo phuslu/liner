@@ -279,7 +279,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 								gain = n
 							}
 						}
-						if err := SetTcpCongestion(ri.ClientTCPConn, name, uint64(rate), uint32(gain)); err != nil {
+						if err := ri.ClientTCPConn.SetTcpCongestion(name, uint64(rate), uint32(gain)); err != nil {
 							log.Error().Context(ri.LogContext).Strs("forward_tcp_congestion_options", options).Msg("set forward_tcp_congestion error")
 							http.Error(rw, err.Error(), http.StatusBadGateway)
 							return
@@ -287,7 +287,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 						log.Debug().NetIPAddr("remote_ip", ri.RemoteAddr.Addr()).Strs("forward_tcp_congestion_options", options).Msg("set forward_tcp_congestion ok")
 					}
 				default:
-					if err := SetTcpCongestion(ri.ClientTCPConn, name); err != nil {
+					if err := ri.ClientTCPConn.SetTcpCongestion(name); err != nil {
 						log.Error().Context(ri.LogContext).Strs("forward_tcp_congestion_options", options).Msg("set forward_tcp_congestion error")
 						http.Error(rw, err.Error(), http.StatusBadGateway)
 						return
@@ -298,7 +298,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 	}
 
 	if ri.ClientTCPConn != nil && speedLimit > 0 {
-		err := SetTcpMaxPacingRate(ri.ClientTCPConn, int(speedLimit))
+		err := ri.ClientTCPConn.SetTcpMaxPacingRate(int(speedLimit))
 		log.DefaultLogger.Err(err).Context(ri.LogContext).Int64("forward_speedlimit", speedLimit).Msg("set forward_speedlimit")
 	}
 

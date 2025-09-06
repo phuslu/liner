@@ -98,6 +98,10 @@ func (dc DailerController) Control(network, addr string, c syscall.RawConn) (err
 	return
 }
 
+type TCPConn struct {
+	tc *net.TCPConn
+}
+
 //go:linkname setsockopt syscall.setsockopt
 func setsockopt(s int, level int, name int, val unsafe.Pointer, vallen uintptr) (err error)
 
@@ -129,9 +133,9 @@ func intof(n any) int {
 	return 0
 }
 
-func SetTcpCongestion(tc *net.TCPConn, name string, values ...any) (err error) {
+func (tc *TCPConn) SetTcpCongestion(name string, values ...any) (err error) {
 	var c syscall.RawConn
-	c, err = tc.SyscallConn()
+	c, err = tc.tc.SyscallConn()
 	if err != nil {
 		return
 	}
@@ -159,10 +163,10 @@ func SetTcpCongestion(tc *net.TCPConn, name string, values ...any) (err error) {
 	return
 }
 
-func SetTcpMaxPacingRate(tc *net.TCPConn, rate int) (err error) {
+func (tc *TCPConn) SetTcpMaxPacingRate(rate int) (err error) {
 	const SO_MAX_PACING_RATE = 47
 	var c syscall.RawConn
-	c, err = tc.SyscallConn()
+	c, err = tc.tc.SyscallConn()
 	if err != nil {
 		return
 	}
