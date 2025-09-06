@@ -119,8 +119,9 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 			Request       *http.Request
 			UserAgent     *useragent.UserAgent
 			JA4           string
+			TCPInfo       func() (TCPInfo, error)
 			FileInfo      fs.FileInfo
-		}{version, ri.ServerAddr, req, &ri.UserAgent, ri.JA4, fi})
+		}{version, ri.ServerAddr, req, &ri.UserAgent, ri.JA4, ri.ClientTCPConn.GetTcpInfo, fi})
 		if err != nil {
 			log.Error().Context(ri.LogContext).Err(err).Str("index_file", h.File).Msg("execute index file error")
 			http.Error(rw, err.Error(), http.StatusInternalServerError)
