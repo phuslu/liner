@@ -182,7 +182,7 @@ func (m *HTTPWebMiddlewareTcpCongestion) Load() error {
 func (m *HTTPWebMiddlewareTcpCongestion) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	ri := req.Context().Value(HTTPRequestInfoContextKey).(*HTTPRequestInfo)
 
-	if ri.ClientTCPConn != nil && m.TcpCongestion != "" {
+	if ri.ClientTCPConn.IsValid() && m.TcpCongestion != "" {
 		var tcpCongestion string
 		if m.template != nil {
 			ri.PolicyBuffer.Reset()

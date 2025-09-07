@@ -90,7 +90,7 @@ func (h *TunnelHandler) h1tunnel(ctx context.Context, dialer string) (net.Listen
 		err := tc.SetKeepAliveConfig(config)
 		log.DefaultLogger.Err(err).Str("tunnel_host", hostport).Any("keepalive_config", config).Msg("set tunnel host keepalive")
 		if h.Config.SpeedLimit > 0 {
-			err := (&TCPConn{tc}).SetTcpMaxPacingRate(int(h.Config.SpeedLimit))
+			err := (TCPConn{tc}).SetTcpMaxPacingRate(int(h.Config.SpeedLimit))
 			log.DefaultLogger.Err(err).Str("tunnel_host", hostport).Any("tunnel_speedlimit", h.Config.SpeedLimit).Msg("set tunnel speedlimit")
 		}
 	}

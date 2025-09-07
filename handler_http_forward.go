@@ -241,7 +241,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 	}
 
 	// eval tcp_congestion template
-	if ri.ClientTCPConn != nil && h.Config.Forward.TcpCongestion != "" {
+	if ri.ClientTCPConn.IsValid() && h.Config.Forward.TcpCongestion != "" {
 		var tcpCongestion string
 		if h.tcpcongestion != nil {
 			ri.PolicyBuffer.Reset()
@@ -297,7 +297,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		}
 	}
 
-	if ri.ClientTCPConn != nil && speedLimit > 0 {
+	if ri.ClientTCPConn.IsValid() && speedLimit > 0 {
 		err := ri.ClientTCPConn.SetTcpMaxPacingRate(int(speedLimit))
 		log.DefaultLogger.Err(err).Context(ri.LogContext).Int64("forward_speedlimit", speedLimit).Msg("set forward_speedlimit")
 	}

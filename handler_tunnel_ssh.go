@@ -77,7 +77,7 @@ func (h *TunnelHandler) sshtunnel(ctx context.Context, dialer string) (net.Liste
 	}
 
 	if tc, _ := conn.(*net.TCPConn); conn != nil && h.Config.SpeedLimit > 0 {
-		err := (&TCPConn{tc}).SetTcpMaxPacingRate(int(h.Config.SpeedLimit))
+		err := (TCPConn{tc}).SetTcpMaxPacingRate(int(h.Config.SpeedLimit))
 		log.DefaultLogger.Err(err).Str("tunnel_proxy_pass", h.Config.ProxyPass).Str("tunnel_dialer_name", h.Config.Dialer).Int64("tunnel_speedlimit", h.Config.SpeedLimit).Msg("set speedlimit")
 	}
 

@@ -46,15 +46,19 @@ type TCPInfo struct {
 	RTT time.Duration
 }
 
-func (c *TCPConn) GetTcpInfo() (TCPInfo, error) {
+func (c TCPConn) IsValid() bool {
+	return false
+}
+
+func (c TCPConn) GetTcpInfo() (TCPInfo, error) {
 	return TCPInfo{}, nil
 }
 
-func (tc *TCPConn) SetTcpCongestion(name string, values ...any) error {
+func (tc TCPConn) SetTcpCongestion(name string, values ...any) error {
 	return nil
 }
 
-func (tc *TCPConn) SetTcpMaxPacingRate(rate int) (err error) {
+func (tc TCPConn) SetTcpMaxPacingRate(rate int) (err error) {
 	return nil
 }
 

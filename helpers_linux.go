@@ -103,12 +103,16 @@ type TCPConn struct {
 	tc *net.TCPConn
 }
 
+func (tc TCPConn) IsValid() bool {
+	return tc.tc != nil
+}
+
 type TCPInfo struct {
 	RTT time.Duration
 }
 
-func (tc *TCPConn) GetTcpInfo() (tcpinfo TCPInfo, err error) {
-	if tc == nil || tc.tc == nil {
+func (tc TCPConn) GetTcpInfo() (tcpinfo TCPInfo, err error) {
+	if tc.tc == nil {
 		return
 	}
 	var c syscall.RawConn
@@ -168,7 +172,7 @@ func intof(n any) int {
 	return 0
 }
 
-func (tc *TCPConn) SetTcpCongestion(name string, values ...any) (err error) {
+func (tc TCPConn) SetTcpCongestion(name string, values ...any) (err error) {
 	var c syscall.RawConn
 	c, err = tc.tc.SyscallConn()
 	if err != nil {
@@ -198,7 +202,7 @@ func (tc *TCPConn) SetTcpCongestion(name string, values ...any) (err error) {
 	return
 }
 
-func (tc *TCPConn) SetTcpMaxPacingRate(rate int) (err error) {
+func (tc TCPConn) SetTcpMaxPacingRate(rate int) (err error) {
 	const SO_MAX_PACING_RATE = 47
 	var c syscall.RawConn
 	c, err = tc.tc.SyscallConn()
