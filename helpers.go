@@ -71,6 +71,10 @@ func s2b(s string) (b []byte) {
 	return b
 }
 
+func ptr[T any](v T) *T {
+	return &v
+}
+
 func btoi[B ~bool](x B) int {
 	if x {
 		return 1
@@ -881,9 +885,9 @@ func (qc QuicConn) IsValid() bool {
 	return qc.qc != nil
 }
 
-func (qc QuicConn) GetQuicStats() (stats quic.ConnectionState, err error) {
+func (qc QuicConn) GetQuicStats() (stats *quic.ConnectionState, err error) {
 	if qc.qc != nil {
-		stats = qc.qc.ConnectionState()
+		stats = ptr(qc.qc.ConnectionState())
 	}
 	return
 }

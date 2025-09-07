@@ -47,8 +47,8 @@ func (c TCPConn) IsValid() bool {
 	return false
 }
 
-func (c TCPConn) GetTcpInfo() (TCPInfo, error) {
-	return TCPInfo{}, nil
+func (c TCPConn) GetTcpInfo() (*TCPInfo, error) {
+	return nil, nil
 }
 
 func (tc TCPConn) SetTcpCongestion(name string, values ...any) error {
