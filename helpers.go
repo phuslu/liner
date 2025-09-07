@@ -34,6 +34,7 @@ import (
 	"unsafe"
 
 	"github.com/libp2p/go-yamux/v5"
+	"github.com/quic-go/quic-go"
 	"github.com/valyala/bytebufferpool"
 	"golang.org/x/crypto/chacha20"
 	"golang.org/x/crypto/ocsp"
@@ -870,6 +871,21 @@ func (c *ConnWithBuffers) Read(b []byte) (int, error) {
 	}
 
 	return total, nil
+}
+
+type QuicConn struct {
+	qc *quic.Conn
+}
+
+func (qc QuicConn) IsValid() bool {
+	return qc.qc != nil
+}
+
+func (qc QuicConn) GetQuicStats() (stats quic.ConnectionState, err error) {
+	if qc.qc != nil {
+		stats = qc.qc.ConnectionState()
+	}
+	return
 }
 
 // IPRange represents a range of IP addresses

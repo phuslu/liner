@@ -16,7 +16,6 @@ import (
 	"github.com/mileusna/useragent"
 	"github.com/phuslu/log"
 	"github.com/puzpuzpuz/xsync/v4"
-	"github.com/quic-go/quic-go"
 )
 
 type HTTPHandler interface {
@@ -45,7 +44,7 @@ type HTTPRequestInfo struct {
 	ClientHelloInfo *tls.ClientHelloInfo
 	ClientHelloRaw  []byte
 	ClientTCPConn   TCPConn
-	ClientQuicConn  *quic.Conn
+	ClientQuicConn  QuicConn
 	TraceID         log.XID
 	UserAgent       useragent.UserAgent
 	ProxyUserBytes  []byte
@@ -93,11 +92,11 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		ri.TLSVersion = 0
 	}
 
-	ri.ClientHelloInfo, ri.ClientHelloRaw, ri.ClientTCPConn, ri.ClientQuicConn = nil, nil, TCPConn{}, nil
+	ri.ClientHelloInfo, ri.ClientHelloRaw, ri.ClientTCPConn, ri.ClientQuicConn = nil, nil, TCPConn{}, QuicConn{}
 	if req.ProtoMajor == 3 {
 		if v, ok := req.Context().Value(HTTP3ClientHelloInfoContextKey).(*TLSClientHelloInfo); ok {
 			ri.ClientHelloInfo = v.ClientHelloInfo
-			ri.ClientQuicConn = v.QuicConn
+			ri.ClientQuicConn = QuicConn{v.QuicConn}
 			ri.JA4 = b2s(v.JA4[:])
 		}
 	} else {

@@ -16,6 +16,7 @@ import (
 
 	"github.com/mileusna/useragent"
 	"github.com/phuslu/log"
+	"github.com/quic-go/quic-go"
 	"github.com/valyala/bytebufferpool"
 )
 
@@ -120,8 +121,18 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 			UserAgent     *useragent.UserAgent
 			JA4           string
 			TCPInfo       func() (TCPInfo, error)
+			QuicStats     func() (quic.ConnectionState, error)
 			FileInfo      fs.FileInfo
-		}{version, ri.ServerAddr, req, &ri.UserAgent, ri.JA4, ri.ClientTCPConn.GetTcpInfo, fi})
+		}{
+			ServerVersion: version,
+			ServerAddr:    ri.ServerAddr,
+			Request:       req,
+			UserAgent:     &ri.UserAgent,
+			JA4:           ri.JA4,
+			TCPInfo:       ri.ClientTCPConn.GetTcpInfo,
+			QuicStats:     ri.ClientQuicConn.GetQuicStats,
+			FileInfo:      fi,
+		})
 		if err != nil {
 			log.Error().Context(ri.LogContext).Err(err).Str("index_file", h.File).Msg("execute index file error")
 			http.Error(rw, err.Error(), http.StatusInternalServerError)
