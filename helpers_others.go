@@ -8,7 +8,6 @@ import (
 	"errors"
 	"net"
 	"syscall"
-	"time"
 )
 
 type ListenConfig struct {
@@ -42,9 +41,7 @@ type TCPConn struct {
 	tc *net.TCPConn
 }
 
-type TCPInfo struct {
-	RTT time.Duration
-}
+type TCPInfo struct{}
 
 func (c TCPConn) IsValid() bool {
 	return false

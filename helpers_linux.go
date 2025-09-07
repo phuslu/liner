@@ -15,7 +15,6 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
-	"time"
 	"unsafe"
 )
 
@@ -107,9 +106,7 @@ func (tc TCPConn) IsValid() bool {
 	return tc.tc != nil
 }
 
-type TCPInfo struct {
-	RTT time.Duration
-}
+type TCPInfo syscall.TCPInfo
 
 func (tc TCPConn) GetTcpInfo() (tcpinfo TCPInfo, err error) {
 	if tc.tc == nil {
@@ -121,22 +118,19 @@ func (tc TCPConn) GetTcpInfo() (tcpinfo TCPInfo, err error) {
 		return
 	}
 	err = c.Control(func(fd uintptr) {
-		var info syscall.TCPInfo
 		var size uint32 = syscall.SizeofTCPInfo
 		_, _, errno := syscall.Syscall6(
 			syscall.SYS_GETSOCKOPT,
 			fd,
 			uintptr(syscall.IPPROTO_TCP),
 			uintptr(syscall.TCP_INFO),
-			uintptr(unsafe.Pointer(&info)),
+			uintptr(unsafe.Pointer(&tcpinfo)),
 			uintptr(unsafe.Pointer(&size)),
 			0,
 		)
 		if errno != 0 {
 			err = errno
 		}
-		// tcp info conversion
-		tcpinfo.RTT = time.Duration(info.Rtt) * time.Microsecond
 	})
 	return
 }
