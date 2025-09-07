@@ -71,8 +71,9 @@ type TLSInspectorCacheValue[T any] struct {
 
 type TLSClientHelloInfo struct {
 	*tls.ClientHelloInfo
-	JA4  [36]byte
-	Conn net.Conn
+	JA4      [36]byte
+	NetConn  net.Conn
+	QuicConn *quic.Conn
 }
 
 var ErrTLSServerNameNotFound = errors.New("tls server name is not found")
@@ -302,6 +303,7 @@ func (m *TLSInspector) HTTP3ConnContext(ctx context.Context, conn *quic.Conn) co
 	addr := PlainAddrFromNetAddr(conn.RemoteAddr())
 	if info, ok := m.ClientHelloMap.Load(addr); ok {
 		AppendJA4Fingerprint(info.JA4[:0], TLSVersion(conn.ConnectionState().TLS.Version), info.ClientHelloInfo, true)
+		info.QuicConn = conn
 		ctx = context.WithValue(ctx, HTTP3ClientHelloInfoContextKey, info)
 		m.ClientHelloMap.Delete(addr)
 	}
@@ -322,7 +324,7 @@ func (m *TLSInspector) HTTPConnState(c net.Conn, cs http.ConnState) {
 			}
 			info.Conn = c
 		} else {
-			m.ClientHelloMap.Store(addr, &TLSClientHelloInfo{Conn: c})
+			m.ClientHelloMap.Store(addr, &TLSClientHelloInfo{NetConn: c})
 		}
 	case http.StateHijacked, http.StateClosed:
 		m.ClientHelloMap.Delete(addr)
