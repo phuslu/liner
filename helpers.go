@@ -885,9 +885,9 @@ func (qc QuicConn) IsValid() bool {
 	return qc.qc != nil
 }
 
-func (qc QuicConn) GetQuicStats() (stats *quic.ConnectionState, err error) {
+func (qc QuicConn) GetQuicStats() (stats *quic.ConnectionStats, err error) {
 	if qc.qc != nil {
-		stats = ptr(qc.qc.ConnectionState())
+		stats = ptr(qc.qc.ConnectionStats())
 	}
 	return
 }

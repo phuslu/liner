@@ -14,7 +14,7 @@ require (
 	github.com/phuslu/lru v1.0.18
 	github.com/pkg/sftp v1.13.9
 	github.com/puzpuzpuz/xsync/v4 v4.1.0
-	github.com/quic-go/quic-go v0.54.0
+	github.com/quic-go/quic-go v0.54.1-0.20250907105225-0ae8c038163d
 	github.com/refraction-networking/utls v1.8.0
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/smallnest/ringbuffer v0.0.0-20250317021400-0da97b586904

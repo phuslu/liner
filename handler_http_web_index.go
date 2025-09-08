@@ -121,7 +121,7 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 			UserAgent     *useragent.UserAgent
 			JA4           string
 			TCPInfo       func() (*TCPInfo, error)
-			QuicStats     func() (*quic.ConnectionState, error)
+			QuicStats     func() (*quic.ConnectionStats, error)
 			FileInfo      fs.FileInfo
 		}{
 			ServerVersion: version,
