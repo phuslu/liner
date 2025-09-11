@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/netip"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -326,6 +327,7 @@ func (f *Functions) wildcardMatch(pattern, s string) bool {
 }
 
 func (f *Functions) inFileLine(filename, line string) bool {
+	filename, _ = filepath.Abs(filepath.Clean(filename))
 	loader, _ := f.FileLineCache.LoadOrCompute(filename, func() (*FileLoader[[]string], bool) {
 		return &FileLoader[[]string]{
 			Filename: filename,
@@ -357,6 +359,7 @@ func (f *Functions) inFileLine(filename, line string) bool {
 }
 
 func (f *Functions) inFileIPSet(filename, ipstr string) bool {
+	filename, _ = filepath.Abs(filepath.Clean(filename))
 	loader, _ := f.FileIPSetCache.LoadOrCompute(filename, func() (*FileLoader[*netipx.IPSet], bool) {
 		return &FileLoader[*netipx.IPSet]{
 			Filename: filename,

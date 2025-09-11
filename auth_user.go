@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -146,7 +147,8 @@ func (loader *AuthUserFileLoader) LoadAuthUsers(ctx context.Context) (map[string
 	}
 
 	loader.onceloader.Do(func() {
-		loader.fileloader, _ = authfileloaders.LoadOrCompute(loader.Filename, func() (*FileLoader[map[string]AuthUserInfo], bool) {
+		filename, _ := filepath.Abs(filepath.Clean(loader.Filename))
+		loader.fileloader, _ = authfileloaders.LoadOrCompute(filename, func() (*FileLoader[map[string]AuthUserInfo], bool) {
 			return &FileLoader[map[string]AuthUserInfo]{
 				Filename:     loader.Filename,
 				Unmarshal:    loader.Unmarshal,
