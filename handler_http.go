@@ -43,8 +43,7 @@ type HTTPRequestInfo struct {
 	JA4             string
 	ClientHelloInfo *tls.ClientHelloInfo
 	ClientHelloRaw  []byte
-	ClientTCPConn   TCPConn
-	ClientQuicConn  QuicConn
+	ClientConnOps   ConnOps
 	TraceID         log.XID
 	UserAgent       useragent.UserAgent
 	ProxyUserBytes  []byte
@@ -92,11 +91,11 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		ri.TLSVersion = 0
 	}
 
-	ri.ClientHelloInfo, ri.ClientHelloRaw, ri.ClientTCPConn, ri.ClientQuicConn = nil, nil, TCPConn{}, QuicConn{}
+	ri.ClientHelloInfo, ri.ClientHelloRaw, ri.ClientConnOps = nil, nil, ConnOps{}
 	if req.ProtoMajor == 3 {
 		if v, ok := req.Context().Value(HTTP3ClientHelloInfoContextKey).(*TLSClientHelloInfo); ok {
 			ri.ClientHelloInfo = v.ClientHelloInfo
-			ri.ClientQuicConn = QuicConn{v.QuicConn}
+			ri.ClientConnOps = ConnOps{nil, v.QuicConn}
 			ri.JA4 = b2s(v.JA4[:])
 		}
 	} else {
@@ -114,7 +113,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 				conn = c.Conn
 			}
 			if tc, ok := conn.(*net.TCPConn); ok && tc != nil {
-				ri.ClientTCPConn = TCPConn{tc}
+				ri.ClientConnOps = ConnOps{tc, nil}
 			}
 		}
 	}

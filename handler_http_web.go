@@ -182,7 +182,7 @@ func (m *HTTPWebMiddlewareTcpCongestion) Load() error {
 func (m *HTTPWebMiddlewareTcpCongestion) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	ri := req.Context().Value(HTTPRequestInfoContextKey).(*HTTPRequestInfo)
 
-	if ri.ClientTCPConn.IsValid() && m.TcpCongestion != "" {
+	if ri.ClientConnOps.SupportTCP() && m.TcpCongestion != "" {
 		var tcpCongestion string
 		if m.template != nil {
 			ri.PolicyBuffer.Reset()
@@ -220,7 +220,7 @@ func (m *HTTPWebMiddlewareTcpCongestion) ServeHTTP(rw http.ResponseWriter, req *
 								gain = n
 							}
 						}
-						if err := ri.ClientTCPConn.SetTcpCongestion(name, uint64(rate), uint32(gain)); err != nil {
+						if err := ri.ClientConnOps.SetTcpCongestion(name, uint64(rate), uint32(gain)); err != nil {
 							log.Error().Context(ri.LogContext).Strs("forward_tcp_congestion_options", options).Msg("set forward_tcp_congestion error")
 							http.Error(rw, err.Error(), http.StatusBadGateway)
 							return
@@ -228,7 +228,7 @@ func (m *HTTPWebMiddlewareTcpCongestion) ServeHTTP(rw http.ResponseWriter, req *
 						log.Debug().NetIPAddr("remote_ip", ri.RemoteAddr.Addr()).Strs("forward_tcp_congestion_options", options).Msg("set forward_tcp_congestion ok")
 					}
 				default:
-					if err := ri.ClientTCPConn.SetTcpCongestion(name); err != nil {
+					if err := ri.ClientConnOps.SetTcpCongestion(name); err != nil {
 						log.Error().Context(ri.LogContext).Strs("forward_tcp_congestion_options", options).Msg("set forward_tcp_congestion error")
 						http.Error(rw, err.Error(), http.StatusBadGateway)
 						return

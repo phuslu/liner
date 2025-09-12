@@ -129,8 +129,8 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 			Request:       req,
 			UserAgent:     &ri.UserAgent,
 			JA4:           ri.JA4,
-			TCPInfo:       ri.ClientTCPConn.GetTcpInfo,
-			QuicStats:     ri.ClientQuicConn.GetQuicStats,
+			TCPInfo:       ri.ClientConnOps.GetTcpInfo,
+			QuicStats:     ri.ClientConnOps.GetQuicStats,
 			FileInfo:      fi,
 		})
 		if err != nil {

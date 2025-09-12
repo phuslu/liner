@@ -224,7 +224,7 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 	WriteSocks5Status(conn, Socks5StatusRequestGranted)
 
 	if tc, _ := conn.(*net.TCPConn); conn != nil && speedLimit > 0 {
-		(TCPConn{tc}).SetTcpMaxPacingRate(int(speedLimit))
+		(ConnOps{tc, nil}).SetTcpMaxPacingRate(int(speedLimit))
 	}
 
 	go io.Copy(rconn, conn)

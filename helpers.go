@@ -877,17 +877,22 @@ func (c *ConnWithBuffers) Read(b []byte) (int, error) {
 	return total, nil
 }
 
-type QuicConn struct {
+type ConnOps struct {
+	tc *net.TCPConn
 	qc *quic.Conn
 }
 
-func (qc QuicConn) IsValid() bool {
-	return qc.qc != nil
+func (ops ConnOps) SupportTCP() bool {
+	return ops.tc != nil
 }
 
-func (qc QuicConn) GetQuicStats() (stats *quic.ConnectionStats, err error) {
-	if qc.qc != nil {
-		stats = ptr(qc.qc.ConnectionStats())
+func (ops ConnOps) SupportQUIC() bool {
+	return ops.qc != nil
+}
+
+func (ops ConnOps) GetQuicStats() (stats *quic.ConnectionStats, err error) {
+	if ops.qc != nil {
+		stats = ptr(ops.qc.ConnectionStats())
 	}
 	return
 }

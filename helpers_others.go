@@ -37,26 +37,18 @@ func (dc DailerController) Control(network, address string, c syscall.RawConn) e
 	return nil
 }
 
-type TCPConn struct {
-	tc *net.TCPConn
-}
-
 type TCPInfo struct{}
 
-func (c TCPConn) IsValid() bool {
-	return false
+func (ops ConnOps) GetTcpInfo() (*TCPInfo, error) {
+	return nil, errors.ErrUnsupported
 }
 
-func (c TCPConn) GetTcpInfo() (*TCPInfo, error) {
-	return nil, nil
+func (ops ConnOps) SetTcpCongestion(name string, values ...any) error {
+	return errors.ErrUnsupported
 }
 
-func (tc TCPConn) SetTcpCongestion(name string, values ...any) error {
-	return nil
-}
-
-func (tc TCPConn) SetTcpMaxPacingRate(rate int) (err error) {
-	return nil
+func (ops ConnOps) SetTcpMaxPacingRate(rate int) error {
+	return errors.ErrUnsupported
 }
 
 func SetTermWindowSize(fd uintptr, width, height uint16) error {

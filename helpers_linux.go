@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/netip"
@@ -98,22 +99,14 @@ func (dc DailerController) Control(network, addr string, c syscall.RawConn) (err
 	return
 }
 
-type TCPConn struct {
-	tc *net.TCPConn
-}
-
-func (tc TCPConn) IsValid() bool {
-	return tc.tc != nil
-}
-
 type TCPInfo syscall.TCPInfo
 
-func (tc TCPConn) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
-	if tc.tc == nil {
+func (ops ConnOps) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
+	if ops.tc == nil {
 		return
 	}
 	var c syscall.RawConn
-	c, err = tc.tc.SyscallConn()
+	c, err = ops.tc.SyscallConn()
 	if err != nil {
 		return
 	}
@@ -169,9 +162,13 @@ func intof(n any) int {
 	return 0
 }
 
-func (tc TCPConn) SetTcpCongestion(name string, values ...any) (err error) {
+func (ops ConnOps) SetTcpCongestion(name string, values ...any) (err error) {
+	if ops.tc == nil {
+		err = errors.ErrUnsupported
+		return
+	}
 	var c syscall.RawConn
-	c, err = tc.tc.SyscallConn()
+	c, err = ops.tc.SyscallConn()
 	if err != nil {
 		return
 	}
@@ -199,10 +196,14 @@ func (tc TCPConn) SetTcpCongestion(name string, values ...any) (err error) {
 	return
 }
 
-func (tc TCPConn) SetTcpMaxPacingRate(rate int) (err error) {
+func (ops ConnOps) SetTcpMaxPacingRate(rate int) (err error) {
+	if ops.tc == nil {
+		err = errors.ErrUnsupported
+		return
+	}
 	const SO_MAX_PACING_RATE = 47
 	var c syscall.RawConn
-	c, err = tc.tc.SyscallConn()
+	c, err = ops.tc.SyscallConn()
 	if err != nil {
 		return
 	}

@@ -99,8 +99,8 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	}
 
 	if speedLimit > 0 {
-		if ri.ClientTCPConn.IsValid() {
-			err := ri.ClientTCPConn.SetTcpMaxPacingRate(int(speedLimit))
+		if ri.ClientConnOps.SupportTCP() {
+			err := ri.ClientConnOps.SetTcpMaxPacingRate(int(speedLimit))
 			log.DefaultLogger.Err(err).Context(ri.LogContext).Int64("tunnel_speedlimit", speedLimit).Msg("set tunnel_speedlimit")
 		} else {
 			// TODO: speed limiter in user space
