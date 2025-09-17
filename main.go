@@ -277,7 +277,7 @@ func main() {
 				Port:                  cmp.Or(u.Port(), "22"),
 				StrictHostKeyChecking: cmp.Or(u.Query().Get("StrictHostKeyChecking") == "yes", u.Query().Get("strict_host_key_checking") == "yes"),
 				UserKnownHostsFile:    cmp.Or(u.Query().Get("UserKnownHostsFile"), u.Query().Get("user_known_hosts_file")),
-				MaxClients:            cmp.Or(first(strconv.Atoi(u.Query().Get("max_clients"))), 8),
+				MaxClients:            cmp.Or(first(strconv.Atoi(u.Query().Get("max_clients"))), 1),
 				Timeout:               time.Duration(cmp.Or(first(strconv.Atoi(u.Query().Get("timeout"))), 10)) * time.Second,
 				IdleTimeout:           time.Duration(cmp.Or(first(strconv.Atoi(u.Query().Get("idle_timeout"))), 600)) * time.Second,
 				TcpReadBuffer:         cmp.Or(first(strconv.Atoi(u.Query().Get("tcp_read_buffer"))), 128*1024),
