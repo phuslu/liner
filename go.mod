@@ -13,7 +13,7 @@ require (
 	github.com/phuslu/log v1.0.120
 	github.com/phuslu/lru v1.0.18
 	github.com/pkg/sftp v1.13.9
-	github.com/puzpuzpuz/xsync/v4 v4.1.0
+	github.com/puzpuzpuz/xsync/v4 v4.2.0
 	github.com/quic-go/quic-go v0.54.1-0.20250914061210-adc13be540ae
 	github.com/refraction-networking/utls v1.8.0
 	github.com/robfig/cron/v3 v3.0.1
