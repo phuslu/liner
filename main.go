@@ -893,8 +893,7 @@ func main() {
 		spec, command := job.Spec, job.Command
 		runner.AddFunc(spec, func() {
 			cmd := exec.CommandContext(context.Background(), "/bin/bash", "-c", command)
-			err = cmd.Run()
-			if err != nil {
+			if err := cmd.Run(); err != nil {
 				log.Warn().Strs("cmd_args", cmd.Args).Err(err).Msg("exec cron_command error")
 				return
 			}
