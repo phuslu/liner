@@ -78,18 +78,18 @@ func (c *AuthUserLoadChecker) CheckAuthUser(ctx context.Context, user *AuthUserI
 				*user = record
 				return
 			}
-		case 20:
-			if *(*[20]byte)(b) == sha1.Sum(s2b(user.Password)) {
+		case sha1.Size:
+			if *(*[sha1.Size]byte)(b) == sha1.Sum(s2b(user.Password)) {
 				*user = record
 				return
 			}
-		case 32:
-			if *(*[32]byte)(b) == sha256.Sum256(s2b(user.Password)) {
+		case sha256.Size:
+			if *(*[sha256.Size]byte)(b) == sha256.Sum256(s2b(user.Password)) {
 				*user = record
 				return
 			}
 		}
-		err = fmt.Errorf("invalid md5/sha1/sha256 password: %v", record.Password)
+		err = fmt.Errorf("invalid wyhash/sha1/sha256 password: %v", record.Password)
 		return
 	case strings.HasPrefix(record.Password, "$2y$"):
 		err = bcrypt.CompareHashAndPassword([]byte(record.Password), []byte(user.Password))
