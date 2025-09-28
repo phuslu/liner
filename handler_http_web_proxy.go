@@ -33,8 +33,12 @@ type HTTPWebProxyHandler struct {
 	DumpFailure bool
 
 	userchecker AuthUserChecker
-	proxypass   *template.Template
-	headers     *template.Template
+	proxypass   struct {
+		Code     int
+		URL      *url.URL
+		Template *template.Template
+	}
+	headers *template.Template
 }
 
 func (h *HTTPWebProxyHandler) Load() error {
@@ -50,8 +54,15 @@ func (h *HTTPWebProxyHandler) Load() error {
 		h.userchecker = &AuthUserLoadChecker{loader}
 	}
 
-	if strings.Contains(h.Pass, "{{") {
-		h.proxypass, err = template.New(h.Pass).Funcs(h.Functions).Parse(h.Pass)
+	if code, err := strconv.Atoi(strings.TrimSpace(h.Pass)); err == nil && code > 0 {
+		h.proxypass.Code = code
+	} else if !strings.Contains(h.Pass, "{{") {
+		h.proxypass.URL, err = url.Parse(strings.TrimSpace(h.Pass))
+		if err != nil {
+			return err
+		}
+	} else {
+		h.proxypass.Template, err = template.New(h.Pass).Funcs(h.Functions).Parse(h.Pass)
 		if err != nil {
 			return err
 		}
@@ -91,31 +102,30 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		}
 	}
 
-	var proxypass string
-	if h.proxypass != nil {
+	var proxypass *url.URL
+	switch {
+	case h.proxypass.Code > 0:
+		http.Error(rw, fmt.Sprintf("%d %s", h.proxypass.Code, http.StatusText(h.proxypass.Code)), h.proxypass.Code)
+		return
+	case h.proxypass.URL != nil:
+		proxypass = h.proxypass.URL
+	default:
 		ri.PolicyBuffer.Reset()
-		h.proxypass.Execute(&ri.PolicyBuffer, struct {
+		h.proxypass.Template.Execute(&ri.PolicyBuffer, struct {
 			Request    *http.Request
 			JA4        string
 			UserAgent  *useragent.UserAgent
 			ServerAddr netip.AddrPort
 		}{req, ri.JA4, &ri.UserAgent, ri.ServerAddr})
-		proxypass = strings.TrimSpace(b2s(ri.PolicyBuffer.B))
-	} else {
-		proxypass = strings.TrimSpace(h.Pass)
-	}
-	if code, _ := strconv.Atoi(proxypass); 100 <= code && code <= 999 {
-		http.Error(rw, fmt.Sprintf("%d %s", code, http.StatusText(code)), code)
-		return
-	}
-
-	u, err := url.Parse(proxypass)
-	if err != nil {
-		http.Error(rw, fmt.Sprintf("bad proxypass %+v", proxypass), http.StatusServiceUnavailable)
-		return
+		var err error
+		proxypass, err = url.Parse(strings.TrimSpace(b2s(ri.PolicyBuffer.B)))
+		if err != nil {
+			http.Error(rw, fmt.Sprintf("bad proxypass %+v", proxypass), http.StatusServiceUnavailable)
+			return
+		}
 	}
 
-	if u.Scheme == "file" {
+	if proxypass.Scheme == "file" {
 		http.Error(rw, "use index_root instead of file://", http.StatusServiceUnavailable)
 		return
 	}
@@ -128,10 +138,10 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 			http.Error(rw, "pesudo protocol "+protocol+" is not supportted", http.StatusBadGateway)
 			return
 		}
-		hostport := u.Host
+		hostport := proxypass.Host
 		if _, _, err := net.SplitHostPort(hostport); err != nil {
 			port := "80"
-			if u.Scheme == "https" {
+			if proxypass.Scheme == "https" {
 				port = "443"
 			}
 			hostport = net.JoinHostPort(hostport, port)
@@ -140,13 +150,13 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		// conn, err := net.DialTimeout("tcp", hostport, time.Duration(cmp.Or(h.DialTimeout, 5))*time.Second)
 		conn, err := h.Transport.DialContext(req.Context(), "tcp", hostport)
 		if err != nil {
-			log.Error().Context(ri.LogContext).Err(err).Str("proxypass", proxypass).Str("hostport", hostport).Msg("http2 connect proxypass error")
+			log.Error().Context(ri.LogContext).Err(err).Str("proxypass", proxypass.String()).Str("hostport", hostport).Msg("http2 connect proxypass error")
 			http.Error(rw, err.Error(), http.StatusBadGateway)
 			return
 		}
 		defer conn.Close()
 
-		if u.Scheme == "https" {
+		if proxypass.Scheme == "https" {
 			tlsConn := tls.Client(conn, h.Transport.TLSClientConfig)
 			err := tlsConn.HandshakeContext(req.Context())
 			if err != nil {
@@ -176,7 +186,7 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 
 		_, err = conn.Write(b)
 		if err != nil {
-			log.Error().Context(ri.LogContext).Err(err).Str("proxypass", proxypass).Str("hostport", hostport).Msg("http2 write to proxypass error")
+			log.Error().Context(ri.LogContext).Err(err).Str("proxypass", proxypass.String()).Str("hostport", hostport).Msg("http2 write to proxypass error")
 			http.Error(rw, err.Error(), http.StatusBadGateway)
 			return
 		}
@@ -184,15 +194,15 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		br := bufio.NewReader(conn)
 		resp, err := http.ReadResponse(br, req)
 		if err != nil {
-			log.Error().Context(ri.LogContext).Err(err).Str("proxypass", proxypass).Str("hostport", hostport).Msg("http2 read from proxypass error")
+			log.Error().Context(ri.LogContext).Err(err).Str("proxypass", proxypass.String()).Str("hostport", hostport).Msg("http2 read from proxypass error")
 			http.Error(rw, err.Error(), http.StatusBadGateway)
 			return
 		}
 
-		log.Info().Context(ri.LogContext).Str("proxypass", proxypass).Str("hostport", hostport).Int("resp_statuscode", resp.StatusCode).Interface("resp_header", resp.Header).Msg("http2 get response ok")
+		log.Info().Context(ri.LogContext).Str("proxypass", proxypass.String()).Str("hostport", hostport).Int("resp_statuscode", resp.StatusCode).Interface("resp_header", resp.Header).Msg("http2 get response ok")
 
 		if resp.StatusCode != http.StatusSwitchingProtocols {
-			log.Error().Context(ri.LogContext).Err(err).Str("proxypass", proxypass).Str("hostport", hostport).Int("resp_statuscode", resp.StatusCode).Msg("http2 swtich 101 from proxypass error")
+			log.Error().Context(ri.LogContext).Err(err).Str("proxypass", proxypass.String()).Str("hostport", hostport).Int("resp_statuscode", resp.StatusCode).Msg("http2 swtich 101 from proxypass error")
 			http.Error(rw, "switch protocols failed, resp statuscode: "+strconv.Itoa(resp.StatusCode), http.StatusBadGateway)
 			return
 		}
@@ -215,9 +225,9 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 
 	var tr http.RoundTripper = h.Transport
 
-	req.URL.Scheme = u.Scheme
-	req.URL.Host = u.Host
-	// req.Host = u.Host
+	req.URL.Scheme = proxypass.Scheme
+	req.URL.Host = proxypass.Host
+	// req.Host = proxypass.Host
 
 	if prefix := h.StripPrefix; prefix != "" {
 		req.URL.Path = strings.TrimPrefix(req.URL.Path, prefix)
@@ -241,7 +251,10 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		// req.Header.Set("x-http-proto", req.Proto)
 		// req.Header.Set("x-ja4", string(ri.JA4))
 	}
-	h.setHeaders(req, ri)
+
+	if h.SetHeaders != "" {
+		h.setHeaders(req, ri)
+	}
 
 	if req.ProtoAtLeast(3, 0) && req.Method == http.MethodGet {
 		req.Body, req.ContentLength = nil, 0
@@ -249,15 +262,11 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 
 	resp, err := tr.RoundTrip(req)
 	if err != nil {
-		if h.proxypass != nil {
-			log.Warn().Err(err).Context(ri.LogContext).Str("req_host", req.Host).Str("req_url", req.URL.String()).Msg("proxypass error")
-			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) || os.IsTimeout(err) {
-				http.Error(rw, "504 Gateway Timeout", http.StatusGatewayTimeout)
-			} else {
-				http.Error(rw, "502 Bad Gateway", http.StatusBadGateway)
-			}
+		log.Warn().Err(err).Context(ri.LogContext).Str("req_host", req.Host).Str("req_url", req.URL.String()).Msg("proxypass error")
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) || os.IsTimeout(err) {
+			http.Error(rw, "504 Gateway Timeout", http.StatusGatewayTimeout)
 		} else {
-			http.NotFound(rw, req)
+			http.Error(rw, "502 Bad Gateway", http.StatusBadGateway)
 		}
 		return
 	}
@@ -325,10 +334,6 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 }
 
 func (h *HTTPWebProxyHandler) setHeaders(req *http.Request, ri *HTTPRequestInfo) {
-	if h.SetHeaders == "" {
-		return
-	}
-
 	var headers string
 	if h.headers != nil {
 		bb := bytebufferpool.Get()
