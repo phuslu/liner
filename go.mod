@@ -35,6 +35,7 @@ require (
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
+	github.com/phuslu/fastcgi v0.0.0-20231004164338-7aec0d4ba593 // indirect
 	github.com/quic-go/qpack v0.5.1 // indirect
 	go.uber.org/mock v0.6.0 // indirect
 	golang.org/x/mod v0.28.0 // indirect

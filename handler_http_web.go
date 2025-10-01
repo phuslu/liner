@@ -39,12 +39,6 @@ func (h *HTTPWebHandler) Load() error {
 			location: web.Location,
 		}
 		switch {
-		case web.Cgi.Enabled:
-			router.handler = &HTTPWebCgiHandler{
-				Location:   web.Location,
-				Root:       web.Cgi.Root,
-				DefaultApp: web.Cgi.DefaultAPP,
-			}
 		case web.Dav.Enabled:
 			router.handler = &HTTPWebDavHandler{
 				Root:      web.Dav.Root,
@@ -55,6 +49,11 @@ func (h *HTTPWebHandler) Load() error {
 				Policy:    web.Doh.Policy,
 				ProxyPass: web.Doh.ProxyPass,
 				Functions: h.Functions,
+			}
+		case web.Fastcgi.Enabled:
+			router.handler = &HTTPWebFastcgiHandler{
+				Location: web.Location,
+				Root:     web.Fastcgi.Root,
 			}
 		case web.Index.Root != "" || web.Index.Body != "" || web.Index.File != "":
 			router.handler = &HTTPWebIndexHandler{

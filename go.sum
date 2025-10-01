@@ -29,6 +29,8 @@ github.com/mileusna/useragent v1.3.5 h1:SJM5NzBmh/hO+4LGeATKpaEX9+b4vcGg2qXGLiNG
 github.com/mileusna/useragent v1.3.5/go.mod h1:3d8TOmwL/5I8pJjyVDteHtgDGcefrFUX4ccGOMKNYYc=
 github.com/oschwald/maxminddb-golang/v2 v2.0.0-beta.10 h1:d9tiCD1ueYjGStkagZmLYMbItMnJPpmn27jBctlyRg8=
 github.com/oschwald/maxminddb-golang/v2 v2.0.0-beta.10/go.mod h1:EkyB0XWibbE1/+tXyR+ZehlGg66bRtMzxQSPotYH2EA=
+github.com/phuslu/fastcgi v0.0.0-20231004164338-7aec0d4ba593 h1:VKuHxeB0uqGkdp4iqjFJKOEkD6yZZbU42brsRMi6/a4=
+github.com/phuslu/fastcgi v0.0.0-20231004164338-7aec0d4ba593/go.mod h1:HBhPDGs/2sMFuRqzVCHnsmY9tCQy1tXiJ89DytaRs2Y=
 github.com/phuslu/fastdns v0.13.3 h1:PtNdHWaaHC0JDTqsHVfOq0C/lL/630NsGsSc7npg/ZI=
 github.com/phuslu/fastdns v0.13.3/go.mod h1:whxYhN/LvgE3EK+n2E73vt5CY44cZVbk6j9ZsqE8G3Q=
 github.com/phuslu/geosite v1.0.20250901 h1:9BHxSm7M1OMic7H8q3Nzyd9PvjFtzMtUX2d1hE5WiIQ=

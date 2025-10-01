@@ -49,11 +49,11 @@ type HTTPConfig struct {
 	Web []struct {
 		Location      string `json:"location" yaml:"location"`
 		TcpCongestion string `json:"tcp_congestion" yaml:"tcp_congestion"`
-		Cgi           struct {
+		Fastcgi       struct {
 			Enabled    bool   `json:"enabled" yaml:"enabled"`
 			Root       string `json:"root" yaml:"root"`
 			DefaultAPP string `json:"default_app" yaml:"default_app"`
-		} `json:"cgi" yaml:"cgi"`
+		} `json:"fastcgi" yaml:"fastcgi"`
 		Dav struct {
 			Enabled   bool   `json:"enabled" yaml:"enabled"`
 			Root      string `json:"root" yaml:"root"`
