@@ -34,6 +34,7 @@ import (
 	"unsafe"
 
 	"github.com/libp2p/go-yamux/v5"
+	"github.com/phuslu/log"
 	"github.com/quic-go/quic-go"
 	"github.com/valyala/bytebufferpool"
 	"golang.org/x/crypto/chacha20"
@@ -895,6 +896,18 @@ func (ops ConnOps) GetQuicStats() (stats *quic.ConnectionStats, err error) {
 		stats = ptr(ops.qc.ConnectionStats())
 	}
 	return
+}
+
+var _ log.ObjectMarshaler = (HTTPHeaderMarshalLogObject)(nil)
+
+type HTTPHeaderMarshalLogObject http.Header
+
+func (o HTTPHeaderMarshalLogObject) MarshalObject(e *log.Entry) {
+	for key, values := range o {
+		for _, value := range values {
+			e.Str(key, value)
+		}
+	}
 }
 
 // IPRange represents a range of IP addresses

@@ -199,7 +199,7 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 			return
 		}
 
-		log.Info().Context(ri.LogContext).Str("proxypass", proxypass.String()).Str("hostport", hostport).Int("resp_statuscode", resp.StatusCode).Interface("resp_header", resp.Header).Msg("http2 get response ok")
+		log.Info().Context(ri.LogContext).Str("proxypass", proxypass.String()).Str("hostport", hostport).Int("resp_statuscode", resp.StatusCode).Object("resp_header", HTTPHeaderMarshalLogObject(resp.Header)).Msg("http2 get response ok")
 
 		if resp.StatusCode != http.StatusSwitchingProtocols {
 			log.Error().Context(ri.LogContext).Err(err).Str("proxypass", proxypass.String()).Str("hostport", hostport).Int("resp_statuscode", resp.StatusCode).Msg("http2 swtich 101 from proxypass error")
