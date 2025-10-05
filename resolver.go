@@ -16,6 +16,7 @@ import (
 )
 
 var godebugnetdns = strings.Contains(os.Getenv("GODEBUG"), "netdns=")
+var gonetresolver = &net.Resolver{}
 
 type Resolver struct {
 	Client        *fastdns.Client
@@ -38,7 +39,7 @@ func (r *Resolver) LookupNetIP(ctx context.Context, network, host string) (ips [
 	if !godebugnetdns {
 		ips, err = r.Client.AppendLookupNetIP(ips, ctx, network, host)
 	} else {
-		ips, err = (&net.Resolver{}).LookupNetIP(ctx, network, host)
+		ips, err = gonetresolver.LookupNetIP(ctx, network, host)
 	}
 	if err != nil {
 		if r.Logger != nil {
