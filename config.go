@@ -63,6 +63,7 @@ type HTTPConfig struct {
 			Enabled   bool   `json:"enabled" yaml:"enabled"`
 			Policy    string `json:"policy" yaml:"policy"`
 			ProxyPass string `json:"proxy_pass" yaml:"proxy_pass"`
+			CacheSize int    `json:"cache_size" yaml:"cache_size"`
 		} `json:"doh" yaml:"doh"`
 		Index struct {
 			Root    string `json:"root" yaml:"root"`
@@ -127,6 +128,7 @@ type DnsConfig struct {
 	Keyfile   string   `json:"keyfile" yaml:"keyfile"`
 	Policy    string   `json:"policy" yaml:"policy"`
 	ProxyPass string   `json:"proxy_pass" yaml:"proxy_pass"`
+	CacheSize int      `json:"cache_size" yaml:"cache_size"`
 	Log       bool     `json:"log" yaml:"log"`
 }
 

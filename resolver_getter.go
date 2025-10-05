@@ -27,7 +27,9 @@ type resolvererr struct {
 
 var resolvers = xsync.NewMap[string, resolvererr](xsync.WithSerialResize())
 
-func GetResolver(addr string) (r *Resolver, err error) {
+const DefaultDNSCacheSize = 32 * 1024
+
+func GetResolver(addr string, cachesize int) (r *Resolver, err error) {
 	racer, _ := resolvers.LoadOrCompute(addr, func() (r resolvererr, cancel bool) {
 		r.Resolver = &Resolver{
 			Client: &fastdns.Client{
@@ -35,7 +37,9 @@ func GetResolver(addr string) (r *Resolver, err error) {
 			},
 			Logger:        &log.DefaultLogger,
 			CacheDuration: 10 * time.Minute,
-			LRUCache:      lru.NewTTLCache[string, []netip.Addr](64 * 1024),
+		}
+		if cachesize > 0 {
+			r.Resolver.LRUCache = lru.NewTTLCache[string, []netip.Addr](cachesize)
 		}
 
 		switch {

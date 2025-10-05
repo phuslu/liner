@@ -128,7 +128,7 @@ func main() {
 		}
 	}
 	resolver := &GeoResolver{
-		Resolver:          must(GetResolver(config.Global.DnsServer)),
+		Resolver:          must(GetResolver(config.Global.DnsServer, cmp.Or(config.Global.DnsCacheSize, DefaultDNSCacheSize))),
 		Logger:            &log.DefaultLogger,
 		EnableCJKCityName: true,
 	}
@@ -798,7 +798,7 @@ func main() {
 			Dialers:         config.Dialer,
 		}
 		if tunnel.Resolver != "" {
-			h.Resolver = must(GetResolver(tunnel.Resolver))
+			h.Resolver = must(GetResolver(tunnel.Resolver, 0))
 		}
 
 		go h.Serve(context.Background())

@@ -48,6 +48,7 @@ func (h *HTTPWebHandler) Load() error {
 			router.handler = &HTTPWebDohHandler{
 				Policy:    web.Doh.Policy,
 				ProxyPass: web.Doh.ProxyPass,
+				CacheSize: web.Doh.CacheSize,
 				Functions: h.Functions,
 			}
 		case web.Fastcgi.Enabled:
