@@ -68,6 +68,7 @@ type HTTPConfig struct {
 		Index struct {
 			Root    string `json:"root" yaml:"root"`
 			Headers string `json:"headers" yaml:"headers"`
+			Charset string `json:"charset" yaml:"charset"`
 			Body    string `json:"body" yaml:"body"`
 			File    string `json:"file" yaml:"file"`
 		} `json:"index" yaml:"index"`

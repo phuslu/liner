@@ -62,6 +62,7 @@ func (h *HTTPWebHandler) Load() error {
 				Location:  web.Location,
 				Root:      web.Index.Root,
 				Headers:   web.Index.Headers,
+				Charset:   web.Index.Charset,
 				Body:      web.Index.Body,
 				File:      web.Index.File,
 			}

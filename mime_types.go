@@ -62,6 +62,7 @@ var mimetypes = map[string]string{
 	".m3u":         "application/vnd.apple.mpegurl",
 	".m3u8":        "application/vnd.apple.mpegurl",
 	".man":         "application/x-troff-man",
+	".md":          "text/markdown",
 	".me":          "application/x-troff-me",
 	".mht":         "message/rfc822",
 	".mhtml":       "message/rfc822",

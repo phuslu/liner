@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"compress/gzip"
 	_ "embed"
 	"fmt"
@@ -24,6 +25,7 @@ type HTTPWebIndexHandler struct {
 	Location  string
 	Root      string
 	Headers   string
+	Charset   string
 	Body      string
 	File      string
 	Functions template.FuncMap
@@ -64,7 +66,11 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		h.addHeaders(rw, req, ri)
 		if rw.Header().Get("content-type") == "" {
 			if s := GetMimeTypeByExtension(filepath.Ext(req.URL.Path)); s != "" {
-				rw.Header().Set("content-type", s)
+				if strings.HasPrefix(s, "text/") {
+					rw.Header().Set("content-type", s+"; charset="+cmp.Or(h.Charset, "UTF-8"))
+				} else {
+					rw.Header().Set("content-type", s)
+				}
 			}
 		}
 
@@ -178,7 +184,11 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 
 		h.addHeaders(rw, req, ri)
 		if s := GetMimeTypeByExtension(filepath.Ext(fullname)); s != "" {
-			rw.Header().Set("content-type", s)
+			if strings.HasPrefix(s, "text/") {
+				rw.Header().Set("content-type", s+"; charset="+cmp.Or(h.Charset, "UTF-8"))
+			} else {
+				rw.Header().Set("content-type", s)
+			}
 		} else {
 			rw.Header().Set("content-type", "application/octet-stream")
 		}
@@ -285,7 +295,7 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	}
 
 	h.addHeaders(rw, req, ri)
-	rw.Header().Set("content-type", "text/html;charset=utf-8")
+	rw.Header().Set("content-type", "text/html; charset=UTF-8")
 	rw.Write(b.Bytes())
 }
 
