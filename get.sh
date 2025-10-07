@@ -24,6 +24,7 @@ fi
 checksum=$($getcurl https://github.com/phuslu/liner/releases/download/v0.0.0/checksums.txt | grep -E "liner_linux_${arch}-[0-9]+.tar.gz")
 filename=$(echo $checksum | awk '{print $2}')
 pacfile=$(head /dev/urandom | tr -dc '1-9' | head -c 6).pac
+sudo=$(test "$(id -u)" -eq 0 && echo sudo)
 
 if test -d liner; then
   cd liner
@@ -70,25 +71,35 @@ https:
       prefer_ipv6: false
       io_copy_buffer: 65536
       idle_timeout: 600
+      auth_table: users.csv
       policy: |
-        {{if all (.Request.ProtoAtLeast 2 0) (eq .Request.TLS.Version 0x0304) (greased .ClientHelloInfo)}}
-            bypass_auth
+        {{if eq "" .Request.UserAgent}}
+          proxy_pass
+        {{else if .Request.Header.Get "proxy-authorization"}}
+          verify_auth
+        {{else if all (.Request.ProtoAtLeast 2 0) (eq .Request.TLS.Version 0x0304) (greased .ClientHelloInfo)}}
+          require_auth
         {{else}}
-            proxy_pass
+          proxy_pass
         {{end}}
     web:
       - location: /${pacfile}
         index:
-          headers: "content-type: text/plain;charset=utf-8"
-          file: $(pwd)/china.pac
+          headers: "content-type: text/plain; charset=UTF-8"
+          file: china.pac
       - location: /
         proxy:
           pass: 'http://127.0.0.1:80'
 EOF
 
+cat <<EOF > users.csv
+username,password,speed_limit,allow_client
+user,$(head /dev/urandom | tr -dc '1-9' | head -c 6),0,1
+EOF
+
 echo ENV=production > .env
 
-if type -p systemctl; then
+if test "$(cat /proc/1/comm)" == "systemd"; then
   cat <<EOF > liner.service
 [Unit]
 Wants=network-online.target
@@ -112,14 +123,14 @@ NoNewPrivileges=no
 [Install]
 WantedBy=multi-user.target
 EOF
-  sudo systemctl enable $(pwd)/liner.service
-  sudo systemctl restart liner
-elif type -p rc-update; then
-  rc-update add local
+  ${sudo} systemctl enable $(pwd)/liner.service
+  ${sudo} systemctl restart liner
+elif /sbin/rc-update -V; then
+  ${sudo} rc-update add local
   echo 'while :; do env $(cat .env) "$@"; sleep 2; done' >keepalive
-  printf '#!/bin/sh\n\n(cd "%s" && /bin/sh keepalive "%s/liner" production.yaml &) </dev/null &>/dev/null\n' "$(pwd)" "$(pwd)" | tee /etc/local.d/10-liner.start
-  chmod +x /etc/local.d/10-liner.start
-  /etc/local.d/10-liner.start
+  printf '#!/bin/sh\n\n(cd "%s" && /bin/sh keepalive "%s/liner" production.yaml &) </dev/null &>/dev/null\n' "$(pwd)" "$(pwd)" | ${sudo} tee /etc/local.d/10-liner.start
+  ${sudo} chmod +x /etc/local.d/10-liner.start
+  ${sudo} /etc/local.d/10-liner.start
 else
   pgrep liner && pkill -9 liner
   echo 'while :; do env $(cat .env) "$@"; sleep 2; done' >keepalive
@@ -127,3 +138,4 @@ else
 fi
 
 echo "https://$domain/$pacfile"
+cat users.csv
