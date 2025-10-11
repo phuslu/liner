@@ -35,7 +35,7 @@ global:
   dns_server: https://8.8.8.8/dns-query
   set_process_name: /bin/sleep 60
 dialer:
-  wss: "wss://edge:{{ $password }}@cloud.phus.lu/?ech=true&insecure=false"
+  wss: "wss://edge:{{ $password }}@{{ .Request.Host }}/?ech=true&insecure=false"
 tunnel:
   - listen: ['127.0.0.{{ $id }}:10080']
     proxy_pass: '240.0.0.1:80'
@@ -54,7 +54,7 @@ http:
       policy: bypass_auth
 {{ if $port }}
   - listen: [':{{ $port }}']
-    server_name: ['{{ $name }}.edge.phus.lu']
+    server_name: ['*']
     web:
       - location: /jsonp
         index:
@@ -67,6 +67,8 @@ http:
           root: /root/web
 {{ end }}
 EOF
+
+mkdir -p /root/web || true
 
 if test -f /seashell.sh; then
   mkdir -p ~/service/liner
