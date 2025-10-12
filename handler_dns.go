@@ -206,7 +206,9 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, rw fastdns.ResponseWriter, re
 		case "HOST", "host":
 			addrs := toaddrs(make([]netip.Addr, 0, 4), parts[1:])
 			log.Debug().Context(req.LogContext).Str("req_domain", req.Domain()).Str("req_qtype", req.QType).NetIPAddrs("hosts", addrs).Msg("dns policy host executed")
-			fastdns.HOST(rw, req.Message, 300, addrs)
+			req.Message.SetResponseHeader(fastdns.RcodeNoError, uint16(len(addrs)))
+			req.Message.AppendHOST(300, addrs)
+			rw.Write(req.Message.Raw)
 			return
 		case "CNAME", "cname":
 			if len(parts) != 2 {
@@ -215,7 +217,9 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, rw fastdns.ResponseWriter, re
 			}
 			cnames := strings.Split(parts[1], ",")
 			log.Debug().Context(req.LogContext).Str("req_domain", req.Domain()).Str("req_qtype", req.QType).Strs("cnames", cnames).Msg("dns policy cname executed")
-			fastdns.CNAME(rw, req.Message, 300, cnames, nil)
+			req.Message.SetResponseHeader(fastdns.RcodeNoError, uint16(len(cnames)))
+			req.Message.AppendCNAME(300, cnames, nil)
+			rw.Write(req.Message.Raw)
 			return
 		case "TXT", "txt":
 			if len(parts) != 2 {
@@ -224,7 +228,9 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, rw fastdns.ResponseWriter, re
 			}
 			txt := parts[1]
 			log.Debug().Context(req.LogContext).Str("req_domain", req.Domain()).Str("req_qtype", req.QType).Str("txt", txt).Msg("dns policy txt executed")
-			fastdns.TXT(rw, req.Message, 300, txt)
+			req.Message.SetResponseHeader(fastdns.RcodeNoError, 1)
+			req.Message.AppendTXT(300, txt)
+			rw.Write(req.Message.Raw)
 			return
 		case "PROXY_PASS", "proxy_pass":
 			if len(parts) == 2 {

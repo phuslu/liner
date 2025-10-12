@@ -135,7 +135,9 @@ func (h *HTTPWebDohHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		case "HOST", "host":
 			addrs := toaddrs(make([]netip.Addr, 0, 4), parts[1:])
 			log.Debug().Context(ri.LogContext).Str("doh_req_domain", dr.Domain()).Str("doh_req_qtype", dr.QType).NetIPAddrs("hosts", addrs).Msg("dns policy host executed")
-			fastdns.HOST(drw, dr.Message, 300, addrs)
+			dr.Message.SetResponseHeader(fastdns.RcodeNoError, uint16(len(addrs)))
+			dr.Message.AppendHOST(300, addrs)
+			drw.Write(dr.Message.Raw)
 			return
 		case "CNAME", "cname":
 			if len(parts) != 2 {
@@ -144,7 +146,9 @@ func (h *HTTPWebDohHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 			}
 			cnames := strings.Split(parts[1], ",")
 			log.Debug().Context(ri.LogContext).Str("doh_req_domain", dr.Domain()).Str("doh_req_qtype", dr.QType).Strs("cnames", cnames).Msg("dns policy cname executed")
-			fastdns.CNAME(drw, dr.Message, 300, cnames, nil)
+			dr.Message.SetResponseHeader(fastdns.RcodeNoError, uint16(len(cnames)))
+			dr.Message.AppendCNAME(300, cnames, nil)
+			drw.Write(dr.Message.Raw)
 			return
 		case "TXT", "txt":
 			if len(parts) != 2 {
@@ -153,7 +157,9 @@ func (h *HTTPWebDohHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 			}
 			txt := parts[1]
 			log.Debug().Context(ri.LogContext).Str("doh_req_domain", dr.Domain()).Str("doh_req_qtype", dr.QType).Str("txt", txt).Msg("dns policy txt executed")
-			fastdns.TXT(drw, dr.Message, 300, txt)
+			dr.Message.SetResponseHeader(fastdns.RcodeNoError, 1)
+			dr.Message.AppendTXT(300, txt)
+			drw.Write(dr.Message.Raw)
 			return
 		case "PROXY_PASS", "proxy_pass":
 			if len(parts) == 2 {
