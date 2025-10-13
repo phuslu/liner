@@ -39,6 +39,7 @@ import (
 	"github.com/valyala/bytebufferpool"
 	"golang.org/x/crypto/chacha20"
 	"golang.org/x/crypto/ocsp"
+	"golang.org/x/crypto/ssh"
 )
 
 // fastrand returns a pseudorandom uint32.
@@ -589,6 +590,28 @@ func (c *IdleTimeoutConn) SetReadDeadline(t time.Time) error {
 
 func (c *IdleTimeoutConn) SetWriteDeadline(t time.Time) error {
 	return c.Conn.SetWriteDeadline(t)
+}
+
+func GetNetConnFromServerPreAuthConn(conn ssh.ServerPreAuthConn) (net.Conn, error) {
+	s := fmt.Sprintf("%#v", conn)
+	if !(strings.HasPrefix(s, "&ssh.connection{transport:(*ssh.handshakeTransport)(") &&
+		strings.Contains(s, "sshConn:ssh.sshConn{conn:")) {
+		return nil, fmt.Errorf("GetNetConnFromServerPreAuthConn: unsupported ssh connection: %s", s)
+	}
+
+	data := (*[2]unsafe.Pointer)(unsafe.Pointer(&conn))[1]
+	if data == nil {
+		return nil, fmt.Errorf("GetNetConnFromServerPreAuthConn: got an nil *ssh.connection data: %s", s)
+	}
+
+	type sshconnection struct {
+		transport *struct{}
+		sshConn   struct {
+			conn net.Conn
+		}
+	}
+
+	return (*sshconnection)(data).sshConn.conn, nil
 }
 
 type HTTPFlushWriter struct {

@@ -75,6 +75,12 @@ func (h *SshHandler) Load() error {
 				if strings.Contains(b2s(data), "{{") {
 					if banner, err := template.New("ssh_banner_file").Funcs(h.Functions).Parse(string(data)); err == nil {
 						var sb strings.Builder
+						nc, err := GetNetConnFromServerPreAuthConn(conn)
+						if err != nil {
+							h.Logger.Error().Err(err).Strs("ssh_listens", h.Config.Listen).Msg("cannot get net.Conn from the incoming ssh.ServerPreAuthConn")
+						} else {
+							h.Logger.Info().Strs("ssh_listens", h.Config.Listen).Str("net_conn_type", fmt.Sprintf("%T", nc)).NetAddr("net_conn_addr", nc.RemoteAddr()).Msg("get net.Conn from the incoming ssh.ServerPreAuthConn")
+						}
 						banner.Execute(&sb, struct {
 							User          string
 							SessionID     string
@@ -82,6 +88,7 @@ func (h *SshHandler) Load() error {
 							ServerVersion string
 							RemoteAddr    string
 							LocalAddr     string
+							NetConn       net.Conn
 						}{
 							User:          conn.User(),
 							SessionID:     string(conn.SessionID()),
@@ -89,6 +96,7 @@ func (h *SshHandler) Load() error {
 							ServerVersion: string(conn.ServerVersion()),
 							RemoteAddr:    conn.RemoteAddr().String(),
 							LocalAddr:     conn.LocalAddr().String(),
+							NetConn:       nc,
 						})
 						_ = conn.SendAuthBanner(sb.String())
 					}
