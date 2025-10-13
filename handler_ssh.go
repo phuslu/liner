@@ -13,6 +13,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -22,6 +23,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	"github.com/libp2p/go-yamux/v5"
 	"github.com/phuslu/log"
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ed25519"
@@ -79,7 +81,25 @@ func (h *SshHandler) Load() error {
 						if err != nil {
 							h.Logger.Error().Err(err).Strs("ssh_listens", h.Config.Listen).Msg("cannot get net.Conn from the incoming ssh.ServerPreAuthConn")
 						} else {
-							h.Logger.Info().Strs("ssh_listens", h.Config.Listen).Str("net_conn_type", fmt.Sprintf("%T", nc)).NetAddr("net_conn_addr", nc.RemoteAddr()).Msg("get net.Conn from the incoming ssh.ServerPreAuthConn")
+							h.Logger.Info().Strs("ssh_listens", h.Config.Listen).Type("net_conn_type", nc).NetAddr("net_conn_addr", nc.RemoteAddr()).Msg("get net.Conn from the incoming ssh.ServerPreAuthConn")
+						}
+						getrtt := func(nc net.Conn) func() (time.Duration, error) {
+							return func() (time.Duration, error) {
+								var rtt time.Duration
+								switch c := nc.(type) {
+								case *yamux.Stream:
+									rtt = c.Session().RTT()
+								case *net.TCPConn:
+									if tcpinfo, err := (ConnOps{tc: c}).GetTcpInfo(); err == nil && tcpinfo != nil {
+										v := reflect.ValueOf(tcpinfo).Elem().FieldByName("Rtt")
+										if !v.IsValid() {
+											return 0, fmt.Errorf("getrtt: tcpinfo %#v has no Rtt field", tcpinfo)
+										}
+										rtt = time.Duration(v.Uint()) * time.Microsecond
+									}
+								}
+								return rtt, nil
+							}
 						}
 						banner.Execute(&sb, struct {
 							User          string
@@ -88,7 +108,7 @@ func (h *SshHandler) Load() error {
 							ServerVersion string
 							RemoteAddr    string
 							LocalAddr     string
-							NetConn       net.Conn
+							RTT           func() (time.Duration, error)
 						}{
 							User:          conn.User(),
 							SessionID:     string(conn.SessionID()),
@@ -96,7 +116,7 @@ func (h *SshHandler) Load() error {
 							ServerVersion: string(conn.ServerVersion()),
 							RemoteAddr:    conn.RemoteAddr().String(),
 							LocalAddr:     conn.LocalAddr().String(),
-							NetConn:       nc,
+							RTT:           getrtt(nc),
 						})
 						_ = conn.SendAuthBanner(sb.String())
 					}
