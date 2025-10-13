@@ -652,8 +652,9 @@ func main() {
 		addr, handler := addr, handler
 
 		server := &http.Server{
-			Handler:  handler.HTTPHandler,
-			ErrorLog: log.DefaultLogger.Std("", 0),
+			Handler:   handler.HTTPHandler,
+			ErrorLog:  log.DefaultLogger.Std("", 0),
+			ConnState: tlsConfigurator.HTTPConnState,
 		}
 
 		var ln net.Listener
@@ -673,6 +674,7 @@ func main() {
 				KeepAlivePeriod: 3 * time.Minute,
 				ReadBufferSize:  config.Global.TcpReadBuffer,
 				WriteBufferSize: config.Global.TcpWriteBuffer,
+				MirrorHeader:    false,
 				Chacha20Key:     handler.Chacha20Key,
 			}
 		}
