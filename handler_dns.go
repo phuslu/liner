@@ -211,14 +211,26 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, rw fastdns.ResponseWriter, re
 			rw.Write(req.Message.Raw)
 			return
 		case "CNAME", "cname":
-			if len(parts) != 2 {
+			if len(parts) < 2 {
 				fastdns.Error(rw, req.Message, fastdns.RcodeServFail)
 				return
 			}
-			cnames := strings.Split(parts[1], ",")
-			log.Debug().Context(req.LogContext).Str("req_domain", req.Domain()).Str("req_qtype", req.QType).Strs("cnames", cnames).Msg("dns policy cname executed")
-			req.Message.SetResponseHeader(fastdns.RcodeNoError, uint16(len(cnames)))
-			req.Message.AppendCNAME(300, cnames, nil)
+			var cnames []string
+			addrs := parts[1:]
+			for len(addrs) > 0 {
+				if _, err := netip.ParseAddr(addrs[0]); err == nil {
+					break
+				}
+				cnames = append(cnames, addrs[0])
+				addrs = addrs[1:]
+			}
+			var ips []netip.Addr
+			if len(addrs) > 0 {
+				ips = toaddrs(make([]netip.Addr, 0, 4), addrs)
+			}
+			log.Debug().Context(req.LogContext).Str("req_domain", req.Domain()).Str("req_qtype", req.QType).Strs("cnames", cnames).NetIPAddrs("ips", ips).Msg("dns policy cname executed")
+			req.Message.SetResponseHeader(fastdns.RcodeNoError, uint16(len(cnames)+len(ips)))
+			req.Message.AppendCNAME(300, cnames, ips)
 			rw.Write(req.Message.Raw)
 			return
 		case "TXT", "txt":
