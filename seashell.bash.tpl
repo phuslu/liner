@@ -47,6 +47,7 @@ ssh:
     # host_key: /etc/ssh/ssh_host_ed25519_key
     # wget https://github.com/phuslu.keys
     authorized_keys: phuslu.keys
+    banner_file: motd
     shell: /bin/bash
     log: true
 http:
@@ -67,6 +68,13 @@ http:
         index:
           root: /root/web
 {{ end }}
+EOF
+
+cat <<EOF | tee motd
+Welcome to Alpine!
+ClientVersion: {{"{{"}} .ClientVersion {{"}}"}}
+RemoteIP: {{"{{"}} host .RemoteAddr {{"}}"}}
+RTT: {{"{{"}} div (call .RTT) 1000000 {{"}}"}} ms
 EOF
 
 mkdir -p /root/web || true
