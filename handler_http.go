@@ -199,11 +199,19 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		}
 	}
 
+	// fix real ip without geo info
+	if h.GeoResolver.ISPReader == nil {
+		if IsCloudflareIP(ri.RealIP) {
+			if ip, err := netip.ParseAddr(req.Header.Get("Cf-Connecting-Ip")); err == nil {
+				ri.RealIP = ip
+			}
+		}
+	}
+
 	// resolve geo info
-	ri.UserAgent, _, _ = h.UserAgentMap.Get(req.Header.Get("User-Agent"))
 	if h.GeoResolver.CityReader != nil {
 		ri.GeoIPInfo = h.GeoResolver.GetGeoIPInfo(req.Context(), ri.RealIP)
-		// fix real ip
+		// fix real ip with geo info
 		if ri.GeoIPInfo.ISP == "Cloudflare" {
 			if ip, err := netip.ParseAddr(req.Header.Get("Cf-Connecting-Ip")); err == nil {
 				ri.RealIP = ip
@@ -211,6 +219,9 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 			}
 		}
 	}
+
+	// resolve user-agent info
+	ri.UserAgent, _, _ = h.UserAgentMap.Get(req.Header.Get("User-Agent"))
 
 	ri.TraceID = log.NewXID()
 
