@@ -1355,6 +1355,71 @@ func IsReservedIP(ip netip.Addr) bool {
 	return false
 }
 
+// see https://www.cloudflare.com/ips/
+func IsCloudflareIP(ip netip.Addr) bool {
+	ip = ip.Unmap()
+
+	if ip.Is4() {
+		b := ip.As4()
+		switch b[0] {
+		case 103:
+			switch b[1] {
+			case 21:
+				return b[2] >= 244 && b[2] <= 247
+			case 22:
+				return b[2] >= 200 && b[2] <= 203
+			case 31:
+				return b[2] >= 4 && b[2] <= 7
+			}
+		case 104:
+			return b[1] >= 16 && b[1] <= 27
+		case 108:
+			return b[1] == 162 && b[2] >= 192
+		case 131:
+			return b[1] == 0 && b[2] >= 72 && b[2] <= 75
+		case 141:
+			return b[1] == 101 && b[2] >= 64 && b[2] <= 127
+		case 162:
+			return b[1] >= 158 && b[1] <= 159
+		case 172:
+			return b[1] >= 64 && b[1] <= 71
+		case 173:
+			return b[1] == 245 && b[2] >= 48 && b[2] <= 63
+		case 188:
+			return b[1] == 114 && b[2] >= 96 && b[2] <= 111
+		case 190:
+			return b[1] == 93 && b[2] >= 240
+		case 197:
+			return b[1] == 234 && b[2] >= 240 && b[2] <= 243
+		case 198:
+			return b[1] == 41 && b[2] >= 128
+		}
+		return false
+	}
+
+	if !ip.Is6() {
+		return false
+	}
+
+	b := ip.As16()
+	prefix32 := uint32(b[0])<<24 | uint32(b[1])<<16 | uint32(b[2])<<8 | uint32(b[3])
+	switch prefix32 {
+	case 0x2400cb00,
+		0x26064700,
+		0x2803f800,
+		0x2405b500,
+		0x24058100,
+		0x2c0ff248:
+		return true
+	}
+
+	if prefix32>>3 == 0x2a0698c0>>3 {
+		return true
+	}
+
+	return false
+}
+
 func IsBogusChinaIP(ip netip.Addr) (ok bool) {
 	if ip.Is6() {
 		return false
