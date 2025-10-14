@@ -28,6 +28,7 @@ type GeoResolver struct {
 }
 
 type GeoIPInfo struct {
+	IP             string
 	Country        string
 	City           string
 	ISP            string
@@ -47,6 +48,8 @@ func (r *GeoResolver) GetGeoIPInfo(ctx context.Context, ip netip.Addr) (info Geo
 
 func (r *GeoResolver) getGeoIPInfo(ctx context.Context, ip netip.Addr) (GeoIPInfo, time.Duration, error) {
 	var info GeoIPInfo
+
+	info.IP = ip.String()
 
 	if r.CityReader != nil {
 		if record, err := r.LookupCity(ctx, ip); err == nil {
