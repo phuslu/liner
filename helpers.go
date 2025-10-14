@@ -1312,6 +1312,8 @@ func IsReservedIP(ip netip.Addr) bool {
 	}
 	b := ip.As4()
 	switch b[0] {
+	case 0:
+		return true
 	case 10:
 		return true
 	case 100:
@@ -1331,12 +1333,17 @@ func IsReservedIP(ip netip.Addr) bool {
 			}
 		case 18, 19:
 			return true
-		case 51:
-			return b[2] == 100
 		case 88:
 			return b[2] == 99
 		case 168:
 			return true
+		}
+	case 198:
+		switch b[1] {
+		case 18, 19:
+			return true
+		case 51:
+			return b[2] == 100
 		}
 	case 203:
 		return b[1] == 0 && b[2] == 113
