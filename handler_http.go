@@ -152,11 +152,6 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		}
 	}
 
-	ri.UserAgent, _, _ = h.UserAgentMap.Get(req.Header.Get("User-Agent"))
-	if h.GeoResolver.CityReader != nil {
-		ri.GeoIPInfo = h.GeoResolver.GetGeoIPInfo(req.Context(), ri.RemoteAddr.Addr())
-	}
-
 	ri.ProxyUserInfo = AuthUserInfo{}
 	if s := req.Header.Get("proxy-authorization"); s != "" {
 		switch t, s, _ := strings.Cut(s, " "); t {
@@ -183,6 +178,12 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 				}
 			}
 		}
+	}
+
+	// resolve geo info
+	ri.UserAgent, _, _ = h.UserAgentMap.Get(req.Header.Get("User-Agent"))
+	if h.GeoResolver.CityReader != nil {
+		ri.GeoIPInfo = h.GeoResolver.GetGeoIPInfo(req.Context(), ri.RemoteAddr.Addr())
 	}
 
 	ri.TraceID = log.NewXID()
