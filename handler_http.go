@@ -180,6 +180,19 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		}
 	}
 
+	// fix forward username
+	if xfu := req.Header.Get("x-forwarded-user"); xfu != "" && ri.ProxyUserInfo.Username != "" {
+		ri.ProxyUserInfo.Username = xfu + "@" + ri.ProxyUserInfo.Username
+		if xff := req.Header.Get("x-forwarded-for"); xff != "" {
+			for _, s := range strings.Split(xff, ",") {
+				if ip, err := netip.ParseAddr(s); err == nil && !ip.IsPrivate() {
+					ri.RemoteAddr = netip.AddrPortFrom(ip, ri.RemoteAddr.Port())
+					break
+				}
+			}
+		}
+	}
+
 	// resolve geo info
 	ri.UserAgent, _, _ = h.UserAgentMap.Get(req.Header.Get("User-Agent"))
 	if h.GeoResolver.CityReader != nil {
