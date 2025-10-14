@@ -37,6 +37,7 @@ type HTTPServerHandler struct {
 
 type HTTPRequestInfo struct {
 	RemoteAddr      netip.AddrPort
+	RemoteIP        netip.Addr
 	ServerAddr      netip.AddrPort
 	TLSServerName   string
 	TLSVersion      TLSVersion
@@ -82,6 +83,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	defer hrPool.Put(ri)
 
 	ri.RemoteAddr, _ = netip.ParseAddrPort(req.RemoteAddr)
+	ri.RemoteIP = ri.RemoteIP
 	ri.ServerAddr = AddrPortFromNetAddr(req.Context().Value(http.LocalAddrContextKey).(net.Addr))
 	if req.TLS != nil {
 		ri.TLSServerName = req.TLS.ServerName
@@ -183,10 +185,11 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	// fix forward username
 	if xfu := req.Header.Get("x-forwarded-user"); xfu != "" && ri.ProxyUserInfo.Username != "" {
 		ri.ProxyUserInfo.Username = xfu + "@" + ri.ProxyUserInfo.Username
+		// fix remote ip
 		if xff := req.Header.Get("x-forwarded-for"); xff != "" {
 			for _, s := range strings.Split(xff, ",") {
 				if ip, err := netip.ParseAddr(s); err == nil && !ip.IsPrivate() {
-					ri.RemoteAddr = netip.AddrPortFrom(ip, ri.RemoteAddr.Port())
+					ri.RemoteIP = ip
 					break
 				}
 			}
@@ -196,7 +199,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	// resolve geo info
 	ri.UserAgent, _, _ = h.UserAgentMap.Get(req.Header.Get("User-Agent"))
 	if h.GeoResolver.CityReader != nil {
-		ri.GeoIPInfo = h.GeoResolver.GetGeoIPInfo(req.Context(), ri.RemoteAddr.Addr())
+		ri.GeoIPInfo = h.GeoResolver.GetGeoIPInfo(req.Context(), ri.RemoteIP)
 	}
 
 	ri.TraceID = log.NewXID()
@@ -207,7 +210,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		Str("tls_server_name", ri.TLSServerName).
 		Str("tls_version", ri.TLSVersion.String()).
 		Str("ja4", ri.JA4).
-		NetIPAddr("remote_ip", ri.RemoteAddr.Addr()).
+		NetIPAddr("remote_ip", ri.RemoteIP).
 		Str("user_agent", req.UserAgent()).
 		Str("http_method", req.Method).
 		Str("http_proto", req.Proto).

@@ -284,7 +284,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 							http.Error(rw, err.Error(), http.StatusBadGateway)
 							return
 						}
-						log.Debug().NetIPAddr("remote_ip", ri.RemoteAddr.Addr()).Strs("forward_tcp_congestion_options", options).Msg("set forward_tcp_congestion ok")
+						log.Debug().NetIPAddr("remote_ip", ri.RemoteIP).Strs("forward_tcp_congestion_options", options).Msg("set forward_tcp_congestion ok")
 					}
 				default:
 					if err := ri.ClientConnOps.SetTcpCongestion(name); err != nil {
@@ -477,7 +477,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 					Str("tls_version", ri.TLSVersion.String()).
 					Str("ja4", ri.JA4).
 					Str("username", ri.ProxyUserInfo.Username).
-					NetIPAddr("remote_ip", ri.RemoteAddr.Addr()).
+					NetIPAddr("remote_ip", ri.RemoteIP).
 					Str("remote_country", ri.GeoIPInfo.Country).
 					Str("remote_city", ri.GeoIPInfo.City).
 					Str("remote_isp", ri.GeoIPInfo.ISP).
@@ -589,7 +589,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 					Str("tls_version", ri.TLSVersion.String()).
 					Str("ja4", ri.JA4).
 					Str("username", ri.ProxyUserInfo.Username).
-					NetIPAddr("remote_ip", ri.RemoteAddr.Addr()).
+					NetIPAddr("remote_ip", ri.RemoteIP).
 					Str("remote_country", ri.GeoIPInfo.Country).
 					Str("remote_city", ri.GeoIPInfo.City).
 					Str("remote_isp", ri.GeoIPInfo.ISP).

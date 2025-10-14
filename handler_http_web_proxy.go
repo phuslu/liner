@@ -240,8 +240,8 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		req.Header.Set("x-forwarded-for", ri.RemoteAddr.Addr().String())
 	}
 
-	if !ri.RemoteAddr.Addr().IsLoopback() && !ri.RemoteAddr.Addr().IsPrivate() {
-		req.Header.Set("x-real-ip", ri.RemoteAddr.Addr().String())
+	if !ri.RemoteIP.IsLoopback() && !ri.RemoteIP.IsPrivate() {
+		req.Header.Set("x-real-ip", ri.RemoteIP.String())
 	}
 
 	if ri.TLSVersion != 0 {
