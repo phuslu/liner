@@ -71,10 +71,11 @@ http:
 EOF
 
 cat <<EOF | tee motd
+{{ $info := (geoip .RemoteAddr) }}
 Welcome to Alpine!
-ClientVersion: {{"{{"}} .ClientVersion {{"}}"}}
-RemoteIP: {{"{{"}} host .RemoteAddr {{"}}"}}
-RTT: {{"{{"}} div (call .RTT) 1000000 {{"}}"}} ms
+ClientVersion: {{ .ClientVersion }}
+RemoteIP: {{ host .RemoteAddr }} {{ $info.City }} {{ $info.Country }} {{ $info.ISP }} {{ $info.ConnectionType }}
+RTT: {{ div (call .RTT) 1000000 }} ms
 EOF
 
 mkdir -p /root/web || true
