@@ -37,7 +37,7 @@ type HTTPServerHandler struct {
 
 type HTTPRequestInfo struct {
 	RemoteAddr      netip.AddrPort
-	RemoteIP        netip.Addr
+	RealIP          netip.Addr
 	ServerAddr      netip.AddrPort
 	TLSServerName   string
 	TLSVersion      TLSVersion
@@ -83,7 +83,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	defer hrPool.Put(ri)
 
 	ri.RemoteAddr, _ = netip.ParseAddrPort(req.RemoteAddr)
-	ri.RemoteIP = ri.RemoteIP
+	ri.RealIP = ri.RemoteAddr.Addr()
 	ri.ServerAddr = AddrPortFromNetAddr(req.Context().Value(http.LocalAddrContextKey).(net.Addr))
 	if req.TLS != nil {
 		ri.TLSServerName = req.TLS.ServerName
@@ -189,7 +189,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		if xff := req.Header.Get("x-forwarded-for"); xff != "" {
 			for _, s := range strings.Split(xff, ",") {
 				if ip, err := netip.ParseAddr(s); err == nil && !ip.IsPrivate() {
-					ri.RemoteIP = ip
+					ri.RealIP = ip
 					break
 				}
 			}
@@ -199,7 +199,14 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	// resolve geo info
 	ri.UserAgent, _, _ = h.UserAgentMap.Get(req.Header.Get("User-Agent"))
 	if h.GeoResolver.CityReader != nil {
-		ri.GeoIPInfo = h.GeoResolver.GetGeoIPInfo(req.Context(), ri.RemoteIP)
+		ri.GeoIPInfo = h.GeoResolver.GetGeoIPInfo(req.Context(), ri.RealIP)
+		// fix real ip
+		if ri.GeoIPInfo.ISP == "Cloudflare" {
+			if ip, err := netip.ParseAddr(req.Header.Get("Cf-Connecting-Ip")); err == nil {
+				ri.RealIP = ip
+				ri.GeoIPInfo = h.GeoResolver.GetGeoIPInfo(req.Context(), ri.RealIP)
+			}
+		}
 	}
 
 	ri.TraceID = log.NewXID()
@@ -210,7 +217,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		Str("tls_server_name", ri.TLSServerName).
 		Str("tls_version", ri.TLSVersion.String()).
 		Str("ja4", ri.JA4).
-		NetIPAddr("remote_ip", ri.RemoteIP).
+		NetIPAddr("remote_ip", ri.RealIP).
 		Str("user_agent", req.UserAgent()).
 		Str("http_method", req.Method).
 		Str("http_proto", req.Proto).

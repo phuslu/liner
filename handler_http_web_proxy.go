@@ -113,10 +113,11 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		ri.PolicyBuffer.Reset()
 		h.proxypass.Template.Execute(&ri.PolicyBuffer, struct {
 			Request    *http.Request
+			RealIP     netip.Addr
 			JA4        string
 			UserAgent  *useragent.UserAgent
 			ServerAddr netip.AddrPort
-		}{req, ri.JA4, &ri.UserAgent, ri.ServerAddr})
+		}{req, ri.RealIP, ri.JA4, &ri.UserAgent, ri.ServerAddr})
 		var err error
 		proxypass, err = url.Parse(strings.TrimSpace(b2s(ri.PolicyBuffer.B)))
 		if err != nil {
@@ -239,10 +240,7 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	} else {
 		req.Header.Set("x-forwarded-for", ri.RemoteAddr.Addr().String())
 	}
-
-	if !ri.RemoteIP.IsLoopback() && !ri.RemoteIP.IsPrivate() {
-		req.Header.Set("x-real-ip", ri.RemoteIP.String())
-	}
+	req.Header.Set("x-real-ip", ri.RealIP.String())
 
 	if ri.TLSVersion != 0 {
 		req.Header.Set("x-forwarded-proto", "https")
@@ -341,10 +339,11 @@ func (h *HTTPWebProxyHandler) setHeaders(req *http.Request, ri *HTTPRequestInfo)
 		bb.Reset()
 		h.headers.Execute(bb, struct {
 			Request    *http.Request
+			RealIP     netip.Addr
 			JA4        string
 			UserAgent  *useragent.UserAgent
 			ServerAddr netip.AddrPort
-		}{req, ri.JA4, &ri.UserAgent, ri.ServerAddr})
+		}{req, ri.RealIP, ri.JA4, &ri.UserAgent, ri.ServerAddr})
 		headers = bb.String()
 	} else {
 		headers = h.SetHeaders

@@ -148,12 +148,13 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		ri.PolicyBuffer.Reset()
 		err = h.policy.Execute(&ri.PolicyBuffer, struct {
 			Request         *http.Request
+			RealIP          netip.Addr
 			ClientHelloInfo *tls.ClientHelloInfo
 			JA4             string
 			User            AuthUserInfo
 			UserAgent       *useragent.UserAgent
 			ServerAddr      netip.AddrPort
-		}{req, ri.ClientHelloInfo, ri.JA4, ri.ProxyUserInfo, &ri.UserAgent, ri.ServerAddr})
+		}{req, ri.RealIP, ri.ClientHelloInfo, ri.JA4, ri.ProxyUserInfo, &ri.UserAgent, ri.ServerAddr})
 		if err != nil {
 			log.Error().Err(err).Context(ri.LogContext).Str("forward_policy", h.Config.Forward.Policy).Interface("client_hello_info", ri.ClientHelloInfo).Interface("tls_connection_state", req.TLS).Msg("execute forward_policy error")
 			http.NotFound(rw, req)
@@ -247,12 +248,13 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			ri.PolicyBuffer.Reset()
 			err := h.tcpcongestion.Execute(&ri.PolicyBuffer, struct {
 				Request         *http.Request
+				RealIP          netip.Addr
 				ClientHelloInfo *tls.ClientHelloInfo
 				JA4             string
 				UserAgent       *useragent.UserAgent
 				ServerAddr      netip.AddrPort
 				User            AuthUserInfo
-			}{req, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr, ri.ProxyUserInfo})
+			}{req, ri.RealIP, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr, ri.ProxyUserInfo})
 			if err != nil {
 				log.Error().Err(err).Context(ri.LogContext).Str("forward_tcp_congestion", h.Config.Forward.TcpCongestion).Msg("execute forward_tcp_congestion error")
 				http.Error(rw, err.Error(), http.StatusBadGateway)
@@ -284,7 +286,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 							http.Error(rw, err.Error(), http.StatusBadGateway)
 							return
 						}
-						log.Debug().NetIPAddr("remote_ip", ri.RemoteIP).Strs("forward_tcp_congestion_options", options).Msg("set forward_tcp_congestion ok")
+						log.Debug().NetIPAddr("remote_ip", ri.RealIP).Strs("forward_tcp_congestion_options", options).Msg("set forward_tcp_congestion ok")
 					}
 				default:
 					if err := ri.ClientConnOps.SetTcpCongestion(name); err != nil {
@@ -307,12 +309,13 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		ri.PolicyBuffer.Reset()
 		err := h.dialer.Execute(&ri.PolicyBuffer, struct {
 			Request         *http.Request
+			RealIP          netip.Addr
 			ClientHelloInfo *tls.ClientHelloInfo
 			JA4             string
 			UserAgent       *useragent.UserAgent
 			ServerAddr      netip.AddrPort
 			User            AuthUserInfo
-		}{req, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr, ri.ProxyUserInfo})
+		}{req, ri.RealIP, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr, ri.ProxyUserInfo})
 		if err != nil {
 			log.Error().Err(err).Context(ri.LogContext).Str("forward_dialer_name", h.Config.Forward.Dialer).Msg("execute forward_dialer error")
 			http.NotFound(rw, req)
@@ -477,7 +480,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 					Str("tls_version", ri.TLSVersion.String()).
 					Str("ja4", ri.JA4).
 					Str("username", ri.ProxyUserInfo.Username).
-					NetIPAddr("remote_ip", ri.RemoteIP).
+					NetIPAddr("remote_ip", ri.RealIP).
 					Str("remote_country", ri.GeoIPInfo.Country).
 					Str("remote_city", ri.GeoIPInfo.City).
 					Str("remote_isp", ri.GeoIPInfo.ISP).
@@ -589,7 +592,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 					Str("tls_version", ri.TLSVersion.String()).
 					Str("ja4", ri.JA4).
 					Str("username", ri.ProxyUserInfo.Username).
-					NetIPAddr("remote_ip", ri.RemoteIP).
+					NetIPAddr("remote_ip", ri.RealIP).
 					Str("remote_country", ri.GeoIPInfo.Country).
 					Str("remote_city", ri.GeoIPInfo.City).
 					Str("remote_isp", ri.GeoIPInfo.ISP).

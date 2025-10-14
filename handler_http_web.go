@@ -190,12 +190,13 @@ func (m *HTTPWebMiddlewareTcpCongestion) ServeHTTP(rw http.ResponseWriter, req *
 			ri.PolicyBuffer.Reset()
 			err := m.template.Execute(&ri.PolicyBuffer, struct {
 				Request         *http.Request
+				RealIP          netip.Addr
 				ClientHelloInfo *tls.ClientHelloInfo
 				JA4             string
 				UserAgent       *useragent.UserAgent
 				ServerAddr      netip.AddrPort
 				User            AuthUserInfo
-			}{req, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr, ri.ProxyUserInfo})
+			}{req, ri.RealIP, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr, ri.ProxyUserInfo})
 			if err != nil {
 				log.Error().Err(err).Context(ri.LogContext).Str("forward_tcp_congestion", m.TcpCongestion).Msg("execute forward_tcp_congestion error")
 				http.Error(rw, err.Error(), http.StatusBadGateway)
@@ -227,7 +228,7 @@ func (m *HTTPWebMiddlewareTcpCongestion) ServeHTTP(rw http.ResponseWriter, req *
 							http.Error(rw, err.Error(), http.StatusBadGateway)
 							return
 						}
-						log.Debug().NetIPAddr("remote_ip", ri.RemoteAddr.Addr()).Strs("forward_tcp_congestion_options", options).Msg("set forward_tcp_congestion ok")
+						log.Debug().NetIPAddr("remote_ip", ri.RealIP).Strs("forward_tcp_congestion_options", options).Msg("set forward_tcp_congestion ok")
 					}
 				default:
 					if err := ri.ClientConnOps.SetTcpCongestion(name); err != nil {

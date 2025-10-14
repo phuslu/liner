@@ -124,6 +124,7 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 			ServerVersion string
 			ServerAddr    netip.AddrPort
 			Request       *http.Request
+			RealIP        netip.Addr
 			UserAgent     *useragent.UserAgent
 			JA4           string
 			TCPInfo       func() (*TCPInfo, error)
@@ -133,6 +134,7 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 			ServerVersion: version,
 			ServerAddr:    ri.ServerAddr,
 			Request:       req,
+			RealIP:        ri.RealIP,
 			UserAgent:     &ri.UserAgent,
 			JA4:           ri.JA4,
 			TCPInfo:       ri.ClientConnOps.GetTcpInfo,
@@ -284,11 +286,12 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	err = h.body.Execute(b, struct {
 		WebRoot    string
 		Request    *http.Request
+		RealIP     netip.Addr
 		JA4        string
 		UserAgent  *useragent.UserAgent
 		ServerAddr netip.AddrPort
 		FileInfos  []fs.FileInfo
-	}{h.Root, req, ri.JA4, &ri.UserAgent, ri.ServerAddr, infos})
+	}{h.Root, req, ri.RealIP, ri.JA4, &ri.UserAgent, ri.ServerAddr, infos})
 	if err != nil {
 		http.Error(rw, "500 internal server error", http.StatusInternalServerError)
 		return
@@ -307,11 +310,12 @@ func (h *HTTPWebIndexHandler) addHeaders(rw http.ResponseWriter, req *http.Reque
 	h.headers.Execute(bb, struct {
 		WebRoot    string
 		Request    *http.Request
+		RealIP     netip.Addr
 		JA4        string
 		UserAgent  *useragent.UserAgent
 		ServerAddr netip.AddrPort
 		FileInfos  []fs.FileInfo
-	}{h.Root, req, ri.JA4, &ri.UserAgent, ri.ServerAddr, nil})
+	}{h.Root, req, ri.RealIP, ri.JA4, &ri.UserAgent, ri.ServerAddr, nil})
 
 	var statusCode int
 	for line := range strings.Lines(bb.String()) {
