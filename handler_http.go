@@ -108,8 +108,10 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 			if header := GetMirrorHeader(ri.ClientHelloInfo.Conn); header != nil {
 				ri.ClientHelloRaw = header
 			}
-			conn := v.Conn
-			if c, ok := conn.(*tls.Conn); ok && c != nil {
+			conn := v.NetConn
+			if c, ok := conn.(interface {
+				NetConn() net.Conn
+			}); ok && c != nil {
 				conn = c.NetConn()
 			}
 			if c, ok := conn.(*MirrorHeaderConn); ok && c != nil {
