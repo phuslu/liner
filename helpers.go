@@ -732,6 +732,10 @@ type MirrorHeaderConn struct {
 	Header []byte
 }
 
+func (c *MirrorHeaderConn) NetConn() net.Conn {
+	return c.Conn
+}
+
 func (c *MirrorHeaderConn) Read(b []byte) (n int, err error) {
 	n, err = c.Conn.Read(b)
 	if c.Header == nil {

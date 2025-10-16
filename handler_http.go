@@ -109,13 +109,14 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 				ri.ClientHelloRaw = header
 			}
 			conn := v.NetConn
-			if c, ok := conn.(interface {
-				NetConn() net.Conn
-			}); ok && c != nil {
+			for {
+				c, ok := conn.(interface {
+					NetConn() net.Conn
+				})
+				if !ok {
+					break
+				}
 				conn = c.NetConn()
-			}
-			if c, ok := conn.(*MirrorHeaderConn); ok && c != nil {
-				conn = c.Conn
 			}
 			if tc, ok := conn.(*net.TCPConn); ok && tc != nil {
 				ri.ClientConnOps = ConnOps{tc, nil}
