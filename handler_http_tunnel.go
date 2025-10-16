@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha1"
 	"encoding/base64"
@@ -200,6 +201,11 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		}
 	}
 
+	conn = &AutoCloseConn{
+		Conn:    conn,
+		CloseAt: time.Now().Add(time.Duration(8+fastrandn(4)) * time.Hour),
+	}
+
 	session, err := yamux.Client(conn, &yamux.Config{
 		AcceptBacklog:           256,
 		PingBacklog:             32,
@@ -296,4 +302,23 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	h.MemoryDialers.Delete(addr)
 
 	log.Info().Err(err).Msg("tunnel forwarding exit.")
+}
+
+type AutoCloseConn struct {
+	net.Conn
+	CloseAt time.Time
+}
+
+func (c *AutoCloseConn) Read(b []byte) (n int, err error) {
+	if time.Since(c.CloseAt) > 0 {
+		return 0, cmp.Or(c.Conn.Close(), net.ErrClosed)
+	}
+	return c.Conn.Read(b)
+}
+
+func (c *AutoCloseConn) Write(b []byte) (n int, err error) {
+	if time.Since(c.CloseAt) > 0 {
+		return 0, cmp.Or(c.Conn.Close(), net.ErrClosed)
+	}
+	return c.Conn.Write(b)
 }
