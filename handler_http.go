@@ -101,7 +101,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 			ri.ClientConnOps = ConnOps{nil, v.QuicConn}
 			ri.JA4 = b2s(v.JA4[:])
 		}
-	case 2:
+	case 2, 1:
 		if v, ok := h.ClientHelloMap.Load(PlainAddrFromAddrPort(ri.RemoteAddr)); ok {
 			ri.ClientHelloInfo = v.ClientHelloInfo
 			ri.JA4 = b2s(v.JA4[:])
@@ -118,16 +118,6 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 				conn = c.Conn
 			}
 			if tc, ok := conn.(*net.TCPConn); ok && tc != nil {
-				ri.ClientConnOps = ConnOps{tc, nil}
-			}
-		}
-	case 1:
-		if v, ok := h.ClientHelloMap.Load(PlainAddrFromAddrPort(ri.RemoteAddr)); ok {
-			conn := v.NetConn
-			if c, ok := conn.(*MirrorHeaderConn); ok && c != nil {
-				conn = c.Conn
-			}
-			if tc, ok := conn.(*net.TCPConn); ok {
 				ri.ClientConnOps = ConnOps{tc, nil}
 			}
 		}
