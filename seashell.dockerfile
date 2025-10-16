@@ -36,6 +36,6 @@ RUN apk add --update --no-cache \
   # seashell entrypoint
   rm -rf /etc/service && \
   ln -s /root/service /etc/service && \
-  echo 'test -n "$cloudinit" && curl -sSlf "$cloudinit" | bash; exec runsvdir -P /root/service' | tee /seashell.sh
+  printf '#!/bin/sh\n%s\n%s' "# $(date)" 'test -n "$cloudinit" && curl -sSlf "$cloudinit" | bash; exec runsvdir -P /root/service' | tee /seashell.sh
 
-ENTRYPOINT ["/bin/sh", "/seashell.sh"]
+CMD ["/bin/sh", "/seashell.sh"]
