@@ -242,7 +242,7 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 	if err != nil {
 		if err == ErrTLSServerNameNotFound && m.TLSServerNameHandle != nil {
 			if mc, ok := hello.Conn.(*MirrorHeaderConn); ok {
-				err := m.TLSServerNameHandle(hello.Context(), serverName, mc.Header, mc.Conn)
+				err := m.TLSServerNameHandle(hello.Context(), serverName, mc.Header(), mc.Conn)
 				if err != nil {
 					return nil, err
 				}

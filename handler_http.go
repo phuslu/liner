@@ -105,8 +105,16 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		if v, ok := h.ClientHelloMap.Load(PlainAddrFromAddrPort(ri.RemoteAddr)); ok {
 			ri.JA4 = b2s(v.JA4[:])
 			ri.ClientHelloInfo = v.ClientHelloInfo
-			if raw := GetClientHelloInfoRaw(ri.ClientHelloInfo); raw != nil {
-				ri.ClientHelloRaw = raw
+			if v.ClientHelloInfo != nil && v.ClientHelloInfo.Conn != nil {
+				var conn net.Conn = v.ClientHelloInfo.Conn
+				if c, ok := conn.(*tls.Conn); ok && c != nil {
+					conn = c.NetConn()
+				}
+				if c, ok := conn.(*MirrorHeaderConn); ok {
+					if header := c.Header(); len(header) > 0 {
+						ri.ClientHelloRaw = header
+					}
+				}
 			}
 			conn := v.NetConn
 			for {

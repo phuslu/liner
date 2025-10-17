@@ -708,7 +708,7 @@ func (ln TCPListener) Accept() (c net.Conn, err error) {
 	c = tc
 
 	if ln.MirrorHeader {
-		c = &MirrorHeaderConn{Conn: c, Header: nil}
+		c = &MirrorHeaderConn{Conn: c}
 	}
 
 	switch {
@@ -729,38 +729,27 @@ func (ln TCPListener) Accept() (c net.Conn, err error) {
 
 type MirrorHeaderConn struct {
 	net.Conn
-	Header []byte
+	header []byte
 }
 
 func (c *MirrorHeaderConn) NetConn() net.Conn {
 	return c.Conn
 }
 
+func (c *MirrorHeaderConn) Header() []byte {
+	return c.header
+}
+
 func (c *MirrorHeaderConn) Read(b []byte) (n int, err error) {
 	n, err = c.Conn.Read(b)
-	if c.Header == nil {
-		c.Header = make([]byte, 0, 1500)
+	if c.header == nil {
+		c.header = make([]byte, 0, 1500)
 	}
-	if err == nil && n > 0 && len(c.Header) < 1500 {
-		c.Header = append(c.Header, b[:n]...)
+	if err == nil && n > 0 && len(c.header) < 1500 {
+		c.header = append(c.header, b[:n]...)
 	}
 
 	return
-}
-
-func GetClientHelloInfoRaw(hello *tls.ClientHelloInfo) []byte {
-	if hello == nil || hello.Conn == nil {
-		return nil
-	}
-	var conn net.Conn = hello.Conn
-	if c, ok := conn.(*tls.Conn); ok && c != nil {
-		// conn = (*struct{ conn net.Conn })(unsafe.Pointer(c)).conn
-		conn = c.NetConn()
-	}
-	if c, ok := conn.(*MirrorHeaderConn); ok && c.Header != nil && len(c.Header) > 0 {
-		return c.Header
-	}
-	return nil
 }
 
 var _ Dialer = (*MemoryDialer)(nil)
