@@ -103,7 +103,11 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		}
 	case 2, 1:
 		if v, ok := h.ClientHelloMap.Load(PlainAddrFromAddrPort(ri.RemoteAddr)); ok {
-			ri.JA4 = b2s(v.JA4[:])
+			if ja4 := b2s(v.JA4[:]); ja4 != "" {
+				ri.JA4 = ja4
+			} else {
+				ri.JA4 = ""
+			}
 			ri.ClientHelloInfo = v.ClientHelloInfo
 			if v.ClientHelloInfo != nil && v.ClientHelloInfo.Conn != nil {
 				var conn net.Conn = v.ClientHelloInfo.Conn
