@@ -3,6 +3,7 @@ package main
 import (
 	"cmp"
 	"compress/gzip"
+	"crypto/tls"
 	_ "embed"
 	"fmt"
 	"io"
@@ -121,25 +122,27 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		}
 
 		err := tmpl.Execute(w, struct {
-			ServerVersion string
-			ServerAddr    netip.AddrPort
-			Request       *http.Request
-			RealIP        netip.Addr
-			UserAgent     *useragent.UserAgent
-			JA4           string
-			TCPInfo       func() (*TCPInfo, error)
-			QuicStats     func() (*quic.ConnectionStats, error)
-			FileInfo      fs.FileInfo
+			ServerVersion   string
+			ServerAddr      netip.AddrPort
+			Request         *http.Request
+			RealIP          netip.Addr
+			UserAgent       *useragent.UserAgent
+			ClientHelloInfo *tls.ClientHelloInfo
+			JA4             string
+			TCPInfo         func() (*TCPInfo, error)
+			QuicStats       func() (*quic.ConnectionStats, error)
+			FileInfo        fs.FileInfo
 		}{
-			ServerVersion: version,
-			ServerAddr:    ri.ServerAddr,
-			Request:       req,
-			RealIP:        ri.RealIP,
-			UserAgent:     &ri.UserAgent,
-			JA4:           ri.JA4,
-			TCPInfo:       ri.ClientConnOps.GetTcpInfo,
-			QuicStats:     ri.ClientConnOps.GetQuicStats,
-			FileInfo:      fi,
+			ServerVersion:   version,
+			ServerAddr:      ri.ServerAddr,
+			Request:         req,
+			RealIP:          ri.RealIP,
+			UserAgent:       &ri.UserAgent,
+			ClientHelloInfo: ri.ClientHelloInfo,
+			JA4:             ri.JA4,
+			TCPInfo:         ri.ClientConnOps.GetTcpInfo,
+			QuicStats:       ri.ClientConnOps.GetQuicStats,
+			FileInfo:        fi,
 		})
 		if err != nil {
 			log.Error().Context(ri.LogContext).Err(err).Str("index_file", h.File).Msg("execute index file error")
@@ -284,14 +287,15 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	b.Reset()
 
 	err = h.body.Execute(b, struct {
-		WebRoot    string
-		Request    *http.Request
-		RealIP     netip.Addr
-		JA4        string
-		UserAgent  *useragent.UserAgent
-		ServerAddr netip.AddrPort
-		FileInfos  []fs.FileInfo
-	}{h.Root, req, ri.RealIP, ri.JA4, &ri.UserAgent, ri.ServerAddr, infos})
+		WebRoot         string
+		Request         *http.Request
+		RealIP          netip.Addr
+		ClientHelloInfo *tls.ClientHelloInfo
+		JA4             string
+		UserAgent       *useragent.UserAgent
+		ServerAddr      netip.AddrPort
+		FileInfos       []fs.FileInfo
+	}{h.Root, req, ri.RealIP, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr, infos})
 	if err != nil {
 		http.Error(rw, "500 internal server error", http.StatusInternalServerError)
 		return
@@ -308,14 +312,15 @@ func (h *HTTPWebIndexHandler) addHeaders(rw http.ResponseWriter, req *http.Reque
 	bb.Reset()
 
 	h.headers.Execute(bb, struct {
-		WebRoot    string
-		Request    *http.Request
-		RealIP     netip.Addr
-		JA4        string
-		UserAgent  *useragent.UserAgent
-		ServerAddr netip.AddrPort
-		FileInfos  []fs.FileInfo
-	}{h.Root, req, ri.RealIP, ri.JA4, &ri.UserAgent, ri.ServerAddr, nil})
+		WebRoot         string
+		Request         *http.Request
+		RealIP          netip.Addr
+		ClientHelloInfo *tls.ClientHelloInfo
+		JA4             string
+		UserAgent       *useragent.UserAgent
+		ServerAddr      netip.AddrPort
+		FileInfos       []fs.FileInfo
+	}{h.Root, req, ri.RealIP, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr, nil})
 
 	var statusCode int
 	for line := range strings.Lines(bb.String()) {

@@ -112,12 +112,13 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	default:
 		ri.PolicyBuffer.Reset()
 		h.proxypass.Template.Execute(&ri.PolicyBuffer, struct {
-			Request    *http.Request
-			RealIP     netip.Addr
-			JA4        string
-			UserAgent  *useragent.UserAgent
-			ServerAddr netip.AddrPort
-		}{req, ri.RealIP, ri.JA4, &ri.UserAgent, ri.ServerAddr})
+			Request         *http.Request
+			RealIP          netip.Addr
+			ClientHelloInfo *tls.ClientHelloInfo
+			JA4             string
+			UserAgent       *useragent.UserAgent
+			ServerAddr      netip.AddrPort
+		}{req, ri.RealIP, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr})
 		var err error
 		proxypass, err = url.Parse(strings.TrimSpace(b2s(ri.PolicyBuffer.B)))
 		if err != nil {
@@ -338,12 +339,13 @@ func (h *HTTPWebProxyHandler) setHeaders(req *http.Request, ri *HTTPRequestInfo)
 		defer bytebufferpool.Put(bb)
 		bb.Reset()
 		h.headers.Execute(bb, struct {
-			Request    *http.Request
-			RealIP     netip.Addr
-			JA4        string
-			UserAgent  *useragent.UserAgent
-			ServerAddr netip.AddrPort
-		}{req, ri.RealIP, ri.JA4, &ri.UserAgent, ri.ServerAddr})
+			Request         *http.Request
+			RealIP          netip.Addr
+			ClientHelloInfo *tls.ClientHelloInfo
+			JA4             string
+			UserAgent       *useragent.UserAgent
+			ServerAddr      netip.AddrPort
+		}{req, ri.RealIP, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr})
 		headers = bb.String()
 	} else {
 		headers = h.SetHeaders
