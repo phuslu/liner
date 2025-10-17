@@ -116,6 +116,7 @@ ExecStart=$(pwd)/liner \${ENV}.yaml
 StandardError=append:$(pwd)/liner.error.log
 User=${USER}
 Group=${USER}
+LimitNOFILE=1048576
 CapabilityBoundingSet=CAP_SYS_ADMIN CAP_NET_BIND_SERVICE
 AmbientCapabilities=CAP_SYS_ADMIN CAP_NET_BIND_SERVICE
 NoNewPrivileges=no
