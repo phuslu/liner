@@ -748,7 +748,11 @@ func (c *MirrorHeaderConn) Read(b []byte) (n int, err error) {
 	return
 }
 
-func GetMirrorHeader(conn net.Conn) []byte {
+func GetClientHelloInfoRaw(hello *tls.ClientHelloInfo) []byte {
+	if hello == nil || hello.Conn == nil {
+		return nil
+	}
+	var conn net.Conn = hello.Conn
 	if c, ok := conn.(*tls.Conn); ok && c != nil {
 		// conn = (*struct{ conn net.Conn })(unsafe.Pointer(c)).conn
 		conn = c.NetConn()

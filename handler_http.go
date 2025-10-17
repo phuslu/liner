@@ -97,16 +97,16 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	switch req.ProtoMajor {
 	case 3:
 		if v, ok := req.Context().Value(HTTP3ClientHelloInfoContextKey).(*TLSClientHelloInfo); ok {
+			ri.JA4 = b2s(v.JA4[:])
 			ri.ClientHelloInfo = v.ClientHelloInfo
 			ri.ClientConnOps = ConnOps{nil, v.QuicConn}
-			ri.JA4 = b2s(v.JA4[:])
 		}
 	case 2, 1:
 		if v, ok := h.ClientHelloMap.Load(PlainAddrFromAddrPort(ri.RemoteAddr)); ok {
-			ri.ClientHelloInfo = v.ClientHelloInfo
 			ri.JA4 = b2s(v.JA4[:])
-			if header := GetMirrorHeader(ri.ClientHelloInfo.Conn); header != nil {
-				ri.ClientHelloRaw = header
+			ri.ClientHelloInfo = v.ClientHelloInfo
+			if raw := GetClientHelloInfoRaw(ri.ClientHelloInfo); raw != nil {
+				ri.ClientHelloRaw = raw
 			}
 			conn := v.NetConn
 			for {
