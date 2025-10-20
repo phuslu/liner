@@ -46,6 +46,12 @@ func (f *Functions) FuncMap() template.FuncMap {
 func (f *Functions) Load() error {
 	f.funcs = template.FuncMap(sprig.GenericFuncMap())
 
+	// sprig replacement
+	f.funcs["get"] = f.get
+	f.funcs["set"] = f.set
+	f.funcs["unset"] = f.unset
+	f.funcs["hasKey"] = f.hasKey
+
 	// sprig supplement
 	f.funcs["hasPrefixes"] = f.hasPrefixes
 	f.funcs["hasSuffixes"] = f.hasSuffixes
@@ -75,6 +81,48 @@ func (f *Functions) Load() error {
 	f.funcs["readfile"] = f.readfile
 
 	return nil
+}
+
+func (f *Functions) get(dict any, key string) any {
+	var value string
+	switch dict := dict.(type) {
+	case map[string]string:
+		value = dict[key]
+	case map[string]any:
+		value, _ = dict[key].(string)
+	}
+	return value
+}
+
+func (f *Functions) set(dict any, key, value string) any {
+	switch dict := dict.(type) {
+	case map[string]string:
+		dict[key] = value
+	case map[string]any:
+		dict[key] = value
+	}
+	return dict
+}
+
+func (f *Functions) unset(dict any, key, value string) any {
+	switch dict := dict.(type) {
+	case map[string]string:
+		delete(dict, key)
+	case map[string]any:
+		delete(dict, key)
+	}
+	return dict
+}
+
+func (f *Functions) hasKey(dict any, key string) bool {
+	var ok bool
+	switch dict := dict.(type) {
+	case map[string]string:
+		_, ok = dict[key]
+	case map[string]any:
+		_, ok = dict[key]
+	}
+	return ok
 }
 
 func (f *Functions) host(hostport string) string {
