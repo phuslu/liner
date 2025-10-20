@@ -113,7 +113,6 @@ https:
       dialer: |
         {{if hasSuffix ".onion" .Request.Host}}torsocks{{end}}
       auth_table: authuser.csv
-      deny_domains_table: deny_domains.csv
       speed_limit: 10000000
       io_copy_buffer: 65536
       idle_timeout: 600
@@ -188,9 +187,6 @@ socks:
           reject
         {{end}}
       auth_table: authuser.csv
-      deny_domains:
-        - facebook.com
-        - nytimes.com
   - listen: [':1082']
     forward:
       policy: |
