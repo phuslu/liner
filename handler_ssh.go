@@ -541,9 +541,11 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, envs map[
 			defer timer.Stop()
 		}
 		channel.Close()
-		_, err := shell.Process.Wait()
-		if err != nil {
-			h.Logger.Printf("Failed to exit shell (%s)", err)
+		if shell.Process != nil {
+			_, err := shell.Process.Wait()
+			if err != nil {
+				h.Logger.Printf("Failed to exit shell (%s)", err)
+			}
 		}
 		h.Logger.Printf("Session closed")
 	}
