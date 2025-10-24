@@ -66,3 +66,7 @@ func KillPid(pid int, sig syscall.Signal) error {
 func ReadHTTPHeader(conn *net.TCPConn) ([]byte, *net.TCPConn, error) {
 	return nil, conn, errors.New("not implemented")
 }
+
+func GetSysProcAttrForSetsid() *syscall.SysProcAttr {
+	return nil
+}

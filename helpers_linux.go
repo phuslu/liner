@@ -296,3 +296,57 @@ func ReadHTTPHeader(tc *net.TCPConn) ([]byte, *net.TCPConn, error) {
 
 	return b, tc, err
 }
+
+func GetSysProcAttrForSetsid() *syscall.SysProcAttr {
+	if caps, _ := getcap(); !caps.SetUID || !caps.SetGID {
+		return nil
+	}
+
+	return &syscall.SysProcAttr{
+		Setsid:  true,
+		Setctty: true,
+		Ctty:    0,
+		Credential: &syscall.Credential{
+			Uid: uint32(os.Getuid()),
+			Gid: uint32(os.Getgid()),
+		},
+	}
+}
+
+type linuxcapability struct {
+	SetUID bool
+	SetGID bool
+}
+
+func getcap() (caps linuxcapability, err error) {
+	// <linux/capability.h>
+	const (
+		_LINUX_CAPABILITY_VERSION_3 = 0x20080522
+		CAP_SETUID                  = 7
+		CAP_SETGID                  = 6
+	)
+
+	var header struct {
+		Version uint32
+		Pid     int32
+	}
+
+	var data struct {
+		Effective   uint32
+		Permitted   uint32
+		Inheritable uint32
+	}
+
+	header.Version = _LINUX_CAPABILITY_VERSION_3
+	header.Pid = 0 // 0 = self
+
+	_, _, errno := syscall.Syscall(syscall.SYS_CAPGET, uintptr(unsafe.Pointer(&header)), uintptr(unsafe.Pointer(&data)), 0)
+	if errno != 0 {
+		return linuxcapability{}, errno
+	}
+
+	caps.SetGID = (data.Effective & (1 << CAP_SETUID)) != 0
+	caps.SetGID = (data.Effective & (1 << CAP_SETGID)) != 0
+
+	return caps, nil
+}
