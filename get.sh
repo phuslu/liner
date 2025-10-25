@@ -119,7 +119,6 @@ Group=${USER}
 LimitNOFILE=1048576
 CapabilityBoundingSet=CAP_SYS_ADMIN CAP_NET_BIND_SERVICE
 AmbientCapabilities=CAP_SYS_ADMIN CAP_NET_BIND_SERVICE
-NoNewPrivileges=no
 
 [Install]
 WantedBy=multi-user.target
