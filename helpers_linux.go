@@ -297,20 +297,21 @@ func ReadHTTPHeader(tc *net.TCPConn) ([]byte, *net.TCPConn, error) {
 	return b, tc, err
 }
 
-func GetSysProcAttrForSetsid() *syscall.SysProcAttr {
+func AppendSetSidToSysProcAttr(old *syscall.SysProcAttr) *syscall.SysProcAttr {
 	if caps, _ := getcap(); !caps.SetUID || !caps.SetGID {
-		return nil
+		return old
 	}
 
-	return &syscall.SysProcAttr{
-		Setsid:  true,
-		Setctty: true,
-		Ctty:    0,
-		Credential: &syscall.Credential{
-			Uid: uint32(os.Getuid()),
-			Gid: uint32(os.Getgid()),
-		},
+	spa := *old
+	spa.Setsid = true
+	spa.Setctty = true
+	spa.Ctty = 0
+	spa.Credential = &syscall.Credential{
+		Uid: uint32(os.Getuid()),
+		Gid: uint32(os.Getgid()),
 	}
+
+	return &spa
 }
 
 type linuxcapability struct {

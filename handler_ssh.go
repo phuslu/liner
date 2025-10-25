@@ -532,7 +532,7 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, envs map[
 	for key, value := range envs {
 		shell.Env = append(shell.Env, key+"="+value)
 	}
-	if spa := GetSysProcAttrForSetsid(); spa != nil {
+	if spa := AppendSetSidToSysProcAttr(shell.SysProcAttr); spa != nil {
 		shell.SysProcAttr = spa
 	}
 
