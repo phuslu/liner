@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -62,6 +63,17 @@ func (d *LocalDialer) dialContext(ctx context.Context, network, address string, 
 		break
 	default:
 		return (&net.Dialer{}).DialContext(ctx, network, address)
+	}
+
+	if m, ok := ctx.Value(DialerMemoryDialersContextKey).(*sync.Map); ok && m != nil {
+		if v, ok := m.Load(address); ok && d != nil {
+			if md, ok := v.(*MemoryDialer); ok && md != nil {
+				if d.Logger != nil {
+					d.Logger.Info("http dialer switch to memory dialer", "memory_dialer_address", md.Address)
+				}
+				return md.DialContext(ctx, network, address)
+			}
+		}
 	}
 
 	host, portStr, err := net.SplitHostPort(address)

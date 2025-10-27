@@ -305,6 +305,7 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	}(req.Context())
 
 	h.MemoryDialers.Store(addrport.String(), &MemoryDialer{Session: session, Address: addrport.String()})
+	log.Info().Str("tunnel_listen", addrport.String()).NetAddr("remote_addr", session.RemoteAddr()).Msg("tunnel listen in memory")
 	err = <-exit
 	h.MemoryDialers.Delete(addrport.String())
 
