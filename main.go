@@ -659,7 +659,7 @@ func main() {
 
 		var ln net.Listener
 
-		if _, ok := memoryListeners.Load(addr); ok && (strings.HasPrefix(addr, "240.0.0.") || strings.HasPrefix(addr, "@")) {
+		if _, ok := memoryListeners.Load(addr); ok && (HTTPTunnelReservedIPPrefix.Contains(netip.MustParseAddrPort(addr).Addr()) || strings.HasPrefix(addr, "@")) {
 			log.Info().Str("version", version).Str("address", addr).Msg("liner listen and serve in memory")
 			mln := &MemoryListener{}
 			memoryListeners.Store(addr, mln)
@@ -770,7 +770,7 @@ func main() {
 
 			var ln net.Listener
 
-			if _, ok := memoryListeners.Load(addr); ok && (strings.HasPrefix(addr, "240.0.0.") || strings.HasPrefix(addr, "@")) {
+			if _, ok := memoryListeners.Load(addr); ok && (HTTPTunnelReservedIPPrefix.Contains(netip.MustParseAddrPort(addr).Addr()) || strings.HasPrefix(addr, "@")) {
 				log.Info().Str("version", version).Str("address", addr).Msg("liner listen and serve ssh in memory")
 				mln := &MemoryListener{}
 				memoryListeners.Store(addr, mln)

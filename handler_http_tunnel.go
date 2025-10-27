@@ -20,6 +20,8 @@ import (
 	"go4.org/netipx"
 )
 
+var HTTPTunnelReservedIPPrefix = netip.MustParsePrefix("240.0.0.0/8")
+
 type HTTPTunnelHandler struct {
 	Config        HTTPConfig
 	TunnelLogger  log.Logger
@@ -118,38 +120,40 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	// req.URL.Path format is /.well-known/reverse/tcp/{listen_host}/{listen_port}/
 	// see https://www.ietf.org/archive/id/draft-kazuho-httpbis-reverse-tunnel-00.html
 	parts := strings.Split(req.URL.Path, "/")
-	addr := net.JoinHostPort(parts[len(parts)-3], parts[len(parts)-2])
+	addrport, err := netip.ParseAddrPort(net.JoinHostPort(parts[len(parts)-3], parts[len(parts)-2]))
+	if err != nil {
+		log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Msg("tunnel parse tcp listener error")
+		http.Error(rw, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	if h.listens != nil && allow != "-1" {
-		ap, err := netip.ParseAddrPort(addr)
-		if err != nil {
-			log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Msg("tunnel parse tcp listener error")
-			http.Error(rw, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if !h.listens.Contains(ap.Addr()) {
+		if !h.listens.Contains(addrport.Addr()) {
 			log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Msg("tunnel allow tcp listener error")
 			http.Error(rw, "tunnel listen addr is not allow", http.StatusForbidden)
 			return
 		}
 	}
 
-	ln, err := (&net.ListenConfig{
-		KeepAliveConfig: net.KeepAliveConfig{
-			Enable:   true,
-			Interval: 15 * time.Second,
-			Count:    3,
-		},
-	}).Listen(req.Context(), "tcp", addr)
-	if err != nil {
-		log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Msg("tunnel open tcp listener error")
-		http.Error(rw, err.Error(), http.StatusInternalServerError)
-		return
+	var ln net.Listener
+	if !HTTPTunnelReservedIPPrefix.Contains(addrport.Addr()) {
+		ln, err = (&net.ListenConfig{
+			KeepAliveConfig: net.KeepAliveConfig{
+				Enable:   true,
+				Interval: 15 * time.Second,
+				Count:    3,
+			},
+		}).Listen(req.Context(), "tcp", addrport.String())
+		if err != nil {
+			log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Msg("tunnel open tcp listener error")
+			http.Error(rw, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		log.Info().Context(ri.LogContext).Str("username", user.Username).NetAddr("addr", ln.Addr()).Msg("tunnel open tcp listener")
+
+		defer ln.Close()
 	}
-
-	log.Info().Context(ri.LogContext).Str("username", user.Username).NetAddr("addr", ln.Addr()).Msg("tunnel open tcp listener")
-
-	defer ln.Close()
 
 	var conn net.Conn
 
@@ -233,6 +237,9 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	exit := make(chan error, 2)
 
 	go func(ctx context.Context) {
+		if ln == nil {
+			return
+		}
 		for {
 			rconn, err := ln.Accept()
 			if err != nil {
@@ -286,20 +293,20 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 				exit <- err
 				return
 			case err != nil:
-				log.Error().Err(err).NetAddr("tunnel_listen", ln.Addr()).NetAddr("remote_addr", session.RemoteAddr()).Msg("tunnel ping error")
+				log.Error().Err(err).NetIPAddrPort("tunnel_listen", addrport).NetAddr("remote_addr", session.RemoteAddr()).Msg("tunnel ping error")
 				count++
 				seconds = 1 + fastrandn(5)
 			default:
-				log.Trace().NetAddr("tunnel_listen", ln.Addr()).NetAddr("remote_addr", session.RemoteAddr()).Dur("ping_ms", rtt).Msg("tunnel ping successfully")
+				log.Trace().NetIPAddrPort("tunnel_listen", addrport).NetAddr("remote_addr", session.RemoteAddr()).Dur("ping_ms", rtt).Msg("tunnel ping successfully")
 				count = 0
 				seconds = 5 + fastrandn(30)
 			}
 		}
 	}(req.Context())
 
-	h.MemoryDialers.Store(addr, &MemoryDialer{Session: session, Address: addr})
+	h.MemoryDialers.Store(addrport.String(), &MemoryDialer{Session: session, Address: addrport.String()})
 	err = <-exit
-	h.MemoryDialers.Delete(addr)
+	h.MemoryDialers.Delete(addrport.String())
 
 	log.Info().Err(err).Msg("tunnel forwarding exit.")
 }
