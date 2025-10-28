@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net"
 	"net/http"
 	"net/netip"
@@ -269,7 +270,7 @@ func AppendSplitLines(dst []string, input string) []string {
 	return dst
 }
 
-func AppendTemplate(dst []byte, template string, startTag, endTag byte, m map[string]interface{}, stripSpace bool) []byte {
+func AppendTemplate(dst []byte, template string, startTag, endTag byte, m map[string]any, stripSpace bool) []byte {
 	j := 0
 	for i := 0; i < len(template); i++ {
 		switch template[i] {
@@ -1911,9 +1912,7 @@ func NewCachingMap[K comparable, V any](getter func(K) (V, error), maxsize int, 
 			case <-ticker.C:
 				atomic.StoreInt64(&cm.index, (atomic.LoadInt64(&cm.index)+1)%2)
 				if m := cm.maps[(atomic.LoadInt64(&cm.index)+1)%2]; maxsize <= 0 || len(m) <= maxsize {
-					for key, value := range cm.maps[atomic.LoadInt64(&cm.index)] {
-						m[key] = value
-					}
+					maps.Copy(m, cm.maps[atomic.LoadInt64(&cm.index)])
 				} else {
 					cm.maps[(atomic.LoadInt64(&cm.index)+1)%2] = make(map[K]V)
 				}

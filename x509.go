@@ -33,7 +33,7 @@ type RootCA struct {
 
 	once sync.Once
 	ca   *x509.Certificate
-	priv interface{}
+	priv any
 }
 
 func (ca *RootCA) ext() string {

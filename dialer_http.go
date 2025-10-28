@@ -163,7 +163,7 @@ func (d *HTTPDialer) DialContext(ctx context.Context, network, addr string) (net
 	} else {
 		// see https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-connect-tcp-05
 		host, port, _ := net.SplitHostPort(addr)
-		key := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%x%x\n", fastrandn(1<<32-1), fastrandn(1<<32-1))))
+		key := base64.StdEncoding.EncodeToString(fmt.Appendf(nil, "%x%x\n", fastrandn(1<<32-1), fastrandn(1<<32-1)))
 		buf = buf.Str("GET ").Str(HTTPWellknownBase64PathPrefix).Base64(s2b(HTTPTunnelConnectTCPPathPrefix + host + "/" + port + "/")).Str(" HTTP/1.1\r\n")
 		buf = buf.Str("Host: ").Str(d.Host).Str("\r\n")
 		buf = buf.Str("Connection: Upgrade\r\n")

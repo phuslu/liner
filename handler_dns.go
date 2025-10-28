@@ -44,7 +44,7 @@ func (req *DnsRequest) Domain() string {
 }
 
 var drPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		r := new(DnsRequest)
 		r.Message = fastdns.AcquireMessage()
 		r.PolicyBuffer.B = make([]byte, 0, 256)

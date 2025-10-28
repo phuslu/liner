@@ -63,7 +63,7 @@ type HTTPContextKey struct {
 var HTTPRequestInfoContextKey any = &HTTPContextKey{"http-request-info"}
 
 var hrPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return new(HTTPRequestInfo)
 	},
 }
@@ -195,7 +195,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	// fix remote ip
 	if xff := req.Header.Get("x-forwarded-for"); xff != "" {
 		if ri.ProxyUserInfo.Username != "" || ri.RemoteAddr.Addr().IsLoopback() {
-			for _, s := range strings.Split(xff, ",") {
+			for s := range strings.SplitSeq(xff, ",") {
 				if ip, err := netip.ParseAddr(s); err == nil && !ip.IsPrivate() {
 					ri.RealIP = ip
 					break
