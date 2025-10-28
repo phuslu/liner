@@ -756,8 +756,9 @@ func (c *MirrorHeaderConn) Read(b []byte) (n int, err error) {
 var _ Dialer = (*MemoryDialer)(nil)
 
 type MemoryDialer struct {
-	Session *yamux.Session
-	Address string
+	Address   string
+	Session   *yamux.Session
+	CreatedAt int64
 }
 
 func (d *MemoryDialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {

@@ -136,8 +136,9 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	}
 
 	var ln net.Listener
+
 	if HTTPTunnelReservedIPPrefix.Contains(addrport.Addr()) {
-		if _, ok := h.MemoryDialers.Load(addrport.String()); ok {
+		if _, ok := h.MemoryDialers.Load(addrport.String()); ok && allow != "-1" {
 			err := errors.New("bind address " + addrport.String() + " is inuse")
 			log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Msg("tunnel open memory listener error")
 			http.Error(rw, err.Error(), http.StatusInternalServerError)
@@ -311,10 +312,24 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		}
 	}(req.Context())
 
-	h.MemoryDialers.Store(addrport.String(), &MemoryDialer{Session: session, Address: addrport.String()})
+	md := &MemoryDialer{
+		Address:   addrport.String(),
+		Session:   session,
+		CreatedAt: time.Now().UnixNano(),
+	}
+
+	h.MemoryDialers.Store(addrport.String(), md)
 	log.Info().Str("tunnel_listen", addrport.String()).NetAddr("remote_addr", session.RemoteAddr()).Msg("tunnel listen in memory")
+
 	err = <-exit
-	h.MemoryDialers.Delete(addrport.String())
+
+	if v, ok := h.MemoryDialers.Load(addrport.String()); ok && v.(*MemoryDialer).CreatedAt == md.CreatedAt {
+		log.Info().Str("tunnel_listen", addrport.String()).NetAddr("remote_addr", session.RemoteAddr()).Msg("tunnel delete listener in memory")
+		if v, ok := h.MemoryDialers.LoadAndDelete(addrport.String()); ok && v.(*MemoryDialer).CreatedAt != md.CreatedAt {
+			log.Info().Str("tunnel_listen", addrport.String()).NetAddr("remote_addr", session.RemoteAddr()).Msg("tunnel return listener in memory")
+			h.MemoryDialers.Store(addrport.String(), v.(*MemoryDialer))
+		}
+	}
 
 	log.Info().Err(err).Msg("tunnel forwarding exit.")
 }
