@@ -37,23 +37,7 @@ global:
   set_process_name: /bin/sleep 60
 dialer:
   cloud: "{{ $proto }}://edge:{{ $password }}@{{ .Request.Host }}/?ech=true&insecure=false"
-tunnel:
-  - listen: ['127.0.0.{{ $id }}:10080']
-    proxy_pass: '240.0.0.1:80'
-    dialer: cloud
-    dial_timeout: 5
-ssh:
-  - listen: ['240.0.0.1:22']
-    # host_key: /etc/ssh/ssh_host_ed25519_key
-    # wget https://github.com/phuslu.keys
-    authorized_keys: phuslu.keys
-    banner_file: motd
-    shell: /bin/bash
-    log: true
 http:
-  - listen: ['240.0.0.1:80']
-    forward:
-      policy: bypass_auth
 {{ if $port }}
   - listen: [':{{ $port }}']
     server_name: ['*']
@@ -68,6 +52,26 @@ http:
         index:
           root: /root/web
 {{ end }}
+  - listen: ['240.0.0.{{ $id }}:80']
+    forward:
+      policy: bypass_auth
+ssh:
+  - listen: ['240.0.0.{{ $id }}:22']
+    # host_key: /etc/ssh/ssh_host_ed25519_key
+    # wget https://github.com/phuslu.keys
+    authorized_keys: phuslu.keys
+    banner_file: motd
+    shell: /bin/bash
+    log: true
+tunnel:
+  - listen: ['240.0.0.{{ $id }}:80']
+    proxy_pass: '240.0.0.{{ $id }}:80'
+    dialer: cloud
+    dial_timeout: 5
+  - listen: ['240.0.0.{{ $id }}:22']
+    proxy_pass: '240.0.0.{{ $id }}:22'
+    dialer: cloud
+    dial_timeout: 5
 EOF
 
 cat <<'EOF' | tee motd
