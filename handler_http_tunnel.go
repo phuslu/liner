@@ -136,7 +136,14 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	}
 
 	var ln net.Listener
-	if !HTTPTunnelReservedIPPrefix.Contains(addrport.Addr()) {
+	if HTTPTunnelReservedIPPrefix.Contains(addrport.Addr()) {
+		if _, ok := h.MemoryDialers.Load(addrport.String()); ok {
+			err := errors.New("bind address " + addrport.String() + " is inuse")
+			log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Msg("tunnel open memory listener error")
+			http.Error(rw, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	} else {
 		ln, err = (&net.ListenConfig{
 			KeepAliveConfig: net.KeepAliveConfig{
 				Enable:   true,
