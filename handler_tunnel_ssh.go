@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
 	"time"
@@ -21,6 +22,14 @@ func (h *TunnelHandler) sshtunnel(ctx context.Context, dialer string) (net.Liste
 	}
 	if u.User == nil {
 		return nil, fmt.Errorf("no user info in dialer: %s", dialer)
+	}
+
+	if addrport, err := netip.ParsePrefix(h.Config.Listen[0]); err == nil {
+		if HTTPTunnelReservedIPPrefix.Contains(addrport.Addr()) {
+			return nil, fmt.Errorf("invalid listen address in ssh tunnel: %s", h.Config.Listen[0])
+		}
+	} else {
+		return nil, fmt.Errorf("invalid listen address in ssh tunnel: %s", h.Config.Listen[0])
 	}
 
 	config := &ssh.ClientConfig{
