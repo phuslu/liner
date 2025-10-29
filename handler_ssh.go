@@ -101,7 +101,7 @@ func (h *SshHandler) Load() error {
 								return rtt, nil
 							}
 						}
-						banner.Execute(&sb, struct {
+						err = banner.Execute(&sb, struct {
 							User          string
 							SessionID     string
 							ClientVersion string
@@ -118,7 +118,13 @@ func (h *SshHandler) Load() error {
 							LocalAddr:     conn.LocalAddr().String(),
 							RTT:           getrtt(nc),
 						})
-						_ = conn.SendAuthBanner(sb.String())
+						if err != nil {
+							log.Error().Err(err).Strs("ssh_listens", h.Config.Listen).NetAddr("net_conn_addr", nc.RemoteAddr()).Str("ssh_banner_file", h.Config.BannerFile).Msg("motd eval template error")
+						}
+						err = conn.SendAuthBanner(sb.String())
+						if err != nil {
+							log.Error().Err(err).Strs("ssh_listens", h.Config.Listen).NetAddr("net_conn_addr", nc.RemoteAddr()).Str("ssh_banner_file", h.Config.BannerFile).Msg("motd send auth banner error")
+						}
 					}
 				} else {
 					_ = conn.SendAuthBanner(string(data))
