@@ -39,7 +39,7 @@ dialer:
   cloud: "{{ $proto }}://edge:{{ $password }}@{{ .Request.Host }}/?ech=true&insecure=false"
 http:
 {{ if $port }}
-  - listen: [':{{ $port }}']
+  - listen: ['0.0.0.0:{{ $port }}']
     server_name: ['*']
     web:
       - location: /jsonp
