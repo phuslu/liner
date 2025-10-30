@@ -93,20 +93,20 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		ri.TLSVersion = 0
 	}
 
-	ri.ClientHelloInfo, ri.ClientHelloRaw, ri.ClientConnOps = nil, nil, ConnOps{}
+	ri.ClientHelloInfo, ri.ClientHelloRaw, ri.ClientConnOps, ri.JA4 = nil, nil, ConnOps{}, ""
 	switch req.ProtoMajor {
 	case 3:
 		if v, ok := req.Context().Value(HTTP3ClientHelloInfoContextKey).(*TLSClientHelloInfo); ok {
-			ri.JA4 = b2s(v.JA4[:])
+			if v.JA4[0] != 0 {
+				ri.JA4 = b2s(v.JA4[:])
+			}
 			ri.ClientHelloInfo = v.ClientHelloInfo
 			ri.ClientConnOps = ConnOps{nil, v.QuicConn}
 		}
 	case 2, 1:
 		if v, ok := h.ClientHelloMap.Load(PlainAddrFromAddrPort(ri.RemoteAddr)); ok {
-			if ja4 := b2s(v.JA4[:]); ja4 != "" {
-				ri.JA4 = ja4
-			} else {
-				ri.JA4 = ""
+			if v.JA4[0] != 0 {
+				ri.JA4 = b2s(v.JA4[:])
 			}
 			ri.ClientHelloInfo = v.ClientHelloInfo
 			if v.ClientHelloInfo != nil && v.ClientHelloInfo.Conn != nil {
