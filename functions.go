@@ -133,6 +133,9 @@ func (f *Functions) host(hostport string) string {
 }
 
 func (f *Functions) geosite(domain string) string {
+	if host, _, err := net.SplitHostPort(domain); err == nil {
+		domain = host
+	}
 	return f.GeoResolver.GetGeoSiteInfo(context.Background(), domain).Site
 }
 
