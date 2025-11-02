@@ -405,7 +405,14 @@ func main() {
 	}
 
 	// listen and serve https
-	h2handlers := map[string]map[string]HTTPHandler{}
+	h2handlers := map[string]*struct {
+		Names map[string]HTTPHandler
+		Affix []struct {
+			Prefix  string
+			Suffix  string
+			Handler HTTPHandler
+		}
+	}{}
 	for _, server := range config.Https {
 		handler := &HTTPServerHandler{
 			ForwardHandler: &HTTPForwardHandler{
@@ -485,12 +492,35 @@ func main() {
 					PreferChacha20: config.PreferChacha20,
 					DisableOCSP:    config.DisableOcsp,
 				})
-				hs, ok := h2handlers[listen]
-				if !ok {
-					hs = make(map[string]HTTPHandler)
-					h2handlers[listen] = hs
+				if _, ok := h2handlers[listen]; !ok {
+					h2handlers[listen] = &struct {
+						Names map[string]HTTPHandler
+						Affix []struct {
+							Prefix  string
+							Suffix  string
+							Handler HTTPHandler
+						}
+					}{
+						Names: make(map[string]HTTPHandler),
+					}
 				}
-				hs[name] = handler
+				switch strings.Count(name, "*") {
+				case 0:
+					h2handlers[listen].Names[name] = handler
+				case 1:
+					i := strings.IndexByte(name, '*')
+					h2handlers[listen].Affix = append(h2handlers[listen].Affix, struct {
+						Prefix  string
+						Suffix  string
+						Handler HTTPHandler
+					}{
+						Prefix:  name[:i],
+						Suffix:  name[i+1:],
+						Handler: handler,
+					})
+				default:
+					panic("unsupported wildcard servername: " + name)
+				}
 			}
 		}
 	}
@@ -512,27 +542,24 @@ func main() {
 					r.TLS.ServerName = s
 				}
 				servername := r.TLS.ServerName
-				h, _ := handlers[servername]
-				if h == nil {
-					for key, value := range handlers {
-						var matched bool
-						if i := strings.IndexByte(key, '*'); i >= 0 && i == strings.LastIndexByte(key, '*') {
-							switch {
-							case i == 0:
-								matched = strings.HasSuffix(servername, key[i+1:])
-							case i == len(key)-1:
-								matched = strings.HasPrefix(servername, key[:i])
-							default:
-								matched = strings.HasSuffix(servername, key[i+1:]) && strings.HasPrefix(servername, key[:i])
-							}
+				h, matched := handlers.Names[servername]
+				if !matched {
+					for _, affix := range handlers.Affix {
+						switch {
+						case affix.Prefix == "":
+							matched = strings.HasPrefix(servername, affix.Prefix)
+						case affix.Suffix == "":
+							matched = strings.HasSuffix(servername, affix.Suffix)
+						default:
+							matched = strings.HasPrefix(servername, affix.Prefix) && strings.HasSuffix(servername, affix.Suffix)
 						}
 						if matched {
-							h = value
+							h = affix.Handler
 							break
 						}
 					}
 				}
-				if h == nil {
+				if !matched {
 					http.NotFound(w, r)
 					return
 				}
