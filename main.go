@@ -432,15 +432,16 @@ func main() {
 			Hostnames: filter(server.ServerName, func(s string) bool {
 				return !strings.Contains(s, "*")
 			}),
-			HostnameSuffixes: filtermap(server.ServerName, func(s string) (string, bool) {
-				i, j := strings.IndexByte(s, '*'), strings.LastIndexByte(s, '*')
-				switch {
-				case i < 0:
-					return "", false
-				case i == 0 && j == 0:
-					return s[1:], true
+			HostnameAffix: filtermap(server.ServerName, func(s string) ([2]string, bool) {
+				switch strings.Count(s, "*") {
+				case 0:
+					return [2]string{"", ""}, false
+				case 1:
+					i := strings.Index(s, "*")
+					return [2]string{s[:i], s[i+1:]}, true
+				default:
+					panic("unsupported server_name: " + s)
 				}
-				panic("unsupported server_name: " + s)
 			}),
 			ClientHelloMap: tlsConfigurator.ClientHelloMap,
 			UserAgentMap:   useragentMap,
@@ -510,10 +511,22 @@ func main() {
 				if s, _, err := net.SplitHostPort(r.TLS.ServerName); err == nil {
 					r.TLS.ServerName = s
 				}
-				h, _ := handlers[r.TLS.ServerName]
+				servername := r.TLS.ServerName
+				h, _ := handlers[servername]
 				if h == nil {
 					for key, value := range handlers {
-						if key != "" && key[0] == '*' && strings.HasSuffix(r.TLS.ServerName, key[1:]) {
+						var matched bool
+						if i := strings.IndexByte(key, '*'); i >= 0 && i == strings.LastIndexByte(key, '*') {
+							switch {
+							case i == 0:
+								matched = strings.HasSuffix(servername, key[i+1:])
+							case i == len(key)-1:
+								matched = strings.HasPrefix(servername, key[:i])
+							default:
+								matched = strings.HasSuffix(servername, key[i+1:]) && strings.HasPrefix(servername, key[:i])
+							}
+						}
+						if matched {
 							h = value
 							break
 						}
@@ -608,15 +621,16 @@ func main() {
 			Hostnames: filter(httpConfig.ServerName, func(s string) bool {
 				return !strings.Contains(s, "*")
 			}),
-			HostnameSuffixes: filtermap(httpConfig.ServerName, func(s string) (string, bool) {
-				i, j := strings.IndexByte(s, '*'), strings.LastIndexByte(s, '*')
-				switch {
-				case i < 0:
-					return "", false
-				case i == 0 && j == 0:
-					return s[1:], true
+			HostnameAffix: filtermap(httpConfig.ServerName, func(s string) ([2]string, bool) {
+				switch strings.Count(s, "*") {
+				case 0:
+					return [2]string{"", ""}, false
+				case 1:
+					i := strings.Index(s, "*")
+					return [2]string{s[:i], s[i+1:]}, true
+				default:
+					panic("unsupported server_name: " + s)
 				}
-				panic("unsupported server_name: " + s)
 			}),
 			ClientHelloMap: tlsConfigurator.ClientHelloMap,
 			UserAgentMap:   useragentMap,

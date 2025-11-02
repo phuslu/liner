@@ -24,15 +24,15 @@ type HTTPHandler interface {
 }
 
 type HTTPServerHandler struct {
-	Config           HTTPConfig
-	Hostnames        []string
-	HostnameSuffixes []string
-	ClientHelloMap   *xsync.Map[PlainAddr, *TLSClientHelloInfo]
-	UserAgentMap     *CachingMap[string, useragent.UserAgent]
-	GeoResolver      *GeoResolver
-	ForwardHandler   HTTPHandler
-	TunnelHandler    HTTPHandler
-	WebHandler       HTTPHandler
+	Config         HTTPConfig
+	Hostnames      []string
+	HostnameAffix  [][2]string
+	ClientHelloMap *xsync.Map[PlainAddr, *TLSClientHelloInfo]
+	UserAgentMap   *CachingMap[string, useragent.UserAgent]
+	GeoResolver    *GeoResolver
+	ForwardHandler HTTPHandler
+	TunnelHandler  HTTPHandler
+	WebHandler     HTTPHandler
 }
 
 type HTTPRequestInfo struct {
@@ -263,10 +263,17 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	}
 
 	matched := slices.Contains(h.Hostnames, hostname)
-	if !matched && len(h.HostnameSuffixes) != 0 {
-		for _, suffix := range h.HostnameSuffixes {
-			if strings.HasSuffix(hostname, suffix) {
-				matched = true
+	if !matched && len(h.HostnameAffix) != 0 {
+		for _, affix := range h.HostnameAffix {
+			switch {
+			case affix[0] == "":
+				matched = strings.HasSuffix(hostname, affix[1])
+			case affix[1] == "":
+				matched = strings.HasPrefix(hostname, affix[0])
+			default:
+				matched = strings.HasPrefix(hostname, affix[0]) && strings.HasSuffix(hostname, affix[1])
+			}
+			if matched {
 				break
 			}
 		}

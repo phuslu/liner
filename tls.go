@@ -150,8 +150,19 @@ func (m *TLSInspector) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certific
 	entry, ok := m.Entries[hello.ServerName]
 	if !ok {
 		for key, value := range m.Entries {
-			if key != "" && key[0] == '*' && strings.HasSuffix(hello.ServerName, key[1:]) {
-				entry, ok = value, true
+			if i := strings.IndexByte(key, '*'); i >= 0 && i == strings.LastIndexByte(key, '*') {
+				switch {
+				case i == 0:
+					ok = strings.HasSuffix(hello.ServerName, key[i+1:])
+				case i == len(key)-1:
+					ok = strings.HasPrefix(hello.ServerName, key[:i])
+				default:
+					ok = strings.HasSuffix(hello.ServerName, key[i+1:]) && strings.HasPrefix(hello.ServerName, key[:i])
+				}
+			}
+			if ok {
+				entry = value
+				break
 			}
 		}
 	}
@@ -160,7 +171,7 @@ func (m *TLSInspector) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certific
 	}
 
 	if entry.KeyFile != "" {
-		cacheKey := TLSInspectorCacheKey{ServerName: entry.ServerName}
+		cacheKey := TLSInspectorCacheKey{ServerName: hello.ServerName}
 		cacheKey.HasTLS13, _ = LookupEcdsaCiphers(hello)
 
 		if v, _ := m.CertificateCache.Load(cacheKey); v.Value != nil && time.Now().Unix()-v.CreatedAt < 24*3600 {
