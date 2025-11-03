@@ -209,7 +209,7 @@ func (d *LocalDialer) dialParallel(ctx context.Context, network, hostname string
 
 			if d.WriteBuffSize > 0 {
 				if tc, ok := conn.(*net.TCPConn); ok {
-					tc.SetReadBuffer(d.WriteBuffSize)
+					tc.SetWriteBuffer(d.WriteBuffSize)
 				}
 			}
 
