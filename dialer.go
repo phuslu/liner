@@ -28,6 +28,8 @@ var (
 	DialerMemoryDialersContextKey any = &DialerContextKey{"dailer-memory-dialers"}
 )
 
+var DailerReservedIPPrefix = netip.MustParsePrefix("240.0.0.0/8")
+
 var _ Dialer = (*LocalDialer)(nil)
 
 type LocalDialer struct {
@@ -129,6 +131,10 @@ func (d *LocalDialer) dialContext(ctx context.Context, network, address string, 
 
 func (d *LocalDialer) dialSerial(ctx context.Context, network, hostname string, ips []netip.Addr, port uint16, tlsConfig *tls.Config) (conn net.Conn, err error) {
 	for i, ip := range ips {
+		if DailerReservedIPPrefix.Contains(ip) {
+			return nil, net.InvalidAddrError("reserved address is unreachable: " + ip.String())
+		}
+
 		if d.ForbidLocalAddr && (ip.IsLoopback() || ip.IsPrivate()) {
 			return nil, net.InvalidAddrError("intranet address is rejected: " + ip.String())
 		}
@@ -180,6 +186,10 @@ func (d *LocalDialer) dialParallel(ctx context.Context, network, hostname string
 	lane := make(chan dialResult, level)
 	for i := 0; i < level; i++ {
 		go func(ip netip.Addr, port uint16, tlsConfig *tls.Config) {
+			if DailerReservedIPPrefix.Contains(ip) {
+				lane <- dialResult{nil, net.InvalidAddrError("reserved address is unreachable: " + ip.String())}
+				return
+			}
 			if d.ForbidLocalAddr && (ip.IsLoopback() || ip.IsPrivate()) {
 				lane <- dialResult{nil, net.InvalidAddrError("intranet address is rejected: " + ip.String())}
 				return

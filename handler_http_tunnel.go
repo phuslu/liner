@@ -20,8 +20,6 @@ import (
 	"go4.org/netipx"
 )
 
-var HTTPTunnelReservedIPPrefix = netip.MustParsePrefix("240.0.0.0/8")
-
 type HTTPTunnelHandler struct {
 	Config        HTTPConfig
 	TunnelLogger  log.Logger
@@ -137,7 +135,7 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 
 	var ln net.Listener
 
-	if HTTPTunnelReservedIPPrefix.Contains(addrport.Addr()) {
+	if DailerReservedIPPrefix.Contains(addrport.Addr()) {
 		if _, ok := h.MemoryDialers.Load(addrport.String()); ok && allow != "-1" {
 			err := errors.New("bind address " + addrport.String() + " is inuse")
 			log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Msg("tunnel open memory listener error")
