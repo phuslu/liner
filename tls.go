@@ -82,7 +82,8 @@ type TLSServerNameHandle func(ctx context.Context, sni string, data []byte, conn
 
 type TLSInspector struct {
 	Logger              *log.Logger
-	Entries             map[string]TLSInspectorEntry // key: TLS ServerName
+	EntryMap            map[string]TLSInspectorEntry // key: TLS ServerName
+	EntryWildcard       []TLSInspectorEntry
 	AutoCert            *autocert.Manager
 	RootCA              *RootCA
 	TLSConfigCache      *xsync.Map[TLSInspectorCacheKey, TLSInspectorCacheValue[*tls.Config]]
@@ -134,10 +135,18 @@ func (m *TLSInspector) AddCertEntry(entry TLSInspectorEntry) error {
 		entry.CertFile = entry.KeyFile
 	}
 
-	if m.Entries == nil {
-		m.Entries = make(map[string]TLSInspectorEntry)
+	if m.EntryMap == nil {
+		m.EntryMap = make(map[string]TLSInspectorEntry)
 	}
-	m.Entries[entry.ServerName] = entry
+
+	switch strings.Count(entry.ServerName, "*") {
+	case 0:
+		m.EntryMap[entry.ServerName] = entry
+	case 1:
+		m.EntryWildcard = append(m.EntryWildcard, entry)
+	default:
+		return errors.New("unsupported server_name: " + entry.ServerName)
+	}
 
 	return nil
 }
@@ -147,17 +156,18 @@ func (m *TLSInspector) HostPolicy(ctx context.Context, host string) error {
 }
 
 func (m *TLSInspector) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-	entry, ok := m.Entries[hello.ServerName]
+	entry, ok := m.EntryMap[hello.ServerName]
 	if !ok {
-		for key, value := range m.Entries {
-			if i := strings.IndexByte(key, '*'); i >= 0 && i == strings.LastIndexByte(key, '*') {
+		for _, value := range m.EntryWildcard {
+			pattern := value.ServerName
+			if i := strings.IndexByte(pattern, '*'); i >= 0 {
 				switch {
 				case i == 0:
-					ok = strings.HasSuffix(hello.ServerName, key[i+1:])
-				case i == len(key)-1:
-					ok = strings.HasPrefix(hello.ServerName, key[:i])
+					ok = strings.HasSuffix(hello.ServerName, pattern[i+1:])
+				case i == len(pattern)-1:
+					ok = strings.HasPrefix(hello.ServerName, pattern[:i])
 				default:
-					ok = strings.HasSuffix(hello.ServerName, key[i+1:]) && strings.HasPrefix(hello.ServerName, key[:i])
+					ok = strings.HasSuffix(hello.ServerName, pattern[i+1:]) && strings.HasPrefix(hello.ServerName, pattern[:i])
 				}
 			}
 			if ok {
@@ -206,7 +216,7 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 	}
 
 	var preferChacha20, disableTLS11, disableHTTP2, disableOCSP bool
-	if entry, ok := m.Entries[serverName]; ok {
+	if entry, ok := m.EntryMap[serverName]; ok {
 		preferChacha20 = entry.PreferChacha20
 		disableHTTP2 = entry.DisableHTTP2
 		disableTLS11 = entry.DisableTLS11
