@@ -529,6 +529,9 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 
 func (h *SshHandler) startShell(ctx context.Context, shellPath string, envs map[string]string, channel ssh.Channel) (*os.File, error) {
 	shell := exec.CommandContext(ctx, shellPath)
+	if shellPath == "bash" || strings.HasSuffix(shellPath, "/bash") {
+		shell.Args[0] = "-bash"
+	}
 	shell.Dir = os.ExpandEnv(cmp.Or(h.Config.Home, "$HOME"))
 	shell.Env = []string{
 		"SHELL=" + shellPath,
