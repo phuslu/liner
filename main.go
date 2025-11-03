@@ -547,9 +547,9 @@ func main() {
 					for _, affix := range handlers.Affix {
 						switch {
 						case affix.Prefix == "":
-							matched = strings.HasPrefix(servername, affix.Prefix)
-						case affix.Suffix == "":
 							matched = strings.HasSuffix(servername, affix.Suffix)
+						case affix.Suffix == "":
+							matched = strings.HasPrefix(servername, affix.Prefix)
 						default:
 							matched = strings.HasPrefix(servername, affix.Prefix) && strings.HasSuffix(servername, affix.Suffix)
 						}
