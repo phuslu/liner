@@ -534,6 +534,7 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, envs map[
 		"SHELL=" + shellPath,
 		"HOME=" + cmp.Or(h.Config.Home, os.Getenv("HOME"), "/"),
 		"TERM=" + "linux",
+		"SSH_LINER_VERSION=" + version,
 	}
 	for key, value := range envs {
 		shell.Env = append(shell.Env, key+"="+value)
