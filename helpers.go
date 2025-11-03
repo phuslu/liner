@@ -1584,33 +1584,35 @@ var bogusChinaIP = map[uint]bool{
 	((61<<8+54)<<8+28)<<8 + 6:      true,
 }
 
-func ReadFile(s string) (body []byte, err error) {
+func ReadFile(s string) ([]byte, error) {
 	if s == "-" {
 		return io.ReadAll(os.Stdin)
 	}
 
-	var u *url.URL
-
-	u, err = url.Parse(s)
+	u, err := url.Parse(s)
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	switch u.Scheme {
 	case "":
-		body, err = os.ReadFile(s)
+		return os.ReadFile(s)
 	case "http", "https":
-		var resp *http.Response
-		resp, err = http.Get(s)
-		if err == nil {
-			defer resp.Body.Close()
-			body, err = io.ReadAll(resp.Body)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, s, nil)
+		if err != nil {
+			return nil, err
 		}
-	default:
-		err = errors.New("unsupported url: " + s)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+		return io.ReadAll(resp.Body)
 	}
 
-	return
+	return nil, errors.New("unsupported url: " + s)
 }
 
 func SetHTTP2ResponseWriterSentHeader(rw http.ResponseWriter, sent bool) error {
