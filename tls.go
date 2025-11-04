@@ -66,7 +66,7 @@ type TLSInspectorCacheKey struct {
 
 type TLSInspectorCacheValue[T any] struct {
 	Value     T
-	CreatedAt int64
+	CreatedAt time.Time
 }
 
 type TLSClientHelloInfo struct {
@@ -92,7 +92,7 @@ type TLSInspector struct {
 	TLSServerNameHandle TLSServerNameHandle
 }
 
-func (m *TLSInspector) AddCertEntry(entry TLSInspectorEntry) error {
+func (m *TLSInspector) AddTLSInspectorEntry(entry TLSInspectorEntry) error {
 	if m.TLSConfigCache == nil {
 		m.TLSConfigCache = xsync.NewMap[TLSInspectorCacheKey, TLSInspectorCacheValue[*tls.Config]](xsync.WithSerialResize())
 	}
@@ -158,20 +158,19 @@ func (m *TLSInspector) HostPolicy(ctx context.Context, host string) error {
 func (m *TLSInspector) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	entry, ok := m.EntryMap[hello.ServerName]
 	if !ok {
-		for _, value := range m.EntryWildcard {
-			pattern := value.ServerName
-			if i := strings.IndexByte(pattern, '*'); i >= 0 {
+		for _, wild := range m.EntryWildcard {
+			if i := strings.IndexByte(wild.ServerName, '*'); i >= 0 {
 				switch {
 				case i == 0:
-					ok = strings.HasSuffix(hello.ServerName, pattern[i+1:])
-				case i == len(pattern)-1:
-					ok = strings.HasPrefix(hello.ServerName, pattern[:i])
+					ok = strings.HasSuffix(hello.ServerName, wild.ServerName[i+1:])
+				case i == len(wild.ServerName)-1:
+					ok = strings.HasPrefix(hello.ServerName, wild.ServerName[:i])
 				default:
-					ok = strings.HasSuffix(hello.ServerName, pattern[i+1:]) && strings.HasPrefix(hello.ServerName, pattern[:i])
+					ok = strings.HasSuffix(hello.ServerName, wild.ServerName[i+1:]) && strings.HasPrefix(hello.ServerName, wild.ServerName[:i])
 				}
 			}
 			if ok {
-				entry = value
+				entry = wild
 				break
 			}
 		}
@@ -184,7 +183,7 @@ func (m *TLSInspector) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certific
 		cacheKey := TLSInspectorCacheKey{ServerName: hello.ServerName}
 		cacheKey.HasTLS13, _ = LookupEcdsaCiphers(hello)
 
-		if v, _ := m.CertificateCache.Load(cacheKey); v.Value != nil && time.Now().Unix()-v.CreatedAt < 24*3600 {
+		if v, _ := m.CertificateCache.Load(cacheKey); v.Value != nil && time.Since(v.CreatedAt) < 24*time.Hour {
 			return v.Value, nil
 		}
 
@@ -199,7 +198,7 @@ func (m *TLSInspector) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certific
 			return nil, err
 		}
 
-		m.CertificateCache.Store(cacheKey, TLSInspectorCacheValue[*tls.Certificate]{&cert, time.Now().Unix()})
+		m.CertificateCache.Store(cacheKey, TLSInspectorCacheValue[*tls.Certificate]{&cert, time.Now()})
 
 		return &cert, nil
 	}
@@ -255,7 +254,7 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 		HasChaCha20:    hasChaCha20,
 	}
 
-	if v, _ := m.TLSConfigCache.Load(cacheKey); v.Value != nil && time.Now().Unix()-v.CreatedAt < 24*3600 {
+	if v, _ := m.TLSConfigCache.Load(cacheKey); v.Value != nil && time.Since(v.CreatedAt) < 24*time.Hour {
 		return v.Value, nil
 	}
 
@@ -313,7 +312,7 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 		config.PreferServerCipherSuites = false
 	}
 
-	m.TLSConfigCache.Store(cacheKey, TLSInspectorCacheValue[*tls.Config]{config, time.Now().Unix()})
+	m.TLSConfigCache.Store(cacheKey, TLSInspectorCacheValue[*tls.Config]{config, time.Now()})
 
 	return config, nil
 }
