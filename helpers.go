@@ -633,6 +633,8 @@ func (w HTTPFlushWriter) Write(p []byte) (n int, err error) {
 	return
 }
 
+var _ net.Conn = (*HTTPRequestStream)(nil)
+
 type HTTPRequestStream struct {
 	io.ReadCloser
 	http.ResponseWriter
