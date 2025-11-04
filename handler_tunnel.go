@@ -73,10 +73,15 @@ func (h *TunnelHandler) Serve(ctx context.Context) {
 		}
 	}
 
+	last := time.Now()
 	for loop() {
 		delay := time.Duration(5+log.Fastrandn(10)) * time.Second
+		if time.Since(last) > 1*time.Minute {
+			delay = 2 * time.Second
+		}
 		log.Info().Dur("delay_ms", delay).Msg("tunnel loop...")
 		time.Sleep(delay)
+		last = time.Now()
 	}
 
 	return
