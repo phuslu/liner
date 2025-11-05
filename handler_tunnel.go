@@ -59,18 +59,37 @@ func (h *TunnelHandler) Serve(ctx context.Context) {
 
 		log.Info().Msgf("Listening on remote %s", h.Config.Listen[0])
 
-		// Accept connections from the remote side
-		for {
-			rconn, err := ln.Accept()
-			if err != nil || rconn == nil || reflect.ValueOf(rconn).IsNil() {
-				log.Error().Err(err).Any("rconn", rconn).Msg("Failed to accept remote connection")
-				time.Sleep(10 * time.Millisecond)
-				ln.Close()
-				return true
+		exit := make(chan error, 1)
+		go func() {
+			// Accept connections from the remote side
+			for {
+				rconn, err := ln.Accept()
+				if err != nil || rconn == nil || reflect.ValueOf(rconn).IsNil() {
+					exit <- err
+					log.Error().Err(err).Any("rconn", rconn).Msg("Failed to accept remote connection")
+					time.Sleep(10 * time.Millisecond)
+					ln.Close()
+					return
+				}
+				go h.handle(ctx, rconn, h.Config.ProxyPass)
 			}
+		}()
 
-			go h.handle(ctx, rconn, h.Config.ProxyPass)
+		var done <-chan struct{}
+		if doner, ok := ln.(interface {
+			Done() <-chan struct{}
+		}); ok {
+			done = doner.Done()
 		}
+
+		select {
+		case <-exit:
+			log.Info().Msg("tunnel listener accepting is exit")
+		case <-done:
+			log.Info().Msg("tunnel listener connection is done")
+		}
+
+		return true
 	}
 
 	last := time.Now()
@@ -135,7 +154,8 @@ func (h *TunnelHandler) handle(ctx context.Context, rconn net.Conn, laddr string
 
 type TunnelListener struct {
 	net.Listener
-	Closer io.Closer
+	closer io.Closer
+	ctx    context.Context
 }
 
 func (ln *TunnelListener) Accept() (net.Conn, error) {
@@ -149,8 +169,15 @@ func (ln *TunnelListener) Close() (err error) {
 	if e := ln.Listener.Close(); e != nil {
 		err = e
 	}
-	if e := ln.Closer.Close(); e != nil {
+	if e := ln.closer.Close(); e != nil {
 		err = e
 	}
 	return
+}
+
+func (ln *TunnelListener) Done() <-chan struct{} {
+	if ln.ctx == nil {
+		return nil
+	}
+	return ln.ctx.Done()
 }

@@ -34,13 +34,15 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialer string) (net.Listen
 		return nil, fmt.Errorf("no user info in dialer: %s", dialer)
 	}
 
+	var quicConn *quic.Conn
+
 	transport := &http3.Transport{
 		DisableCompression: false,
 		EnableDatagrams:    true,
 		Dial: func(ctx context.Context, addr string, tlsConf *tls.Config, conf *quic.Config) (*quic.Conn, error) {
 			ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 			defer cancel()
-			return quic.DialAddrEarly(ctx,
+			conn, err := quic.DialAddrEarly(ctx,
 				net.JoinHostPort(cmp.Or(u.Query().Get("resolve"), u.Hostname()), cmp.Or(u.Port(), "443")),
 				&tls.Config{
 					NextProtos:         []string{"h3"},
@@ -58,6 +60,11 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialer string) (net.Listen
 					MaxConnectionReceiveWindow: 100 * 1024 * 1024,
 				},
 			)
+			if err != nil {
+				return nil, err
+			}
+			quicConn = conn
+			return conn, nil
 		},
 	}
 
@@ -153,5 +160,14 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialer string) (net.Listen
 		return nil, fmt.Errorf("tunnel: open yamux server on remote %s: %w", h.Config.Listen[0], err)
 	}
 
-	return &TunnelListener{ln, conn}, nil
+	var quicCtx context.Context
+	if quicConn != nil {
+		quicCtx = quicConn.Context()
+	}
+
+	return &TunnelListener{
+		Listener: ln,
+		closer:   conn,
+		ctx:      quicCtx,
+	}, nil
 }

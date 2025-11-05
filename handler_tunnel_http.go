@@ -210,5 +210,9 @@ func (h *TunnelHandler) h1tunnel(ctx context.Context, dialer string) (net.Listen
 		return nil, fmt.Errorf("tunnel: open yamux server on remote %s: %w", h.Config.Listen[0], err)
 	}
 
-	return &TunnelListener{ln, conn}, nil
+	return &TunnelListener{
+		Listener: ln,
+		closer:   conn,
+		ctx:      nil,
+	}, nil
 }

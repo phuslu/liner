@@ -90,5 +90,9 @@ func (h *TunnelHandler) sshtunnel(ctx context.Context, dialer string) (net.Liste
 		log.DefaultLogger.Err(err).Str("tunnel_proxy_pass", h.Config.ProxyPass).Str("tunnel_dialer_name", h.Config.Dialer).Int64("tunnel_speedlimit", h.Config.SpeedLimit).Msg("set speedlimit")
 	}
 
-	return &TunnelListener{ln, client}, nil
+	return &TunnelListener{
+		Listener: ln,
+		closer:   client,
+		ctx:      nil,
+	}, nil
 }
