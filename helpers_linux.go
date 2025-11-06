@@ -236,8 +236,19 @@ func KillPid(pid int, sig syscall.Signal) error {
 	return syscall.Kill(pid, sig)
 }
 
-func RedirectStderrTo(file *os.File) error {
-	return syscall.Dup3(int(file.Fd()), 2, 0)
+func RedirectOutputToFile(filename string) error {
+	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	if err := syscall.Dup3(int(file.Fd()), 1, 0); err != nil {
+		return err
+	}
+	if err := syscall.Dup3(int(file.Fd()), 2, 0); err != nil {
+		return err
+	}
+	return nil
 }
 
 func SetProcessName(name string) error {

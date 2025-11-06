@@ -52,19 +52,23 @@ func (ops ConnOps) SetTcpMaxPacingRate(rate int) error {
 }
 
 func SetTermWindowSize(fd uintptr, width, height uint16) error {
-	return nil
+	return errors.ErrUnsupported
 }
 
 func SetProcessName(name string) error {
-	return nil
+	return errors.ErrUnsupported
 }
 
 func KillPid(pid int, sig syscall.Signal) error {
-	return nil
+	return errors.ErrUnsupported
+}
+
+func RedirectOutputToFile(filename string) error {
+	return errors.ErrUnsupported
 }
 
 func ReadHTTPHeader(conn *net.TCPConn) ([]byte, *net.TCPConn, error) {
-	return nil, conn, errors.New("not implemented")
+	return nil, conn, errors.ErrUnsupported
 }
 
 func AppendSetSidToSysProcAttr(old *syscall.SysProcAttr) *syscall.SysProcAttr {

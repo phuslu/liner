@@ -116,6 +116,8 @@ func main() {
 				},
 			},
 		}
+		// stderr redirection
+		RedirectOutputToFile(filepath.Join(logDir, logName+".error.log"))
 	}
 
 	slog.SetDefault(log.DefaultLogger.Slog())
