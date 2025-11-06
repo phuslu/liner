@@ -85,9 +85,7 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialer string) (net.Listen
 		req.Header.Set("authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(u.User.Username()+":"+first(u.User.Password()))))
 	}
 	if u.Query().Get("websocket") == "true" {
-		req.Method = http.MethodPost
-		req.Header.Set("Connection", "Upgrade")
-		req.Header.Set("Upgrade", "websocket")
+		req.Method = http.MethodConnect
 		req.Header.Set("Sec-WebSocket-Version", "13")
 		req.Header.Set("Sec-WebSocket-Key", string(strconv.AppendUint(make([]byte, 0, 64), uint64(fastrandn(1<<32-1)), 10)))
 	} else {

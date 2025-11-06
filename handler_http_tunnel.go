@@ -169,9 +169,13 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		if req.Header.Get("Sec-Websocket-Key") != "" {
 			key := sha1.Sum([]byte(req.Header.Get("Sec-WebSocket-Key") + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
 			rw.Header().Set("sec-websocket-accept", base64.StdEncoding.EncodeToString(key[:]))
-			rw.Header().Set("upgrade", "websocket")
-			rw.Header().Set("connection", "Upgrade")
-			rw.WriteHeader(http.StatusSwitchingProtocols)
+			if req.ProtoMajor == 2 {
+				rw.Header().Set("upgrade", "websocket")
+				rw.Header().Set("connection", "Upgrade")
+				rw.WriteHeader(http.StatusSwitchingProtocols)
+			} else {
+				rw.WriteHeader(http.StatusOK)
+			}
 		} else {
 			rw.WriteHeader(http.StatusOK)
 		}

@@ -152,7 +152,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	}
 
 	// fix http3 tunnel request
-	if req.ProtoMajor == 3 && req.Method == http.MethodConnect {
+	if req.ProtoMajor == 3 {
 		if s := req.Header.Get("location"); strings.HasPrefix(s, HTTPTunnelReverseTCPPathPrefix) {
 			req.URL.RawPath = s
 			req.URL.Path = s
