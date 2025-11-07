@@ -108,7 +108,7 @@ func main() {
 			Writer: &log.AsyncWriter{
 				ChannelSize: cmp.Or(config.Global.LogChannelSize, 8192),
 				Writer: &log.FileWriter{
-					Filename:     filepath.Join(logDir, logName+".data.log"),
+					Filename:     filepath.Join(logDir, "data."+logName+".log"),
 					MaxBackups:   cmp.Or(config.Global.LogBackups, 2),
 					MaxSize:      cmp.Or(config.Global.LogMaxsize, 20*1024*1024),
 					LocalTime:    config.Global.LogLocaltime,

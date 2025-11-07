@@ -2,7 +2,7 @@ sources:
   liner_data:
     type: file
     include:
-      - ./*.data.*.log
+      - ./data.*.*.log
 transforms:
   liner_data_parser:
     type: remap
