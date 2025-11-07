@@ -307,7 +307,7 @@ func (h *SshHandler) handleDirectTCPIP(ctx context.Context, newChannel ssh.NewCh
 
 	targetAddr := net.JoinHostPort(payload.HostToConnect, fmt.Sprintf("%d", payload.PortToConnect))
 
-	rconn, err := net.Dial("tcp", targetAddr)
+	rconn, err := (&net.Dialer{Timeout: 15 * time.Second}).DialContext(ctx, "tcp", targetAddr)
 	if err != nil {
 		h.Logger.Error().Err(err).Str("target_addr", targetAddr).Msg("handleDirectTCPIP: failed to dial target")
 		newChannel.Reject(ssh.ConnectionFailed, err.Error())
