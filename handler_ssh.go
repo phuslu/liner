@@ -345,7 +345,11 @@ func (h *SshHandler) handleDirectTCPIP(ctx context.Context, newChannel ssh.NewCh
 func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, requests <-chan *ssh.Request, conn *ssh.ServerConn) {
 	// Sessions have out-of-band requests such as "shell", "pty-req" and "env"
 	var shellfile *os.File
-	var window struct{ Width, Height uint32 }
+	var window struct {
+		Term   string
+		Width  uint32
+		Height uint32
+	}
 	var envs = map[string]string{}
 
 	for req := range requests {
@@ -465,9 +469,11 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 			if len(req.Payload) < 4+length+4+4 {
 				h.Logger.Error().Msgf("ssh pty-req payload length error")
 			}
+			window.Term = string(req.Payload[4 : 4+length])
 			window.Width = binary.BigEndian.Uint32(req.Payload[length+4:])
 			window.Height = binary.BigEndian.Uint32(req.Payload[length+8:])
-			h.Logger.Info().Str("req_type", req.Type).Uint32("width", window.Width).Uint32("height", window.Height).Msg("handle ssh request")
+			h.Logger.Info().Str("req_type", req.Type).Str("term", window.Term).Uint32("width", window.Width).Uint32("height", window.Height).Msg("handle ssh request")
+			envs["TERM"] = cmp.Or(window.Term, "linux")
 			if shellfile != nil {
 				SetTermWindowSize(shellfile.Fd(), uint16(window.Width), uint16(window.Height))
 			}
@@ -478,10 +484,8 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 			if len(req.Payload) < 8 {
 				h.Logger.Error().Msgf("ssh window-change payload length error")
 			}
-			if err := ssh.Unmarshal(req.Payload[:8], &window); err != nil {
-				h.Logger.Error().Err(err).Msgf("ssh window-change unmarshal error")
-				continue
-			}
+			window.Width = binary.BigEndian.Uint32(req.Payload[0:])
+			window.Height = binary.BigEndian.Uint32(req.Payload[4:])
 			h.Logger.Info().Str("req_type", req.Type).Uint32("width", window.Width).Uint32("height", window.Height).Msg("handle ssh request")
 			if shellfile != nil {
 				SetTermWindowSize(shellfile.Fd(), uint16(window.Width), uint16(window.Height))
@@ -536,7 +540,6 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, envs map[
 	shell.Env = []string{
 		"SHELL=" + shellPath,
 		"HOME=" + cmp.Or(h.Config.Home, os.Getenv("HOME"), "/"),
-		"TERM=" + "linux",
 		"SSH_LINER_VERSION=" + version,
 	}
 	for key, value := range envs {
