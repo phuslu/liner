@@ -457,12 +457,6 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 					h.Logger.Error().Err(err).Str("req_type", req.Type).Str("shell", h.shellPath).Any("envs", envs).Msg("handle ssh request")
 					req.Reply(false, nil)
 				}
-
-				// Set window size
-				if termInfo.Width > 0 && termInfo.Height > 0 {
-					SetTermWindowSize(shellfile.Fd(), uint16(termInfo.Width), uint16(termInfo.Height))
-					h.Logger.Info().Str("req_type", req.Type).Str("shell", h.shellPath).Uint32("width", termInfo.Width).Uint32("height", termInfo.Height).Msg("set term windows size")
-				}
 			}
 		case "pty-req":
 			if len(req.Payload) < 4 {
