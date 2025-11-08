@@ -1,0 +1,13 @@
+#!/sbin/openrc-run
+
+depend() {
+    after localmount
+    before default
+}
+
+start() {
+    cd /root/liner
+    test -f keepalive || echo -e 'while :; do env $(cat .env) "$@"; sleep 2; done' > keepalive
+    test -f .env && . .env
+    (/bin/sh keepalive /root/liner/liner ${ENV:-production}.yaml &) </dev/null &>/dev/null
+}
