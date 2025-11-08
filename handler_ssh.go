@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -342,14 +343,16 @@ func (h *SshHandler) handleDirectTCPIP(ctx context.Context, newChannel ssh.NewCh
 	h.Logger.Info().NetAddr("remote_addr", conn.RemoteAddr()).Str("target_addr", targetAddr).Msg("handleDirectTCPIP: connection closed")
 }
 
+type SshSessionPty struct {
+	Term   string
+	Width  uint32
+	Height uint32
+}
+
 func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, requests <-chan *ssh.Request, conn *ssh.ServerConn) {
 	// Sessions have out-of-band requests such as "shell", "pty-req" and "env"
 	var shellfile *os.File
-	var window struct {
-		Term   string
-		Width  uint32
-		Height uint32
-	}
+	var window = &SshSessionPty{}
 	var envs = map[string]string{}
 
 	for req := range requests {
@@ -449,7 +452,7 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 
 				var err error
 				// Fire up bash for this session
-				shellfile, err = h.startShell(ctx, h.shellPath, envs, channel)
+				shellfile, err = h.startShell(ctx, h.shellPath, window, envs, channel)
 				if err != nil {
 					h.Logger.Error().Err(err).Str("req_type", req.Type).Str("shell", h.shellPath).Any("envs", envs).Msg("handle ssh request")
 					req.Reply(false, nil)
@@ -473,7 +476,6 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 			window.Width = binary.BigEndian.Uint32(req.Payload[length+4:])
 			window.Height = binary.BigEndian.Uint32(req.Payload[length+8:])
 			h.Logger.Info().Str("req_type", req.Type).Str("term", window.Term).Uint32("width", window.Width).Uint32("height", window.Height).Msg("handle ssh request")
-			envs["TERM"] = cmp.Or(window.Term, "linux")
 			if shellfile != nil {
 				SetTermWindowSize(shellfile.Fd(), uint16(window.Width), uint16(window.Height))
 			}
@@ -531,16 +533,17 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 	}
 }
 
-func (h *SshHandler) startShell(ctx context.Context, shellPath string, envs map[string]string, channel ssh.Channel) (*os.File, error) {
+func (h *SshHandler) startShell(ctx context.Context, shellPath string, window *SshSessionPty, envs map[string]string, channel ssh.Channel) (*os.File, error) {
 	shell := exec.CommandContext(ctx, shellPath)
-	if shellPath == "bash" || strings.HasSuffix(shellPath, "/bash") {
+	if runtime.GOOS == "linux" && (shellPath == "bash" || strings.HasSuffix(shellPath, "/bash")) {
 		shell.Args[0] = "-bash"
 	}
 	shell.Dir = os.ExpandEnv(cmp.Or(h.Config.Home, "$HOME"))
 	shell.Env = []string{
+		"SSH_LINER_VERSION=" + version,
 		"SHELL=" + shellPath,
 		"HOME=" + cmp.Or(h.Config.Home, os.Getenv("HOME"), "/"),
-		"SSH_LINER_VERSION=" + version,
+		"TERM=" + cmp.Or(window.Term, "linux"),
 	}
 	for key, value := range envs {
 		shell.Env = append(shell.Env, key+"="+value)
@@ -568,7 +571,10 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, envs map[
 
 	// Allocate a terminal for this channel
 	h.Logger.Printf("Creating pty...")
-	file, err := pty.Start(shell)
+	file, err := pty.StartWithSize(shell, &pty.Winsize{
+		Cols: uint16(window.Width),
+		Rows: uint16(window.Height),
+	})
 	if err != nil {
 		h.Logger.Printf("Could not start pty (%s)", err)
 		close()
