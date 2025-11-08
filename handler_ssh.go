@@ -343,7 +343,7 @@ func (h *SshHandler) handleDirectTCPIP(ctx context.Context, newChannel ssh.NewCh
 	h.Logger.Info().NetAddr("remote_addr", conn.RemoteAddr()).Str("target_addr", targetAddr).Msg("handleDirectTCPIP: connection closed")
 }
 
-type SshSessionPty struct {
+type SshTermInfo struct {
 	Term   string
 	Width  uint32
 	Height uint32
@@ -352,7 +352,7 @@ type SshSessionPty struct {
 func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, requests <-chan *ssh.Request, conn *ssh.ServerConn) {
 	// Sessions have out-of-band requests such as "shell", "pty-req" and "env"
 	var shellfile *os.File
-	var window = &SshSessionPty{}
+	var termInfo = &SshTermInfo{}
 	var envs = map[string]string{}
 
 	for req := range requests {
@@ -452,16 +452,16 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 
 				var err error
 				// Fire up bash for this session
-				shellfile, err = h.startShell(ctx, h.shellPath, window, envs, channel)
+				shellfile, err = h.startShell(ctx, h.shellPath, termInfo, envs, channel)
 				if err != nil {
 					h.Logger.Error().Err(err).Str("req_type", req.Type).Str("shell", h.shellPath).Any("envs", envs).Msg("handle ssh request")
 					req.Reply(false, nil)
 				}
 
 				// Set window size
-				if window.Width > 0 && window.Height > 0 {
-					SetTermWindowSize(shellfile.Fd(), uint16(window.Width), uint16(window.Height))
-					h.Logger.Info().Str("req_type", req.Type).Str("shell", h.shellPath).Uint32("width", window.Width).Uint32("height", window.Height).Msg("set term windows size")
+				if termInfo.Width > 0 && termInfo.Height > 0 {
+					SetTermWindowSize(shellfile.Fd(), uint16(termInfo.Width), uint16(termInfo.Height))
+					h.Logger.Info().Str("req_type", req.Type).Str("shell", h.shellPath).Uint32("width", termInfo.Width).Uint32("height", termInfo.Height).Msg("set term windows size")
 				}
 			}
 		case "pty-req":
@@ -472,12 +472,12 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 			if len(req.Payload) < 4+length+4+4 {
 				h.Logger.Error().Msgf("ssh pty-req payload length error")
 			}
-			window.Term = string(req.Payload[4 : 4+length])
-			window.Width = binary.BigEndian.Uint32(req.Payload[length+4:])
-			window.Height = binary.BigEndian.Uint32(req.Payload[length+8:])
-			h.Logger.Info().Str("req_type", req.Type).Str("term", window.Term).Uint32("width", window.Width).Uint32("height", window.Height).Msg("handle ssh request")
+			termInfo.Term = string(req.Payload[4 : 4+length])
+			termInfo.Width = binary.BigEndian.Uint32(req.Payload[length+4:])
+			termInfo.Height = binary.BigEndian.Uint32(req.Payload[length+8:])
+			h.Logger.Info().Str("req_type", req.Type).Str("term", termInfo.Term).Uint32("width", termInfo.Width).Uint32("height", termInfo.Height).Msg("handle ssh request")
 			if shellfile != nil {
-				SetTermWindowSize(shellfile.Fd(), uint16(window.Width), uint16(window.Height))
+				SetTermWindowSize(shellfile.Fd(), uint16(termInfo.Width), uint16(termInfo.Height))
 			}
 			// Responding true (OK) here will let the client
 			// know we have a pty ready for input
@@ -486,11 +486,11 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 			if len(req.Payload) < 8 {
 				h.Logger.Error().Msgf("ssh window-change payload length error")
 			}
-			window.Width = binary.BigEndian.Uint32(req.Payload[0:])
-			window.Height = binary.BigEndian.Uint32(req.Payload[4:])
-			h.Logger.Info().Str("req_type", req.Type).Uint32("width", window.Width).Uint32("height", window.Height).Msg("handle ssh request")
+			termInfo.Width = binary.BigEndian.Uint32(req.Payload[0:])
+			termInfo.Height = binary.BigEndian.Uint32(req.Payload[4:])
+			h.Logger.Info().Str("req_type", req.Type).Uint32("width", termInfo.Width).Uint32("height", termInfo.Height).Msg("handle ssh request")
 			if shellfile != nil {
-				SetTermWindowSize(shellfile.Fd(), uint16(window.Width), uint16(window.Height))
+				SetTermWindowSize(shellfile.Fd(), uint16(termInfo.Width), uint16(termInfo.Height))
 			}
 		case "subsystem":
 			var payload struct {
@@ -533,7 +533,7 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 	}
 }
 
-func (h *SshHandler) startShell(ctx context.Context, shellPath string, window *SshSessionPty, envs map[string]string, channel ssh.Channel) (*os.File, error) {
+func (h *SshHandler) startShell(ctx context.Context, shellPath string, termInfo *SshTermInfo, envs map[string]string, channel ssh.Channel) (*os.File, error) {
 	shell := exec.CommandContext(ctx, shellPath)
 	if runtime.GOOS == "linux" && (shellPath == "bash" || strings.HasSuffix(shellPath, "/bash")) {
 		shell.Args[0] = "-bash"
@@ -543,7 +543,7 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, window *S
 		"SSH_LINER_VERSION=" + version,
 		"SHELL=" + shellPath,
 		"HOME=" + cmp.Or(h.Config.Home, os.Getenv("HOME"), "/"),
-		"TERM=" + cmp.Or(window.Term, "linux"),
+		"TERM=" + cmp.Or(termInfo.Term, "linux"),
 	}
 	for key, value := range envs {
 		shell.Env = append(shell.Env, key+"="+value)
@@ -572,8 +572,8 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, window *S
 	// Allocate a terminal for this channel
 	h.Logger.Printf("Creating pty...")
 	file, err := pty.StartWithSize(shell, &pty.Winsize{
-		Cols: uint16(window.Width),
-		Rows: uint16(window.Height),
+		Cols: uint16(termInfo.Width),
+		Rows: uint16(termInfo.Height),
 	})
 	if err != nil {
 		h.Logger.Printf("Could not start pty (%s)", err)
