@@ -20,7 +20,6 @@ require (
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/smallnest/ringbuffer v0.0.0-20250317021400-0da97b586904
 	github.com/valyala/bytebufferpool v1.0.0
-	github.com/zeebo/wyhash v0.0.1
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba
 	golang.org/x/crypto v0.43.0
 	golang.org/x/net v0.46.0

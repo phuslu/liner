@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"crypto/md5"
 	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
-	"encoding/binary"
 	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/puzpuzpuz/xsync/v4"
-	"github.com/zeebo/wyhash"
 	"golang.org/x/crypto/argon2"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -73,8 +72,8 @@ func (c *AuthUserLoadChecker) CheckAuthUser(ctx context.Context, user *AuthUserI
 			return
 		}
 		switch len(b) {
-		case 8:
-			if binary.BigEndian.Uint64(b) == wyhash.HashString(user.Password, 0) {
+		case md5.Size:
+			if *(*[md5.Size]byte)(b) == md5.Sum(s2b(user.Password)) {
 				*user = record
 				return
 			}
@@ -89,7 +88,7 @@ func (c *AuthUserLoadChecker) CheckAuthUser(ctx context.Context, user *AuthUserI
 				return
 			}
 		}
-		err = fmt.Errorf("invalid wyhash/sha1/sha256 password: %v", record.Password)
+		err = fmt.Errorf("invalid md5/sha1/sha256 password: %v", record.Password)
 		return
 	case strings.HasPrefix(record.Password, "$2y$"):
 		err = bcrypt.CompareHashAndPassword([]byte(record.Password), []byte(user.Password))
