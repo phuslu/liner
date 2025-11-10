@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -82,6 +83,7 @@ type TLSServerNameHandle func(ctx context.Context, sni string, data []byte, conn
 
 type TLSInspector struct {
 	Logger              *log.Logger
+	AutoCertDir         string
 	EntryMap            map[string]TLSInspectorEntry // key: TLS ServerName
 	EntryWildcard       []TLSInspectorEntry
 	AutoCert            *autocert.Manager
@@ -103,7 +105,7 @@ func (m *TLSInspector) AddTLSInspectorEntry(entry TLSInspectorEntry) error {
 
 	if m.AutoCert == nil {
 		m.AutoCert = &autocert.Manager{
-			Cache:      autocert.DirCache("certs"),
+			Cache:      autocert.DirCache(cmp.Or(m.AutoCertDir, "autocert")),
 			Prompt:     autocert.AcceptTOS,
 			HostPolicy: m.HostPolicy,
 			ForceRSA:   false,

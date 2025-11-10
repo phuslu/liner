@@ -386,6 +386,7 @@ func main() {
 	// tls inspector
 	tlsConfigurator := &TLSInspector{
 		Logger:         &log.DefaultLogger,
+		AutoCertDir:    config.Global.AutocertDir,
 		ClientHelloMap: xsync.NewMap[PlainAddr, *TLSClientHelloInfo](xsync.WithSerialResize()),
 	}
 
