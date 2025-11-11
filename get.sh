@@ -23,7 +23,7 @@ fi
 
 checksum=$($getcurl https://github.com/phuslu/liner/releases/download/v0.0.0/checksums.txt | grep -E "liner_linux_${arch}-[0-9]+.tar.gz")
 filename=$(echo $checksum | awk '{print $2}')
-pacfile=$(head /dev/urandom | tr -dc '1-9' | head -c 6).pac
+pacfile=$(xxd -p -l 3 /dev/urandom).pac
 sudo=$(test "$(id -u)" -eq 0 && echo sudo)
 
 if test -d liner; then
@@ -40,7 +40,7 @@ else
   wget https://github.com/phuslu/liner/releases/download/v0.0.0/$filename -O $filename
 fi
 
-if test "$(sha1sum $filename)" != "$checksum"; then
+if test "$(sha1sum $filename || shasum $filename)" != "$checksum"; then
   echo "$filename sha1sum mismatched, please check your network!"
   rm -rf $filename
   exit 1
@@ -94,7 +94,7 @@ EOF
 
 cat <<EOF > users.csv
 username,password,speed_limit,allow_client
-user,$(head /dev/urandom | tr -dc '1-9' | head -c 6),0,1
+user,$(xxd -p -l 3 /dev/urandom),0,1
 EOF
 
 echo ENV=production > .env
