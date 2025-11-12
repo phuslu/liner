@@ -212,23 +212,23 @@ func main() {
 			}
 		case "http", "https", "ws", "wss":
 			return &HTTPDialer{
-				Username:    u.User.Username(),
-				Password:    first(u.User.Password()),
-				Host:        u.Hostname(),
-				Port:        cmp.Or(u.Port(), map[string]string{"http": "80", "https": "443", "ws": "80", "wss": "443"}[u.Scheme]),
-				TLS:         u.Scheme == "https" || u.Scheme == "wss",
-				Chacha20Key: u.Query().Get("chacha20_key"),
-				Websocket:   u.Scheme == "ws" || u.Scheme == "wss",
-				UserAgent:   cmp.Or(u.Query().Get("user_agent"), DefaultUserAgent),
-				Insecure:    u.Query().Get("insecure") == "true",
-				ECH:         u.Query().Get("ech") == "true",
-				CACert:      u.Query().Get("cacert"),
-				ClientKey:   u.Query().Get("key"),
-				ClientCert:  u.Query().Get("cert"),
-				Logger:      slog.Default(),
-				Resolve:     map[string]string{u.Host: u.Query().Get("resolve")},
-				Dialer:      underlay,
-				Resolver:    resolver.Resolver,
+				Username:   u.User.Username(),
+				Password:   first(u.User.Password()),
+				Host:       u.Hostname(),
+				Port:       cmp.Or(u.Port(), map[string]string{"http": "80", "https": "443", "ws": "80", "wss": "443"}[u.Scheme]),
+				TLS:        u.Scheme == "https" || u.Scheme == "wss",
+				PSK:        u.Query().Get("psk"),
+				Websocket:  u.Scheme == "ws" || u.Scheme == "wss",
+				UserAgent:  cmp.Or(u.Query().Get("user_agent"), DefaultUserAgent),
+				Insecure:   u.Query().Get("insecure") == "true",
+				ECH:        u.Query().Get("ech") == "true",
+				CACert:     u.Query().Get("cacert"),
+				ClientKey:  u.Query().Get("key"),
+				ClientCert: u.Query().Get("cert"),
+				Logger:     slog.Default(),
+				Resolve:    map[string]string{u.Host: u.Query().Get("resolve")},
+				Dialer:     underlay,
+				Resolver:   resolver.Resolver,
 			}
 		case "http2":
 			return &HTTP2Dialer{
@@ -617,7 +617,7 @@ func main() {
 	// listen and serve http
 	h1handlers := map[string]struct {
 		HTTPHandler HTTPHandler
-		Chacha20Key string
+		PSK         []byte
 	}{}
 	for _, httpConfig := range config.Http {
 		httpConfig.ServerName = append(httpConfig.ServerName, "", "localhost", "127.0.0.1")
@@ -685,10 +685,10 @@ func main() {
 		for _, listen := range httpConfig.Listen {
 			h1handlers[listen] = struct {
 				HTTPHandler HTTPHandler
-				Chacha20Key string
+				PSK         []byte
 			}{
 				HTTPHandler: handler,
-				Chacha20Key: httpConfig.Chacha20Key,
+				PSK:         []byte(httpConfig.PSK),
 			}
 		}
 	}
@@ -720,7 +720,7 @@ func main() {
 				ReadBufferSize:  config.Global.TcpReadBuffer,
 				WriteBufferSize: config.Global.TcpWriteBuffer,
 				MirrorHeader:    false,
-				Chacha20Key:     handler.Chacha20Key,
+				PSK:             handler.PSK,
 			}
 		}
 

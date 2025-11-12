@@ -22,23 +22,23 @@ import (
 var _ Dialer = (*HTTPDialer)(nil)
 
 type HTTPDialer struct {
-	Username    string
-	Password    string
-	Host        string
-	Port        string
-	TLS         bool
-	Chacha20Key string
-	Websocket   bool
-	Insecure    bool
-	ECH         bool
-	UserAgent   string
-	CACert      string
-	ClientKey   string
-	ClientCert  string
-	Resolve     map[string]string
-	Dialer      Dialer
-	Logger      *slog.Logger
-	Resolver    *Resolver
+	Username   string
+	Password   string
+	Host       string
+	Port       string
+	TLS        bool
+	PSK        string
+	Websocket  bool
+	Insecure   bool
+	ECH        bool
+	UserAgent  string
+	CACert     string
+	ClientKey  string
+	ClientCert string
+	Resolve    map[string]string
+	Dialer     Dialer
+	Logger     *slog.Logger
+	Resolver   *Resolver
 
 	mu        sync.Mutex
 	tlsConfig *tls.Config
@@ -145,13 +145,16 @@ func (d *HTTPDialer) DialContext(ctx context.Context, network, addr string) (net
 		conn = tlsConn
 	}
 
-	if d.Chacha20Key != "" {
-		sha1sum := sha1.Sum(s2b(d.Chacha20Key))
+	if d.PSK != "" {
+		if d.Websocket {
+			return nil, fmt.Errorf("invalid psk option in websocket http diailer: %+v", d)
+		}
+		sha1sum := sha1.Sum(s2b(d.PSK))
 		nonce := binary.LittleEndian.Uint64(sha1sum[:8])
 		conn = &Chacha20NetConn{
 			Conn:   conn,
-			Writer: must(Chacha20NewStreamCipher([]byte(d.Chacha20Key), nonce)),
-			Reader: must(Chacha20NewStreamCipher([]byte(d.Chacha20Key), nonce)),
+			Writer: must(Chacha20NewStreamCipher([]byte(d.PSK), nonce)),
+			Reader: must(Chacha20NewStreamCipher([]byte(d.PSK), nonce)),
 		}
 	}
 

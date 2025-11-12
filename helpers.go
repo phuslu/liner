@@ -688,7 +688,7 @@ type TCPListener struct {
 	ReadBufferSize  int
 	WriteBufferSize int
 	TLSConfig       *tls.Config
-	Chacha20Key     string
+	PSK             []byte
 	MirrorHeader    bool
 }
 
@@ -717,13 +717,13 @@ func (ln TCPListener) Accept() (c net.Conn, err error) {
 	switch {
 	case ln.TLSConfig != nil:
 		c = tls.Server(c, ln.TLSConfig)
-	case ln.Chacha20Key != "":
-		sha1sum := sha1.Sum([]byte(ln.Chacha20Key))
+	case len(ln.PSK) > 0:
+		sha1sum := sha1.Sum(ln.PSK)
 		nonce := binary.LittleEndian.Uint64(sha1sum[:8])
 		c = &Chacha20NetConn{
 			Conn:   c,
-			Writer: must(Chacha20NewStreamCipher([]byte(ln.Chacha20Key), nonce)),
-			Reader: must(Chacha20NewStreamCipher([]byte(ln.Chacha20Key), nonce)),
+			Writer: must(Chacha20NewStreamCipher(ln.PSK, nonce)),
+			Reader: must(Chacha20NewStreamCipher(ln.PSK, nonce)),
 		}
 	}
 

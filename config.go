@@ -15,7 +15,7 @@ type HTTPConfig struct {
 	ServerName   []string `json:"server_name" yaml:"server_name"`
 	Keyfile      string   `json:"keyfile" yaml:"keyfile"`
 	Certfile     string   `json:"certfile" yaml:"certfile"`
-	Chacha20Key  string   `json:"chacha20_key" yaml:"chacha20_key"`
+	PSK          string   `json:"psk" yaml:"psk"`
 	ServerConfig map[string]struct {
 		Keyfile        string `json:"keyfile" yaml:"keyfile"`
 		Certfile       string `json:"certfile" yaml:"certfile"`
@@ -300,8 +300,8 @@ func NewConfig(filename string) (*Config, error) {
 	}
 
 	for _, server := range config.Https {
-		if server.Chacha20Key != "" {
-			return nil, fmt.Errorf("invalid chacha20_key option in https handler: server_name=%#v, chacha_key=%#v", server.ServerName, server.Chacha20Key)
+		if server.PSK != "" {
+			return nil, fmt.Errorf("invalid psk option in https handler: server_name=%#v, psk=%#v", server.ServerName, server.PSK)
 		}
 	}
 
