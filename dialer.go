@@ -143,13 +143,27 @@ func (d *LocalDialer) dialSerial(ctx context.Context, network, hostname string, 
 		if d.Interface != "" {
 			dailer.Control = (&DailerController{Interface: d.Interface}).Control
 		}
-		conn, err = dailer.DialContext(ctx, network, netip.AddrPortFrom(ip, port).String())
+
+		conn, err := dailer.DialTCP(ctx, network, netip.AddrPort{}, netip.AddrPortFrom(ip, port))
 		if err != nil {
 			if i < len(ips)-1 {
 				continue
 			} else {
 				return nil, err
 			}
+		}
+
+		if d.TCPKeepAlive > 0 {
+			conn.SetKeepAlive(true)
+			conn.SetKeepAlivePeriod(d.TCPKeepAlive)
+		}
+
+		if d.ReadBuffSize > 0 {
+			conn.SetReadBuffer(d.ReadBuffSize)
+		}
+
+		if d.WriteBuffSize > 0 {
+			conn.SetWriteBuffer(d.WriteBuffSize)
 		}
 
 		if tlsConfig == nil {
@@ -198,29 +212,23 @@ func (d *LocalDialer) dialParallel(ctx context.Context, network, hostname string
 			if d.Interface != "" {
 				dailer.Control = (&DailerController{Interface: d.Interface}).Control
 			}
-			conn, err := dailer.DialContext(ctx, network, netip.AddrPortFrom(ip, port).String())
+			conn, err := dailer.DialTCP(ctx, network, netip.AddrPort{}, netip.AddrPortFrom(ip, port))
 			if err != nil {
 				lane <- dialResult{nil, err}
 				return
 			}
 
 			if d.TCPKeepAlive > 0 {
-				if tc, ok := conn.(*net.TCPConn); ok {
-					tc.SetKeepAlive(true)
-					tc.SetKeepAlivePeriod(d.TCPKeepAlive)
-				}
+				conn.SetKeepAlive(true)
+				conn.SetKeepAlivePeriod(d.TCPKeepAlive)
 			}
 
 			if d.ReadBuffSize > 0 {
-				if tc, ok := conn.(*net.TCPConn); ok {
-					tc.SetReadBuffer(d.ReadBuffSize)
-				}
+				conn.SetReadBuffer(d.ReadBuffSize)
 			}
 
 			if d.WriteBuffSize > 0 {
-				if tc, ok := conn.(*net.TCPConn); ok {
-					tc.SetWriteBuffer(d.WriteBuffSize)
-				}
+				conn.SetWriteBuffer(d.WriteBuffSize)
 			}
 
 			if tlsConfig == nil {

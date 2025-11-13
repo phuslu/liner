@@ -14,7 +14,7 @@ function setup() {
 
 	goarch=$(test $(uname -m) = aarch64 && echo arm64 || echo amd64)
 
-	curl -L https://github.com/phuslu/go/releases/download/v0.0.0/go1.25.linux-${goarch}.tar.xz | \
+	curl -L https://github.com/phuslu/go/releases/download/v0.0.0/gotip.linux-${goarch}.tar.xz | \
 	tar xvJ -C /tmp/
 }
 
