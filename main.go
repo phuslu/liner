@@ -262,6 +262,7 @@ func main() {
 				Password: first(u.User.Password()),
 				Host:     u.Hostname(),
 				Port:     u.Port(),
+				PSK:      u.Query().Get("psk"),
 				Socks4:   u.Scheme == "socks4" || u.Scheme == "socks4a",
 				Socks4A:  u.Scheme == "socks4a",
 				Socks5:   u.Scheme == "socks" || u.Scheme == "socks5" || u.Scheme == "socks5h",

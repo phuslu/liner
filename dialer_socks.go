@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -20,6 +22,7 @@ type SocksDialer struct {
 	Password string
 	Host     string
 	Port     string
+	PSK      string
 	Socks4   bool
 	Socks4A  bool
 	Socks5   bool
@@ -68,6 +71,16 @@ func (d *SocksDialer) dialsocks4(ctx context.Context, network, addr string) (net
 			(*closeConn).Close()
 		}
 	}()
+
+	if d.PSK != "" {
+		sha1sum := sha1.Sum(s2b(d.PSK))
+		nonce := binary.LittleEndian.Uint64(sha1sum[:8])
+		conn = &Chacha20NetConn{
+			Conn:   conn,
+			Writer: must(Chacha20NewStreamCipher([]byte(d.PSK), nonce)),
+			Reader: must(Chacha20NewStreamCipher([]byte(d.PSK), nonce)),
+		}
+	}
 
 	host, portStr, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -165,6 +178,16 @@ func (d *SocksDialer) dialsocks5(ctx context.Context, network, addr string) (net
 			(*closeConn).Close()
 		}
 	}()
+
+	if d.PSK != "" {
+		sha1sum := sha1.Sum(s2b(d.PSK))
+		nonce := binary.LittleEndian.Uint64(sha1sum[:8])
+		conn = &Chacha20NetConn{
+			Conn:   conn,
+			Writer: must(Chacha20NewStreamCipher([]byte(d.PSK), nonce)),
+			Reader: must(Chacha20NewStreamCipher([]byte(d.PSK), nonce)),
+		}
+	}
 
 	host, portStr, err := net.SplitHostPort(addr)
 	if err != nil {
