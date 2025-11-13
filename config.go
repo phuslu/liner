@@ -89,6 +89,7 @@ type SniConfig struct {
 
 type SocksConfig struct {
 	Listen  []string `json:"listen" yaml:"listen"`
+	PSK     string   `json:"psk" yaml:"psk"`
 	Forward struct {
 		Policy           string `json:"policy" yaml:"policy"`
 		AuthTable        string `json:"auth_table" yaml:"auth_table"`

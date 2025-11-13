@@ -3,7 +3,9 @@ package main
 import (
 	"cmp"
 	"context"
+	"crypto/sha1"
 	"crypto/tls"
+	"encoding/binary"
 	"errors"
 	"io"
 	"log/slog"
@@ -749,7 +751,7 @@ func main() {
 				log.Fatal().Err(err).Str("address", addr).Msg("socks handler load error")
 			}
 
-			go func(ln net.Listener, h *SocksHandler) {
+			go func(ln net.Listener, psk string, h *SocksHandler) {
 				for {
 					conn, err := ln.Accept()
 					if err != nil {
@@ -757,9 +759,18 @@ func main() {
 						time.Sleep(10 * time.Millisecond)
 						continue
 					}
+					if psk != "" {
+						sha1sum := sha1.Sum(s2b(psk))
+						nonce := binary.LittleEndian.Uint64(sha1sum[:8])
+						conn = &Chacha20NetConn{
+							Conn:   conn,
+							Writer: must(Chacha20NewStreamCipher([]byte(psk), nonce)),
+							Reader: must(Chacha20NewStreamCipher([]byte(psk), nonce)),
+						}
+					}
 					go h.ServeConn(context.Background(), conn)
 				}
-			}(ln, h)
+			}(ln, socksConfig.PSK, h)
 		}
 	}
 
