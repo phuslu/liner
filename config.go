@@ -15,7 +15,6 @@ type HTTPConfig struct {
 	ServerName   []string `json:"server_name" yaml:"server_name"`
 	Keyfile      string   `json:"keyfile" yaml:"keyfile"`
 	Certfile     string   `json:"certfile" yaml:"certfile"`
-	PSK          string   `json:"psk" yaml:"psk"`
 	ServerConfig map[string]struct {
 		Keyfile        string `json:"keyfile" yaml:"keyfile"`
 		Certfile       string `json:"certfile" yaml:"certfile"`
@@ -297,12 +296,6 @@ func NewConfig(filename string) (*Config, error) {
 
 	if filename == "development.yaml" {
 		fmt.Fprintf(os.Stderr, "%s WAN 1 config.go:122 > liner is running in the development mode.\n", timeNow().Format("15:04:05"))
-	}
-
-	for _, server := range config.Https {
-		if server.PSK != "" {
-			return nil, fmt.Errorf("invalid psk option in https handler: server_name=%#v, psk=%#v", server.ServerName, server.PSK)
-		}
 	}
 
 	return config, nil
