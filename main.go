@@ -620,6 +620,7 @@ func main() {
 	// listen and serve http
 	h1handlers := map[string]struct {
 		HTTPHandler HTTPHandler
+		PSK         []byte
 	}{}
 	for _, httpConfig := range config.Http {
 		httpConfig.ServerName = append(httpConfig.ServerName, "", "localhost", "127.0.0.1")
@@ -687,8 +688,10 @@ func main() {
 		for _, listen := range httpConfig.Listen {
 			h1handlers[listen] = struct {
 				HTTPHandler HTTPHandler
+				PSK         []byte
 			}{
 				HTTPHandler: handler,
+				PSK:         []byte(httpConfig.PSK),
 			}
 		}
 	}
@@ -720,6 +723,7 @@ func main() {
 				ReadBufferSize:  config.Global.TcpReadBuffer,
 				WriteBufferSize: config.Global.TcpWriteBuffer,
 				MirrorHeader:    false,
+				PSK:             handler.PSK,
 			}
 		}
 
