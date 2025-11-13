@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"crypto/sha1"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -25,6 +27,7 @@ type HTTPDialer struct {
 	Host       string
 	Port       string
 	TLS        bool
+	PSK        string
 	Websocket  bool
 	Insecure   bool
 	ECH        bool
@@ -140,6 +143,19 @@ func (d *HTTPDialer) DialContext(ctx context.Context, network, addr string) (net
 			return nil, err
 		}
 		conn = tlsConn
+	}
+
+	if d.PSK != "" {
+		if d.Websocket {
+			return nil, fmt.Errorf("invalid psk option in websocket http diailer: %+v", d)
+		}
+		sha1sum := sha1.Sum(s2b(d.PSK))
+		nonce := binary.LittleEndian.Uint64(sha1sum[:8])
+		conn = &Chacha20NetConn{
+			Conn:   conn,
+			Writer: must(Chacha20NewStreamCipher([]byte(d.PSK), nonce)),
+			Reader: must(Chacha20NewStreamCipher([]byte(d.PSK), nonce)),
+		}
 	}
 
 	buf := AppendableBytes(make([]byte, 0, 2048))
