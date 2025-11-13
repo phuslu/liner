@@ -497,8 +497,8 @@ func (c *Chacha20NetConn) NetConn() net.Conn {
 
 func (c *Chacha20NetConn) Read(b []byte) (n int, err error) {
 	n, err = c.Conn.Read(b)
-	if c.Reader != nil {
-		c.Reader.XORKeyStream(b, b)
+	if c.Reader != nil && n > 0 {
+		c.Reader.XORKeyStream(b[:n], b[:n])
 	}
 	return
 }
