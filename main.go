@@ -537,7 +537,7 @@ func main() {
 			log.Fatal().Err(err).Str("address", addr).Msg("net.Listen error")
 		}
 
-		log.Info().Str("version", version).NetAddr("address", ln.Addr()).Msg("liner listen and serve tls")
+		log.Info().Str("version", version).NetAddr("address", ln.Addr()).Msg("liner listen and serve https")
 
 		server := &http.Server{
 			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -709,7 +709,7 @@ func main() {
 			if ln, err = lc.Listen(context.Background(), "tcp", addr); err != nil {
 				log.Fatal().Err(err).Str("address", addr).Msg("net.Listen error")
 			}
-			log.Info().Str("version", version).NetAddr("address", ln.Addr()).Msg("liner listen and serve")
+			log.Info().Str("version", version).NetAddr("address", ln.Addr()).Msg("liner listen and serve http")
 			ln = TCPListener{
 				TCPListener:     ln.(*net.TCPListener),
 				KeepAlivePeriod: 3 * time.Minute,
