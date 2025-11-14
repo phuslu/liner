@@ -1,13 +1,37 @@
 #!/sbin/openrc-run
 
+name="liner"
+description="a protocol liner"
+appdir="/root/liner"
+pidfile="/run/${name}.pid"
+
 depend() {
-    after localmount
-    before default
+	after localmount
+	before default
 }
 
 start() {
-    cd /root/liner
-    test -f keepalive || echo -e 'while :; do env $(cat .env) "$@"; sleep 2; done' > keepalive
-    test -f .env && . .env
-    (/bin/sh keepalive /root/liner/liner ${ENV:-production}.yaml &) </dev/null &>/dev/null
+	ebegin "Starting ${name}"
+
+	cd "${appdir}"
+	test -f .env && . .env
+
+	supervise-daemon "${name}" \
+		--pidfile "${pidfile}" \
+		--respawn-delay 2 \
+		--respawn-max 0 \
+		--start "${appdir}/${name}" \
+		-- "${ENV:-production}.yaml"
+
+	eend $?
+}
+
+stop() {
+	ebegin "Stopping ${name}"
+	supervise-daemon "${name}" --stop --pidfile "${pidfile}"
+	eend $?
+}
+
+status() {
+	kill -0 $(cat "${pidfile}")
 }
