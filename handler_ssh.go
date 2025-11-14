@@ -13,6 +13,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"os/user"
 	"reflect"
 	"runtime"
 	"slices"
@@ -528,15 +529,21 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 }
 
 func (h *SshHandler) startShell(ctx context.Context, shellPath string, termInfo *SshTermInfo, envs map[string]string, channel ssh.Channel) (*os.File, error) {
+	currentUser, err := user.Current()
+	if err != nil {
+		return nil, err
+	}
+
 	shell := exec.CommandContext(ctx, shellPath)
 	if runtime.GOOS == "linux" && (shellPath == "bash" || strings.HasSuffix(shellPath, "/bash")) {
 		shell.Args[0] = "-bash"
 	}
-	shell.Dir = os.ExpandEnv(cmp.Or(h.Config.Home, "$HOME"))
+	shell.Dir = os.ExpandEnv(cmp.Or(h.Config.Home, currentUser.HomeDir))
 	shell.Env = []string{
-		"SSH_LINER_VERSION=" + version,
+		"LINER_VERSION=" + version,
+		"USER=" + currentUser.Username,
+		"HOME=" + cmp.Or(h.Config.Home, currentUser.HomeDir),
 		"SHELL=" + shellPath,
-		"HOME=" + cmp.Or(h.Config.Home, os.Getenv("HOME"), "/"),
 		"TERM=" + cmp.Or(termInfo.Term, "linux"),
 	}
 	for key, value := range envs {
