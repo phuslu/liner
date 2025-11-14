@@ -127,13 +127,13 @@ EOF
   ${sudo} systemctl restart liner
 elif /sbin/rc-update -V; then
   ${sudo} rc-update add local
-  echo 'while :; do env $(cat .env) "$@"; sleep 2; done' >keepalive
+  echo 'while :; do test -f .env && . .env ; "$@"; sleep 2; done' >keepalive
   printf '#!/bin/sh\n\n(cd "%s" && /bin/sh keepalive "%s/liner" production.yaml &) </dev/null &>/dev/null\n' "$(pwd)" "$(pwd)" | ${sudo} tee /etc/local.d/10-liner.start
   ${sudo} chmod +x /etc/local.d/10-liner.start
   ${sudo} /etc/local.d/10-liner.start
 else
   pgrep liner && pkill -9 liner
-  echo 'while :; do env $(cat .env) "$@"; sleep 2; done' >keepalive
+  echo 'while :; do test -f .env && . .env ; "$@"; sleep 2; done' >keepalive
   (/bin/sh keepalive $(pwd)/liner production.yaml &) </dev/null &>/dev/null
 fi
 

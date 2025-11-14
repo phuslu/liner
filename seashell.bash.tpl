@@ -89,6 +89,6 @@ if test -f /seashell.sh; then
   echo -e '#!/bin/bash\ncd ~/liner && exec $(pwd)/liner production.yaml' >  ~/service/liner/run
   chmod +x ~/service/liner/run
 else
-  echo -e 'while :; do env $(cat .env) "$@"; sleep 2; done' > keepalive
+  echo -e 'while :; do test -f .env && . .env ; "$@"; sleep 2; done' > keepalive
   exec /bin/sh keepalive $(pwd)/liner production.yaml
 fi

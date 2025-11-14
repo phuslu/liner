@@ -6,8 +6,9 @@ Description=liner vector
 [Service]
 Type=simple
 WorkingDirectory=/home/phuslu/liner
+EnvironmentFile=/home/phuslu/liner/.env
 ExecStartPre=/bin/sh -c 'command -v vector || curl -sSLf https://github.com/vectordotdev/vector/releases/download/v0.46.1/vector-0.46.1-$(arch)-unknown-linux-$(type -p apk && echo musl || echo gnu).tar.gz | tar xvz -C /usr/local/bin/ --strip-components=3 --wildcards "*/vector"'
-ExecStart=/bin/sh -c "exec env $(cat .env) vector -c $(pwd)/liner-vector.yaml"
+ExecStart=/bin/sh -c "exec vector -c $(pwd)/liner-vector.yaml"
 
 [Install]
 WantedBy=default.target
