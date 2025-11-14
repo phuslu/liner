@@ -24,16 +24,15 @@ import (
 )
 
 type HTTPForwardHandler struct {
-	Config          HTTPConfig
-	DataLogger      log.Logger
-	MemoryListeners *sync.Map // map[string]*MemoryListener
-	MemoryDialers   *sync.Map // map[string]*MemoryDialer
-	LocalDialer     *LocalDialer
-	LocalTransport  *http.Transport
-	Dialers         map[string]Dialer
-	DialerURLs      map[string]string
-	GeoResolver     *GeoResolver
-	Functions       template.FuncMap
+	Config         HTTPConfig
+	DataLogger     log.Logger
+	MemoryDialers  *sync.Map // map[string]*MemoryDialer
+	LocalDialer    *LocalDialer
+	LocalTransport *http.Transport
+	Dialers        map[string]Dialer
+	DialerURLs     map[string]string
+	GeoResolver    *GeoResolver
+	Functions      template.FuncMap
 
 	policy        *template.Template
 	tcpcongestion *template.Template

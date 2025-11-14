@@ -423,16 +423,15 @@ func main() {
 	for _, server := range config.Https {
 		handler := &HTTPServerHandler{
 			ForwardHandler: &HTTPForwardHandler{
-				Config:          server,
-				DataLogger:      dataLogger,
-				MemoryListeners: memoryListeners,
-				MemoryDialers:   memoryDialers,
-				LocalDialer:     dialer,
-				LocalTransport:  transport,
-				Dialers:         dialers,
-				DialerURLs:      config.Dialer,
-				GeoResolver:     resolver,
-				Functions:       functions.FuncMap(),
+				Config:         server,
+				DataLogger:     dataLogger,
+				MemoryDialers:  memoryDialers,
+				LocalDialer:    dialer,
+				LocalTransport: transport,
+				Dialers:        dialers,
+				DialerURLs:     config.Dialer,
+				GeoResolver:    resolver,
+				Functions:      functions.FuncMap(),
 			},
 			TunnelHandler: &HTTPTunnelHandler{
 				Config:        server,
@@ -632,16 +631,15 @@ func main() {
 		}
 		handler := &HTTPServerHandler{
 			ForwardHandler: &HTTPForwardHandler{
-				Config:          httpConfig,
-				DataLogger:      dataLogger,
-				MemoryListeners: memoryListeners,
-				MemoryDialers:   memoryDialers,
-				LocalDialer:     dialer,
-				LocalTransport:  transport,
-				Dialers:         dialers,
-				DialerURLs:      config.Dialer,
-				GeoResolver:     resolver,
-				Functions:       functions.FuncMap(),
+				Config:         httpConfig,
+				DataLogger:     dataLogger,
+				MemoryDialers:  memoryDialers,
+				LocalDialer:    dialer,
+				LocalTransport: transport,
+				Dialers:        dialers,
+				DialerURLs:     config.Dialer,
+				GeoResolver:    resolver,
+				Functions:      functions.FuncMap(),
 			},
 			TunnelHandler: &HTTPTunnelHandler{
 				Config:        httpConfig,
