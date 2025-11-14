@@ -304,13 +304,6 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		log.DefaultLogger.Err(err).Context(ri.LogContext).Int64("forward_speedlimit", speedLimit).Msg("set forward_speedlimit")
 	}
 
-	if v, ok := h.MemoryListeners.Load(req.Host); ok && req.ProtoAtLeast(2, 0) {
-		conn := HTTPRequestStream{req.Body, rw, http.NewResponseController(rw), net.TCPAddrFromAddrPort(ri.RemoteAddr), net.TCPAddrFromAddrPort(ri.ServerAddr)}
-		log.Info().Str("req_host", req.Host).NetIPAddrPort("server_addr", ri.ServerAddr).Msg("forward handler memory listener local addr")
-		v.(*MemoryListener).SendConn(conn)
-		return
-	}
-
 	var dialerValue = h.Config.Forward.Dialer
 	if h.dialer != nil {
 		ri.PolicyBuffer.Reset()
