@@ -19,6 +19,7 @@ import (
 
 	"github.com/mileusna/useragent"
 	"github.com/phuslu/log"
+	"github.com/quic-go/quic-go/http3"
 	"github.com/valyala/bytebufferpool"
 )
 
@@ -38,7 +39,8 @@ type HTTPWebProxyHandler struct {
 		URL      *url.URL
 		Template *template.Template
 	}
-	headers *template.Template
+	h3transport *http3.Transport
+	headers     *template.Template
 }
 
 func (h *HTTPWebProxyHandler) Load() error {
@@ -66,6 +68,11 @@ func (h *HTTPWebProxyHandler) Load() error {
 		if err != nil {
 			return err
 		}
+	}
+
+	h.h3transport = &http3.Transport{
+		DisableCompression: false,
+		EnableDatagrams:    true,
 	}
 
 	if strings.Contains(h.SetHeaders, "{{") {
@@ -225,11 +232,17 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	var tr http.RoundTripper = h.Transport
-
-	req.URL.Scheme = proxypass.Scheme
-	req.URL.Host = proxypass.Host
-	// req.Host = proxypass.Host
+	var tr http.RoundTripper
+	switch proxypass.Scheme {
+	case "http3":
+		tr = h.h3transport
+		req.URL.Scheme = "https"
+	default:
+		tr = h.Transport
+		req.URL.Scheme = proxypass.Scheme
+		req.URL.Host = proxypass.Host
+		// req.Host = proxypass.Host
+	}
 
 	if prefix := h.StripPrefix; prefix != "" {
 		req.URL.Path = strings.TrimPrefix(req.URL.Path, prefix)
