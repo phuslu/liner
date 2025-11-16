@@ -15,23 +15,29 @@ start() {
 
 	cd "${appdir}"
 	test -f .env && . .env
-
-	supervise-daemon "${name}" \
-		--pidfile "${pidfile}" \
-		--respawn-delay 2 \
-		--respawn-max 0 \
-		--start "${appdir}/${name}" \
-		-- "${ENV:-production}.yaml"
+	supervise-daemon "${name}" --pidfile "${pidfile}" --start "${appdir}/${name}" -- "${ENV:-production}.yaml"
 
 	eend $?
 }
 
 stop() {
 	ebegin "Stopping ${name}"
+
 	supervise-daemon "${name}" --stop --pidfile "${pidfile}"
+
 	eend $?
 }
 
 status() {
-	kill -0 $(cat "${pidfile}")
+	if [ ! -f "${pidfile}" ]; then
+		eerror "${name} is not running (no pidfile)"
+		return 1
+	fi
+
+	if kill -0 "$(cat "${pidfile}")" 2>/dev/null; then
+		einfo "${name} is running"
+	else
+		eerror "${name} is not running"
+		return 1
+	fi
 }
