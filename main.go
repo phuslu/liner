@@ -58,6 +58,14 @@ func main() {
 			filename = arg
 		}
 	}
+	if runtime.GOOS == "windows" && len(os.Args) == 1 {
+		if exe, err := os.Executable(); err == nil {
+			name := exe[:len(exe)-len(filepath.Ext(exe))] + ".yaml"
+			if _, err := os.Stat(name); err == nil {
+				filename = name
+			}
+		}
+	}
 
 	config, err := NewConfig(filename)
 	if err != nil {

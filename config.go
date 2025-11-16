@@ -196,6 +196,8 @@ func NewConfig(filename string) (*Config, error) {
 	datas := [][]byte{}
 	if data, err := ReadFile(filename); err == nil {
 		datas = append(datas, data)
+	} else {
+		return nil, err
 	}
 
 	if strings.HasSuffix(filename, ".yaml") || strings.HasSuffix(filename, ".json") {

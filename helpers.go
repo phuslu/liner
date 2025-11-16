@@ -25,6 +25,7 @@ import (
 	"net/url"
 	"os"
 	"reflect"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -1589,6 +1590,11 @@ var bogusChinaIP = map[uint]bool{
 func ReadFile(s string) ([]byte, error) {
 	if s == "-" {
 		return io.ReadAll(os.Stdin)
+	}
+
+	if runtime.GOOS == "windows" && len(s) > 3 &&
+		(('c' <= s[0] && s[0] <= 'z') || ('C' <= s[0] && s[0] <= 'Z')) && s[1] == ':' && (s[2] == '/' || s[2] == '\\') {
+		return os.ReadFile(s)
 	}
 
 	u, err := url.Parse(s)
