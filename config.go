@@ -146,6 +146,7 @@ type SshConfig struct {
 	AuthorizedKeys   string   `json:"authorized_keys" yaml:"authorized_keys"`
 	Shell            string   `json:"shell" yaml:"shell"`
 	Home             string   `json:"home" yaml:"home"`
+	EnvFile          string   `json:"env_file" yaml:"env_file"`
 	Log              bool     `json:"log" yaml:"log"`
 }
 

@@ -546,6 +546,17 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, termInfo 
 		"SHELL=" + shellPath,
 		"TERM=" + cmp.Or(termInfo.Term, "linux"),
 	}
+	if data, err := os.ReadFile(h.Config.EnvFile); err == nil {
+		for line := range strings.Lines(string(data)) {
+			line = strings.TrimSpace(line)
+			parts := strings.SplitN(line, "=", 2)
+			if strings.HasPrefix(line, "#") || len(parts) != 2 || strings.TrimSpace(parts[0]) == "" {
+				continue
+			}
+			key, value := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+			shell.Env = append(shell.Env, key+"="+value)
+		}
+	}
 	for key, value := range envs {
 		shell.Env = append(shell.Env, key+"="+value)
 	}
