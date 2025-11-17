@@ -237,11 +237,13 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	case "http3":
 		tr = h.h3transport
 		req.URL.Scheme = "https"
+		req.URL.Host = proxypass.Host
+		req.Host = proxypass.Host
 	default:
 		tr = h.Transport
 		req.URL.Scheme = proxypass.Scheme
 		req.URL.Host = proxypass.Host
-		// req.Host = proxypass.Host
+		req.Host = proxypass.Host
 	}
 
 	if prefix := h.StripPrefix; prefix != "" {
@@ -365,7 +367,7 @@ func (h *HTTPWebProxyHandler) setHeaders(req *http.Request, ri *HTTPRequestInfo)
 	}
 
 	for line := range strings.Lines(headers) {
-		parts := strings.Split(line, ":")
+		parts := strings.SplitN(line, ":", 2)
 		if len(parts) != 2 {
 			continue
 		}
@@ -374,8 +376,7 @@ func (h *HTTPWebProxyHandler) setHeaders(req *http.Request, ri *HTTPRequestInfo)
 		case "host", "Host", "HOST":
 			req.URL.Host = value
 			req.Host = value
-		default:
-			req.Header.Set(key, value)
 		}
+		req.Header.Set(key, value)
 	}
 }
