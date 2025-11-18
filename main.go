@@ -66,6 +66,9 @@ func main() {
 			}
 		}
 	}
+	if s := os.Getenv("LINERCONFIG"); s != "" {
+		filename = s
+	}
 
 	config, err := NewConfig(filename)
 	if err != nil {
