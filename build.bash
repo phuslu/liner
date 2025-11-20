@@ -60,8 +60,8 @@ EOF
 
 function wheel() {
 	export CGO_ENABLED=1
-	export GOROOT=/tmp/go
-	export GOPATH=/tmp/gopath
+	export GOROOT=${GOROOT:-/tmp/go}
+	export GOPATH=${GOPATH:-/tmp/gopath}
 	export PATH=${GOPATH:-~/go}/bin:${GOROOT}/bin:$PATH
 
 	#go install -v mvdan.cc/garble@latest
@@ -69,9 +69,13 @@ function wheel() {
 
 	python3 setup.py bdist_wheel
 
-	python3 -m venv ~/.venv
-	~/.venv/bin/pip install auditwheel
-	~/.venv/bin/auditwheel repair wheel/dist/liner*.whl
+	if [ "$(uname)" = "Linux" ]; then
+		if python3 -c "import sys; exit(sys.prefix != getattr(sys, 'base_prefix', sys.prefix))"; then
+			python3 -m venv ~/.venv
+		fi
+		~/.venv/bin/pip install auditwheel
+		~/.venv/bin/auditwheel repair wheel/dist/liner*.whl
+	fi
 
 	mkdir -p build
 	mv wheelhouse/liner*.whl build/
