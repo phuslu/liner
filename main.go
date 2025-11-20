@@ -49,6 +49,12 @@ var (
 
 func main() {
 	filename := "-"
+	if env := os.Getenv("ENV"); env != "" {
+		name := env + ".yaml"
+		if _, err := os.Stat(name); err == nil {
+			filename = name
+		}
+	}
 	for _, arg := range slices.Backward(os.Args) {
 		switch {
 		case arg == "-version" || arg == "--version":
@@ -65,9 +71,6 @@ func main() {
 				filename = name
 			}
 		}
-	}
-	if s := os.Getenv("LINERCONFIG"); s != "" {
-		filename = s
 	}
 
 	config, err := NewConfig(filename)
