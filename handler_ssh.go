@@ -351,6 +351,12 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 	var window struct{ Width, Height uint32 }
 	var envs = map[string]string{}
 
+	if raddr, laddr := conn.RemoteAddr(), conn.LocalAddr(); raddr != nil && laddr != nil {
+		rap, lap := AddrPortFromNetAddr(raddr), AddrPortFromNetAddr(laddr)
+		envs["SSH_CONNECTION"] = fmt.Sprintf("%s %d %s %d", rap.Addr(), rap.Port(), lap.Addr(), lap.Port())
+		envs["SSH_CLIENT"] = fmt.Sprintf("%s %d %d", rap.Addr(), rap.Port(), lap.Port())
+	}
+
 	for req := range requests {
 		h.Logger.Info().NetAddr("remote_addr", conn.RemoteAddr()).Any("request", req).Msg("process ssh channel request")
 		switch req.Type {
