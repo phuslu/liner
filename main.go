@@ -54,9 +54,6 @@ func main() {
 		case arg == "-version" || arg == "--version":
 			println(version)
 			return
-		case arg == "-minish" || arg == "--minish" || arg == "-mini" || arg == "--mini":
-			minish()
-			return
 		case strings.HasSuffix(arg, ".yaml") || strings.HasSuffix(arg, ".json"):
 			filename = arg
 		}
