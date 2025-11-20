@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"path/filepath"
 	"reflect"
 	"runtime"
 	"slices"
@@ -214,7 +215,7 @@ func (h *SshHandler) Load() error {
 	if h.shellPath == "" {
 		h.shellPath = "/bin/sh"
 	}
-	if h.shellPath[0] != '/' {
+	if c := h.shellPath[0]; c != '/' && c != '$' {
 		if _, err := exec.LookPath(h.shellPath); err != nil {
 			return fmt.Errorf("invalid shell path: %w", err)
 		}
@@ -535,17 +536,24 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, termInfo 
 	}
 
 	shell := exec.CommandContext(ctx, shellPath)
+	if shellPath == "$minish$" {
+		absPath, err := filepath.Abs(os.Args[0])
+		if err != nil {
+			return nil, err
+		}
+		shell = exec.CommandContext(ctx, absPath, append(os.Args[1:], "--mini")...)
+	}
 	if runtime.GOOS == "linux" && (shellPath == "bash" || strings.HasSuffix(shellPath, "/bash")) {
 		shell.Args[0] = "-bash"
 	}
 	shell.Dir = os.ExpandEnv(cmp.Or(h.Config.Home, currentUser.HomeDir))
-	shell.Env = []string{
-		"LINER_VERSION=" + version,
-		"USER=" + currentUser.Username,
-		"HOME=" + cmp.Or(h.Config.Home, currentUser.HomeDir),
-		"SHELL=" + shellPath,
-		"TERM=" + cmp.Or(termInfo.Term, "linux"),
-	}
+	shell.Env = append(shell.Env,
+		"LINER_VERSION="+version,
+		"USER="+currentUser.Username,
+		"HOME="+cmp.Or(h.Config.Home, currentUser.HomeDir),
+		"SHELL="+shellPath,
+		"TERM="+cmp.Or(termInfo.Term, "linux"),
+	)
 	if runtime.GOOS == "darwin" && shellPath == "/bin/bash" {
 		shell.Env = append(shell.Env, "BASH_SILENCE_DEPRECATION_WARNING=1")
 	}
