@@ -5,6 +5,7 @@ go 1.26
 require (
 	github.com/creack/pty v1.1.24
 	github.com/go-task/slim-sprig/v3 v3.0.0
+	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
 	github.com/libp2p/go-yamux/v5 v5.1.0
 	github.com/mileusna/useragent v1.3.5
 	github.com/oschwald/maxminddb-golang/v2 v2.1.0

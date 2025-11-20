@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	"github.com/google/shlex"
 	"github.com/libp2p/go-yamux/v5"
 	"github.com/phuslu/log"
 	"github.com/pkg/sftp"
@@ -214,7 +215,7 @@ func (h *SshHandler) Load() error {
 	if h.shellPath == "" {
 		h.shellPath = "/bin/sh"
 	}
-	if h.shellPath[0] != '/' {
+	if c := h.shellPath[0]; c != '/' && c != '$' {
 		if _, err := exec.LookPath(h.shellPath); err != nil {
 			return fmt.Errorf("invalid shell path: %w", err)
 		}
@@ -538,14 +539,21 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, termInfo 
 	if runtime.GOOS == "linux" && (shellPath == "bash" || strings.HasSuffix(shellPath, "/bash")) {
 		shell.Args[0] = "-bash"
 	}
-	shell.Dir = os.ExpandEnv(cmp.Or(h.Config.Home, currentUser.HomeDir))
-	shell.Env = []string{
-		"LINER_VERSION=" + version,
-		"USER=" + currentUser.Username,
-		"HOME=" + cmp.Or(h.Config.Home, currentUser.HomeDir),
-		"SHELL=" + shellPath,
-		"TERM=" + cmp.Or(termInfo.Term, "linux"),
+	if s := envs["LINER_SSH_SHELL"]; s != "" {
+		args, err := shlex.Split(s)
+		if err != nil {
+			return nil, err
+		}
+		shell = exec.CommandContext(ctx, args[0], args[1:]...)
 	}
+	shell.Dir = os.ExpandEnv(cmp.Or(h.Config.Home, currentUser.HomeDir))
+	shell.Env = append(shell.Env,
+		"LINER_SSH_VERSION="+version,
+		"USER="+currentUser.Username,
+		"HOME="+cmp.Or(h.Config.Home, currentUser.HomeDir),
+		"SHELL="+shellPath,
+		"TERM="+cmp.Or(termInfo.Term, "linux"),
+	)
 	if runtime.GOOS == "darwin" && shellPath == "/bin/bash" {
 		shell.Env = append(shell.Env, "BASH_SILENCE_DEPRECATION_WARNING=1")
 	}
