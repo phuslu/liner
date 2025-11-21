@@ -538,24 +538,36 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, width, he
 		return nil, err
 	}
 
-	if strings.Contains(shellPath, "{{") {
-		shellTemplate, err := template.New(shellPath).Funcs(h.Functions).Parse(shellPath)
+	eval := func(text string) (string, error) {
+		if !strings.Contains(text, "{{") {
+			return text, nil
+		}
+		tmpl, err := template.New(text).Funcs(h.Functions).Parse(text)
 		if err != nil {
-			return nil, err
+			return "", err
 		}
 
 		var sb strings.Builder
-		err = shellTemplate.Execute(&sb, struct {
-			User *user.User
-			Env  map[string]string
+		err = tmpl.Execute(&sb, struct {
+			Version string
+			User    *user.User
+			Env     map[string]string
 		}{
-			User: currentUser,
-			Env:  envs,
+			Version: version,
+			User:    currentUser,
+			Env:     envs,
 		})
 		if err != nil {
-			return nil, err
+			return "", err
 		}
-		shellPath = strings.TrimSpace(sb.String())
+		text = strings.TrimSpace(sb.String())
+
+		return text, nil
+	}
+
+	shellPath, err = eval(shellPath)
+	if err != nil {
+		return nil, err
 	}
 
 	shellArgs, err := shlex.Split(shellPath)
@@ -572,13 +584,17 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, width, he
 		"LINER_SSH_VERSION="+version,
 		"USER="+currentUser.Username,
 		"HOME="+cmp.Or(h.Config.Home, currentUser.HomeDir),
-		"SHELL="+shellPath,
+		"SHELL="+shell.Args[0],
 	)
-	if runtime.GOOS == "darwin" && shellPath == "/bin/bash" {
+	if runtime.GOOS == "darwin" && shell.Args[0] == "/bin/bash" {
 		shell.Env = append(shell.Env, "BASH_SILENCE_DEPRECATION_WARNING=1")
 	}
 	if data, err := os.ReadFile(h.Config.EnvFile); err == nil {
-		for line := range strings.Lines(string(data)) {
+		text, err := eval(string(data))
+		if err != nil {
+			return nil, err
+		}
+		for line := range strings.Lines(text) {
 			line = strings.TrimSpace(line)
 			parts := strings.SplitN(line, "=", 2)
 			if strings.HasPrefix(line, "#") || len(parts) != 2 || strings.TrimSpace(parts[0]) == "" {
