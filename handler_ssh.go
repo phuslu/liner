@@ -576,19 +576,23 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, width, he
 	}
 
 	shell := exec.CommandContext(ctx, shellArgs[0], shellArgs[1:]...)
-	if runtime.GOOS == "linux" && (shell.Args[0] == "bash" || strings.HasSuffix(shell.Args[0], "/bash")) {
-		shell.Args[0] = "-bash"
-	}
 	shell.Dir = os.ExpandEnv(cmp.Or(h.Config.Home, currentUser.HomeDir))
+	switch runtime.GOOS {
+	case "linux":
+		if shell.Args[0] == "bash" || strings.HasSuffix(shell.Args[0], "/bash") {
+			shell.Args[0] = "-bash"
+		}
+	case "darwin":
+		if shell.Args[0] == "/bin/bash" {
+			shell.Env = append(shell.Env, "BASH_SILENCE_DEPRECATION_WARNING=1")
+		}
+	}
 	shell.Env = append(shell.Env,
 		"LINER_SSH_VERSION="+version,
 		"USER="+currentUser.Username,
 		"HOME="+cmp.Or(h.Config.Home, currentUser.HomeDir),
-		"SHELL="+shell.Args[0],
+		"SHELL="+shellArgs[0],
 	)
-	if runtime.GOOS == "darwin" && shell.Args[0] == "/bin/bash" {
-		shell.Env = append(shell.Env, "BASH_SILENCE_DEPRECATION_WARNING=1")
-	}
 	if data, err := os.ReadFile(h.Config.EnvFile); err == nil {
 		text, err := eval(string(data))
 		if err != nil {
