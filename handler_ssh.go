@@ -215,7 +215,10 @@ func (h *SshHandler) Load() error {
 	if h.shellPath == "" {
 		h.shellPath = "/bin/sh"
 	}
-	if c := h.shellPath[0]; c != '/' && c != '$' {
+	switch h.shellPath[0] {
+	case '/', '$', '{':
+		break
+	default:
 		if _, err := exec.LookPath(h.shellPath); err != nil {
 			return fmt.Errorf("invalid shell path: %w", err)
 		}
@@ -535,16 +538,34 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, width, he
 		return nil, err
 	}
 
-	shell := exec.CommandContext(ctx, shellPath)
-	if runtime.GOOS == "linux" && (shellPath == "bash" || strings.HasSuffix(shellPath, "/bash")) {
-		shell.Args[0] = "-bash"
-	}
-	if s := envs["LINER_SSH_SHELL"]; s != "" {
-		args, err := shlex.Split(s)
+	if strings.Contains(shellPath, "{{") {
+		shellTemplate, err := template.New(shellPath).Funcs(h.Functions).Parse(shellPath)
 		if err != nil {
 			return nil, err
 		}
-		shell = exec.CommandContext(ctx, args[0], args[1:]...)
+
+		var sb strings.Builder
+		err = shellTemplate.Execute(&sb, struct {
+			User *user.User
+			Env  map[string]string
+		}{
+			User: currentUser,
+			Env:  envs,
+		})
+		if err != nil {
+			return nil, err
+		}
+		shellPath = strings.TrimSpace(sb.String())
+	}
+
+	shellArgs, err := shlex.Split(shellPath)
+	if err != nil {
+		return nil, err
+	}
+
+	shell := exec.CommandContext(ctx, shellArgs[0], shellArgs[1:]...)
+	if runtime.GOOS == "linux" && (shell.Args[0] == "bash" || strings.HasSuffix(shell.Args[0], "/bash")) {
+		shell.Args[0] = "-bash"
 	}
 	shell.Dir = os.ExpandEnv(cmp.Or(h.Config.Home, currentUser.HomeDir))
 	shell.Env = append(shell.Env,
