@@ -12,30 +12,43 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 )
 
-func gosh(stdin io.Reader, stdout, stderr io.Writer) error {
-	ctx, _ := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.Writer) error {
+	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer cancel()
 
-	r, err := interp.New(interp.Interactive(true), interp.StdIO(stdin, stdout, stderr))
+	parser := syntax.NewParser()
+
+	runner, err := interp.New(interp.Interactive(true), interp.StdIO(stdin, stdout, stderr))
 	if err != nil {
 		return err
 	}
 
-	parser := syntax.NewParser()
-	fmt.Fprintf(stdout, "$ ")
+	prompt := "$"
+	if os.Geteuid() == 0 {
+		prompt = "#"
+	}
 
-	parser.Interactive(stdin, func(stmts []*syntax.Stmt) bool {
-		for _, stmt := range stmts {
-			err := r.Run(ctx, stmt)
-			if err != nil {
-				fmt.Fprintln(stdout, err.Error())
+	if isatty {
+		fmt.Fprint(stdout, prompt+" ")
+		return parser.Interactive(stdin, func(stmts []*syntax.Stmt) bool {
+			for _, stmt := range stmts {
+				err := runner.Run(ctx, stmt)
+				if err != nil {
+					fmt.Fprintln(stdout, err.Error())
+				}
+				if runner.Exited() {
+					return false
+				}
 			}
-			if r.Exited() {
-				return false
-			}
+			fmt.Fprint(stdout, prompt+" ")
+			return true
+		})
+	} else {
+		prog, err := parser.Parse(stdin, "")
+		if err != nil {
+			return err
 		}
-		fmt.Fprintf(stdout, "$ ")
-		return true
-	})
-
-	return nil
+		runner.Reset()
+		return runner.Run(ctx, prog)
+	}
 }
