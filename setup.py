@@ -23,8 +23,8 @@ system('rm -rf build dist liner liner.egg-info') == 0
 system(f'{go} build -v -trimpath -ldflags="{go_ldflags}" -buildmode=c-shared -o liner/libliner.so ..') == 0
 system('ln -sf ../../start.c.in liner/start.c') == 0
 system('ln -sf ../../README.md liner/README.md') == 0
-open('liner/__init__.py', 'wb').write(b'')
-open('liner/__main__.py', 'wb').write(b'from . import liner\nliner.start()')
+open('liner/__init__.py', 'wb').write(b'from .liner import start')
+open('liner/__main__.py', 'wb').write(b'from .liner import start\nstart()')
 
 liner_extension = setuptools.Extension(
     'liner.liner',
