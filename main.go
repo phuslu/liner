@@ -48,6 +48,11 @@ var (
 )
 
 func main() {
+	if os.Getenv("GOSH") == "1" {
+		gosh(os.Stdin, os.Stdout, os.Stderr)
+		return
+	}
+
 	filename := "-"
 	if env := os.Getenv("ENV"); env != "" {
 		name := env + ".yaml"
