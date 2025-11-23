@@ -570,13 +570,28 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, width, he
 		return nil, err
 	}
 
-	shellArgs, err := shlex.Split(shellPath)
-	if err != nil {
-		return nil, err
+	var shell *exec.Cmd
+	if shellPath == "$" {
+		shell = exec.CommandContext(ctx, os.Args[0], os.Args[1:]...)
+		shell.Env = append(shell.Env,
+			"GOSH=1",
+			"PATH="+os.Getenv("PATH"),
+		)
+	} else {
+		shellArgs, err := shlex.Split(shellPath)
+		if err != nil {
+			return nil, err
+		}
+		shell = exec.CommandContext(ctx, shellArgs[0], shellArgs[1:]...)
+		shell.Dir = os.ExpandEnv(cmp.Or(h.Config.Home, currentUser.HomeDir))
 	}
 
-	shell := exec.CommandContext(ctx, shellArgs[0], shellArgs[1:]...)
-	shell.Dir = os.ExpandEnv(cmp.Or(h.Config.Home, currentUser.HomeDir))
+	shell.Env = append(shell.Env,
+		"LINER_SSH_VERSION="+version,
+		"USER="+currentUser.Username,
+		"HOME="+cmp.Or(h.Config.Home, currentUser.HomeDir),
+		"SHELL="+shell.Args[0],
+	)
 	switch runtime.GOOS {
 	case "linux":
 		if shell.Args[0] == "bash" || strings.HasSuffix(shell.Args[0], "/bash") {
@@ -587,12 +602,6 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, width, he
 			shell.Env = append(shell.Env, "BASH_SILENCE_DEPRECATION_WARNING=1")
 		}
 	}
-	shell.Env = append(shell.Env,
-		"LINER_SSH_VERSION="+version,
-		"USER="+currentUser.Username,
-		"HOME="+cmp.Or(h.Config.Home, currentUser.HomeDir),
-		"SHELL="+shellArgs[0],
-	)
 	if data, err := os.ReadFile(h.Config.EnvFile); err == nil {
 		text, err := eval(string(data))
 		if err != nil {
