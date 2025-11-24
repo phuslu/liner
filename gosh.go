@@ -18,9 +18,28 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 
 	parser := syntax.NewParser()
 
-	runner, err := interp.New(interp.Interactive(true), interp.StdIO(stdin, stdout, stderr))
+	runner, err := interp.New(
+		interp.Interactive(true),
+		interp.StdIO(stdin, stdout, stderr),
+	)
 	if err != nil {
 		return err
+	}
+
+	if filename := os.Getenv("GOSH_ENV"); filename != "" {
+		if file, err := os.Open(filename); err == nil {
+			prog, err := parser.Parse(file, filename)
+			if err != nil {
+				fmt.Fprintln(stderr, "failed to parse ", filename, ":", err)
+			} else {
+				if err := runner.Run(ctx, prog); err != nil {
+					fmt.Fprintln(stderr, "failed to run ", filename, ":", err)
+				}
+			}
+			file.Close()
+		} else {
+			fmt.Fprintln(stderr, "failed to open ", filename, ":", err)
+		}
 	}
 
 	prompt := "$"
