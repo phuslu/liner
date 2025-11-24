@@ -331,6 +331,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 	log.Info().Context(ri.LogContext).Str("req_method", req.Method).Str("req_host", req.Host).Str("geosite", geosite.Site).Any("req_header", req.Header).Str("username", ri.ProxyUserInfo.Username).Any("user_attrs", ri.ProxyUserInfo.Attrs).Str("forward_policy_name", policyName).Str("forward_dialer_value", dialerValue).Str("http_domain", domain).Int64("speed_limit", speedLimit).Msg("forward request")
 
 	var dialerName = dialerValue
+	var disableIPv6 = h.Config.Forward.DisableIpv6
 	var preferIPv6 = h.Config.Forward.PreferIpv6
 	if strings.Contains(dialerValue, "=") {
 		u, err := url.ParseQuery(dialerValue)
@@ -339,6 +340,9 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			return
 		}
 		dialerName = u.Get("dialer")
+		if s := u.Get("disable_ipv6"); s != "" {
+			disableIPv6, _ = strconv.ParseBool(s)
+		}
 		if s := u.Get("prefer_ipv6"); s != "" {
 			preferIPv6, _ = strconv.ParseBool(s)
 		}
@@ -364,7 +368,10 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		}
 
 		ctx := req.Context()
-		if preferIPv6 {
+		switch {
+		case disableIPv6:
+			ctx = context.WithValue(ctx, DialerDisableIPv6ContextKey, struct{}{})
+		case preferIPv6:
 			ctx = context.WithValue(ctx, DialerPreferIPv6ContextKey, struct{}{})
 		}
 		if h.MemoryDialers != nil {

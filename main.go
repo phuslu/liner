@@ -205,6 +205,7 @@ func main() {
 		Logger:          slog.Default(),
 		Resolver:        resolver.Resolver,
 		Concurrency:     2,
+		DisableIPv6:     false,
 		PerferIPv6:      false,
 		ForbidLocalAddr: config.Global.ForbidLocalAddr,
 		ReadBuffSize:    config.Global.DialReadBuffer,

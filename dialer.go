@@ -24,6 +24,7 @@ type DialerContextKey struct {
 
 var (
 	DialerHTTPHeaderContextKey    any = &DialerContextKey{"dailer-http-header"}
+	DialerDisableIPv6ContextKey   any = &DialerContextKey{"dailer-disable-ipv6"}
 	DialerPreferIPv6ContextKey    any = &DialerContextKey{"dailer-prefer-ipv6"}
 	DialerMemoryDialersContextKey any = &DialerContextKey{"dailer-memory-dialers"}
 )
@@ -37,6 +38,7 @@ type LocalDialer struct {
 	Resolver *Resolver
 
 	Interface       string
+	DisableIPv6     bool
 	PerferIPv6      bool
 	ForbidLocalAddr bool
 	Concurrency     int
@@ -92,7 +94,12 @@ func (d *LocalDialer) dialContext(ctx context.Context, network, address string, 
 	}
 
 	var ip4 []netip.Addr
-	if d.PerferIPv6 || ctx.Value(DialerPreferIPv6ContextKey) != nil {
+	switch {
+	case d.DisableIPv6 || ctx.Value(DialerDisableIPv6ContextKey) != nil:
+		if i := slices.IndexFunc(ips, func(a netip.Addr) bool { return a.Is6() }); i > 0 {
+			ips, ip4 = ips[i:], nil
+		}
+	case d.PerferIPv6 || ctx.Value(DialerPreferIPv6ContextKey) != nil:
 		if i := slices.IndexFunc(ips, func(a netip.Addr) bool { return a.Is6() }); i > 0 {
 			ips, ip4 = ips[i:], ips[:i]
 		}
