@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"strconv"
 	"strings"
 	"text/template"
@@ -175,6 +176,8 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 	log.Info().NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("server_addr", req.ServerAddr).Int("socks_version", int(req.Version)).Str("username", req.User.Username).Str("socks_host", req.Host).Msg("forward socks request")
 
 	var dialerName = h.Config.Forward.Dialer
+	var disableIPv6 = h.Config.Forward.DisableIpv6
+	var preferIPv6 = h.Config.Forward.PreferIpv6
 	dail := h.LocalDialer.DialContext
 	if h.dialer != nil {
 		bb.Reset()
@@ -189,6 +192,20 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 		}
 
 		if dialerName = strings.TrimSpace(bb.String()); dialerName != "" {
+			if strings.Contains(dialerName, "=") {
+				u, err := url.ParseQuery(dialerName)
+				if err != nil {
+					log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("forward_dialer_name", h.Config.Forward.Dialer).Msg("parse forward_dialer error")
+					return
+				}
+				dialerName = u.Get("dialer")
+				if s := u.Get("disable_ipv6"); s != "" {
+					disableIPv6, _ = strconv.ParseBool(s)
+				}
+				if s := u.Get("prefer_ipv6"); s != "" {
+					preferIPv6, _ = strconv.ParseBool(s)
+				}
+			}
 			u, ok := h.Dialers[dialerName]
 			if !ok {
 				log.Error().NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("forward_dialer_name", h.Config.Forward.Dialer).Str("dialer_name", dialerName).Msg("dialer not exists")
@@ -206,7 +223,13 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 
 	log.Info().NetIPAddrPort("server_addr", req.ServerAddr).Int("socks_version", int(req.Version)).Str("username", req.User.Username).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("socks_network", network).Str("socks_host", req.Host).Int("socks_port", req.Port).Str("forward_policy_name", policyName).Str("forward_dialer_name", dialerName).Msg("forward socks request")
 
-	ctx = context.WithValue(context.Background(), DialerHTTPHeaderContextKey, http.Header{
+	if preferIPv6 {
+		ctx = context.WithValue(ctx, DialerPreferIPv6ContextKey, struct{}{})
+	}
+	if disableIPv6 {
+		ctx = context.WithValue(ctx, DialerDisableIPv6ContextKey, struct{}{})
+	}
+	ctx = context.WithValue(ctx, DialerHTTPHeaderContextKey, http.Header{
 		"X-Forwarded-For":  []string{req.RemoteAddr.Addr().String()},
 		"X-Forwarded-User": []string{req.User.Username},
 	})
