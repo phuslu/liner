@@ -6,6 +6,7 @@ import (
 	"crypto/sha1"
 	"crypto/tls"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -333,7 +334,22 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 	var dialerName = dialerValue
 	var disableIPv6 = h.Config.Forward.DisableIpv6
 	var preferIPv6 = h.Config.Forward.PreferIpv6
-	if strings.Contains(dialerValue, "=") {
+	switch {
+	case strings.HasPrefix(dialerValue, "{\""):
+		var v struct {
+			Dialer      string `json:"dialer"`
+			DisableIPv6 bool   `json:"disable_ipv6"`
+			PreferIPv6  bool   `json:"prefer_ipv6"`
+		}
+		err := json.Unmarshal([]byte(dialerValue), &v)
+		if err != nil {
+			log.Error().Context(ri.LogContext).Err(err).Str("username", ri.ProxyUserInfo.Username).Str("forward_policy_name", policyName).Str("forward_dialer_value", dialerValue).Str("http_domain", domain).Msg("forward parse dialer json error")
+			return
+		}
+		dialerName = v.Dialer
+		disableIPv6 = v.DisableIPv6
+		preferIPv6 = v.PreferIPv6
+	case strings.Contains(dialerValue, "="):
 		u, err := url.ParseQuery(dialerValue)
 		if err != nil {
 			log.Error().Context(ri.LogContext).Err(err).Str("username", ri.ProxyUserInfo.Username).Str("forward_policy_name", policyName).Str("forward_dialer_value", dialerValue).Str("http_domain", domain).Msg("forward parse dialer json error")
