@@ -187,11 +187,6 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		}
 	}
 
-	// fix forward username
-	if xfu := req.Header.Get("x-forwarded-user"); xfu != "" && ri.ProxyUserInfo.Username != "" {
-		ri.ProxyUserInfo.Username = xfu + "@" + ri.ProxyUserInfo.Username
-	}
-
 	// fix remote ip
 	if xff := req.Header.Get("x-forwarded-for"); xff != "" {
 		if ri.ProxyUserInfo.Username != "" || ri.RemoteAddr.Addr().IsLoopback() {

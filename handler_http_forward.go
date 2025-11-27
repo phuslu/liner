@@ -468,6 +468,10 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		go io.Copy(conn, r)
 
 		if userLog {
+			username := ri.ProxyUserInfo.Username
+			if xfu := req.Header.Get("x-forwarded-user"); xfu != "" && username != "" {
+				username = xfu + "@" + username
+			}
 			w = &DataLogWriter{
 				Writer:     w,
 				DataLogger: h.DataLogger,
@@ -478,7 +482,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 					Str("tls_server_name", ri.TLSServerName).
 					Str("tls_version", ri.TLSVersion.String()).
 					Str("ja4", ri.JA4).
-					Str("username", ri.ProxyUserInfo.Username).
+					Str("username", username).
 					NetIPAddr("remote_ip", ri.RealIP).
 					Str("remote_country", ri.GeoIPInfo.Country).
 					Str("remote_city", ri.GeoIPInfo.City).
@@ -580,6 +584,10 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 
 		var w io.Writer = rw
 		if userLog {
+			username := ri.ProxyUserInfo.Username
+			if xfu := req.Header.Get("x-forwarded-user"); xfu != "" && username != "" {
+				username = xfu + "@" + username
+			}
 			w = &DataLogWriter{
 				Writer:     w,
 				DataLogger: h.DataLogger,
@@ -590,7 +598,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 					Str("tls_server_name", ri.TLSServerName).
 					Str("tls_version", ri.TLSVersion.String()).
 					Str("ja4", ri.JA4).
-					Str("username", ri.ProxyUserInfo.Username).
+					Str("username", username).
 					NetIPAddr("remote_ip", ri.RealIP).
 					Str("remote_country", ri.GeoIPInfo.Country).
 					Str("remote_city", ri.GeoIPInfo.City).
