@@ -77,9 +77,9 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialer string) (net.Listen
 		},
 	}
 
-	targetHost, targetPort, err := net.SplitHostPort(h.Config.Listen[0])
+	targetHost, targetPort, err := net.SplitHostPort(h.Config.RemoteListen[0])
 	if err != nil {
-		return nil, fmt.Errorf("invalid remote addr: %s", h.Config.Listen[0])
+		return nil, fmt.Errorf("invalid remote_listen addr: %s", h.Config.RemoteListen[0])
 	}
 
 	pr, pw := ringbuffer.New(8192).Pipe()
@@ -152,7 +152,7 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialer string) (net.Listen
 	}, nil)
 	if err != nil {
 		_ = conn.Close()
-		return nil, fmt.Errorf("tunnel: open yamux server on remote %s: %w", h.Config.Listen[0], err)
+		return nil, fmt.Errorf("tunnel: open yamux server on remote %s: %w", h.Config.RemoteListen[0], err)
 	}
 
 	return &TunnelListener{

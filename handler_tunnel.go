@@ -25,8 +25,8 @@ type TunnelHandler struct {
 }
 
 func (h *TunnelHandler) Load() error {
-	if len(h.Config.Listen) != 1 {
-		return fmt.Errorf("invalid tunnel listen: %v", h.Config.Listen)
+	if len(h.Config.RemoteListen) != 1 {
+		return fmt.Errorf("invalid tunnel remote listen: %v", h.Config.RemoteListen)
 	}
 	return nil
 }
@@ -50,14 +50,14 @@ func (h *TunnelHandler) Serve(ctx context.Context) {
 			log.Fatal().Str("dialer", dialer).Msg("dialer tunnel is unsupported")
 		}
 		if err != nil {
-			log.Error().Err(err).Msgf("Failed to listen %s", h.Config.Listen[0])
+			log.Error().Err(err).Msgf("Failed to listen remote %s", h.Config.RemoteListen[0])
 			time.Sleep(2 * time.Second)
 			return true
 		}
 
 		defer ln.Close()
 
-		log.Info().Msgf("Listening on remote %s", h.Config.Listen[0])
+		log.Info().Msgf("Listening on remote %s", h.Config.RemoteListen[0])
 
 		exit := make(chan error, 1)
 		go func() {

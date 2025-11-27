@@ -64,11 +64,11 @@ ssh:
     shell: /bin/bash
     log: true
 tunnel:
-  - listen: ['240.0.0.{{ $id }}:80']
+  - remote_listen: ['240.0.0.{{ $id }}:80']
     proxy_pass: '240.0.0.{{ $id }}:80'
     dialer: cloud
     dial_timeout: 5
-  - listen: ['240.0.0.{{ $id }}:22']
+  - remote_listen: ['240.0.0.{{ $id }}:22']
     proxy_pass: '240.0.0.{{ $id }}:22'
     dialer: cloud
     dial_timeout: 5

@@ -116,9 +116,9 @@ func (h *TunnelHandler) h1tunnel(ctx context.Context, dialer string) (net.Listen
 		conn = tlsConn
 	}
 
-	targetHost, targetPort, err := net.SplitHostPort(h.Config.Listen[0])
+	targetHost, targetPort, err := net.SplitHostPort(h.Config.RemoteListen[0])
 	if err != nil {
-		return nil, fmt.Errorf("invalid remote addr: %s", h.Config.Listen[0])
+		return nil, fmt.Errorf("invalid remote_listen addr: %s", h.Config.RemoteListen[0])
 	}
 
 	// see https://www.ietf.org/archive/id/draft-kazuho-httpbis-reverse-tunnel-00.html
@@ -178,7 +178,7 @@ func (h *TunnelHandler) h1tunnel(ctx context.Context, dialer string) (net.Listen
 	status := 0
 	n := bytes.IndexByte(b, ' ')
 	if n < 0 {
-		return nil, fmt.Errorf("tunnel: failed to tunnel %s via %s: %s", h.Config.Listen[0], conn.RemoteAddr().String(), bytes.TrimRight(b, "\x00"))
+		return nil, fmt.Errorf("tunnel: failed to tunnel remote %s via %s: %s", h.Config.RemoteListen[0], conn.RemoteAddr().String(), bytes.TrimRight(b, "\x00"))
 	}
 	for i, c := range b[n+1:] {
 		if i == 3 || c < '0' || c > '9' {
@@ -187,7 +187,7 @@ func (h *TunnelHandler) h1tunnel(ctx context.Context, dialer string) (net.Listen
 		status = status*10 + int(c-'0')
 	}
 	if status != http.StatusOK && status != http.StatusSwitchingProtocols {
-		return nil, fmt.Errorf("tunnel: failed to tunnel %s via %s: %s", h.Config.Listen[0], conn.RemoteAddr().String(), bytes.TrimRight(b, "\x00"))
+		return nil, fmt.Errorf("tunnel: failed to tunnel remote %s via %s: %s", h.Config.RemoteListen[0], conn.RemoteAddr().String(), bytes.TrimRight(b, "\x00"))
 	}
 
 	ln, err := yamux.Server(conn, &yamux.Config{
@@ -207,7 +207,7 @@ func (h *TunnelHandler) h1tunnel(ctx context.Context, dialer string) (net.Listen
 	}, nil)
 	if err != nil {
 		_ = conn.Close()
-		return nil, fmt.Errorf("tunnel: open yamux server on remote %s: %w", h.Config.Listen[0], err)
+		return nil, fmt.Errorf("tunnel: open yamux server on remote %s: %w", h.Config.RemoteListen[0], err)
 	}
 
 	return &TunnelListener{

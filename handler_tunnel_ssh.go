@@ -24,12 +24,12 @@ func (h *TunnelHandler) sshtunnel(ctx context.Context, dialer string) (net.Liste
 		return nil, fmt.Errorf("no user info in dialer: %s", dialer)
 	}
 
-	if addrport, err := netip.ParsePrefix(h.Config.Listen[0]); err == nil {
+	if addrport, err := netip.ParsePrefix(h.Config.RemoteListen[0]); err == nil {
 		if DailerReservedIPPrefix.Contains(addrport.Addr()) {
-			return nil, fmt.Errorf("invalid listen address in ssh tunnel: %s", h.Config.Listen[0])
+			return nil, fmt.Errorf("invalid listen_remote address in ssh tunnel: %s", h.Config.RemoteListen[0])
 		}
 	} else {
-		return nil, fmt.Errorf("invalid listen address in ssh tunnel: %s", h.Config.Listen[0])
+		return nil, fmt.Errorf("invalid listen_remote address in ssh tunnel: %s", h.Config.RemoteListen[0])
 	}
 
 	config := &ssh.ClientConfig{
@@ -78,11 +78,11 @@ func (h *TunnelHandler) sshtunnel(ctx context.Context, dialer string) (net.Liste
 	client := ssh.NewClient(c, chans, reqs)
 
 	// Set up the remote listener
-	ln, err := client.Listen("tcp", h.Config.Listen[0])
+	ln, err := client.Listen("tcp", h.Config.RemoteListen[0])
 	if err != nil {
-		log.Error().Err(err).Msgf("failed to listen %s", h.Config.Listen[0])
+		log.Error().Err(err).Msgf("failed to remote listen %s", h.Config.RemoteListen[0])
 		client.Close()
-		return nil, fmt.Errorf("failed to dial %s: %w", h.Config.Listen[0], err)
+		return nil, fmt.Errorf("failed to dial remote %s: %w", h.Config.RemoteListen[0], err)
 	}
 
 	if tc, _ := conn.(*net.TCPConn); conn != nil && h.Config.SpeedLimit > 0 {

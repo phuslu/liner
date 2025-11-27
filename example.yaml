@@ -209,7 +209,7 @@ stream:
     proxy_pass: github.com:443
     dialer: proxy1
 tunnel:
-  - listen: ['127.0.0.1:10022']
+  - remote_listen: ['127.0.0.1:10022']
     proxy_pass: '192.168.50.1:22'
     resolver: https://8.8.8.8/dns-query
     dialer: cloud

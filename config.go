@@ -117,7 +117,7 @@ type StreamConfig struct {
 }
 
 type TunnelConfig struct {
-	Listen          []string `json:"listen" yaml:"listen"`
+	RemoteListen    []string `json:"remote_listen" yaml:"remote_listen"`
 	ProxyPass       string   `json:"proxy_pass" yaml:"proxy_pass"`
 	Resolver        string   `json:"resolver" yaml:"resolver"`
 	DialTimeout     int      `json:"dial_timeout" yaml:"dial_timeout"`
@@ -296,8 +296,8 @@ func NewConfig(filename string) (*Config, error) {
 		config.Socks[i].Forward.Dialer = read(config.Socks[i].Forward.Dialer)
 	}
 	for i := range config.Tunnel {
-		if len(config.Tunnel[i].Listen) != 1 && config.Tunnel[i].Listen[0] == "" {
-			return nil, fmt.Errorf("invalid tunnel listen=%v", config.Tunnel[i].Listen)
+		if len(config.Tunnel[i].RemoteListen) != 1 && config.Tunnel[i].RemoteListen[0] == "" {
+			return nil, fmt.Errorf("invalid tunnel remote_listen=%v", config.Tunnel[i].RemoteListen)
 		}
 	}
 
