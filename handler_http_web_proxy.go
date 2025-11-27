@@ -270,6 +270,10 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		h.setHeaders(req, ri)
 	}
 
+	if req.TLS != nil && req.TLS.ServerName != "" && strings.HasPrefix(req.Host, "127.") {
+		req.Host = req.TLS.ServerName
+	}
+
 	if req.ProtoAtLeast(3, 0) && req.Method == http.MethodGet {
 		req.Body, req.ContentLength = nil, 0
 	}
