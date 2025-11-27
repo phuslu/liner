@@ -98,6 +98,8 @@ func (d *LocalDialer) dialContext(ctx context.Context, network, address string, 
 	case d.DisableIPv6 || ctx.Value(DialerDisableIPv6ContextKey) != nil:
 		if i := slices.IndexFunc(ips, func(a netip.Addr) bool { return a.Is6() }); i > 0 {
 			ips, ip4 = ips[:i], nil
+		} else {
+			return nil, net.InvalidAddrError("disable_ipv6 is enforced to " + host)
 		}
 	case d.PerferIPv6 || ctx.Value(DialerPreferIPv6ContextKey) != nil:
 		if i := slices.IndexFunc(ips, func(a netip.Addr) bool { return a.Is6() }); i > 0 {
