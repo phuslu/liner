@@ -8,7 +8,7 @@ require (
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
 	github.com/libp2p/go-yamux/v5 v5.1.0
 	github.com/mileusna/useragent v1.3.5
-	github.com/oschwald/maxminddb-golang/v2 v2.1.0
+	github.com/oschwald/maxminddb-golang/v2 v2.1.1
 	github.com/phuslu/fastcgi v0.0.0-20231004164338-7aec0d4ba593
 	github.com/phuslu/fastdns v0.16.2
 	github.com/phuslu/geosite v1.0.20250901
@@ -16,7 +16,7 @@ require (
 	github.com/phuslu/lru v1.0.18
 	github.com/pkg/sftp v1.13.10
 	github.com/puzpuzpuz/xsync/v4 v4.2.0
-	github.com/quic-go/quic-go v0.57.0
+	github.com/quic-go/quic-go v0.57.1
 	github.com/refraction-networking/utls v1.8.1
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/smallnest/ringbuffer v0.0.0-20250317021400-0da97b586904
