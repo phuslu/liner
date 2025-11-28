@@ -17,4 +17,4 @@ build/
 dist/
 lego/
 pki/
-pycache/
+__pycache__/
