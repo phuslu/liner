@@ -404,10 +404,22 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			} else {
 				header.Set("x-forwarded-user", ri.ProxyUserInfo.Username)
 			}
+			if s := header.Get("x-forwarded-useragent"); s != "" {
+				header.Set("x-forwarded-useragent", s+","+ri.UserAgent.String)
+			} else {
+				header.Set("x-forwarded-useragent", ri.UserAgent.String)
+			}
+			if s := header.Get("x-forwarded-ja4"); s != "" {
+				header.Set("x-forwarded-ja4", s+","+ri.JA4)
+			} else {
+				header.Set("x-forwarded-ja4", ri.JA4)
+			}
 		} else {
 			ctx = context.WithValue(ctx, DialerHTTPHeaderContextKey, http.Header{
-				"x-forwarded-for":  []string{ri.RemoteAddr.Addr().String()},
-				"x-forwarded-user": []string{ri.ProxyUserInfo.Username},
+				"x-forwarded-for":       []string{ri.RemoteAddr.Addr().String()},
+				"x-forwarded-user":      []string{ri.ProxyUserInfo.Username},
+				"x-forwarded-useragent": []string{ri.UserAgent.String},
+				"x-forwarded-ja4":       []string{ri.JA4},
 			})
 		}
 		network := cmp.Or(req.Header.Get("x-forwarded-network"), "tcp")
