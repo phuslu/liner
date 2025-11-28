@@ -1,0 +1,18 @@
+[Unit]                                                                                                                                                                                                                                      
+Wants=network-online.target
+After=network.target network-online.target local-fs.target
+Description=a protocol liner
+
+[Service]
+Type=simple
+KillMode=process
+Restart=on-failure
+WorkingDirectory=/home/phuslu/liner
+ExecStartPre=/bin/sh -c 'sudo setcap "cap_net_bind_service,cap_setuid,cap_setgid=eip" liner'
+ExecStart=/home/phuslu/liner/liner %i.yaml
+User=phuslu
+Group=phuslu
+LimitNOFILE=1048576
+ 
+[Install]
+WantedBy=multi-user.target
