@@ -199,6 +199,11 @@ socks:
         {{else}}
           reject
         {{end}}
+redsocks:
+  - listen: ['0.0.0.0:12345']
+    forward:
+      log: true
+      dialer: proxy1
 stream:
   - listen: [':853']
     keyfile: certs/example.org+rsa
