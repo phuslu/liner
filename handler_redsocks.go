@@ -54,13 +54,13 @@ func (h *RedsocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 
 	tc, ok := conn.(*net.TCPConn)
 	if !ok {
-		log.Error().NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Msg("failed to convert remote connection to tcp connection")
+		log.Error().Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Msg("failed to convert remote connection to tcp connection")
 		return
 	}
 
 	addrport, err := (ConnOps{tc, nil}).GetOriginalDST()
 	if err != nil {
-		log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Msg("failed to get original dst from remote tcp connection")
+		log.Error().Err(err).Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Msg("failed to get original dst from remote tcp connection")
 		return
 	}
 	req.Host, req.Port = addrport.Addr().String(), addrport.Port()
@@ -73,7 +73,7 @@ func (h *RedsocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 			ServerAddr netip.AddrPort
 		}{req, req.ServerAddr})
 		if err != nil {
-			log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", addrport).Msg("failed to eval dialer template")
+			log.Error().Err(err).Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", addrport).Msg("failed to eval dialer template")
 			return
 		}
 		dialerName = sb.String()
@@ -83,7 +83,7 @@ func (h *RedsocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 	var dialer Dialer
 	if dialerName != "" {
 		if d, ok := h.Dialers[dialerName]; !ok {
-			log.Error().NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", addrport).Str("forward_dialer_name", h.Config.Forward.Dialer).Str("dialer_name", dialerName).Msg("dialer not exists")
+			log.Error().Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", addrport).Str("forward_dialer_name", h.Config.Forward.Dialer).Str("dialer_name", dialerName).Msg("dialer not exists")
 			return
 		} else {
 			dialer = d
@@ -97,7 +97,7 @@ func (h *RedsocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 	})
 	rconn, err := dialer.DialContext(ctx, "tcp", addrport.String())
 	if err != nil {
-		log.Error().NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", addrport).Str("forward_dialer_name", h.Config.Forward.Dialer).Str("dialer_name", dialerName).Msg("dialer not exists")
+		log.Error().Err(err).Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", addrport).Str("forward_dialer_name", h.Config.Forward.Dialer).Str("dialer_name", dialerName).Msg("dial host error")
 		if rconn != nil {
 			rconn.Close()
 		}
