@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -317,6 +318,12 @@ func NewConfig(filename string) (*Config, error) {
 	for _, server := range config.Https {
 		if server.PSK != "" {
 			return nil, fmt.Errorf("invalid psk option in https handler: server_name=%#v, psk=%#v", server.ServerName, server.PSK)
+		}
+	}
+
+	if len(config.Redsocks) > 0 {
+		if runtime.GOOS != "linux" {
+			return nil, fmt.Errorf("invalid runtime GOOS with redsocks handler: %#v", runtime.GOOS)
 		}
 	}
 

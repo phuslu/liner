@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"net/netip"
 	"syscall"
 )
 
@@ -41,6 +42,10 @@ type TCPInfo struct{}
 
 func (ops ConnOps) GetTcpInfo() (*TCPInfo, error) {
 	return nil, errors.ErrUnsupported
+}
+
+func (ops ConnOps) GetOriginalDST() (addrport netip.AddrPort, err error) {
+	return netip.AddrPort{}, errors.ErrUnsupported
 }
 
 func (ops ConnOps) SetTcpCongestion(name string, values ...any) error {
