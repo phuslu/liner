@@ -104,6 +104,15 @@ type SocksConfig struct {
 	} `json:"forward" yaml:"forward"`
 }
 
+type RedsocksConfig struct {
+	Listen  []string `json:"listen" yaml:"listen"`
+	Forward struct {
+		Policy string `json:"policy" yaml:"policy"`
+		Dialer string `json:"dialer" yaml:"dialer"`
+		Log    bool   `json:"log" yaml:"log"`
+	} `json:"forward" yaml:"forward"`
+}
+
 type StreamConfig struct {
 	Listen        []string `json:"listen" yaml:"listen"`
 	Keyfile       string   `json:"keyfile" yaml:"keyfile"`
