@@ -107,7 +107,6 @@ type SocksConfig struct {
 type RedsocksConfig struct {
 	Listen  []string `json:"listen" yaml:"listen"`
 	Forward struct {
-		Policy string `json:"policy" yaml:"policy"`
 		Dialer string `json:"dialer" yaml:"dialer"`
 		Log    bool   `json:"log" yaml:"log"`
 	} `json:"forward" yaml:"forward"`
@@ -193,15 +192,16 @@ type Config struct {
 		Spec    string `json:"spec" yaml:"spec"`
 		Command string `json:"command" yaml:"command"`
 	} `json:"cron" yaml:"cron"`
-	Dialer map[string]string `json:"dialer" yaml:"dialer"`
-	Sni    SniConfig         `json:"sni" yaml:"sni"`
-	Https  []HTTPConfig      `json:"https" yaml:"https"`
-	Http   []HTTPConfig      `json:"http" yaml:"http"`
-	Socks  []SocksConfig     `json:"socks" yaml:"socks"`
-	Tunnel []TunnelConfig    `json:"tunnel" yaml:"tunnel"`
-	Stream []StreamConfig    `json:"stream" yaml:"stream"`
-	Ssh    []SshConfig       `json:"ssh" yaml:"ssh"`
-	Dns    []DnsConfig       `json:"dns" yaml:"dns"`
+	Dialer   map[string]string `json:"dialer" yaml:"dialer"`
+	Sni      SniConfig         `json:"sni" yaml:"sni"`
+	Https    []HTTPConfig      `json:"https" yaml:"https"`
+	Http     []HTTPConfig      `json:"http" yaml:"http"`
+	Socks    []SocksConfig     `json:"socks" yaml:"socks"`
+	Redsocks []RedsocksConfig  `json:"redsocks" yaml:"redsocks"`
+	Tunnel   []TunnelConfig    `json:"tunnel" yaml:"tunnel"`
+	Stream   []StreamConfig    `json:"stream" yaml:"stream"`
+	Ssh      []SshConfig       `json:"ssh" yaml:"ssh"`
+	Dns      []DnsConfig       `json:"dns" yaml:"dns"`
 }
 
 func NewConfig(filename string) (*Config, error) {

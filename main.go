@@ -800,6 +800,44 @@ func main() {
 		}
 	}
 
+	// redsocks handler
+	for _, redsocksConfig := range config.Redsocks {
+		for _, addr := range redsocksConfig.Listen {
+			var ln net.Listener
+
+			if ln, err = lc.Listen(context.Background(), "tcp", addr); err != nil {
+				log.Fatal().Err(err).Str("address", addr).Msg("net.Listen error")
+			}
+
+			log.Info().Str("version", version).NetAddr("address", ln.Addr()).Msg("liner listen and serve redsocks")
+
+			h := &RedsocksHandler{
+				Config:      redsocksConfig,
+				DataLogger:  dataLogger,
+				GeoResolver: resolver,
+				LocalDialer: dialer,
+				Dialers:     dialers,
+				Functions:   functions.FuncMap(),
+			}
+
+			if err = h.Load(); err != nil {
+				log.Fatal().Err(err).Str("address", addr).Msg("redsocks handler load error")
+			}
+
+			go func(ln net.Listener, h *RedsocksHandler) {
+				for {
+					conn, err := ln.Accept()
+					if err != nil {
+						log.Error().Err(err).Str("version", version).NetAddr("address", ln.Addr()).Msg("liner accept redsocks connection error")
+						time.Sleep(10 * time.Millisecond)
+						continue
+					}
+					go h.ServeConn(context.Background(), conn)
+				}
+			}(ln, h)
+		}
+	}
+
 	// stream handler
 	for _, streamConfig := range config.Stream {
 		for _, addr := range streamConfig.Listen {
