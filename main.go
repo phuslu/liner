@@ -1026,12 +1026,10 @@ func main() {
 		SetProcessName(name)
 	}
 
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, syscall.SIGTERM)
-	signal.Notify(c, syscall.SIGINT)
-	signal.Notify(c, syscall.SIGHUP)
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
+	defer cancel()
 
-	<-c
+	<-ctx.Done()
 
 	log.Info().Msg("liner flush logs and exit.")
 	for _, w := range []log.Writer{
