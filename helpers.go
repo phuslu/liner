@@ -1215,7 +1215,7 @@ func AddrPortFromNetAddr(addr net.Addr) (addrport netip.AddrPort) {
 		addrport, _ = netip.ParseAddrPort(v.String())
 	}
 	if addr := addrport.Addr(); addr.Is4In6() {
-		addrport = netip.AddrPortFrom(netip.AddrFrom4(addr.As4()), addrport.Port())
+		addrport = netip.AddrPortFrom(addr.Unmap(), addrport.Port())
 	}
 	return
 }

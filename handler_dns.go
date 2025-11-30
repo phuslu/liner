@@ -74,16 +74,19 @@ func (h *DnsHandler) Load() error {
 func (h *DnsHandler) Serve(ctx context.Context, conn *net.UDPConn) {
 	defer conn.Close()
 
-	laddr, _ := netip.ParseAddrPort(conn.LocalAddr().String())
+	laddr := AddrPortFromNetAddr(conn.LocalAddr())
 
 	for {
 		req := drPool.Get().(*DnsRequest)
 
 		req.Message.Raw = req.Message.Raw[:cap(req.Message.Raw)]
-		n, addr, err := conn.ReadFromUDPAddrPort(req.Message.Raw)
+		n, addrport, err := conn.ReadFromUDPAddrPort(req.Message.Raw)
 		if err != nil {
 			log.Error().Err(err).NetIPAddrPort("local_addr", laddr).Msg("dns read from udp error")
 			continue
+		}
+		if addr := addrport.Addr(); addr.Is4In6() {
+			addrport = netip.AddrPortFrom(addr.Unmap(), addrport.Port())
 		}
 		req.Message.Raw = req.Message.Raw[:n]
 		req.PolicyBuffer.Reset()
@@ -91,7 +94,7 @@ func (h *DnsHandler) Serve(ctx context.Context, conn *net.UDPConn) {
 		req.Proto = "dns"
 		req.QType = ""
 		req.LocalAddr = laddr
-		req.RemoteAddr = addr
+		req.RemoteAddr = addrport
 		rw := dnsResponseWriter{conn, req.LocalAddr, req.RemoteAddr}
 
 		go h.ServeDNS(ctx, rw, req)
@@ -101,7 +104,7 @@ func (h *DnsHandler) Serve(ctx context.Context, conn *net.UDPConn) {
 func (h *DnsHandler) ServeTCP(ctx context.Context, ln net.Listener) {
 	defer ln.Close()
 
-	laddr, _ := netip.ParseAddrPort(ln.Addr().String())
+	laddr := AddrPortFromNetAddr(ln.Addr())
 
 	for {
 		conn, err := ln.Accept()
@@ -111,7 +114,7 @@ func (h *DnsHandler) ServeTCP(ctx context.Context, ln net.Listener) {
 		}
 
 		go func(ctx context.Context, conn net.Conn) {
-			raddr, _ := netip.ParseAddrPort(conn.RemoteAddr().String())
+			raddr := AddrPortFromNetAddr(conn.RemoteAddr())
 			br := bufio.NewReader(conn)
 			for {
 				var n uint16
