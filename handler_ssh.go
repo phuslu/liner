@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"path/filepath"
 	"reflect"
 	"runtime"
 	"slices"
@@ -572,7 +573,17 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, width, he
 
 	var shell *exec.Cmd
 	if shellPath == "$" {
-		shell = exec.CommandContext(ctx, os.Args[0], os.Args[1:]...)
+		args0 := os.Args[0]
+		if runtime.GOOS == "windows" {
+			args0, err = filepath.Abs(args0)
+			if err != nil {
+				return nil, err
+			}
+			if !strings.HasSuffix(args0, ".exe") {
+				args0 += ".exe"
+			}
+		}
+		shell = exec.CommandContext(ctx, args0, os.Args[1:]...)
 		shell.Env = append(shell.Env,
 			"GOSH=1",
 			"PATH="+os.Getenv("PATH"),
@@ -664,5 +675,7 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, width, he
 		once.Do(close)
 	}()
 
-	return file, nil
+	result, _ := file.(*os.File)
+
+	return result, nil
 }

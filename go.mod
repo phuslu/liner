@@ -39,3 +39,5 @@ require (
 	golang.org/x/term v0.37.0 // indirect
 	golang.org/x/text v0.31.0 // indirect
 )
+
+replace github.com/creack/pty v1.1.24 => github.com/photostorm/pty v1.1.19-0.20230903182454-31354506054b
