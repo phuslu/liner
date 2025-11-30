@@ -1,9 +1,13 @@
+"""Build a Python wheel for the liner Go shared library."""
+# pylint: disable=too-many-statements, line-too-long, C0103
+
 import os
 import platform
 import setuptools
 
 
 def system(cmd):
+    """os.system with echo"""
     print(cmd)
     assert os.system(cmd) == 0
 
@@ -19,12 +23,15 @@ go = 'garble -literals -tiny -seed=o9WDTZ4CN4w' if os.getenv('GOGARBLE') else 'g
 go_ldflags = f'-s -w -X main.version={revsion}'
 go_ldflags = go_ldflags + " -linkmode external -extldflags '-Wl,-install_name,@rpath/libliner.so'" if is_darwin else go_ldflags
 
-system('rm -rf build dist liner liner.egg-info') == 0
-system(f'{go} build -v -trimpath -ldflags="{go_ldflags}" -buildmode=c-shared -o liner/libliner.so ..') == 0
-system('ln -sf ../../start.c.in liner/start.c') == 0
-system('ln -sf ../../README.md liner/README.md') == 0
-open('liner/__init__.py', 'wb').write(b'from .liner import start')
-open('liner/__main__.py', 'wb').write(b'from .liner import start\nstart()')
+system('rm -rf build dist liner liner.egg-info')
+system(f'{go} build -v -trimpath -ldflags="{go_ldflags}" -buildmode=c-shared -o liner/libliner.so ..')
+system('ln -sf ../../start.c.in liner/start.c')
+system('ln -sf ../../README.md liner/README.md')
+system('ln -sf ../../LICENSE liner/LICENSE')
+with open('liner/__init__.py', 'wb') as file:
+    file.write(b'from .liner import start')
+with open('liner/__main__.py', 'wb') as file:
+    file.write(b'from .liner import start\nstart()')
 
 liner_extension = setuptools.Extension(
     'liner.liner',
@@ -46,6 +53,7 @@ setuptools.setup(
     url='https://github.com/phuslu/liner',
     author='Phus Lu',
     author_email='phus.lu@gmail.com',
+    license='AGPL-3.0',
     classifiers=[
         'Programming Language :: Python :: 3',
         'License :: OSI Approved :: MIT License',
@@ -64,6 +72,7 @@ setuptools.setup(
         'liner':[
             'libliner.so',
             'README.md',
+            'LICENSE',
         ],
     },
 )
