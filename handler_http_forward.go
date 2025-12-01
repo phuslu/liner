@@ -169,6 +169,9 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		case "", "proxy_pass":
 			http.NotFound(rw, req)
 			return
+		case "generate_204":
+			http.Error(rw, "", http.StatusNoContent)
+			return
 		case "reject", "deny":
 			RejectRequest(rw, req)
 			return
