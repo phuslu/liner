@@ -46,7 +46,7 @@ if test "$(sha1sum $filename || shasum $filename)" != "$checksum"; then
   exit 1
 fi
 
-if [ -f production.yaml ] || [ -s .env ]; then
+if test -x liner; then
   echo liner | tar xvzf $filename -T -
   rm -rf $filename
   exit 0
@@ -97,43 +97,38 @@ username,password,speed_limit,allow_client
 user,$(xxd -p -l 3 /dev/urandom),0,1
 EOF
 
-echo ENV=production > .env
-
 if test "$(cat /proc/1/comm)" == "systemd"; then
-  cat <<EOF > liner.service
+  cat <<EOF | ${sudo} tee /etc/systemd/system/liner@.service
 [Unit]
 Wants=network-online.target
-After=network.target network-online.target
-Description=liner
+After=network.target network-online.target local-fs.target
+Description=a protocol liner
 
 [Service]
 Type=simple
 KillMode=process
 Restart=on-failure
 WorkingDirectory=$(pwd)
-EnvironmentFile=-$(pwd)/.env
-ExecStart=$(pwd)/liner \${ENV}.yaml
-StandardError=append:$(pwd)/liner.error.log
+ExecStartPre=-/bin/sh -c 'setcap "cap_net_bind_service,cap_setuid,cap_setgid=eip" liner'
+ExecStart=$(pwd)/liner %i.yaml
 User=${USER}
 Group=${USER}
+PermissionsStartOnly=true
 LimitNOFILE=1048576
-CapabilityBoundingSet=CAP_SYS_ADMIN CAP_NET_BIND_SERVICE
-AmbientCapabilities=CAP_SYS_ADMIN CAP_NET_BIND_SERVICE
 
 [Install]
 WantedBy=multi-user.target
 EOF
-  ${sudo} systemctl enable $(pwd)/liner.service
-  ${sudo} systemctl restart liner
+  ${sudo} systemctl enable --now liner@production.service
 elif /sbin/rc-update -V; then
   ${sudo} rc-update add local
-  echo 'while :; do test -f .env && . .env ; "$@"; sleep 2; done' >keepalive
+  echo 'while :; do "$@"; sleep 2; done' >keepalive
   printf '#!/bin/sh\n\n(cd "%s" && /bin/sh keepalive "%s/liner" production.yaml &) </dev/null &>/dev/null\n' "$(pwd)" "$(pwd)" | ${sudo} tee /etc/local.d/10-liner.start
   ${sudo} chmod +x /etc/local.d/10-liner.start
   ${sudo} /etc/local.d/10-liner.start
 else
   pgrep liner && pkill -9 liner
-  echo 'while :; do test -f .env && . .env ; "$@"; sleep 2; done' >keepalive
+  echo 'while :; do "$@"; sleep 2; done' >keepalive
   (/bin/sh keepalive $(pwd)/liner production.yaml &) </dev/null &>/dev/null
 fi
 
