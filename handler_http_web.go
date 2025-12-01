@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/tls"
 	"expvar"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -76,6 +77,8 @@ func (h *HTTPWebHandler) Load() error {
 				SetHeaders:  web.Proxy.SetHeaders,
 				DumpFailure: web.Proxy.DumpFailure,
 			}
+		default:
+			return fmt.Errorf("unsupported web handler config: %+v", web)
 		}
 		if tcpcongestion := strings.TrimSpace(web.TcpCongestion); tcpcongestion != "" {
 			router.handler = &HTTPWebMiddlewareTcpCongestion{
