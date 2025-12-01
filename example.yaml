@@ -222,10 +222,12 @@ tunnel:
     enable_keep_alive: true
 sni:
   enabled: true
-  log: true
-  policy: |
-    {{if wildcardMatch `github.com|*.github.com|*.githubusercontent.com` .Request.ServerName }}
-      {{ .Request.ServerName }}:443 proxy1
-    {{else if eq "netflix" .Request.ServerName }}
-      {{ .Request.ServerName }}:443 proxy2
-    {{end}}
+  forward:
+    log: true
+    policy: |
+      {{if wildcardMatch `github.com|*.github.com|*.githubusercontent.com` .Request.ServerName }}
+        {{ .Request.ServerName }}:443
+      {{else if eq "netflix" (geosite .Request.ServerName) }}
+        {{ .Request.ServerName }}:443
+      {{end}}
+    dialer: proxy1

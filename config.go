@@ -85,9 +85,14 @@ type HTTPConfig struct {
 }
 
 type SniConfig struct {
-	Enabled bool   `json:"enabled" yaml:"enabled"`
-	Policy  string `json:"policy" yaml:"policy"`
-	Log     bool   `json:"log" yaml:"log"`
+	Enabled bool `json:"enabled" yaml:"enabled"`
+	Forward struct {
+		Policy      string `json:"policy" yaml:"policy"`
+		Dialer      string `json:"dialer" yaml:"dialer"`
+		DisableIpv6 bool   `json:"disable_ipv6" yaml:"disable_ipv6"`
+		PreferIpv6  bool   `json:"prefer_ipv6" yaml:"prefer_ipv6"`
+		Log         bool   `json:"log" yaml:"log"`
+	} `json:"forward" yaml:"forward"`
 }
 
 type SocksConfig struct {
