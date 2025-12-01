@@ -93,15 +93,16 @@ func (d *LocalDialer) dialContext(ctx context.Context, network, address string, 
 		return nil, net.InvalidAddrError("empty dns record: " + host)
 	}
 
-	var ip4 []netip.Addr
+	var perfers = ips
+	var fallbacks []netip.Addr
 	switch {
 	case d.DisableIPv6 || ctx.Value(DialerDisableIPv6ContextKey) != nil:
 		if i := slices.IndexFunc(ips, func(a netip.Addr) bool { return a.Is6() }); i > 0 {
-			ips, ip4 = ips[:i], nil
+			perfers, fallbacks = ips[:i], nil
 		}
 	case d.PerferIPv6 || ctx.Value(DialerPreferIPv6ContextKey) != nil:
 		if i := slices.IndexFunc(ips, func(a netip.Addr) bool { return a.Is6() }); i > 0 {
-			ips, ip4 = ips[i:], ips[:i]
+			perfers, fallbacks = ips[i:], ips[:i]
 		}
 	}
 
@@ -120,17 +121,17 @@ func (d *LocalDialer) dialContext(ctx context.Context, network, address string, 
 
 	concurrency := max(d.Concurrency, 1)
 	dial := d.dialParallel
-	if concurrency <= 1 || len(ips) == 1 {
+	if concurrency <= 1 || len(perfers) == 1 {
 		dial = d.dialSerial
 	}
 
-	conn, err := dial(ctx, network, host, ips, uint16(port), tlsConfig)
-	if err != nil && ip4 != nil {
+	conn, err := dial(ctx, network, host, perfers, uint16(port), tlsConfig)
+	if err != nil && fallbacks != nil {
 		if errmsg := err.Error(); strings.Contains(errmsg, "connect: network is unreachable") || (strings.HasPrefix(errmsg, "dial tcp ") && strings.HasSuffix(errmsg, ": i/o timeout")) {
 			if d.Logger != nil {
-				d.Logger.Warn("retrying dial to ip4", "network", network, "host", host, "ips", ips, "ip4", ip4)
+				d.Logger.Warn("retrying dial to fallbacks ip4", "network", network, "host", host, "perfers", perfers, "fallbacks", fallbacks)
 			}
-			conn, err = dial(ctx, network, host, ip4, uint16(port), tlsConfig)
+			conn, err = dial(ctx, network, host, fallbacks, uint16(port), tlsConfig)
 		}
 	}
 	return conn, err
