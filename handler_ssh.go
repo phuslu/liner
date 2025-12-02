@@ -615,7 +615,11 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, width, he
 			shell.Env = append(shell.Env, "BASH_SILENCE_DEPRECATION_WARNING=1")
 		}
 	case "windows":
-		shell.Env = append(shell.Env, "PATH="+os.Getenv("PATH"))
+		for _, key := range []string{"APPDATA", "PATH", "PATHEXT", "TEMP", "TMP", "USERNAME", "USERPROFILE"} {
+			if value := os.Getenv(key); value != "" {
+				shell.Env = append(shell.Env, key+"="+value)
+			}
+		}
 	}
 	if data, err := os.ReadFile(h.Config.EnvFile); err == nil {
 		text, err := eval(os.ExpandEnv(string(data)), shellPath)
