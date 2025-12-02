@@ -311,7 +311,7 @@ func NewConfig(filename string) (*Config, error) {
 		config.Socks[i].Forward.Dialer = read(config.Socks[i].Forward.Dialer)
 	}
 	for i := range config.Tunnel {
-		if len(config.Tunnel[i].RemoteListen) != 1 && config.Tunnel[i].RemoteListen[0] == "" {
+		if len(config.Tunnel[i].RemoteListen) == 0 || config.Tunnel[i].RemoteListen[0] == "" {
 			return nil, fmt.Errorf("invalid tunnel remote_listen=%v", config.Tunnel[i].RemoteListen)
 		}
 	}
