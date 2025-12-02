@@ -21,10 +21,10 @@ is_darwin = platform.system() == 'Darwin'
 go = 'garble -literals -tiny -seed=o9WDTZ4CN4w' if os.getenv('GOGARBLE') else 'go'
 
 go_ldflags = f'-s -w -X main.version={revsion}'
-go_ldflags = go_ldflags + " -linkmode external -extldflags '-Wl,-install_name,@rpath/libliner.so'" if is_darwin else go_ldflags
+go_ldflags = go_ldflags + " -linkmode external -extldflags '-Wl,-install_name,@rpath/libliner.cp39.so'" if is_darwin else go_ldflags
 
 system('rm -rf build dist liner liner.egg-info')
-system(f'{go} build -v -trimpath -ldflags="{go_ldflags}" -buildmode=c-shared -o liner/libliner.so ..')
+system(f'{go} build -v -trimpath -ldflags="{go_ldflags}" -buildmode=c-shared -o liner/libliner.cp39.so ..')
 system('ln -sf ../../start.c.in liner/start.c')
 system('ln -sf ../../README.md liner/README.md')
 system('ln -sf ../../LICENSE liner/LICENSE')
@@ -39,7 +39,7 @@ liner_extension = setuptools.Extension(
     sources=['liner/start.c'],
     include_dirs=['./liner'],
     library_dirs=['./liner'],
-    libraries=['liner'],
+    libraries=['liner.cp39'],
     extra_link_args= ['-Wl,-rpath,@loader_path' if is_darwin else '-Wl,-rpath,$ORIGIN'],
     py_limited_api=True,
 )
@@ -70,7 +70,7 @@ setuptools.setup(
     include_package_data=True,
     package_data={
         'liner':[
-            'libliner.so',
+            'libliner.cp39.so',
             'README.md',
             'LICENSE',
         ],
