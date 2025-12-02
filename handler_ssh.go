@@ -539,7 +539,7 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, width, he
 		return nil, err
 	}
 
-	eval := func(text string) (string, error) {
+	eval := func(text string, shell string) (string, error) {
 		if !strings.Contains(text, "{{") {
 			return text, nil
 		}
@@ -553,9 +553,11 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, width, he
 			Version string
 			User    *user.User
 			Env     map[string]string
+			Shell   string
 		}{
 			Version: version,
 			User:    currentUser,
+			Shell:   shell,
 			Env:     envs,
 		})
 		if err != nil {
@@ -566,7 +568,7 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, width, he
 		return text, nil
 	}
 
-	shellPath, err = eval(shellPath)
+	shellPath, err = eval(shellPath, shellPath)
 	if err != nil {
 		return nil, err
 	}
@@ -616,7 +618,7 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, width, he
 		shell.Env = append(shell.Env, "PATH="+os.Getenv("PATH"))
 	}
 	if data, err := os.ReadFile(h.Config.EnvFile); err == nil {
-		text, err := eval(string(data))
+		text, err := eval(os.ExpandEnv(string(data)), shellPath)
 		if err != nil {
 			return nil, err
 		}
