@@ -340,7 +340,10 @@ func (h *HTTPWebIndexHandler) addHeaders(rw http.ResponseWriter, req *http.Reque
 	}
 }
 
-const autoindexTemplate = `
+//go:embed autoindex.html
+var autoindexHTML string
+
+var autoindexTemplate = `
 <html>
 <head><title>Index of {{.Request.URL.Path}}</title></head>
 <body>
@@ -353,5 +356,4 @@ const autoindexTemplate = `
 {{end -}}
 {{end}}</pre><hr></body>
 </html>
-{{ readFile "autoindex.html" }}
-`
+` + autoindexHTML
