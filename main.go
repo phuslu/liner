@@ -461,9 +461,10 @@ func main() {
 				MemoryDialers: memoryDialers,
 			},
 			WebHandler: &HTTPWebHandler{
-				Config:    server,
-				Transport: transport,
-				Functions: functions.FuncMap(),
+				Config:        server,
+				MemoryDialers: memoryDialers,
+				Transport:     transport,
+				Functions:     functions.FuncMap(),
 			},
 			Hostnames: filter(server.ServerName, func(s string) bool {
 				return !strings.Contains(s, "*")
@@ -669,9 +670,10 @@ func main() {
 				MemoryDialers: memoryDialers,
 			},
 			WebHandler: &HTTPWebHandler{
-				Config:    httpConfig,
-				Transport: transport,
-				Functions: functions.FuncMap(),
+				Config:        httpConfig,
+				MemoryDialers: memoryDialers,
+				Transport:     transport,
+				Functions:     functions.FuncMap(),
 			},
 			Hostnames: filter(httpConfig.ServerName, func(s string) bool {
 				return !strings.Contains(s, "*")

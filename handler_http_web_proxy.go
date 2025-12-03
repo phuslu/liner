@@ -15,6 +15,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"text/template"
 
 	"github.com/mileusna/useragent"
@@ -24,14 +25,15 @@ import (
 )
 
 type HTTPWebProxyHandler struct {
-	Transport   *http.Transport
-	Functions   template.FuncMap
-	Pass        string
-	AuthBasic   string
-	AuthTable   string
-	StripPrefix string
-	SetHeaders  string
-	DumpFailure bool
+	MemoryDialers *sync.Map // map[string]*MemoryDialer
+	Transport     *http.Transport
+	Functions     template.FuncMap
+	Pass          string
+	AuthBasic     string
+	AuthTable     string
+	StripPrefix   string
+	SetHeaders    string
+	DumpFailure   bool
 
 	userchecker AuthUserChecker
 	proxypass   struct {
@@ -137,6 +139,10 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	if proxypass.Scheme == "file" {
 		http.Error(rw, "use index_root instead of file://", http.StatusServiceUnavailable)
 		return
+	}
+
+	if h.MemoryDialers != nil {
+		req = req.WithContext(context.WithValue(req.Context(), DialerMemoryDialersContextKey, h.MemoryDialers))
 	}
 
 	if protocol := req.Header.Get(":protocol"); protocol != "" && req.ProtoMajor == 2 && req.Method == http.MethodConnect && req.RequestURI[0] == '/' {

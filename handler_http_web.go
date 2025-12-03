@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
+	"sync"
 	"text/template"
 
 	"github.com/mileusna/useragent"
@@ -17,9 +18,10 @@ import (
 )
 
 type HTTPWebHandler struct {
-	Config    HTTPConfig
-	Transport *http.Transport
-	Functions template.FuncMap
+	Config        HTTPConfig
+	MemoryDialers *sync.Map
+	Transport     *http.Transport
+	Functions     template.FuncMap
 
 	wildcards []struct {
 		location string
@@ -69,13 +71,14 @@ func (h *HTTPWebHandler) Load() error {
 			}
 		case web.Proxy.Pass != "":
 			router.handler = &HTTPWebProxyHandler{
-				Transport:   h.Transport,
-				Functions:   h.Functions,
-				Pass:        web.Proxy.Pass,
-				AuthTable:   web.Proxy.AuthTable,
-				StripPrefix: web.Proxy.StripPrefix,
-				SetHeaders:  web.Proxy.SetHeaders,
-				DumpFailure: web.Proxy.DumpFailure,
+				MemoryDialers: h.MemoryDialers,
+				Transport:     h.Transport,
+				Functions:     h.Functions,
+				Pass:          web.Proxy.Pass,
+				AuthTable:     web.Proxy.AuthTable,
+				StripPrefix:   web.Proxy.StripPrefix,
+				SetHeaders:    web.Proxy.SetHeaders,
+				DumpFailure:   web.Proxy.DumpFailure,
 			}
 		default:
 			return fmt.Errorf("unsupported web handler config: %+v", web)
