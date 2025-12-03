@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
@@ -38,6 +39,7 @@ import (
 	"github.com/libp2p/go-yamux/v5"
 	"github.com/phuslu/log"
 	"github.com/quic-go/quic-go"
+	"github.com/smallnest/ringbuffer"
 	"github.com/valyala/bytebufferpool"
 	"golang.org/x/crypto/chacha20"
 	"golang.org/x/crypto/ocsp"
@@ -779,8 +781,11 @@ func (d *MemoryDialer) DialContext(ctx context.Context, network, address string)
 	return d.Session.Open(ctx)
 }
 
+var _ net.Listener = (*MemoryListener)(nil)
+
 type MemoryListener struct {
-	net.Listener
+	Address  string
+	Listener net.Listener
 
 	once  sync.Once
 	queue chan struct {
@@ -845,6 +850,62 @@ func (ln *MemoryListener) SendConn(c net.Conn) {
 		conn net.Conn
 		err  error
 	}{c, nil}
+}
+
+func (ln *MemoryListener) OpenConn() net.Conn {
+	pr1, pw1 := ringbuffer.New(8192).Pipe()
+	pr2, pw2 := ringbuffer.New(8192).Pipe()
+
+	addrport, _ := netip.ParseAddrPort(ln.Address)
+	addr := net.TCPAddrFromAddrPort(addrport)
+
+	conn1 := &memoryConn{pr1, pw2, addr, addr}
+	conn2 := &memoryConn{pr2, pw1, addr, addr}
+
+	ln.SendConn(conn1)
+
+	return conn2
+}
+
+var _ net.Conn = (*memoryConn)(nil)
+
+type memoryConn struct {
+	reader *ringbuffer.PipeReader
+	writer *ringbuffer.PipeWriter
+	laddr  net.Addr
+	raddr  net.Addr
+}
+
+func (mc *memoryConn) Read(p []byte) (n int, err error) {
+	return mc.reader.Read(p)
+}
+
+func (mc *memoryConn) Write(p []byte) (n int, err error) {
+	return mc.writer.Write(p)
+}
+
+func (mc *memoryConn) Close() error {
+	return cmp.Or(mc.reader.Close(), mc.writer.Close())
+}
+
+func (mc *memoryConn) LocalAddr() net.Addr {
+	return mc.laddr
+}
+
+func (mc *memoryConn) RemoteAddr() net.Addr {
+	return mc.raddr
+}
+
+func (mc *memoryConn) SetDeadline(t time.Time) error {
+	return nil
+}
+
+func (mc *memoryConn) SetReadDeadline(t time.Time) error {
+	return nil
+}
+
+func (mc *memoryConn) SetWriteDeadline(t time.Time) error {
+	return nil
 }
 
 type ConnWithData struct {

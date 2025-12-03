@@ -23,10 +23,11 @@ type DialerContextKey struct {
 }
 
 var (
-	DialerHTTPHeaderContextKey    any = &DialerContextKey{"dailer-http-header"}
-	DialerDisableIPv6ContextKey   any = &DialerContextKey{"dailer-disable-ipv6"}
-	DialerPreferIPv6ContextKey    any = &DialerContextKey{"dailer-prefer-ipv6"}
-	DialerMemoryDialersContextKey any = &DialerContextKey{"dailer-memory-dialers"}
+	DialerHTTPHeaderContextKey      any = &DialerContextKey{"dailer-http-header"}
+	DialerDisableIPv6ContextKey     any = &DialerContextKey{"dailer-disable-ipv6"}
+	DialerPreferIPv6ContextKey      any = &DialerContextKey{"dailer-prefer-ipv6"}
+	DialerMemoryDialersContextKey   any = &DialerContextKey{"dailer-memory-dialers"}
+	DialerMemoryListenersContextKey any = &DialerContextKey{"dailer-memory-listeners"}
 )
 
 var DailerReservedIPPrefix = netip.MustParsePrefix("240.0.0.0/8")
@@ -73,9 +74,20 @@ func (d *LocalDialer) dialContext(ctx context.Context, network, address string, 
 		if v, ok := m.Load(address); ok && d != nil {
 			if md, ok := v.(*MemoryDialer); ok && md != nil {
 				if d.Logger != nil {
-					d.Logger.Info("http dialer switch to memory dialer", "memory_dialer_address", md.Address)
+					d.Logger.Info("local dialer dialing to memory dialer", "memory_dialer_address", md.Address)
 				}
 				return md.DialContext(ctx, network, address)
+			}
+		}
+	}
+
+	if m, ok := ctx.Value(DialerMemoryListenersContextKey).(*sync.Map); ok && m != nil {
+		if v, ok := m.Load(address); ok && d != nil {
+			if ml, ok := v.(*MemoryListener); ok && ml != nil {
+				if d.Logger != nil {
+					d.Logger.Info("local dialer dialing memory listener", "memory_listener_address", ml.Address)
+				}
+				return ml.OpenConn(), nil
 			}
 		}
 	}
