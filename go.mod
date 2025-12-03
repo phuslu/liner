@@ -10,7 +10,7 @@ require (
 	github.com/mileusna/useragent v1.3.5
 	github.com/oschwald/maxminddb-golang/v2 v2.1.1
 	github.com/phuslu/fastcgi v0.0.0-20231004164338-7aec0d4ba593
-	github.com/phuslu/fastdns v0.16.2
+	github.com/phuslu/fastdns v0.16.3
 	github.com/phuslu/geosite v1.0.20250901
 	github.com/phuslu/log v1.0.120
 	github.com/phuslu/lru v1.0.18
@@ -31,7 +31,7 @@ require (
 
 require (
 	github.com/andybalholm/brotli v1.2.0 // indirect
-	github.com/klauspost/compress v1.18.1 // indirect
+	github.com/klauspost/compress v1.18.2 // indirect
 	github.com/kr/fs v0.1.0 // indirect
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
