@@ -1,14 +1,12 @@
 
-<!-- autoindex.html 2023-11-01 for nginx, see https://phus.lu -->
+<!-- autoindex.html 2025-02-26 for nginx, see https://phus.lu -->
 <script>
 !function(){
-	var website_title = ''
-	var max_name_length = 60
-	var enable_readme_md = true
-	var omit_icon_if_emoji = true
-	var datetime_format = '%d-%b-%Y %H:%M'
-	var marked_js = 'https://cdnjs.cloudflare.com/ajax/libs/marked/0.5.2/marked.min.js'
-	var github_markdown_css = 'https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.1.0/github-markdown-light.min.css'
+	website_title = ''
+	max_name_length = 60
+	enable_readme = true
+	omit_icon_if_emoji = true
+	datetime_format = '%d-%b-%Y %H:%M'
 
 	var dom = {
 		element: null,
@@ -37,6 +35,7 @@
 	}
 
 	head = dom.get(document.head)
+	head.add('link').attr('rel', 'manifest').attr('href', '/manifest.json')
 	head.add('meta').attr('charset', 'utf-8')
 	head.add('meta').attr('name', 'viewport').attr('content', 'width=device-width,initial-scale=1')
 
@@ -123,15 +122,22 @@
 	}
 
 	var readme_md = ''
+	var readme_js = ''
 	insert('../', '', '-')
 	for (var i in bodylines) {
 		if (m = /\s*<a href="(.+?)">(.+?)<\/a>\s+(\S+)\s+(\S+)\s+(\S+)\s*/.exec(bodylines[i])) {
-			filename = m[2]
+			filename = decodeURIComponent(m[1])
 			datetime = m[3] + ' ' + m[4]
 			size = m[5]
-			if (filename.toLowerCase() == 'readme.md') {
-				readme_md = filename
+			switch (filename.toLowerCase()) {
+			  case 'readme.md':
+			    readme_md = filename
+			    break;
+			  case 'readme.js':
+			    readme_js = filename
+			    break;
 			}
+
 			insert(filename, datetime, size)
 		}
 	}
@@ -139,27 +145,32 @@
 	document.documentElement.lang = navigator.language
 	document.body.appendChild(div.element)
 
-	if (enable_readme_md && readme_md !== '') {
-		readme = div.add('table').add('tbody');
-		readme.add('tr').add('th').attr('class', 'octicon octicon-book').text(readme_md)
-		readme.add('tr').add('td').add('div').attr('id', 'readme').attr('class', 'markdown-body')
+	if (enable_readme && readme_md !== '') {
 		xhr = new XMLHttpRequest()
 		xhr.open('GET', location.pathname.replace(/[^/]+$/, '')+readme_md, true)
 		xhr.onload = function() {
 			if (xhr.status < 200 && xhr.status >= 400)
 				return
 			wait('marked', function() {
-				document.getElementById("readme").innerHTML = marked.parse(xhr.responseText)
-				begin = xhr.responseText.indexOf('<!--<script>')
-				end = xhr.responseText.indexOf("\n</" + "script>-->")
+				text = xhr.responseText
+				begin = text.indexOf('<!--<script>')
+				end = text.indexOf("\n</" + "script>-->")
+				if (begin != 0) {
+					readme = div.add('table').add('tbody');
+					readme.add('tr').add('th').attr('class', 'octicon octicon-book').text(readme_md)
+					readme.add('tr').add('td').add('div').attr('id', 'readme').attr('class', 'markdown-body').html(marked.parse(text))
+				}
 				if (begin < end)
-					div.add('script').html(xhr.responseText.substr(begin+4+8, end+1-begin-4-8))
+					div.add('script').html(text.substr(begin+4+8, end+1-begin-4-8))
 			})
 		}
 		xhr.send()
 
-		div.add('script').attr('src', marked_js)
-		div.add('link').attr('rel', 'stylesheet').attr('href', github_markdown_css)
+		div.add('script').attr('src', 'https://cdnjs.cloudflare.com/ajax/libs/marked/0.5.2/marked.min.js').attr('integrity', 'sha256-zFUosuESzULu5P+SZdjRRtBZR8+1u5RZDlbt3Q5KL8U=').attr('crossorigin', 'anonymous')
+		div.add('link').attr('rel', 'stylesheet').attr('href', 'https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.1.0/github-markdown-light.min.css').attr('integrity', 'sha256-WQx0Y6LLZeGv3V3NVVge+YIL5MIOt45RPuFdkyNodls=').attr('crossorigin', 'anonymous')
+	}
+	if (enable_readme && readme_js !== '') {
+		div.add('script').attr('src', readme_js)
 	}
 }()
 
