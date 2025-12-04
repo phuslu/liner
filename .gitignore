@@ -11,9 +11,10 @@ liner
 *.pem
 *.service
 *.yaml
+.vscode/
+__pycache__/
 autocert/
 build/
 dist/
 lego/
 pki/
-__pycache__/
