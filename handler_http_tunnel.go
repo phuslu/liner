@@ -205,7 +205,7 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 			}
 			b = b.Str("\r\n")
 		default:
-			b = b.Str("HTTP/1.1 200 OK\r\n\r\n")
+			b = b.Str("HTTP/1.1 200 Connection Established\r\n\r\n")
 		}
 
 		_, err = conn.Write(b)
