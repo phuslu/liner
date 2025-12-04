@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"sync"
 	"time"
@@ -103,6 +104,12 @@ func (d *HTTPDialer) DialContext(ctx context.Context, network, addr string) (net
 			if md, ok := v.(*MemoryDialer); ok && md != nil {
 				if d.Logger != nil {
 					d.Logger.Info("http dialer switch to memory dialer", "memory_dialer_address", md.Address)
+				}
+				if addrport, err := netip.ParseAddrPort(addr); err == nil {
+					if DailerReservedIPPrefix.Contains(addrport.Addr()) {
+						// Target is a memory address, skip HTTP CONNECT
+						return md.DialContext(ctx, network, hostport)
+					}
 				}
 				dialer = md
 			}
