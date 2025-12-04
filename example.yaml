@@ -130,6 +130,9 @@ https:
       - location: /china.pac
         index:
           file: /home/phuslu/liner/china.pac
+      - location: /webshell
+        shell:
+          enabled: true
       - location: /
         proxy:
           set_headers: |

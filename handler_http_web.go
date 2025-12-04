@@ -80,6 +80,10 @@ func (h *HTTPWebHandler) Load() error {
 				SetHeaders:    web.Proxy.SetHeaders,
 				DumpFailure:   web.Proxy.DumpFailure,
 			}
+		case web.Shell.Enabled:
+			router.handler = &HTTPWebShellHandler{
+				AuthTable: web.Shell.AuthTable,
+			}
 		default:
 			return fmt.Errorf("unsupported web handler config: %+v", web)
 		}

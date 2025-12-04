@@ -81,6 +81,10 @@ type HTTPConfig struct {
 			SetHeaders  string `json:"set_headers" yaml:"set_headers"`
 			DumpFailure bool   `json:"dump_failure" yaml:"dump_failure"`
 		} `json:"proxy" yaml:"proxy"`
+		Shell struct {
+			Enabled   bool   `json:"enabled" yaml:"enabled"`
+			AuthTable string `json:"auth_table" yaml:"auth_table"`
+		} `json:"shell" yaml:"shell"`
 	} `json:"web" yaml:"web"`
 }
 
