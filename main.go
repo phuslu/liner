@@ -148,10 +148,22 @@ func main() {
 
 	// global resolver with geo support
 	if config.Global.DnsServer == "" {
-		if data, err := os.ReadFile("/etc/resolv.conf"); err == nil {
-			if m := regexp.MustCompile(`(^|\n)\s*nameserver\s+(\S+)`).FindAllStringSubmatch(string(data), -1); len(m) != 0 {
-				config.Global.DnsServer = cmp.Or(m[0][2], "https://8.8.8.8/dns-query")
+		switch runtime.GOOS {
+		case "windows":
+			if data, err := exec.Command("reg.exe", "query", `HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces`, "/s").CombinedOutput(); err == nil {
+				if m := regexp.MustCompile(`(^|\n)\s*(DhcpNameServer|NameServer)\s+REG_SZ\s+([\d\.]+)`).FindAllStringSubmatch(string(data), -1); len(m) != 0 {
+					config.Global.DnsServer = m[0][3]
+				}
 			}
+		default:
+			if data, err := os.ReadFile("/etc/resolv.conf"); err == nil {
+				if m := regexp.MustCompile(`(^|\n)\s*nameserver\s+(\S+)`).FindAllStringSubmatch(string(data), -1); len(m) != 0 {
+					config.Global.DnsServer = m[0][2]
+				}
+			}
+		}
+		if config.Global.DnsServer == "" {
+			config.Global.DnsServer = "https://8.8.8.8/dns-query"
 		}
 	}
 	resolver := &GeoResolver{
