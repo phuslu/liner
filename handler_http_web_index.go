@@ -188,14 +188,16 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		defer file.Close()
 
 		h.addHeaders(rw, req, ri)
-		if s := GetMimeTypeByExtension(filepath.Ext(fullname)); s != "" {
-			if strings.HasPrefix(s, "text/") {
-				rw.Header().Set("content-type", s+"; charset="+cmp.Or(h.Charset, "UTF-8"))
+		if rw.Header().Get("content-type") == "" {
+			if s := GetMimeTypeByExtension(filepath.Ext(fullname)); s != "" {
+				if strings.HasPrefix(s, "text/") {
+					rw.Header().Set("content-type", s+"; charset="+cmp.Or(h.Charset, "UTF-8"))
+				} else {
+					rw.Header().Set("content-type", s)
+				}
 			} else {
-				rw.Header().Set("content-type", s)
+				rw.Header().Set("content-type", "application/octet-stream")
 			}
-		} else {
-			rw.Header().Set("content-type", "application/octet-stream")
 		}
 		rw.Header().Set("accept-ranges", "bytes")
 		if s := req.Header.Get("range"); s == "" {
