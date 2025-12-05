@@ -83,6 +83,7 @@ func (h *HTTPWebHandler) Load() error {
 		case web.Shell.Enabled:
 			router.handler = &HTTPWebShellHandler{
 				AuthTable: web.Shell.AuthTable,
+				Command:   web.Shell.Command,
 			}
 		default:
 			return fmt.Errorf("unsupported web handler config: %+v", web)

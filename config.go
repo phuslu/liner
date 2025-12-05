@@ -84,6 +84,7 @@ type HTTPConfig struct {
 		Shell struct {
 			Enabled   bool   `json:"enabled" yaml:"enabled"`
 			AuthTable string `json:"auth_table" yaml:"auth_table"`
+			Command   string `json:"command" yaml:"command"`
 		} `json:"shell" yaml:"shell"`
 	} `json:"web" yaml:"web"`
 }

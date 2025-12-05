@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Go WebShell</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+    <style>
+        body { margin: 0; padding: 0; background: #000; height: 100vh; overflow: hidden; }
+        #terminal { width: 100%; height: 100%; }
+    </style>
+</head>
+<body>
+    <div id="terminal"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+
+    <script>
+        // 1. Initialize Terminal
+        const term = new Terminal({
+            cursorBlink: true,
+            fontSize: 14,
+            fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+            theme: {
+                background: '#1e1e1e',
+            }
+        });
+
+        // Use FitAddon to automatically fit the terminal to the parent container
+        const fitAddon = new FitAddon.FitAddon();
+        term.loadAddon(fitAddon);
+        term.open(document.getElementById('terminal'));
+        fitAddon.fit();
+
+        // 2. Connect to WebSocket
+        const ws = new WebSocket("ws://" + location.host + "/webshell/ws");
+        ws.binaryType = "arraybuffer"; // Important: Handle incoming data as binary
+
+        ws.onopen = () => {
+            console.log("Connected");
+            // Send the initial terminal size immediately upon connection
+            sendResize();
+        };
+
+        ws.onclose = () => {
+            term.write("\r\n\x1b[31mConnection Closed\x1b[0m\r\n");
+        };
+
+        // 3. Handle WebSocket -> xterm.js (Incoming Output)
+        ws.onmessage = (event) => {
+            // The backend sends binary data (raw PTY output).
+            // xterm.js `write` supports both string and Uint8Array.
+            if (event.data instanceof ArrayBuffer) {
+                term.write(new Uint8Array(event.data));
+            } else {
+                term.write(event.data);
+            }
+        };
+
+        // 4. Handle xterm.js -> WebSocket (User Input)
+        term.onData((data) => {
+            if (ws.readyState === WebSocket.OPEN) {
+                // Convert string input to Uint8Array and send as binary
+                const encoder = new TextEncoder();
+                ws.send(encoder.encode(data));
+            }
+        });
+
+        // 5. Handle Window Resize
+        function sendResize() {
+            if (ws.readyState === WebSocket.OPEN) {
+                const dims = {
+                    type: "resize",
+                    cols: term.cols,
+                    rows: term.rows
+                };
+                // Send the resize command as a JSON text message
+                ws.send(JSON.stringify(dims));
+            }
+        }
+
+        // Listen for browser window resize events
+        window.addEventListener('resize', () => {
+            fitAddon.fit(); // Recalculate xterm internal dimensions
+            sendResize();   // Notify the backend PTY to update window size
+        });
+    </script>
+</body>
+</html>
