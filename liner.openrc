@@ -1,43 +1,49 @@
 #!/sbin/openrc-run
 
-name="liner"
-description="a protocol liner"
 appdir="/root/liner"
-pidfile="/run/${name}.pid"
+description="a protocol liner"
+pidfile="/run/${RC_SVCNAME}.pid"
 
 depend() {
 	after localmount
 	before default
 }
 
+start_pre() {
+	if [ "${RC_SVCNAME%.*}" = "$RC_SVCNAME" ]; then
+		eerror "${RC_SVCNAME} cannot be started directly. You must create"
+		eerror "symbolic links to it for the env you want to start"
+		return 1
+	fi
+}
+
 start() {
-	ebegin "Starting ${name}"
+	ebegin "Starting ${RC_SVCNAME}"
 
 	cd "${appdir}"
-	test -f .env && . .env
-	supervise-daemon "${name}" --pidfile "${pidfile}" --start "${appdir}/${name}" -- "${ENV:-production}.yaml"
+	supervise-daemon "${RC_SVCNAME}" --pidfile "${pidfile}" --start "${appdir}/${RC_SVCNAME%.*}" -- "${RC_SVCNAME#*.}.yaml"
 
 	eend $?
 }
 
 stop() {
-	ebegin "Stopping ${name}"
+	ebegin "Stopping ${RC_SVCNAME}"
 
-	supervise-daemon "${name}" --stop --pidfile "${pidfile}"
+	supervise-daemon "${RC_SVCNAME}" --stop --pidfile "${pidfile}"
 
 	eend $?
 }
 
 status() {
 	if [ ! -f "${pidfile}" ]; then
-		eerror "${name} is not running (no pidfile)"
+		eerror "${RC_SVCNAME} is not running (no pidfile)"
 		return 1
 	fi
 
 	if kill -0 "$(cat "${pidfile}")" 2>/dev/null; then
-		einfo "${name} is running"
+		einfo "${RC_SVCNAME} is running"
 	else
-		eerror "${name} is not running"
+		eerror "${RC_SVCNAME} is not running"
 		return 1
 	fi
 }
