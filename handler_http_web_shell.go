@@ -1,6 +1,8 @@
 package main
 
 import (
+	"archive/zip"
+	"bytes"
 	"cmp"
 	"context"
 	_ "embed"
@@ -24,6 +26,7 @@ type HTTPWebShellHandler struct {
 	Command   string
 
 	userchecker AuthUserChecker
+	fileserver  http.Handler
 }
 
 func (h *HTTPWebShellHandler) Load() error {
@@ -36,6 +39,12 @@ func (h *HTTPWebShellHandler) Load() error {
 		log.Info().Str("auth_table", table).Int("auth_table_size", len(records)).Msg("load auth_table ok")
 		h.userchecker = &AuthUserLoadChecker{loader}
 	}
+
+	zipreader, err := zip.NewReader(bytes.NewReader(xtermZip), int64(len(xtermZip)))
+	if err != nil {
+		return err
+	}
+	h.fileserver = http.StripPrefix(strings.TrimSuffix(h.Location, "/"), http.FileServer(http.FS(zipreader)))
 
 	return nil
 }
@@ -74,20 +83,8 @@ func (h *HTTPWebShellHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		rw.Header().Set("content-type", "text/html; charset=utf-8")
 		rw.Write(webshellHtml)
 		return
-	case "xterm.css":
-		rw.Header().Set("content-type", "text/css")
-		rw.Write(xtermCSS)
-		return
-	case "xterm.js":
-		rw.Header().Set("content-type", "application/javascript")
-		rw.Write(xtermJS)
-		return
-	case "xterm-addon-fit.js":
-		rw.Header().Set("content-type", "application/javascript")
-		rw.Write(xtermAddonFitJS)
-		return
 	default:
-		http.NotFound(rw, req)
+		h.fileserver.ServeHTTP(rw, req)
 		return
 	}
 
@@ -171,11 +168,5 @@ func (h *HTTPWebShellHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 //go:embed webshell.html
 var webshellHtml []byte
 
-//go:embed xterm.css
-var xtermCSS []byte
-
-//go:embed xterm.js
-var xtermJS []byte
-
-//go:embed xterm-addon-fit.js
-var xtermAddonFitJS []byte
+//go:embed xterm.zip
+var xtermZip []byte
