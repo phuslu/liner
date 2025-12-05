@@ -3,7 +3,6 @@ package main
 import (
 	"crypto/tls"
 	"expvar"
-	"fmt"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -87,7 +86,8 @@ func (h *HTTPWebHandler) Load() error {
 				Command:   web.Shell.Command,
 			}
 		default:
-			return fmt.Errorf("unsupported web handler config: %+v", web)
+			log.Info().Str("web_location", web.Location).Msgf("web location is not enabled, skip.")
+			continue
 		}
 		if tcpcongestion := strings.TrimSpace(web.TcpCongestion); tcpcongestion != "" {
 			router.handler = &HTTPWebMiddlewareTcpCongestion{
