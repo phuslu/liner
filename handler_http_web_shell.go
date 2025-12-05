@@ -119,6 +119,7 @@ func (h *HTTPWebShellHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 				if err != io.EOF {
 					log.Printf("pty read error: %v", err)
 				}
+				_ = conn.Close(websocket.StatusNormalClosure, "pty session closed")
 				return
 			}
 			err = conn.Write(ctx, websocket.MessageBinary, buf[:n])
