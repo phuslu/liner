@@ -165,6 +165,7 @@ func main() {
 		if config.Global.DnsServer == "" {
 			config.Global.DnsServer = "https://8.8.8.8/dns-query"
 		}
+		log.Info().Str("dns_server", config.Global.DnsServer).Msg("auto enable dns_server for global resolver")
 	}
 	resolver := &GeoResolver{
 		Resolver:          must(GetResolver(config.Global.DnsServer, cmp.Or(config.Global.DnsCacheSize, DefaultDNSCacheSize))),
