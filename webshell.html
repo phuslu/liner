@@ -1,66 +1,94 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Liner WebShell</title>
+    <meta name="description" content="Liner WebShell" />
     <link rel="stylesheet" href="xterm.css" />
     <style>
-        body { margin: 0; padding: 0; background: #000; height: 100vh; overflow: hidden; }
-        #terminal { width: 100%; height: 100%; }
-        #reconnect-overlay { display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.65); align-items: center; justify-content: center; z-index: 9999; }
-        #reconnect-box { background: #d0d0d0; color: #000; padding: 14px 26px; border-radius: 12px; font-size: 22px; font-family: Menlo, Monaco, "Courier New", monospace; box-shadow: 0 0 12px rgba(0,0,0,0.45); }
+        body {
+            margin: 0;
+            height: 100vh;
+            background: #000;
+            font-family: "ubuntu", "Tahoma", "Microsoft YaHei", Arial, Serif;
+        }
+        .webshell {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+        .webshell-terminal {
+            flex: 1;
+        }
+        #terminal {
+            width: 100%;
+            height: 100%;
+        }
+        #reconnect-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.65);
+            align-items: center;
+            justify-content: center;
+        }
+        #reconnect-box {
+            background: #d0d0d0;
+            color: #000;
+            padding: 14px 26px;
+            border-radius: 12px;
+            font-size: 22px;
+            font-family: Menlo, Monaco, "Courier New", monospace;
+            box-shadow: 0 0 12px rgba(0, 0, 0, 0.45);
+        }
     </style>
 </head>
 <body>
-    <div id="terminal"></div>
-    <div id="reconnect-overlay"><div id="reconnect-box">Press ⏎ to Reconnect</div></div>
+    <div class="webshell">
+        <div id="terminal" class="webshell-terminal"></div>
+        <div id="reconnect-overlay"><div id="reconnect-box">Press ⏎ to Reconnect</div></div>
+    </div>
 
     <script src="xterm.js"></script>
     <script src="xterm-addon-fit.js"></script>
-
     <script>
-        // 1. Initialize Terminal
         const term = new Terminal({
             cursorBlink: true,
             fontSize: 14,
             fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-            theme: { background: '#1e1e1e' }
+            theme: { background: '#101010' }
         });
-
-        // Use FitAddon to automatically fit the terminal to the parent container
         const fitAddon = new FitAddon.FitAddon();
         term.loadAddon(fitAddon);
         term.open(document.getElementById('terminal'));
         fitAddon.fit();
 
-        // Overlay state
-        const overlay = document.getElementById("reconnect-overlay");
+        const overlay = document.getElementById('reconnect-overlay');
         let reconnectMode = false;
 
         function showReconnectOverlay() {
             reconnectMode = true;
-            overlay.style.display = "flex";
+            overlay.style.display = 'flex';
             term.blur();
-            term.write("\r\n\x1b[31mSession Ended\x1b[0m\r\nPress Enter to reconnect...\r\n");
+            term.write('\r\n\x1b[31mSession Ended\x1b[0m\r\nPress Enter to reconnect...\r\n');
         }
 
         function hideReconnectOverlay() {
             reconnectMode = false;
-            overlay.style.display = "none";
+            overlay.style.display = 'none';
+            term.focus();
         }
 
-        // 2. Connect to WebSocket
         const ws = new WebSocket(
-            location.protocol.replace('http', 'ws') + "//" +
+            location.protocol.replace('http', 'ws') + '//' +
             location.host +
-            location.pathname.replace(/\/[^/]*$/, '') + "/ws"
+            location.pathname.replace(/\/[^/]*$/, '') + '/ws'
         );
-        ws.binaryType = "arraybuffer"; // Important: Handle incoming data as binary
+        ws.binaryType = 'arraybuffer';
 
         ws.onopen = () => {
-            console.log("Connected");
             hideReconnectOverlay();
-            // Send the initial terminal size immediately upon connection
             sendResize();
         };
 
@@ -68,10 +96,7 @@
             showReconnectOverlay();
         };
 
-        // 3. Handle WebSocket -> xterm.js (Incoming Output)
         ws.onmessage = (event) => {
-            // The backend sends binary data (raw PTY output).
-            // xterm.js `write` supports both string and Uint8Array.
             if (event.data instanceof ArrayBuffer) {
                 term.write(new Uint8Array(event.data));
             } else {
@@ -79,39 +104,31 @@
             }
         };
 
-        // 4. Handle xterm.js -> WebSocket (User Input)
+        const encoder = new TextEncoder();
         term.onData((data) => {
-            if (reconnectMode) return; // block input after session end
-
+            if (reconnectMode) return;
             if (ws.readyState === WebSocket.OPEN) {
-                // Convert string input to Uint8Array and send as binary
-                const encoder = new TextEncoder();
                 ws.send(encoder.encode(data));
             }
         });
 
-        // 5. Handle Window Resize
         function sendResize() {
             if (ws.readyState === WebSocket.OPEN) {
-                const dims = {
-                    type: "resize",
+                ws.send(JSON.stringify({
+                    type: 'resize',
                     cols: term.cols,
                     rows: term.rows
-                };
-                // Send the resize command as a JSON text message
-                ws.send(JSON.stringify(dims));
+                }));
             }
         }
 
-        // Listen for browser window resize events
         window.addEventListener('resize', () => {
-            fitAddon.fit(); // Recalculate xterm internal dimensions
-            sendResize();   // Notify the backend PTY to update window size
+            fitAddon.fit();
+            sendResize();
         });
 
-        // 6. Press Enter to reconnect
-        window.addEventListener("keydown", (e) => {
-            if (reconnectMode && e.key === "Enter") {
+        window.addEventListener('keydown', (e) => {
+            if (reconnectMode && e.key === 'Enter') {
                 location.reload();
             }
         });
