@@ -149,5 +149,7 @@ var mimetypes = map[string]string{
 	".xpm":         "image/x-xpixmap",
 	".xsl":         "application/xml",
 	".xwd":         "image/x-xwindowdump",
+	".yaml":        "text/yaml",
+	".yml":         "text/yaml",
 	".zip":         "application/zip",
 }
