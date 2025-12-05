@@ -82,6 +82,7 @@ func (h *HTTPWebHandler) Load() error {
 			}
 		case web.Shell.Enabled:
 			router.handler = &HTTPWebShellHandler{
+				Location:  web.Location,
 				AuthTable: web.Shell.AuthTable,
 				Command:   web.Shell.Command,
 			}

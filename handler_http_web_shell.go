@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
 	"github.com/coder/websocket"
@@ -19,6 +18,7 @@ import (
 )
 
 type HTTPWebShellHandler struct {
+	Location  string
 	AuthBasic string
 	AuthTable string
 	Command   string
@@ -65,23 +65,27 @@ func (h *HTTPWebShellHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	if strings.HasSuffix(req.RequestURI, "/") {
+	path := strings.TrimPrefix(req.RequestURI, h.Location)
+
+	switch path {
+	case "ws":
+		break
+	case "":
 		rw.Header().Set("content-type", "text/html; charset=utf-8")
 		rw.Write(webshellHtml)
 		return
-	}
-
-	switch filepath.Base(req.RequestURI) {
-	case "xterm.min.js":
-		rw.Header().Set("content-type", "application/javascript")
-		rw.Write(xtermJS)
-		return
-	case "xterm.min.css":
+	case "xterm.css":
 		rw.Header().Set("content-type", "text/css")
 		rw.Write(xtermCSS)
 		return
-	case "ws":
-		break
+	case "xterm.js":
+		rw.Header().Set("content-type", "application/javascript")
+		rw.Write(xtermJS)
+		return
+	case "xterm-addon-fit.js":
+		rw.Header().Set("content-type", "application/javascript")
+		rw.Write(xtermAddonFitJS)
+		return
 	default:
 		http.NotFound(rw, req)
 		return
@@ -108,7 +112,9 @@ func (h *HTTPWebShellHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		_ = cmd.Wait()
 	}()
 
-	go func() {
+	ctx := req.Context()
+
+	go func(ctx context.Context) {
 		buf := make([]byte, 4096)
 		for {
 			n, err := ptyF.Read(buf)
@@ -118,51 +124,58 @@ func (h *HTTPWebShellHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 				}
 				return
 			}
-			err = conn.Write(context.Background(), websocket.MessageBinary, buf[:n])
+			err = conn.Write(ctx, websocket.MessageBinary, buf[:n])
 			if err != nil {
 				return
 			}
 		}
-	}()
+	}(ctx)
 
-	for {
-		typ, reader, err := conn.Reader(context.Background())
-		if err != nil {
-			log.Printf("ws read error: %v", err)
-			return
-		}
-
-		if typ == websocket.MessageBinary {
-			if _, err := io.Copy(ptyF, reader); err != nil {
-				log.Printf("failed to write to pty: %v", err)
+	go func(ctx context.Context) {
+		for {
+			typ, reader, err := conn.Reader(ctx)
+			if err != nil {
+				log.Printf("ws read error: %v", err)
 				return
 			}
-		} else if typ == websocket.MessageText {
-			var msg struct {
-				Type string `json:"type"`
-				Rows int    `json:"rows"`
-				Cols int    `json:"cols"`
-			}
-			if err := json.NewDecoder(reader).Decode(&msg); err != nil {
-				log.Printf("invalid json: %v", err)
-				continue
-			}
-			switch msg.Type {
-			case "resize":
-				ws := &pty.Winsize{Rows: uint16(msg.Rows), Cols: uint16(msg.Cols)}
-				if err := pty.Setsize(ptyF, ws); err != nil {
-					log.Printf("failed to resize pty: %v", err)
+
+			if typ == websocket.MessageBinary {
+				if _, err := io.Copy(ptyF, reader); err != nil {
+					log.Printf("failed to write to pty: %v", err)
+					return
+				}
+			} else if typ == websocket.MessageText {
+				var msg struct {
+					Type string `json:"type"`
+					Rows int    `json:"rows"`
+					Cols int    `json:"cols"`
+				}
+				if err := json.NewDecoder(reader).Decode(&msg); err != nil {
+					log.Printf("invalid json: %v", err)
+					continue
+				}
+				switch msg.Type {
+				case "resize":
+					ws := &pty.Winsize{Rows: uint16(msg.Rows), Cols: uint16(msg.Cols)}
+					if err := pty.Setsize(ptyF, ws); err != nil {
+						log.Printf("failed to resize pty: %v", err)
+					}
 				}
 			}
 		}
-	}
+	}(ctx)
+
+	<-ctx.Done()
 }
 
 //go:embed webshell.html
 var webshellHtml []byte
 
-//go:embed xterm.min.css
+//go:embed xterm.css
 var xtermCSS []byte
 
-//go:embed xterm.min.js
+//go:embed xterm.js
 var xtermJS []byte
+
+//go:embed xterm-addon-fit.js
+var xtermAddonFitJS []byte
