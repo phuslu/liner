@@ -55,13 +55,13 @@
     <script src="xterm-addon-webgl.js"></script>
 
     <script>
-        document.title = "{{ get . `title` }}" || "webshell"
+        document.title = "{{ index .Template `title` }}" || "liner webshell"
 
         const term = new Terminal({
             allowProposedApi: true,
             cursorBlink: true,
             disableStdin: false,
-            fontSize: parseInt("{{ get . `font_size` }}") || 14,
+            fontSize: parseInt("{{ index .Template `font_size` }}") || 14,
             fontFamily: 'Menlo, Monaco, "Courier New", monospace',
             theme: { background: '#101010' },
             windowsMode: "{{ get . `windows_mode` }}" == "true",

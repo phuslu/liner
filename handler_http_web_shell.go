@@ -91,7 +91,10 @@ func (h *HTTPWebShellHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		break
 	case "":
 		rw.Header().Set("content-type", "text/html; charset=utf-8")
-		h.webshell.Execute(rw, h.Template)
+		h.webshell.Execute(rw, struct {
+			Request  *http.Request
+			Template map[string]string
+		}{req, h.Template})
 		return
 	default:
 		h.fileserver.ServeHTTP(rw, req)
