@@ -82,9 +82,10 @@ type HTTPConfig struct {
 			DumpFailure bool   `json:"dump_failure" yaml:"dump_failure"`
 		} `json:"proxy" yaml:"proxy"`
 		Shell struct {
-			Enabled   bool   `json:"enabled" yaml:"enabled"`
-			AuthTable string `json:"auth_table" yaml:"auth_table"`
-			Command   string `json:"command" yaml:"command"`
+			Enabled   bool              `json:"enabled" yaml:"enabled"`
+			AuthTable string            `json:"auth_table" yaml:"auth_table"`
+			Command   string            `json:"command" yaml:"command"`
+			Template  map[string]string `json:"template" yaml:"template"`
 		} `json:"shell" yaml:"shell"`
 	} `json:"web" yaml:"web"`
 }

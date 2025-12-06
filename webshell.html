@@ -55,9 +55,11 @@
     <script>
         const term = new Terminal({
             cursorBlink: true,
+            disableStdin: false,
             fontSize: 14,
             fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-            theme: { background: '#101010' }
+            theme: { background: '#101010' },
+            windowsMode: "{{ get . `windows_mode` }}" == "true",
         });
         const fitAddon = new FitAddon.FitAddon();
         term.loadAddon(fitAddon);

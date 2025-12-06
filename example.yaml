@@ -134,6 +134,8 @@ https:
         shell:
           enabled: true
           command: /bin/bash
+          template:
+            windows_mode: "true"
       - location: /
         proxy:
           set_headers: |

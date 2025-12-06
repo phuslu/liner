@@ -82,8 +82,10 @@ func (h *HTTPWebHandler) Load() error {
 		case web.Shell.Enabled:
 			router.handler = &HTTPWebShellHandler{
 				Location:  web.Location,
+				Functions: h.Functions,
 				AuthTable: web.Shell.AuthTable,
 				Command:   web.Shell.Command,
+				Template:  web.Shell.Template,
 			}
 		default:
 			log.Info().Str("web_location", web.Location).Msgf("web location is not enabled, skip.")

@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"text/template"
 
 	"github.com/coder/websocket"
 	"github.com/creack/pty"
@@ -21,12 +22,15 @@ import (
 
 type HTTPWebShellHandler struct {
 	Location  string
+	Functions template.FuncMap
 	AuthBasic string
 	AuthTable string
 	Command   string
+	Template  map[string]string
 
 	userchecker AuthUserChecker
 	fileserver  http.Handler
+	webshell    *template.Template
 }
 
 func (h *HTTPWebShellHandler) Load() error {
@@ -45,6 +49,11 @@ func (h *HTTPWebShellHandler) Load() error {
 		return err
 	}
 	h.fileserver = http.StripPrefix(strings.TrimSuffix(h.Location, "/"), http.FileServer(http.FS(zipreader)))
+
+	h.webshell, err = template.New(webshellHtml).Funcs(h.Functions).Parse(webshellHtml)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -81,7 +90,7 @@ func (h *HTTPWebShellHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		break
 	case "":
 		rw.Header().Set("content-type", "text/html; charset=utf-8")
-		rw.Write(webshellHtml)
+		h.webshell.Execute(rw, h.Template)
 		return
 	default:
 		h.fileserver.ServeHTTP(rw, req)
@@ -167,7 +176,7 @@ func (h *HTTPWebShellHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 }
 
 //go:embed webshell.html
-var webshellHtml []byte
+var webshellHtml string
 
 //go:embed xterm.zip
 var xtermZip []byte
