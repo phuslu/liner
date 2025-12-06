@@ -85,6 +85,7 @@ func (h *HTTPWebHandler) Load() error {
 				Functions: h.Functions,
 				AuthTable: web.Shell.AuthTable,
 				Command:   web.Shell.Command,
+				Home:      web.Shell.Home,
 				Template:  web.Shell.Template,
 			}
 		default:

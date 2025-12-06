@@ -26,6 +26,7 @@ type HTTPWebShellHandler struct {
 	AuthBasic string
 	AuthTable string
 	Command   string
+	Home      string
 	Template  map[string]string
 
 	userchecker AuthUserChecker
@@ -106,6 +107,7 @@ func (h *HTTPWebShellHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 
 	cmd := exec.Command(cmp.Or(h.Command, "/bin/sh"))
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+	cmd.Dir = cmp.Or(h.Home, os.Getenv("HOME"))
 
 	ptyF, err := pty.Start(cmd)
 	if err != nil {
