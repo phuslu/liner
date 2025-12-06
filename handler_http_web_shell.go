@@ -115,9 +115,15 @@ func (h *HTTPWebShellHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		return
 	}
 	defer func() {
+		log.Info().Err(err).Msg("pty closed")
 		_ = ptyF.Close()
 		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
+	}()
+
+	go func() {
+		err := cmd.Wait()
+		log.Info().Err(err).Msg("child exited")
+		_ = conn.Close(websocket.StatusNormalClosure, "child exited")
 	}()
 
 	ctx := req.Context()
@@ -128,7 +134,7 @@ func (h *HTTPWebShellHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 			n, err := ptyF.Read(buf)
 			if err != nil {
 				if err != io.EOF {
-					log.Printf("pty read error: %v", err)
+					log.Info().Err(err).Msg("pty read error")
 				}
 				_ = conn.Close(websocket.StatusNormalClosure, "pty session closed")
 				return
