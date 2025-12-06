@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Liner WebShell</title>
+    <title></title>
     <meta name="description" content="Liner WebShell" />
     <link rel="stylesheet" href="xterm.css" />
     <style>
@@ -53,6 +53,7 @@
     <script src="xterm.js"></script>
     <script src="xterm-addon-fit.js"></script>
     <script>
+        document.title = "{{ get . `title` }}" || "webshell"
         const term = new Terminal({
             cursorBlink: true,
             disableStdin: false,

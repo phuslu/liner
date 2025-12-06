@@ -135,6 +135,7 @@ https:
           enabled: true
           command: /bin/bash
           template:
+            title: "webshell"
             windows_mode: "true"
       - location: /
         proxy:
