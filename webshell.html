@@ -57,7 +57,7 @@
         const term = new Terminal({
             cursorBlink: true,
             disableStdin: false,
-            fontSize: 14,
+            fontSize: parseInt("{{ get . `font_size` }}") || 14,
             fontFamily: 'Menlo, Monaco, "Courier New", monospace',
             theme: { background: '#101010' },
             windowsMode: "{{ get . `windows_mode` }}" == "true",
