@@ -55,7 +55,7 @@
     <script src="xterm-addon-webgl.js"></script>
 
     <script>
-        document.title = "{{ index .Template `title` }}" || "liner webshell"
+        document.title = "{{ index .Template `title` }}" || "liner webshell";
 
         const term = new Terminal({
             allowProposedApi: true,
@@ -64,7 +64,7 @@
             fontSize: parseInt("{{ index .Template `font_size` }}") || 14,
             fontFamily: 'Menlo, Monaco, "Courier New", monospace',
             theme: { background: '#101010' },
-            windowsMode: "{{ get . `windows_mode` }}" == "true",
+            windowsMode: "{{ index .Template `windows_mode` }}" == "true",
         });
 
         const fitAddon = new FitAddon.FitAddon();
@@ -98,15 +98,38 @@
         );
         ws.binaryType = 'arraybuffer';
 
-        let writeBuffer = "";
-        function flushWriteBuffer() {
-            if (writeBuffer.length > 0) {
-                term.write(writeBuffer);
-                writeBuffer = "";
+        let framePending = false;
+        let queue = [];
+
+        ws.onmessage = (event) => {
+            if (event.data instanceof ArrayBuffer) {
+                queue.push(new Uint8Array(event.data));
+            } else {
+                queue.push(event.data);
             }
-            requestAnimationFrame(flushWriteBuffer);
+            if (!framePending) {
+                framePending = true;
+                requestAnimationFrame(flushQueue);
+            }
+        };
+
+        const decoder = new TextDecoder();
+        function flushQueue() {
+            framePending = false;
+            for (let i = 0; i < queue.length; i++) {
+                const chunk = queue[i];
+                if (chunk instanceof Uint8Array) {
+                    try {
+                        term.writeUtf8(chunk);
+                    } catch (_) {
+                        term.write(decoder.decode(chunk));
+                    }
+                } else {
+                    term.write(chunk);
+                }
+            }
+            queue.length = 0;
         }
-        flushWriteBuffer();
 
         ws.onopen = () => {
             hideReconnectOverlay();
@@ -115,14 +138,6 @@
 
         ws.onclose = () => {
             showReconnectOverlay();
-        };
-
-        ws.onmessage = (event) => {
-            if (event.data instanceof ArrayBuffer) {
-                writeBuffer += new TextDecoder().decode(event.data);
-            } else {
-                writeBuffer += event.data;
-            }
         };
 
         const encoder = new TextEncoder();
@@ -149,7 +164,7 @@
             resizeTimer = setTimeout(() => {
                 fitAddon.fit();
                 sendResize();
-            }, 100);
+            }, 50);
         });
 
         window.addEventListener('keydown', (e) => {
