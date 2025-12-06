@@ -82,7 +82,7 @@
             reconnectMode = true;
             overlay.style.display = 'flex';
             term.blur();
-            term.write('\r\n\x1b[31mSession Ended\x1b[0m\r\nPress Enter to reconnect...\r\n');
+            // term.write('\r\n\x1b[31mSession Ended\x1b[0m\r\nPress Enter to reconnect...\r\n');
         }
 
         function hideReconnectOverlay() {
@@ -91,50 +91,67 @@
             term.focus();
         }
 
-        const ws = new WebSocket(
-            location.protocol.replace('http', 'ws') + '//' +
-            location.host +
-            location.pathname.replace(/\/[^/]*$/, '') + '/ws'
-        );
-        ws.binaryType = 'arraybuffer';
-
-        let writeBuffer = "";
-        function flushWriteBuffer() {
-            if (writeBuffer.length > 0) {
-                term.write(writeBuffer);
-                writeBuffer = "";
-            }
-            requestAnimationFrame(flushWriteBuffer);
-        }
-        flushWriteBuffer();
-
-        ws.onopen = () => {
-            hideReconnectOverlay();
-            sendResize();
-        };
-
-        ws.onclose = () => {
-            showReconnectOverlay();
-        };
-
-        ws.onmessage = (event) => {
-            if (event.data instanceof ArrayBuffer) {
-                writeBuffer += new TextDecoder().decode(event.data);
-            } else {
-                writeBuffer += event.data;
-            }
-        };
+        let ws = null;
 
         const encoder = new TextEncoder();
+        const decoder = new TextDecoder();
+
+        function startWebSocket() {
+            ws = new WebSocket(
+                location.protocol.replace('http', 'ws') + '//' +
+                location.host +
+                location.pathname.replace(/\/[^/]*$/, '') + '/ws'
+            );
+            ws.binaryType = 'arraybuffer';
+
+            ws.onopen = () => {
+                hideReconnectOverlay();
+                sendResize();
+            };
+
+            ws.onclose = () => {
+                showReconnectOverlay();
+            };
+
+            ws.onmessage = (event) => {
+                if (event.data instanceof ArrayBuffer) {
+                    writeBuffer += decoder.decode(event.data);
+                } else {
+                    writeBuffer += event.data;
+                }
+
+                scheduleFlush();
+            };
+
+            return ws;
+        }
+        startWebSocket();
+
+        let writeBuffer = "";
+        let rafPending = false;
+
+        function scheduleFlush() {
+            if (!rafPending) {
+                rafPending = true;
+                requestAnimationFrame(() => {
+                    rafPending = false;
+                    if (writeBuffer.length > 0) {
+                        term.write(writeBuffer);
+                        writeBuffer = "";
+                    }
+                });
+            }
+        }
+
         term.onData((data) => {
             if (reconnectMode) return;
-            if (ws.readyState === WebSocket.OPEN) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(encoder.encode(data));
             }
         });
 
         function sendResize() {
-            if (ws.readyState === WebSocket.OPEN) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({
                     type: 'resize',
                     cols: term.cols,
@@ -149,12 +166,12 @@
             resizeTimer = setTimeout(() => {
                 fitAddon.fit();
                 sendResize();
-            }, 100);
+            }, 50);
         });
 
         window.addEventListener('keydown', (e) => {
             if (reconnectMode && e.key === 'Enter') {
-                location.reload();
+                startWebSocket();
             }
         });
     </script>
