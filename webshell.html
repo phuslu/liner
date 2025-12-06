@@ -52,9 +52,13 @@
 
     <script src="xterm.js"></script>
     <script src="xterm-addon-fit.js"></script>
+    <script src="xterm-addon-webgl.js"></script>
+
     <script>
         document.title = "{{ get . `title` }}" || "webshell"
+
         const term = new Terminal({
+            allowProposedApi: true,
             cursorBlink: true,
             disableStdin: false,
             fontSize: parseInt("{{ get . `font_size` }}") || 14,
@@ -62,8 +66,12 @@
             theme: { background: '#101010' },
             windowsMode: "{{ get . `windows_mode` }}" == "true",
         });
+
         const fitAddon = new FitAddon.FitAddon();
         term.loadAddon(fitAddon);
+
+        try { term.loadAddon(new WebglAddon.WebglAddon()); } catch (_) {}
+
         term.open(document.getElementById('terminal'));
         fitAddon.fit();
 
@@ -90,6 +98,16 @@
         );
         ws.binaryType = 'arraybuffer';
 
+        let writeBuffer = "";
+        function flushWriteBuffer() {
+            if (writeBuffer.length > 0) {
+                term.write(writeBuffer);
+                writeBuffer = "";
+            }
+            requestAnimationFrame(flushWriteBuffer);
+        }
+        flushWriteBuffer();
+
         ws.onopen = () => {
             hideReconnectOverlay();
             sendResize();
@@ -101,9 +119,9 @@
 
         ws.onmessage = (event) => {
             if (event.data instanceof ArrayBuffer) {
-                term.write(new Uint8Array(event.data));
+                writeBuffer += new TextDecoder().decode(event.data);
             } else {
-                term.write(event.data);
+                writeBuffer += event.data;
             }
         };
 
@@ -125,9 +143,13 @@
             }
         }
 
+        let resizeTimer = null;
         window.addEventListener('resize', () => {
-            fitAddon.fit();
-            sendResize();
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => {
+                fitAddon.fit();
+                sendResize();
+            }, 100);
         });
 
         window.addEventListener('keydown', (e) => {
