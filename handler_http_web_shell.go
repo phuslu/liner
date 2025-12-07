@@ -108,18 +108,20 @@ func (h *HTTPWebShellHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	}
 	defer conn.CloseNow()
 
-	cmd := exec.Command(cmp.Or(h.Command, "/bin/sh"))
+	ctx := req.Context()
+
+	cmd := exec.CommandContext(ctx, cmp.Or(h.Command, "/bin/sh"))
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 	cmd.Dir = cmp.Or(h.Home, os.Getenv("HOME"))
 
-	ptyF, err := pty.Start(cmd)
+	ptyfile, err := pty.Start(cmd)
 	if err != nil {
 		conn.Close(websocket.StatusInternalError, "failed to start pty")
 		return
 	}
 	defer func() {
 		log.Info().Err(err).Msg("pty closed")
-		_ = ptyF.Close()
+		_ = ptyfile.Close()
 		_ = cmd.Process.Kill()
 	}()
 
@@ -129,12 +131,10 @@ func (h *HTTPWebShellHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		_ = conn.Close(websocket.StatusNormalClosure, "child exited")
 	}()
 
-	ctx := req.Context()
-
 	go func(ctx context.Context) {
 		buf := make([]byte, 4096)
 		for {
-			n, err := ptyF.Read(buf)
+			n, err := ptyfile.Read(buf)
 			if err != nil {
 				if err != io.EOF {
 					log.Info().Err(err).Msg("pty read error")
@@ -158,7 +158,7 @@ func (h *HTTPWebShellHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 			}
 
 			if typ == websocket.MessageBinary {
-				if _, err := io.Copy(ptyF, reader); err != nil {
+				if _, err := io.Copy(ptyfile, reader); err != nil {
 					log.Printf("failed to write to pty: %v", err)
 					return
 				}
@@ -175,7 +175,7 @@ func (h *HTTPWebShellHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 				switch msg.Type {
 				case "resize":
 					ws := &pty.Winsize{Rows: uint16(msg.Rows), Cols: uint16(msg.Cols)}
-					if err := pty.Setsize(ptyF, ws); err != nil {
+					if err := pty.Setsize(ptyfile, ws); err != nil {
 						log.Printf("failed to resize pty: %v", err)
 					}
 				}

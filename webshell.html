@@ -43,16 +43,15 @@
             box-shadow: 0 0 12px rgba(0, 0, 0, 0.45);
         }
     </style>
+    <script src="xterm.js"></script>
+    <script src="xterm-addon-fit.js"></script>
+    <script src="xterm-addon-webgl.js"></script>
 </head>
 <body>
     <div class="webshell">
         <div id="terminal" class="webshell-terminal"></div>
         <div id="reconnect-overlay"><div id="reconnect-box">Press ⏎ to Reconnect</div></div>
     </div>
-
-    <script src="xterm.js"></script>
-    <script src="xterm-addon-fit.js"></script>
-    <script src="xterm-addon-webgl.js"></script>
 
     <script>
         document.title = "{{ index .Template `title` }}" || "liner webshell";
@@ -64,15 +63,23 @@
             fontSize: parseInt("{{ .Request.URL.Query.Get `font_size` | default (index .Template `font_size`) }}") || 14,
             fontFamily: 'Menlo, Monaco, "Courier New", monospace',
             theme: { background: '#101010' },
+            scrollback: 5000,
             windowsMode: "{{ .Request.URL.Query.Get `windows_mode` | default (index .Template `windows_mode`) }}" == "true",
         });
 
         const fitAddon = new FitAddon.FitAddon();
         term.loadAddon(fitAddon);
 
-        try { term.loadAddon(new WebglAddon.WebglAddon()); } catch (_) {}
+        try {
+            const webgl = new WebglAddon.WebglAddon();
+            webgl.onContextLoss(e => { webgl.dispose(); });
+            term.loadAddon(webgl);
+        } catch (e) {
+            console.warn("WebGL not supported, falling back to canvas");
+        }
 
-        term.open(document.getElementById('terminal'));
+        const terminal = document.getElementById('terminal');
+        term.open(terminal);
         fitAddon.fit();
 
         const overlay = document.getElementById('reconnect-overlay');
@@ -82,7 +89,7 @@
             reconnectMode = true;
             overlay.style.display = 'flex';
             term.blur();
-            term.write('\r\n\x1b[31mSession Ended\x1b[0m\r\nPress Enter to reconnect...\r\n');
+            term.write('\r\n\x1b[31mSession Ended\x1b[0m\r\n');
         }
 
         function hideReconnectOverlay() {
@@ -158,14 +165,17 @@
             }
         }
 
-        let resizeTimer = null;
-        window.addEventListener('resize', () => {
-            clearTimeout(resizeTimer);
-            resizeTimer = setTimeout(() => {
-                fitAddon.fit();
-                sendResize();
-            }, 50);
-        });
+        const resizeObserver = new ResizeObserver(entries => {
+            requestAnimationFrame(() => {
+                if (!entries.length) return;
+                try {
+                    fitAddon.fit();
+                    sendResize();
+                } catch (e) {}
+            });
+         });
+
+        resizeObserver.observe(terminal);
 
         window.addEventListener('keydown', (e) => {
             if (reconnectMode && e.key === 'Enter') {
