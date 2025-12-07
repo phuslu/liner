@@ -84,7 +84,7 @@ func (h *HTTPWebShellHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	path := strings.TrimPrefix(req.RequestURI, h.Location)
+	path := strings.TrimPrefix(req.URL.Path, h.Location)
 
 	switch path {
 	case "ws":

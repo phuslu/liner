@@ -61,10 +61,10 @@
             allowProposedApi: true,
             cursorBlink: true,
             disableStdin: false,
-            fontSize: parseInt("{{ index .Template `font_size` }}") || 14,
+            fontSize: parseInt("{{ .Request.URL.Query.Get `font_size` | default (index .Template `font_size`) }}") || 14,
             fontFamily: 'Menlo, Monaco, "Courier New", monospace',
             theme: { background: '#101010' },
-            windowsMode: "{{ index .Template `windows_mode` }}" == "true",
+            windowsMode: "{{ .Request.URL.Query.Get `windows_mode` | default (index .Template `windows_mode`) }}" == "true",
         });
 
         const fitAddon = new FitAddon.FitAddon();
