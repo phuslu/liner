@@ -349,6 +349,9 @@ func main() {
 		}
 		dialers[name] = d
 	}
+	if _, ok := dialers["local"]; !ok {
+		dialers["local"] = dialer
+	}
 
 	// see http.DefaultTransport
 	transport := &http.Transport{
