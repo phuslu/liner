@@ -149,41 +149,37 @@ func (h *HTTPWebShellHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		}
 	}(ctx)
 
-	go func(ctx context.Context) {
-		for {
-			typ, reader, err := conn.Reader(ctx)
-			if err != nil {
-				log.Printf("ws read error: %v", err)
+	for {
+		typ, reader, err := conn.Reader(ctx)
+		if err != nil {
+			log.Printf("ws read error: %v", err)
+			return
+		}
+
+		if typ == websocket.MessageBinary {
+			if _, err := io.Copy(ptyfile, reader); err != nil {
+				log.Printf("failed to write to pty: %v", err)
 				return
 			}
-
-			if typ == websocket.MessageBinary {
-				if _, err := io.Copy(ptyfile, reader); err != nil {
-					log.Printf("failed to write to pty: %v", err)
-					return
-				}
-			} else if typ == websocket.MessageText {
-				var msg struct {
-					Type string `json:"type"`
-					Rows int    `json:"rows"`
-					Cols int    `json:"cols"`
-				}
-				if err := json.NewDecoder(reader).Decode(&msg); err != nil {
-					log.Printf("invalid json: %v", err)
-					continue
-				}
-				switch msg.Type {
-				case "resize":
-					ws := &pty.Winsize{Rows: uint16(msg.Rows), Cols: uint16(msg.Cols)}
-					if err := pty.Setsize(ptyfile, ws); err != nil {
-						log.Printf("failed to resize pty: %v", err)
-					}
+		} else if typ == websocket.MessageText {
+			var msg struct {
+				Type string `json:"type"`
+				Rows int    `json:"rows"`
+				Cols int    `json:"cols"`
+			}
+			if err := json.NewDecoder(reader).Decode(&msg); err != nil {
+				log.Printf("invalid json: %v", err)
+				continue
+			}
+			switch msg.Type {
+			case "resize":
+				ws := &pty.Winsize{Rows: uint16(msg.Rows), Cols: uint16(msg.Cols)}
+				if err := pty.Setsize(ptyfile, ws); err != nil {
+					log.Printf("failed to resize pty: %v", err)
 				}
 			}
 		}
-	}(ctx)
-
-	<-ctx.Done()
+	}
 }
 
 //go:embed webshell.html
