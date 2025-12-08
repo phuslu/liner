@@ -46,6 +46,7 @@
     <script src="xterm.js"></script>
     <script src="xterm-addon-fit.js"></script>
     <script src="xterm-addon-webgl.js"></script>
+    <script src="xterm-addon-web-links.js"></script>
 </head>
 <body>
     <div class="webshell">
@@ -71,12 +72,14 @@
         term.loadAddon(fitAddon);
 
         try {
-            const webgl = new WebglAddon.WebglAddon();
-            webgl.onContextLoss(e => { webgl.dispose(); });
-            term.loadAddon(webgl);
+            const webglAddon = new WebglAddon.WebglAddon();
+            webglAddon.onContextLoss(e => { webglAddon.dispose(); });
+            term.loadAddon(webglAddon);
         } catch (e) {
             console.warn("WebGL not supported, falling back to canvas");
         }
+
+        term.loadAddon(new WebLinksAddon.WebLinksAddon());
 
         const terminal = document.getElementById('terminal');
         term.open(terminal);
