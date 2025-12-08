@@ -17,7 +17,7 @@ import (
 	"text/template"
 
 	"github.com/coder/websocket"
-	"github.com/creack/pty"
+	"github.com/creack/pty/v2"
 	"github.com/phuslu/log"
 )
 

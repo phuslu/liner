@@ -25,7 +25,7 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/creack/pty"
+	"github.com/creack/pty/v2"
 	"github.com/google/shlex"
 	"github.com/libp2p/go-yamux/v5"
 	"github.com/phuslu/log"

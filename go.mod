@@ -3,7 +3,8 @@ module liner
 go 1.25
 
 require (
-	github.com/creack/pty v1.1.24
+	github.com/coder/websocket v1.8.14
+	github.com/creack/pty/v2 v2.0.1
 	github.com/go-task/slim-sprig/v3 v3.0.0
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
 	github.com/libp2p/go-yamux/v5 v5.1.0
@@ -31,7 +32,6 @@ require (
 
 require (
 	github.com/andybalholm/brotli v1.2.0 // indirect
-	github.com/coder/websocket v1.8.14 // indirect
 	github.com/klauspost/compress v1.18.2 // indirect
 	github.com/kr/fs v0.1.0 // indirect
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
@@ -41,4 +41,4 @@ require (
 	golang.org/x/text v0.31.0 // indirect
 )
 
-replace github.com/creack/pty v1.1.24 => github.com/photostorm/pty v1.1.19-0.20230903182454-31354506054b
+replace github.com/creack/pty/v2 v2.0.1 => github.com/photostorm/pty/v2 v2.0.0-20240405180724-bf40468acd65
