@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -104,6 +105,11 @@ func (h *HTTPWebShellHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		return
 	default:
 		h.fileserver.ServeHTTP(rw, req)
+		return
+	}
+
+	if u, err := url.Parse(req.Header.Get("origin")); err != nil || u.Host != req.Host {
+		http.Error(rw, "404 forbidden: bad origin: "+req.Header.Get("origin"), http.StatusBadRequest)
 		return
 	}
 
