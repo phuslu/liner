@@ -46,7 +46,7 @@ func (h *HTTPWebShellHandler) Load() error {
 		h.userchecker = &AuthUserLoadChecker{loader}
 	}
 
-	zipreader, err := zip.NewReader(bytes.NewReader(xtermZip), int64(len(xtermZip)))
+	zipreader, err := zip.NewReader(bytes.NewReader(jsdelivrZip), int64(len(jsdelivrZip)))
 	if err != nil {
 		return err
 	}
@@ -197,5 +197,5 @@ func (h *HTTPWebShellHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 //go:embed webshell.html
 var webshellHtml string
 
-//go:embed xterm.zip
-var xtermZip []byte
+//go:embed jsdelivr.zip
+var jsdelivrZip []byte
