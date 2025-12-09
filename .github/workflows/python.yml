@@ -2,7 +2,7 @@ name: python
 on:
   push:
     branches:
-      - main
+      - master
 jobs:
   manylinux_x86_64:
     name: manylinux_x86_64
