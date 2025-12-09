@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"net/http"
@@ -52,16 +51,14 @@ func (h *HTTPWebLogtailHandler) broadcast() {
 			return
 		}
 		buf = buf[:n]
-		for line := range bytes.Lines(buf) {
-			h.clients.Range(func(key, value any) bool {
-				rw := value.(http.ResponseWriter)
-				// req := key.(*http.Request)
-				// level := log.ParseLevel(cmp.Or(req.URL.Query().Get("level"), "info"))
-				fmt.Fprintln(rw, string(line))
-				http.NewResponseController(rw).Flush()
-				return true
-			})
-		}
+		h.clients.Range(func(key, value any) bool {
+			rw := value.(http.ResponseWriter)
+			// req := key.(*http.Request)
+			// level := log.ParseLevel(cmp.Or(req.URL.Query().Get("level"), "info"))
+			fmt.Fprint(rw, string(buf))
+			http.NewResponseController(rw).Flush()
+			return true
+		})
 	}
 }
 
