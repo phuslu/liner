@@ -185,7 +185,7 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	}
 
 	if !fi.IsDir() {
-		if strings.EqualFold(filepath.Ext(fullname), ".md") && req.URL.Query().Get("raw") == "" {
+		if strings.EqualFold(filepath.Ext(fullname), ".md") && req.URL.Query().Get("html") == "1" {
 			b := bytebufferpool.Get()
 			defer bytebufferpool.Put(b)
 			b.Reset()

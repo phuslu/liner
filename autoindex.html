@@ -5,6 +5,7 @@
 	website_title = ''
 	max_name_length = 60
 	enable_readme = true
+	enable_markdown = true
 	omit_icon_if_emoji = true
 	datetime_format = '%d-%b-%Y %H:%M'
 
@@ -116,7 +117,11 @@
 		}
 
 		tr = table.add('tr')
-		tr.add('td').add('a').attr('class', css).attr('href', filename).text(displayname)
+		if (enable_markdown && /\.md$/.test(filename)) {
+			tr.add('td').add('a').attr('class', css).attr('href', filename + '?html=1').text(displayname)
+		} else {
+			tr.add('td').add('a').attr('class', css).attr('href', filename).text(displayname)
+		}
 		tr.add('td').text(datetime)
 		tr.add('td').text(size == '-' ? '' : size)
 	}
@@ -147,7 +152,7 @@
 
 	if (enable_readme && readme_md !== '') {
 		xhr = new XMLHttpRequest()
-		xhr.open('GET', location.pathname.replace(/[^/]+$/, '')+readme_md+'?raw=true', true)
+		xhr.open('GET', location.pathname.replace(/[^/]+$/, '')+readme_md, true)
 		xhr.onload = function() {
 			if (xhr.status < 200 && xhr.status >= 400)
 				return
