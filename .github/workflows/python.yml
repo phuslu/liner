@@ -1,5 +1,8 @@
 name: python
-on: [push]
+on:
+  push:
+    branches:
+      - main
 jobs:
   manylinux_x86_64:
     name: manylinux_x86_64
