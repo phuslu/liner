@@ -1878,14 +1878,14 @@ func (w SlogWriter) Write(b []byte) (int, error) {
 }
 
 type FileLoader[T any] struct {
+	mtime int64
+	ptr   unsafe.Pointer
+	once  sync.Once
+
 	Filename     string
 	Unmarshal    func([]byte, any) error
 	PollDuration time.Duration
 	Logger       *slog.Logger
-
-	once  sync.Once
-	mtime int64
-	ptr   unsafe.Pointer
 }
 
 func (f *FileLoader[T]) load() {
