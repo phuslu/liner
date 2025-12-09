@@ -31,8 +31,9 @@ type HTTPWebIndexHandler struct {
 	File      string
 	Functions template.FuncMap
 
-	headers *template.Template
-	body    *template.Template
+	headers  *template.Template
+	body     *template.Template
+	markdown *template.Template
 }
 
 func (h *HTTPWebIndexHandler) Load() (err error) {
@@ -46,6 +47,11 @@ func (h *HTTPWebIndexHandler) Load() (err error) {
 	}
 
 	h.body, err = template.New(h.Body).Funcs(h.Functions).Parse(h.Body)
+	if err != nil {
+		return
+	}
+
+	h.markdown, err = template.New("markdown").Funcs(h.Functions).Parse(markdownTemplate)
 	if err != nil {
 		return
 	}
@@ -179,6 +185,27 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	}
 
 	if !fi.IsDir() {
+		if strings.EqualFold(filepath.Ext(fullname), ".md") && req.URL.Query().Get("raw") == "" {
+			b := bytebufferpool.Get()
+			defer bytebufferpool.Put(b)
+			b.Reset()
+
+			err = h.markdown.Execute(b, struct {
+				Title string
+			}{
+				Title: filepath.Base(fullname),
+			})
+			if err != nil {
+				log.Error().Context(ri.LogContext).Err(err).Str("file", fullname).Msg("execute markdown template error")
+				http.Error(rw, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			h.addHeaders(rw, req, ri)
+			rw.Header().Set("content-type", "text/html; charset=UTF-8")
+			rw.Write(b.Bytes())
+			return
+		}
 
 		file, err := os.Open(fullname)
 		if err != nil {
@@ -359,3 +386,8 @@ var autoindexTemplate = `
 {{end}}</pre><hr></body>
 </html>
 ` + autoindexHTML
+
+//go:embed markdown.html
+var markdownHTML string
+
+var markdownTemplate = markdownHTML

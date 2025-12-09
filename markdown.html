@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{.Title}}</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.0/github-markdown.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+    <style>
+        body {
+            background-color: #fff;
+            margin: 0;
+            font-family: -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif,"Apple Color Emoji","Segoe UI Emoji";
+        }
+        .container {
+            padding-right: 15px;
+            padding-left: 15px;
+            margin-right: auto;
+            margin-left: auto;
+            padding-bottom: 50px;
+        }
+        @media (min-width: 768px) { .container { max-width: 750px; } }
+        @media (min-width: 992px) { .container { max-width: 970px; } }
+        @media (min-width: 1200px) { .container { max-width: 1170px; } }
+
+        .markdown-body {
+            box-sizing: border-box;
+            min-width: 200px;
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 45px;
+        }
+
+        #loading {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(255,255,255,0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            color: #555;
+            z-index: 1000;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 15px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        #error-msg {
+            color: red;
+            display: none;
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .toolbar {
+            padding: 10px;
+            border-bottom: 1px solid #eaecef;
+            margin-bottom: 20px;
+            text-align: right;
+            background-color: #f6f8fa;
+        }
+        .toolbar a {
+            color: #0366d6;
+            text-decoration: none;
+            font-size: 14px;
+            margin-left: 15px;
+        }
+        .toolbar a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+
+<div id="loading">
+    <div class="spinner"></div>
+    <div id="loading-text">正在渲染...</div>
+</div>
+
+<div class="toolbar">
+    <div class="container" style="padding-bottom: 0px; display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-weight: bold; color: #24292e;">{{.Title}}</span>
+        <div>
+            <a href="../">返回上级</a>
+            <a href="?raw=true">查看源码</a>
+        </div>
+    </div>
+</div>
+
+<div class="container">
+    <div id="content" class="markdown-body"></div>
+    <div id="error-msg"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<!-- Languages for highlight.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/go.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/javascript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+
+<script type="module">
+    import mermaid from 'https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.0/mermaid.esm.min.mjs';
+
+    mermaid.initialize({ startOnLoad: false, theme: 'default' });
+
+    (async () => {
+        const loadingEl = document.getElementById('loading');
+        const loadingText = document.getElementById('loading-text');
+        const contentEl = document.getElementById('content');
+        const errorEl = document.getElementById('error-msg');
+
+        try {
+            // Fetch raw markdown content
+            loadingText.innerText = '加载文档...';
+            const response = await fetch('?raw=true');
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            const text = await response.text();
+
+            // Configure marked with highlight.js
+            loadingText.innerText = '解析内容...';
+            marked.setOptions({
+                highlight: (code, lang) => {
+                    if (lang && hljs.getLanguage(lang)) {
+                        return hljs.highlight(code, { language: lang }).value;
+                    }
+                    return hljs.highlightAuto(code).value;
+                }
+            });
+
+            // Custom renderer to intercept mermaid code blocks
+            const renderer = new marked.Renderer();
+            const originalCodeRenderer = renderer.code.bind(renderer);
+            let mermaidCount = 0;
+
+            renderer.code = (code, language, isEscaped) => {
+                if (language === 'mermaid') {
+                    const id = `mermaid-${mermaidCount++}`;
+                    return `<div class="mermaid" id="${id}">${code}</div>`;
+                }
+                return originalCodeRenderer(code, language, isEscaped);
+            };
+
+            const html = marked.parse(text, { renderer: renderer });
+            contentEl.innerHTML = html;
+
+            // Render mermaid diagrams
+            const mermaidDivs = document.querySelectorAll('.mermaid');
+            if (mermaidDivs.length > 0) {
+                loadingText.innerText = '生成图表...';
+                await mermaid.run({
+                    nodes: mermaidDivs
+                });
+            }
+
+            // All done
+            loadingEl.style.display = 'none';
+
+        } catch (err) {
+            console.error(err);
+            loadingEl.style.display = 'none';
+            contentEl.style.display = 'none';
+            errorEl.innerText = '加载失败: ' + err.message;
+            errorEl.style.display = 'block';
+        }
+    })();
+</script>
+
+</body>
+</html>
