@@ -12,6 +12,50 @@ import (
 	"github.com/phuslu/log"
 )
 
+type HTTPWebLogtailHandler struct {
+	Location       string
+	AuthTable      string
+	AuthUserLoader AuthUserLoader
+	Broadcaster    *LogBroadcaster
+}
+
+func (h *HTTPWebLogtailHandler) Load() error {
+	if h.AuthTable != "" {
+		h.AuthUserLoader = NewAuthUserLoaderFromTable(h.AuthTable)
+	}
+	return nil
+}
+
+func (h *HTTPWebLogtailHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if h.AuthUserLoader != nil {
+		username, password, ok := r.BasicAuth()
+		if !ok {
+			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		user := &AuthUserInfo{
+			Username: username,
+			Password: password,
+		}
+
+		checker := &AuthUserLoadChecker{AuthUserLoader: h.AuthUserLoader}
+		if err := checker.CheckAuthUser(r.Context(), user); err != nil {
+			time.Sleep(100 * time.Millisecond) // mitigate brute force
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		if user.Attrs["allow_log"] != "1" && user.Attrs["allow_log"] != "true" {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+	}
+
+	h.Broadcaster.ServeHTTP(w, r)
+}
+
 type MultiLogWriter struct {
 	Writers []log.Writer
 }
@@ -135,48 +179,4 @@ func (b *LogBroadcaster) Close() error {
 	}
 	b.clients = nil
 	return nil
-}
-
-type HTTPWebLogHandler struct {
-	Location       string
-	AuthTable      string
-	AuthUserLoader AuthUserLoader
-	Broadcaster    *LogBroadcaster
-}
-
-func (h *HTTPWebLogHandler) Load() error {
-	if h.AuthTable != "" {
-		h.AuthUserLoader = NewAuthUserLoaderFromTable(h.AuthTable)
-	}
-	return nil
-}
-
-func (h *HTTPWebLogHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if h.AuthUserLoader != nil {
-		username, password, ok := r.BasicAuth()
-		if !ok {
-			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		user := &AuthUserInfo{
-			Username: username,
-			Password: password,
-		}
-
-		checker := &AuthUserLoadChecker{AuthUserLoader: h.AuthUserLoader}
-		if err := checker.CheckAuthUser(r.Context(), user); err != nil {
-			time.Sleep(100 * time.Millisecond) // mitigate brute force
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		if user.Attrs["allow_log"] != "1" && user.Attrs["allow_log"] != "true" {
-			http.Error(w, "Forbidden", http.StatusForbidden)
-			return
-		}
-	}
-
-	h.Broadcaster.ServeHTTP(w, r)
 }

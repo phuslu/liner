@@ -89,10 +89,10 @@ func (h *HTTPWebHandler) Load() error {
 				Home:      web.Shell.Home,
 				Template:  web.Shell.Template,
 			}
-		case web.Log.Enabled:
-			router.handler = &HTTPWebLogHandler{
+		case web.Logtail.Enabled:
+			router.handler = &HTTPWebLogtailHandler{
 				Location:    web.Location,
-				AuthTable:   web.Log.AuthTable,
+				AuthTable:   web.Logtail.AuthTable,
 				Broadcaster: h.Broadcaster,
 			}
 		default:
