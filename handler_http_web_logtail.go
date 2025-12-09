@@ -57,7 +57,7 @@ func (h *HTTPWebLogtailHandler) broadcast() {
 				rw := value.(http.ResponseWriter)
 				// req := key.(*http.Request)
 				// level := log.ParseLevel(cmp.Or(req.URL.Query().Get("level"), "info"))
-				fmt.Println(rw, string(line))
+				fmt.Fprintln(rw, string(line))
 				http.NewResponseController(rw).Flush()
 				return true
 			})
