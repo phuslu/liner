@@ -2,160 +2,101 @@ package main
 
 import (
 	"bytes"
-	"cmp"
+	"context"
 	"fmt"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/phuslu/log"
+	"github.com/smallnest/ringbuffer"
 )
 
 type HTTPWebLogtailHandler struct {
-	Location       string
-	AuthTable      string
-	AuthUserLoader AuthUserLoader
-	Broadcaster    *LogBroadcaster
+	Location      string
+	AuthTable     string
+	AuthBasic     string
+	LogRingbuffer *ringbuffer.RingBuffer
+
+	userchecker AuthUserChecker
+	clients     *sync.Map // map[*http.Request]http.ResponseWriter
 }
 
 func (h *HTTPWebLogtailHandler) Load() error {
-	if h.AuthTable != "" {
-		h.AuthUserLoader = NewAuthUserLoaderFromTable(h.AuthTable)
+	if table := h.AuthTable; table != "" {
+		loader := NewAuthUserLoaderFromTable(table)
+		records, err := loader.LoadAuthUsers(context.Background())
+		if err != nil {
+			log.Fatal().Err(err).Str("auth_table", table).Msg("load auth_table failed")
+		}
+		log.Info().Str("auth_table", table).Int("auth_table_size", len(records)).Msg("load auth_table ok")
+		h.userchecker = &AuthUserLoadChecker{loader}
 	}
+
+	h.clients = new(sync.Map)
+	go h.broadcast()
+
 	return nil
 }
 
-func (h *HTTPWebLogtailHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if h.AuthUserLoader != nil {
-		username, password, ok := r.BasicAuth()
-		if !ok {
-			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+func (h *HTTPWebLogtailHandler) broadcast() {
+	buf := make([]byte, 4096)
+	for {
+		n, err := h.LogRingbuffer.Read(buf)
+		if n == 0 {
+			time.Sleep(50 * time.Millisecond)
+			continue
+		}
+		if err != nil {
+			log.Error().Err(err).Msg("logtail read ringbuffer error")
 			return
 		}
-
-		user := &AuthUserInfo{
-			Username: username,
-			Password: password,
+		buf = buf[:n]
+		for line := range bytes.Lines(buf) {
+			h.clients.Range(func(key, value any) bool {
+				rw := value.(http.ResponseWriter)
+				// req := key.(*http.Request)
+				// level := log.ParseLevel(cmp.Or(req.URL.Query().Get("level"), "info"))
+				fmt.Println(rw, string(line))
+				http.NewResponseController(rw).Flush()
+				return true
+			})
 		}
+	}
+}
 
-		checker := &AuthUserLoadChecker{AuthUserLoader: h.AuthUserLoader}
-		if err := checker.CheckAuthUser(r.Context(), user); err != nil {
-			time.Sleep(100 * time.Millisecond) // mitigate brute force
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
+func (h *HTTPWebLogtailHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	ri := req.Context().Value(HTTPRequestInfoContextKey).(*HTTPRequestInfo)
+	log.Info().Context(ri.LogContext).Any("headers", req.Header).Msg("web logtail request")
+
+	if h.userchecker != nil {
+		err := h.userchecker.CheckAuthUser(req.Context(), &ri.AuthUserInfo)
+		if err == nil {
+			if allow := ri.AuthUserInfo.Attrs["allow_logtail"]; allow != "1" {
+				err = fmt.Errorf("webshell is not allow for user: %#v", ri.AuthUserInfo.Username)
+			}
 		}
+		if err != nil {
+			log.Error().Context(ri.LogContext).Err(err).Any("user_attrs", ri.AuthUserInfo.Attrs).Msg("web logtail auth error")
+			rw.Header().Set("www-authenticate", `Basic realm="`+h.AuthBasic+`"`)
+			http.Error(rw, "401 unauthorised: "+err.Error(), http.StatusUnauthorized)
 
-		if user.Attrs["allow_log"] != "1" && user.Attrs["allow_log"] != "true" {
-			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
 	}
 
-	h.Broadcaster.ServeHTTP(w, r)
-}
-
-var bufferPool = sync.Pool{
-	New: func() interface{} {
-		return new(bytes.Buffer)
-	},
-}
-
-type LogBroadcaster struct {
-	GlobalLevel string
-	mu          sync.RWMutex
-	clients     map[chan []byte]log.Level
-}
-
-func (b *LogBroadcaster) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	flusher, ok := w.(http.Flusher)
+	_, ok := rw.(http.Flusher)
 	if !ok {
-		http.Error(w, "Streaming unsupported!", http.StatusInternalServerError)
+		http.Error(rw, "Streaming unsupported!", http.StatusInternalServerError)
 		return
 	}
-	level := log.ParseLevel(cmp.Or(r.URL.Query().Get("level"), b.GlobalLevel))
 
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	rw.Header().Set("Content-Type", "text/event-stream")
+	rw.Header().Set("Cache-Control", "no-cache")
+	rw.Header().Set("Connection", "keep-alive")
+	rw.Header().Set("Access-Control-Allow-Origin", "*")
 
-	clientChan := make(chan []byte, 1024)
-	b.mu.Lock()
-	if b.clients == nil {
-		b.clients = make(map[chan []byte]log.Level)
-	}
-	b.clients[clientChan] = level
-	clientCount := len(b.clients)
-	b.mu.Unlock()
-
-	log.Info().Str("remote_addr", r.RemoteAddr).Str("level", level.String()).Int("client_count", clientCount).Msg("log sse client connected")
-
-	defer func() {
-		b.mu.Lock()
-		delete(b.clients, clientChan)
-		close(clientChan)
-		clientCount := len(b.clients)
-		b.mu.Unlock()
-
-		log.Info().Str("remote_addr", r.RemoteAddr).Int("client_count", clientCount).Msg("log sse client disconnected")
-	}()
-
-	ctx := r.Context()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case data := <-clientChan:
-			// 处理多行日志，确保 SSE 格式正确
-			lines := bytes.Split(bytes.TrimRight(data, "\n"), []byte{'\n'})
-			for _, line := range lines {
-				if len(line) > 0 {
-					fmt.Fprintf(w, "data: %s\n", line)
-				}
-			}
-			fmt.Fprint(w, "\n")
-			flusher.Flush()
-		}
-	}
-}
-
-func (b *LogBroadcaster) WriteEntry(e *log.Entry) (int, error) {
-	b.mu.RLock()
-	if len(b.clients) == 0 {
-		b.mu.RUnlock()
-		return 0, nil
-	}
-	b.mu.RUnlock()
-
-	buf := bufferPool.Get().(*bytes.Buffer)
-	buf.Reset()
-	defer bufferPool.Put(buf)
-
-	w := log.IOWriter{Writer: buf}
-	w.WriteEntry(e)
-	data := bytes.Clone(buf.Bytes())
-
-	b.mu.RLock()
-	for client, level := range b.clients {
-		if e.Level >= level {
-			select {
-			case client <- data:
-			default:
-			}
-		}
-	}
-	b.mu.RUnlock()
-	return 0, nil
-}
-
-func (b *LogBroadcaster) Close() error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	for client := range b.clients {
-		close(client)
-	}
-	b.clients = nil
-	return nil
+	h.clients.Store(req, rw)
+	<-req.Context().Done()
+	h.clients.Delete(req)
 }

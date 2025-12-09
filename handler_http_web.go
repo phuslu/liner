@@ -14,14 +14,15 @@ import (
 
 	"github.com/mileusna/useragent"
 	"github.com/phuslu/log"
+	"github.com/smallnest/ringbuffer"
 )
 
 type HTTPWebHandler struct {
 	Config        HTTPConfig
 	MemoryDialers *sync.Map
 	Transport     *http.Transport
+	LogRingbufer  *ringbuffer.RingBuffer
 	Functions     template.FuncMap
-	Broadcaster   *LogBroadcaster
 
 	wildcards []struct {
 		location string
@@ -91,9 +92,9 @@ func (h *HTTPWebHandler) Load() error {
 			}
 		case web.Logtail.Enabled:
 			router.handler = &HTTPWebLogtailHandler{
-				Location:    web.Location,
-				AuthTable:   web.Logtail.AuthTable,
-				Broadcaster: h.Broadcaster,
+				Location:      web.Location,
+				AuthTable:     web.Logtail.AuthTable,
+				LogRingbuffer: h.LogRingbufer,
 			}
 		default:
 			log.Info().Str("web_location", web.Location).Msgf("web location is not enabled, skip.")

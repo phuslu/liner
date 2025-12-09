@@ -35,6 +35,7 @@ import (
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/robfig/cron/v3"
+	"github.com/smallnest/ringbuffer"
 	"go4.org/netipx"
 	"golang.org/x/net/http2"
 )
@@ -94,8 +95,7 @@ func main() {
 	RegisterMimeTypes()
 
 	// log broadcaster
-	level := cmp.Or(config.Global.LogLevel, "info")
-	logBroadcaster := &LogBroadcaster{GlobalLevel: level}
+	logRingbuffer := ringbuffer.New(8192)
 
 	// main and data logger
 	var dataLogger log.Logger
@@ -111,12 +111,12 @@ func main() {
 			EndWithMessage: true,
 		}
 		log.DefaultLogger = log.Logger{
-			Level:      log.ParseLevel(level),
+			Level:      log.ParseLevel(cmp.Or(config.Global.LogLevel, "info")),
 			Caller:     1,
 			TimeFormat: "15:04:05",
 			Writer: &log.MultiEntryWriter{
 				consoleWriter,
-				logBroadcaster,
+				log.IOWriter{logRingbuffer},
 			},
 		}
 		dataLogger = log.DefaultLogger
@@ -133,11 +133,11 @@ func main() {
 		}
 
 		log.DefaultLogger = log.Logger{
-			Level:  log.ParseLevel(level),
+			Level:  log.ParseLevel(cmp.Or(config.Global.LogLevel, "info")),
 			Caller: 1,
 			Writer: &log.MultiEntryWriter{
 				fileWriter,
-				logBroadcaster,
+				log.IOWriter{logRingbuffer},
 			},
 		}
 		// data logger
@@ -493,8 +493,8 @@ func main() {
 				Config:        server,
 				MemoryDialers: memoryDialers,
 				Transport:     transport,
+				LogRingbufer:  logRingbuffer,
 				Functions:     functions.FuncMap(),
-				Broadcaster:   logBroadcaster,
 			},
 			Hostnames: filter(server.ServerName, func(s string) bool {
 				return !strings.Contains(s, "*")
@@ -703,8 +703,8 @@ func main() {
 				Config:        httpConfig,
 				MemoryDialers: memoryDialers,
 				Transport:     transport,
+				LogRingbufer:  logRingbuffer,
 				Functions:     functions.FuncMap(),
-				Broadcaster:   logBroadcaster,
 			},
 			Hostnames: filter(httpConfig.ServerName, func(s string) bool {
 				return !strings.Contains(s, "*")
