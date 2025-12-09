@@ -21,6 +21,7 @@ type HTTPWebHandler struct {
 	MemoryDialers *sync.Map
 	Transport     *http.Transport
 	Functions     template.FuncMap
+	Broadcaster   *LogBroadcaster
 
 	wildcards []struct {
 		location string
@@ -87,6 +88,12 @@ func (h *HTTPWebHandler) Load() error {
 				Command:   web.Shell.Command,
 				Home:      web.Shell.Home,
 				Template:  web.Shell.Template,
+			}
+		case web.Log.Enabled:
+			router.handler = &HTTPWebLogHandler{
+				Location:    web.Location,
+				AuthTable:   web.Log.AuthTable,
+				Broadcaster: h.Broadcaster,
 			}
 		default:
 			log.Info().Str("web_location", web.Location).Msgf("web location is not enabled, skip.")

@@ -88,6 +88,10 @@ type HTTPConfig struct {
 			Home      string            `json:"home" yaml:"home"`
 			Template  map[string]string `json:"template" yaml:"template"`
 		} `json:"shell" yaml:"shell"`
+		Log struct {
+			Enabled   bool   `json:"enabled" yaml:"enabled"`
+			AuthTable string `json:"auth_table" yaml:"auth_table"`
+		} `json:"log" yaml:"log"`
 	} `json:"web" yaml:"web"`
 }
 

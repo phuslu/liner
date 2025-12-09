@@ -93,22 +93,29 @@ func main() {
 
 	RegisterMimeTypes()
 
+	// log broadcaster
+	level := cmp.Or(config.Global.LogLevel, "info")
+	logBroadcaster := &LogBroadcaster{GlobalLevel: level}
+
 	// main and data logger
 	var dataLogger log.Logger
 	if config.Global.LogLevel == "discard" {
 		log.DefaultLogger = log.Logger{
 			Level:  log.ParseLevel("error"),
-			Writer: log.IOWriter{io.Discard},
+			Writer: log.IOWriter{Writer: io.Discard},
 		}
 		dataLogger = log.DefaultLogger
 	} else if log.IsTerminal(os.Stderr.Fd()) {
+		consoleWriter := &log.ConsoleWriter{
+			ColorOutput:    true,
+			EndWithMessage: true,
+		}
 		log.DefaultLogger = log.Logger{
-			Level:      log.ParseLevel(cmp.Or(config.Global.LogLevel, "info")),
+			Level:      log.ParseLevel(level),
 			Caller:     1,
 			TimeFormat: "15:04:05",
-			Writer: &log.ConsoleWriter{
-				ColorOutput:    true,
-				EndWithMessage: true,
+			Writer: &MultiLogWriter{
+				Writers: []log.Writer{consoleWriter, logBroadcaster},
 			},
 		}
 		dataLogger = log.DefaultLogger
@@ -116,27 +123,36 @@ func main() {
 		logDir := cmp.Or(config.Global.LogDir, filepath.Dir(must(os.Executable())))
 		logName := filename[:len(filename)-len(filepath.Ext(filename))]
 		// main logger
+		fileWriter := &log.FileWriter{
+			Filename:     filepath.Join(logDir, logName+".log"),
+			MaxBackups:   1,
+			MaxSize:      cmp.Or(config.Global.LogMaxsize, 10*1024*1024),
+			LocalTime:    config.Global.LogLocaltime,
+			EnsureFolder: true,
+		}
+
 		log.DefaultLogger = log.Logger{
-			Level:  log.ParseLevel(cmp.Or(config.Global.LogLevel, "info")),
+			Level:  log.ParseLevel(level),
 			Caller: 1,
-			Writer: &log.FileWriter{
-				Filename:     filepath.Join(logDir, logName+".log"),
-				MaxBackups:   1,
-				MaxSize:      cmp.Or(config.Global.LogMaxsize, 10*1024*1024),
-				LocalTime:    config.Global.LogLocaltime,
-				EnsureFolder: true,
+			Writer: &MultiLogWriter{
+				Writers: []log.Writer{fileWriter, logBroadcaster},
 			},
 		}
 		// data logger
 		dataLogger = log.Logger{
 			Writer: &log.AsyncWriter{
 				ChannelSize: cmp.Or(config.Global.LogChannelSize, 8192),
-				Writer: &log.FileWriter{
-					Filename:     filepath.Join(logDir, "data."+logName+".log"),
-					MaxBackups:   cmp.Or(config.Global.LogBackups, 2),
-					MaxSize:      cmp.Or(config.Global.LogMaxsize, 20*1024*1024),
-					LocalTime:    config.Global.LogLocaltime,
-					EnsureFolder: true,
+				Writer: &MultiLogWriter{
+					Writers: []log.Writer{
+						&log.FileWriter{
+							Filename:     filepath.Join(logDir, "data."+logName+".log"),
+							MaxBackups:   cmp.Or(config.Global.LogBackups, 2),
+							MaxSize:      cmp.Or(config.Global.LogMaxsize, 20*1024*1024),
+							LocalTime:    config.Global.LogLocaltime,
+							EnsureFolder: true,
+						},
+						logBroadcaster,
+					},
 				},
 			},
 		}
@@ -481,6 +497,7 @@ func main() {
 				MemoryDialers: memoryDialers,
 				Transport:     transport,
 				Functions:     functions.FuncMap(),
+				Broadcaster:   logBroadcaster,
 			},
 			Hostnames: filter(server.ServerName, func(s string) bool {
 				return !strings.Contains(s, "*")
@@ -690,6 +707,7 @@ func main() {
 				MemoryDialers: memoryDialers,
 				Transport:     transport,
 				Functions:     functions.FuncMap(),
+				Broadcaster:   logBroadcaster,
 			},
 			Hostnames: filter(httpConfig.ServerName, func(s string) bool {
 				return !strings.Contains(s, "*")
