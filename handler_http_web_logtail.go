@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"cmp"
 	"fmt"
-	"io"
 	"net/http"
 	"sync"
 	"time"
@@ -54,26 +53,6 @@ func (h *HTTPWebLogtailHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 	}
 
 	h.Broadcaster.ServeHTTP(w, r)
-}
-
-type MultiLogWriter struct {
-	Writers []log.Writer
-}
-
-func (w *MultiLogWriter) WriteEntry(e *log.Entry) (int, error) {
-	for _, writer := range w.Writers {
-		writer.WriteEntry(e)
-	}
-	return 0, nil
-}
-
-func (w *MultiLogWriter) Close() error {
-	for _, writer := range w.Writers {
-		if c, ok := writer.(io.Closer); ok {
-			c.Close()
-		}
-	}
-	return nil
 }
 
 var bufferPool = sync.Pool{

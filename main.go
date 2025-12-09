@@ -114,8 +114,9 @@ func main() {
 			Level:      log.ParseLevel(level),
 			Caller:     1,
 			TimeFormat: "15:04:05",
-			Writer: &MultiLogWriter{
-				Writers: []log.Writer{consoleWriter, logBroadcaster},
+			Writer: &log.MultiEntryWriter{
+				consoleWriter,
+				logBroadcaster,
 			},
 		}
 		dataLogger = log.DefaultLogger
@@ -134,25 +135,21 @@ func main() {
 		log.DefaultLogger = log.Logger{
 			Level:  log.ParseLevel(level),
 			Caller: 1,
-			Writer: &MultiLogWriter{
-				Writers: []log.Writer{fileWriter, logBroadcaster},
+			Writer: &log.MultiEntryWriter{
+				fileWriter,
+				logBroadcaster,
 			},
 		}
 		// data logger
 		dataLogger = log.Logger{
 			Writer: &log.AsyncWriter{
 				ChannelSize: cmp.Or(config.Global.LogChannelSize, 8192),
-				Writer: &MultiLogWriter{
-					Writers: []log.Writer{
-						&log.FileWriter{
-							Filename:     filepath.Join(logDir, "data."+logName+".log"),
-							MaxBackups:   cmp.Or(config.Global.LogBackups, 2),
-							MaxSize:      cmp.Or(config.Global.LogMaxsize, 20*1024*1024),
-							LocalTime:    config.Global.LogLocaltime,
-							EnsureFolder: true,
-						},
-						logBroadcaster,
-					},
+				Writer: &log.FileWriter{
+					Filename:     filepath.Join(logDir, "data."+logName+".log"),
+					MaxBackups:   cmp.Or(config.Global.LogBackups, 2),
+					MaxSize:      cmp.Or(config.Global.LogMaxsize, 20*1024*1024),
+					LocalTime:    config.Global.LogLocaltime,
+					EnsureFolder: true,
 				},
 			},
 		}
