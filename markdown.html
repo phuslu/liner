@@ -83,15 +83,15 @@
 
 <div id="loading">
     <div class="spinner"></div>
-    <div id="loading-text">正在渲染...</div>
+    <div id="loading-text">Rendering...</div>
 </div>
 
 <div class="toolbar">
     <div class="container" style="padding-bottom: 0px; display: flex; justify-content: space-between; align-items: center;">
         <span style="font-weight: bold; color: #24292e;">{{.Title}}</span>
         <div>
-            <a href="../">返回上级</a>
-            <a href="?raw=true">查看源码</a>
+            <a href="../">Parent Directory</a>
+            <a href="?raw=true">View Source</a>
         </div>
     </div>
 </div>
@@ -124,13 +124,13 @@
 
         try {
             // Fetch raw markdown content
-            loadingText.innerText = '加载文档...';
+            loadingText.innerText = 'Loading ...';
             const response = await fetch('?raw=true');
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const text = await response.text();
 
             // Configure marked with highlight.js
-            loadingText.innerText = '解析内容...';
+            loadingText.innerText = 'Rendering ...';
             marked.setOptions({
                 highlight: (code, lang) => {
                     if (lang && hljs.getLanguage(lang)) {
@@ -140,11 +140,12 @@
                 }
             });
 
-            // Custom renderer to intercept mermaid code blocks
+            // Custom renderer
             const renderer = new marked.Renderer();
+
+            // 1. Mermaid support
             const originalCodeRenderer = renderer.code.bind(renderer);
             let mermaidCount = 0;
-
             renderer.code = (code, language, isEscaped) => {
                 if (language === 'mermaid') {
                     const id = `mermaid-${mermaidCount++}`;
@@ -153,13 +154,22 @@
                 return originalCodeRenderer(code, language, isEscaped);
             };
 
+            // 2. Headings with IDs (supporting Chinese)
+            renderer.heading = (text, level, raw) => {
+                const id = raw.toLowerCase().trim()
+                    // Remove non-word chars (keeping unicode letters) but dealing with spaces
+                    .replace(/[^\w\u4e00-\u9fa5\s-]/g, '')
+                    .replace(/\s+/g, '-');
+                return `<h${level} id="${id}">${text}</h${level}>\n`;
+            };
+
             const html = marked.parse(text, { renderer: renderer });
             contentEl.innerHTML = html;
 
             // Render mermaid diagrams
             const mermaidDivs = document.querySelectorAll('.mermaid');
             if (mermaidDivs.length > 0) {
-                loadingText.innerText = '生成图表...';
+                loadingText.innerText = 'Rendering diagrams...';
                 await mermaid.run({
                     nodes: mermaidDivs
                 });
@@ -168,11 +178,20 @@
             // All done
             loadingEl.style.display = 'none';
 
+            // Handle anchor scroll
+            if (window.location.hash) {
+                const hash = decodeURIComponent(window.location.hash.substring(1));
+                const el = document.getElementById(hash);
+                if (el) {
+                    el.scrollIntoView();
+                }
+            }
+
         } catch (err) {
             console.error(err);
             loadingEl.style.display = 'none';
             contentEl.style.display = 'none';
-            errorEl.innerText = '加载失败: ' + err.message;
+            errorEl.innerText = 'Load failed: ' + err.message;
             errorEl.style.display = 'block';
         }
     })();

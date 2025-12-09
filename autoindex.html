@@ -147,7 +147,7 @@
 
 	if (enable_readme && readme_md !== '') {
 		xhr = new XMLHttpRequest()
-		xhr.open('GET', location.pathname.replace(/[^/]+$/, '')+readme_md, true)
+		xhr.open('GET', location.pathname.replace(/[^/]+$/, '')+readme_md+'?raw=true', true)
 		xhr.onload = function() {
 			if (xhr.status < 200 && xhr.status >= 400)
 				return
