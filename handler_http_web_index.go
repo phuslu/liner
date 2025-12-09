@@ -190,10 +190,19 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 			defer bytebufferpool.Put(b)
 			b.Reset()
 
+			text, err := os.ReadFile(fullname)
+			if err != nil {
+				log.Error().Context(ri.LogContext).Err(err).Str("file", fullname).Msg("execute markdown template error")
+				http.Error(rw, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
 			err = h.markdown.Execute(b, struct {
 				Title string
+				Text  string
 			}{
 				Title: filepath.Base(fullname),
+				Text:  string(text),
 			})
 			if err != nil {
 				log.Error().Context(ri.LogContext).Err(err).Str("file", fullname).Msg("execute markdown template error")

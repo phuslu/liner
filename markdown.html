@@ -91,12 +91,13 @@
         <span style="font-weight: bold; color: #24292e;">{{.Title}}</span>
         <div>
             <a href="../">Parent Directory</a>
-            <a href="?raw=true">View Source</a>
+            <a href="?html=0">View Source</a>
         </div>
     </div>
 </div>
 
 <div class="container">
+    <div style="display: none"><textarea id="markdown-text">{{ .Text }}</textarea></div>
     <div id="content" class="markdown-body"></div>
     <div id="error-msg"></div>
 </div>
@@ -123,11 +124,7 @@
         const errorEl = document.getElementById('error-msg');
 
         try {
-            // Fetch raw markdown content
-            loadingText.innerText = 'Loading ...';
-            const response = await fetch('?raw=true');
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-            const text = await response.text();
+            const text = document.getElementById('markdown-text').innerText;;
 
             // Configure marked with highlight.js
             loadingText.innerText = 'Rendering ...';
