@@ -95,7 +95,7 @@ func main() {
 	RegisterMimeTypes()
 
 	// log broadcaster
-	logRingbuffer := ringbuffer.New(8192)
+	memoryLogWriter := ringbuffer.New(8192)
 
 	// main and data logger
 	var dataLogger log.Logger
@@ -106,38 +106,38 @@ func main() {
 		}
 		dataLogger = log.DefaultLogger
 	} else if log.IsTerminal(os.Stderr.Fd()) {
-		consoleWriter := &log.ConsoleWriter{
-			ColorOutput:    true,
-			EndWithMessage: true,
-		}
 		log.DefaultLogger = log.Logger{
 			Level:      log.ParseLevel(cmp.Or(config.Global.LogLevel, "info")),
 			Caller:     1,
 			TimeFormat: "15:04:05",
 			Writer: &log.MultiEntryWriter{
-				consoleWriter,
-				log.IOWriter{logRingbuffer},
+				&log.ConsoleWriter{
+					ColorOutput:    true,
+					EndWithMessage: true,
+				},
+				log.IOWriter{
+					Writer: memoryLogWriter,
+				},
 			},
 		}
 		dataLogger = log.DefaultLogger
 	} else {
 		logDir := cmp.Or(config.Global.LogDir, filepath.Dir(must(os.Executable())))
 		logName := filename[:len(filename)-len(filepath.Ext(filename))]
-		// main logger
-		fileWriter := &log.FileWriter{
-			Filename:     filepath.Join(logDir, logName+".log"),
-			MaxBackups:   1,
-			MaxSize:      cmp.Or(config.Global.LogMaxsize, 10*1024*1024),
-			LocalTime:    config.Global.LogLocaltime,
-			EnsureFolder: true,
-		}
-
 		log.DefaultLogger = log.Logger{
 			Level:  log.ParseLevel(cmp.Or(config.Global.LogLevel, "info")),
 			Caller: 1,
 			Writer: &log.MultiEntryWriter{
-				fileWriter,
-				log.IOWriter{logRingbuffer},
+				&log.FileWriter{
+					Filename:     filepath.Join(logDir, logName+".log"),
+					MaxBackups:   1,
+					MaxSize:      cmp.Or(config.Global.LogMaxsize, 10*1024*1024),
+					LocalTime:    config.Global.LogLocaltime,
+					EnsureFolder: true,
+				},
+				log.IOWriter{
+					Writer: memoryLogWriter,
+				},
 			},
 		}
 		// data logger
@@ -490,11 +490,11 @@ func main() {
 				MemoryDialers: memoryDialers,
 			},
 			WebHandler: &HTTPWebHandler{
-				Config:        server,
-				MemoryDialers: memoryDialers,
-				Transport:     transport,
-				LogRingbufer:  logRingbuffer,
-				Functions:     functions.FuncMap(),
+				Config:          server,
+				MemoryDialers:   memoryDialers,
+				MemoryLogWriter: memoryLogWriter,
+				Transport:       transport,
+				Functions:       functions.FuncMap(),
 			},
 			Hostnames: filter(server.ServerName, func(s string) bool {
 				return !strings.Contains(s, "*")
@@ -700,11 +700,11 @@ func main() {
 				MemoryDialers: memoryDialers,
 			},
 			WebHandler: &HTTPWebHandler{
-				Config:        httpConfig,
-				MemoryDialers: memoryDialers,
-				Transport:     transport,
-				LogRingbufer:  logRingbuffer,
-				Functions:     functions.FuncMap(),
+				Config:          httpConfig,
+				MemoryDialers:   memoryDialers,
+				MemoryLogWriter: memoryLogWriter,
+				Transport:       transport,
+				Functions:       functions.FuncMap(),
 			},
 			Hostnames: filter(httpConfig.ServerName, func(s string) bool {
 				return !strings.Contains(s, "*")

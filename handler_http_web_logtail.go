@@ -12,10 +12,10 @@ import (
 )
 
 type HTTPWebLogtailHandler struct {
-	Location      string
-	AuthTable     string
-	AuthBasic     string
-	LogRingbuffer *ringbuffer.RingBuffer
+	Location        string
+	AuthTable       string
+	AuthBasic       string
+	MemoryLogWriter *ringbuffer.RingBuffer
 
 	userchecker AuthUserChecker
 	clients     *sync.Map // map[*http.Request]http.ResponseWriter
@@ -41,7 +41,7 @@ func (h *HTTPWebLogtailHandler) Load() error {
 func (h *HTTPWebLogtailHandler) broadcast() {
 	buf := make([]byte, 4096)
 	for {
-		n, err := h.LogRingbuffer.Read(buf)
+		n, err := h.MemoryLogWriter.Read(buf)
 		if n == 0 {
 			time.Sleep(50 * time.Millisecond)
 			continue

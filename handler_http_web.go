@@ -18,11 +18,11 @@ import (
 )
 
 type HTTPWebHandler struct {
-	Config        HTTPConfig
-	MemoryDialers *sync.Map
-	Transport     *http.Transport
-	LogRingbufer  *ringbuffer.RingBuffer
-	Functions     template.FuncMap
+	Config          HTTPConfig
+	MemoryDialers   *sync.Map
+	MemoryLogWriter *ringbuffer.RingBuffer
+	Transport       *http.Transport
+	Functions       template.FuncMap
 
 	wildcards []struct {
 		location string
@@ -92,9 +92,9 @@ func (h *HTTPWebHandler) Load() error {
 			}
 		case web.Logtail.Enabled:
 			router.handler = &HTTPWebLogtailHandler{
-				Location:      web.Location,
-				AuthTable:     web.Logtail.AuthTable,
-				LogRingbuffer: h.LogRingbufer,
+				Location:        web.Location,
+				AuthTable:       web.Logtail.AuthTable,
+				MemoryLogWriter: h.MemoryLogWriter,
 			}
 		default:
 			log.Info().Str("web_location", web.Location).Msgf("web location is not enabled, skip.")
