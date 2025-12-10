@@ -70,7 +70,7 @@ func (h *HTTPWebLogtailHandler) ServeHTTP(rw http.ResponseWriter, req *http.Requ
 		err := h.userchecker.CheckAuthUser(req.Context(), &ri.AuthUserInfo)
 		if err == nil {
 			if allow := ri.AuthUserInfo.Attrs["allow_logtail"]; allow != "1" {
-				err = fmt.Errorf("webshell is not allow for user: %#v", ri.AuthUserInfo.Username)
+				err = fmt.Errorf("logtail is not allow for user: %#v", ri.AuthUserInfo.Username)
 			}
 		}
 		if err != nil {
@@ -88,7 +88,7 @@ func (h *HTTPWebLogtailHandler) ServeHTTP(rw http.ResponseWriter, req *http.Requ
 		return
 	}
 
-	rw.Header().Set("Content-Type", "text/event-stream")
+	rw.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	rw.Header().Set("Cache-Control", "no-cache")
 	rw.Header().Set("Connection", "keep-alive")
 	rw.Header().Set("Access-Control-Allow-Origin", "*")
