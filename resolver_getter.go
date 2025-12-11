@@ -25,7 +25,7 @@ type resolvererr struct {
 	Err      error
 }
 
-var resolvers = xsync.NewMap[string, resolvererr](xsync.WithSerialResize())
+var resolvers = xsync.NewMap[string, resolvererr]()
 
 const DefaultDNSCacheSize = 32 * 1024
 
