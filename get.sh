@@ -2,29 +2,24 @@
 
 set -x
 
-arch=amd64
 case $(uname -m) in
   aarch64 )
     arch=arm64
     ;;
   arm* )
-    arch=armv5
-    if readelf -A /bin/sh | grep -q 'VFP registers'; then
-      arch=armv7
-    fi
+    arch=armv7
+    ;;
+  * )
+    arch=amd64
     ;;
 esac
 
-if type -p curl; then
-  getcurl="curl -sSLf"
-else
-  getcurl="wget -O-"
-fi
-
-checksum=$($getcurl https://github.com/phuslu/liner/releases/download/v0.0.0/checksums.txt | grep -E "liner_linux_${arch}-[0-9]+.tar.gz")
+geturl=$(type -p curl &>/dev/null && echo "curl -sSLf" || echo "wget -O-")
+checksum=$($geturl https://github.com/phuslu/liner/releases/download/v0.0.0/checksums.txt | grep -E "liner_linux_${arch}-[0-9]+.tar.gz")
 filename=$(echo $checksum | awk '{print $2}')
-pacfile=$(xxd -p -l 3 /dev/urandom).pac
-sudo=$(test "$(id -u)" -eq 0 && echo sudo)
+pacfile=$(awk 'BEGIN{srand(); r=int(rand()*10000000000); printf "%06d.pac", r % 1000000}')
+sudo=$(grep -q '^Uid:\s*0' /proc/self/status || echo sudo)
+sha1sum=$(type -p sha1sum &>/dev/null && echo sha1sum || echo "openssl dgst -r -sha1")
 
 if test -d liner; then
   cd liner
@@ -40,7 +35,7 @@ else
   wget https://github.com/phuslu/liner/releases/download/v0.0.0/$filename -O $filename
 fi
 
-if test "$(sha1sum $filename || shasum $filename)" != "$checksum"; then
+if test "$(cat $filename | $sha1sum | awk '{ print $1 }')" != "$(echo $checksum | awk '{print $1}')"; then
   echo "$filename sha1sum mismatched, please check your network!"
   rm -rf $filename
   exit 1
@@ -55,7 +50,7 @@ fi
 tar xvzf $filename
 rm -rf $filename
 
-domain=$($getcurl whatismyip.akamai.com | tr . -).sslip.io
+domain=$($geturl whatismyip.akamai.com | tr . -).sslip.io
 
 cat <<EOF > production.yaml
 global:
