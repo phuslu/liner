@@ -403,6 +403,7 @@ func main() {
 
 	// template functions
 	functions := &Functions{
+		SlogLogger:     log.DefaultLogger.Slog().With("logger", "functions"),
 		GeoResolver:    resolver,
 		FetchUserAgent: ChromeUserAgent,
 		FetchClient:    &http.Client{Transport: transport},

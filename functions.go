@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/netip"
@@ -26,6 +27,7 @@ import (
 )
 
 type Functions struct {
+	SlogLogger  *slog.Logger
 	GeoResolver *GeoResolver
 
 	FetchUserAgent string
@@ -45,6 +47,9 @@ func (f *Functions) FuncMap() template.FuncMap {
 
 func (f *Functions) Load() error {
 	f.funcs = template.FuncMap(sprig.GenericFuncMap())
+
+	// slog helper
+	f.funcs["slog"] = f.slog
 
 	// sprig replacement
 	f.funcs["get"] = f.get
@@ -81,6 +86,11 @@ func (f *Functions) Load() error {
 	f.funcs["readfile"] = f.readfile
 
 	return nil
+}
+
+func (f *Functions) slog(msg string, args ...any) string {
+	f.SlogLogger.Info(msg, args...)
+	return ""
 }
 
 func (f *Functions) get(dict any, key string) any {
