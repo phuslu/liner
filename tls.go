@@ -96,11 +96,11 @@ type TLSInspector struct {
 
 func (m *TLSInspector) AddTLSInspectorEntry(entry TLSInspectorEntry) error {
 	if m.TLSConfigCache == nil {
-		m.TLSConfigCache = xsync.NewMap[TLSInspectorCacheKey, TLSInspectorCacheValue[*tls.Config]](xsync.WithSerialResize())
+		m.TLSConfigCache = xsync.NewMap[TLSInspectorCacheKey, TLSInspectorCacheValue[*tls.Config]]()
 	}
 
 	if m.CertificateCache == nil {
-		m.CertificateCache = xsync.NewMap[TLSInspectorCacheKey, TLSInspectorCacheValue[*tls.Certificate]](xsync.WithSerialResize())
+		m.CertificateCache = xsync.NewMap[TLSInspectorCacheKey, TLSInspectorCacheValue[*tls.Certificate]]()
 	}
 
 	if m.AutoCert == nil {

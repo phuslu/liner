@@ -407,9 +407,9 @@ func main() {
 		FetchUserAgent: ChromeUserAgent,
 		FetchClient:    &http.Client{Transport: transport},
 		FetchCache:     lru.NewTTLCache[string, *FetchResponse](1024),
-		RegexpCache:    xsync.NewMap[string, *regexp.Regexp](xsync.WithSerialResize()),
-		FileLineCache:  xsync.NewMap[string, *FileLoader[[]string]](xsync.WithSerialResize()),
-		FileIPSetCache: xsync.NewMap[string, *FileLoader[*netipx.IPSet]](xsync.WithSerialResize()),
+		RegexpCache:    xsync.NewMap[string, *regexp.Regexp](),
+		FileLineCache:  xsync.NewMap[string, *FileLoader[[]string]](),
+		FileIPSetCache: xsync.NewMap[string, *FileLoader[*netipx.IPSet]](),
 	}
 	if err := functions.Load(); err != nil {
 		log.Fatal().Err(err).Msgf("%T.Load() fatal", functions)
@@ -442,7 +442,7 @@ func main() {
 	tlsConfigurator := &TLSInspector{
 		Logger:         &log.DefaultLogger,
 		AutoCertDir:    config.Global.AutocertDir,
-		ClientHelloMap: xsync.NewMap[PlainAddr, *TLSClientHelloInfo](xsync.WithSerialResize()),
+		ClientHelloMap: xsync.NewMap[PlainAddr, *TLSClientHelloInfo](),
 	}
 
 	// sni proxy

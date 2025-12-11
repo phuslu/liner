@@ -138,7 +138,7 @@ type AuthUserFileLoader struct {
 	fileloader *FileLoader[map[string]AuthUserInfo]
 }
 
-var authfileloaders = xsync.NewMap[string, *FileLoader[map[string]AuthUserInfo]](xsync.WithSerialResize())
+var authfileloaders = xsync.NewMap[string, *FileLoader[map[string]AuthUserInfo]]()
 
 func (loader *AuthUserFileLoader) LoadAuthUsers(ctx context.Context) (map[string]AuthUserInfo, error) {
 	if loader.fileloader != nil {
