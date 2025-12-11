@@ -122,14 +122,14 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 	geosite := h.GeoResolver.GetGeoSiteInfo(req.Context(), host)
 
 	var domain string
-	if ip := net.ParseIP(host); ip == nil {
+	if addr, err := netip.ParseAddr(host); err == nil && addr.IsValid() {
+		domain = req.Host
+	} else {
 		if s, err := publicsuffix.EffectiveTLDPlusOne(host); err == nil {
 			domain = s
 		} else {
 			domain = host
 		}
-	} else {
-		domain = req.Host
 	}
 
 	if h.Config.Forward.Policy == "" {

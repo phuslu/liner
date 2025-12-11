@@ -531,8 +531,10 @@ func main() {
 		}
 
 		// add support for ip tls certificate
-		if len(server.ServerName) > 0 && net.ParseIP(server.ServerName[0]) != nil {
-			server.ServerName = append(server.ServerName, "")
+		if len(server.ServerName) > 0 {
+			if _, err := netip.ParseAddr(server.ServerName[0]); err == nil {
+				server.ServerName = append(server.ServerName, "")
+			}
 		}
 
 		for _, listen := range server.Listen {

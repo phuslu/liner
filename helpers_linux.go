@@ -13,7 +13,6 @@ import (
 	"net"
 	"net/netip"
 	"os"
-	"reflect"
 	"strconv"
 	"strings"
 	"syscall"
@@ -287,8 +286,7 @@ func SetProcessName(name string) error {
 		name = name[:n]
 	}
 
-	argv0str := (*reflect.StringHeader)(unsafe.Pointer(&os.Args[0]))
-	argv0 := unsafe.Slice((*byte)(unsafe.Pointer(argv0str.Data)), n)
+	argv0 := unsafe.Slice(unsafe.StringData(os.Args[0]), n)
 
 	n = copy(argv0, name+strings.Repeat("\x00", n+1-len(name)))
 	if n < len(argv0) {

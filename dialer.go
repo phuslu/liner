@@ -174,8 +174,11 @@ func (d *LocalDialer) dialSerial(ctx context.Context, network, hostname string, 
 		}
 
 		if d.TCPKeepAlive > 0 {
-			conn.SetKeepAlive(true)
-			conn.SetKeepAlivePeriod(d.TCPKeepAlive)
+			conn.SetKeepAliveConfig(net.KeepAliveConfig{
+				Enable:   true,
+				Idle:     d.TCPKeepAlive,
+				Interval: d.TCPKeepAlive,
+			})
 		}
 
 		if d.ReadBuffSize > 0 {
@@ -239,8 +242,11 @@ func (d *LocalDialer) dialParallel(ctx context.Context, network, hostname string
 			}
 
 			if d.TCPKeepAlive > 0 {
-				conn.SetKeepAlive(true)
-				conn.SetKeepAlivePeriod(d.TCPKeepAlive)
+				conn.SetKeepAliveConfig(net.KeepAliveConfig{
+					Enable:   true,
+					Idle:     d.TCPKeepAlive,
+					Interval: d.TCPKeepAlive,
+				})
 			}
 
 			if d.ReadBuffSize > 0 {

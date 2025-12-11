@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -125,7 +126,7 @@ func (m *TLSInspector) AddTLSInspectorEntry(entry TLSInspectorEntry) error {
 		}
 	}
 
-	if net.ParseIP(entry.ServerName) != nil {
+	if addr, err := netip.ParseAddr(entry.ServerName); err == nil && addr.IsValid() {
 		if entry.KeyFile == "" {
 			// a pure ip server name, generate a self-sign certificate
 			m.RootCA.Issue(entry.ServerName)
