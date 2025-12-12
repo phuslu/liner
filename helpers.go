@@ -701,8 +701,11 @@ func (ln TCPListener) Accept() (c net.Conn, err error) {
 		return
 	}
 	if ln.KeepAlivePeriod > 0 {
-		tc.SetKeepAlive(true)
-		tc.SetKeepAlivePeriod(ln.KeepAlivePeriod)
+		tc.SetKeepAliveConfig(net.KeepAliveConfig{
+			Enable:   true,
+			Idle:     ln.KeepAlivePeriod,
+			Interval: ln.KeepAlivePeriod,
+		})
 	}
 	if ln.ReadBufferSize > 0 {
 		tc.SetReadBuffer(ln.ReadBufferSize)
