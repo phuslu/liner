@@ -192,10 +192,16 @@ func (f *Functions) dnsResolve(host string) string {
 	return ""
 }
 
-func (f *Functions) nslookup(host string, nameserver string) ([]string, error) {
-	resolver, err := GetResolver(nameserver, 65536)
-	if err != nil {
-		return nil, err
+func (f *Functions) nslookup(host string, nameservers ...string) ([]string, error) {
+	var resolver *Resolver
+	if len(nameservers) == 0 || nameservers[0] == "" {
+		resolver = f.GeoResolver.Resolver
+	} else {
+		var err error
+		resolver, err = GetResolver(nameservers[0], 65536)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if s, _, err := net.SplitHostPort(host); err == nil {
