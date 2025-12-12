@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"strings"
 	"text/template"
 
@@ -65,7 +66,9 @@ func (h *RedsocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 	}
 	req.Host, req.Port = addrport.Addr().String(), addrport.Port()
 
-	var dialerName = h.Config.Forward.Dialer
+	addrportStr := addrport.String()
+
+	var dialerValue = h.Config.Forward.Dialer
 	if h.dialer != nil {
 		var sb strings.Builder
 		err := h.dialer.Execute(&sb, struct {
@@ -76,9 +79,22 @@ func (h *RedsocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 			log.Error().Err(err).Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", addrport).Msg("failed to eval dialer template")
 			return
 		}
-		dialerName = sb.String()
+		dialerValue = sb.String()
 	}
-	dialerName = strings.TrimSpace(dialerName)
+	dialerValue = strings.TrimSpace(dialerValue)
+
+	var dialerName = dialerValue
+	if strings.Contains(dialerValue, "=") {
+		u, err := url.ParseQuery(dialerValue)
+		if err != nil {
+			log.Error().Err(err).Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", addrport).Str("dialer_value", dialerValue).Msg("failed to parse dialer query")
+			return
+		}
+		dialerName = u.Get("dialer")
+		if s := u.Get("dialer-addrport-context"); s != "" {
+			addrportStr = s
+		}
+	}
 
 	var dialer Dialer
 	if dialerName != "" {
@@ -95,7 +111,8 @@ func (h *RedsocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 	ctx = context.WithValue(ctx, DialerHTTPHeaderContextKey, http.Header{
 		"X-Forwarded-For": []string{req.RemoteAddr.Addr().String()},
 	})
-	rconn, err := dialer.DialContext(ctx, "tcp", addrport.String())
+
+	rconn, err := dialer.DialContext(ctx, "tcp", addrportStr)
 	if err != nil {
 		log.Error().Err(err).Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", addrport).Str("forward_dialer_name", h.Config.Forward.Dialer).Str("dialer_name", dialerName).Msg("dial host error")
 		if rconn != nil {
