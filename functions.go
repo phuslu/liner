@@ -68,6 +68,7 @@ func (f *Functions) Load() error {
 	// http related
 	f.funcs["country"] = f.country
 	f.funcs["dnsResolve"] = f.dnsResolve
+	f.funcs["nslookup"] = f.nslookup
 	f.funcs["domain"] = f.domain
 	f.funcs["fetch"] = f.fetch
 	f.funcs["geoip"] = f.geoip
@@ -189,6 +190,29 @@ func (f *Functions) dnsResolve(host string) string {
 	}
 
 	return ""
+}
+
+func (f *Functions) nslookup(host string, nameserver string) ([]string, error) {
+	resolver, err := GetResolver(nameserver, 65536)
+	if err != nil {
+		return nil, err
+	}
+
+	if s, _, err := net.SplitHostPort(host); err == nil {
+		host = s
+	}
+
+	ips, err := resolver.LookupNetIP(context.Background(), "ip", host)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]string, len(ips))
+	for i, ip := range ips {
+		result[i] = ip.String()
+	}
+
+	return result, nil
 }
 
 func (f *Functions) domain(domain string) string {
