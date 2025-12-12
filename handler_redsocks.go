@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"strconv"
 	"strings"
 	"text/template"
 
@@ -18,6 +19,22 @@ type RedsocksRequest struct {
 	Host       string
 	Port       uint16
 	TraceID    log.XID
+
+	tc  *net.TCPConn // 用于延迟加载 SNI
+	sni string       // 缓存已解析的 SNI
+}
+
+// SNI 按需从 TLS ClientHello 解析 SNI 名称（仅在 Linux 平台有效）
+func (r *RedsocksRequest) SNI() string {
+	if r.sni != "" {
+		return r.sni
+	}
+	if r.tc != nil && r.Port == 443 {
+		if sni, _, err := (ConnOps{r.tc, nil}).PeekTLSClientHelloServerName(); err == nil && sni != "" {
+			r.sni = sni
+		}
+	}
+	return r.sni
 }
 
 type RedsocksHandler struct {
@@ -64,14 +81,15 @@ func (h *RedsocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 		return
 	}
 	req.Host, req.Port = addrport.Addr().String(), addrport.Port()
+	req.tc = tc // 保存 tc 用于延迟加载 SNI
 
 	var dialerName = h.Config.Forward.Dialer
 	if h.dialer != nil {
 		var sb strings.Builder
 		err := h.dialer.Execute(&sb, struct {
-			Request    RedsocksRequest
+			Request    *RedsocksRequest
 			ServerAddr netip.AddrPort
-		}{req, req.ServerAddr})
+		}{&req, req.ServerAddr})
 		if err != nil {
 			log.Error().Err(err).Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", addrport).Msg("failed to eval dialer template")
 			return
@@ -80,10 +98,17 @@ func (h *RedsocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 	}
 	dialerName = strings.TrimSpace(dialerName)
 
+	// 使用 SNI 或原始 IP 作为 hostport
+	var hostport = addrport.String()
+	if req.sni != "" {
+		req.Host = req.sni
+		hostport = net.JoinHostPort(req.sni, strconv.Itoa(int(addrport.Port())))
+	}
+
 	var dialer Dialer
 	if dialerName != "" {
 		if d, ok := h.Dialers[dialerName]; !ok {
-			log.Error().Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", addrport).Str("forward_dialer_name", h.Config.Forward.Dialer).Str("dialer_name", dialerName).Msg("dialer not exists")
+			log.Error().Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("req_hostport", hostport).Str("forward_dialer_name", h.Config.Forward.Dialer).Str("dialer_name", dialerName).Msg("dialer not exists")
 			return
 		} else {
 			dialer = d
@@ -95,9 +120,9 @@ func (h *RedsocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 	ctx = context.WithValue(ctx, DialerHTTPHeaderContextKey, http.Header{
 		"X-Forwarded-For": []string{req.RemoteAddr.Addr().String()},
 	})
-	rconn, err := dialer.DialContext(ctx, "tcp", addrport.String())
+	rconn, err := dialer.DialContext(ctx, "tcp", hostport)
 	if err != nil {
-		log.Error().Err(err).Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", addrport).Str("forward_dialer_name", h.Config.Forward.Dialer).Str("dialer_name", dialerName).Msg("dial host error")
+		log.Error().Err(err).Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("hostport", hostport).Str("forward_dialer_name", h.Config.Forward.Dialer).Str("dialer_name", dialerName).Msg("dial host error")
 		if rconn != nil {
 			rconn.Close()
 		}

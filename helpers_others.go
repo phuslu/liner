@@ -76,6 +76,10 @@ func ReadHTTPHeader(conn *net.TCPConn) ([]byte, *net.TCPConn, error) {
 	return nil, conn, errors.ErrUnsupported
 }
 
+func (ops ConnOps) PeekTLSClientHelloServerName() (serverName string, header []byte, err error) {
+	return "", nil, errors.ErrUnsupported
+}
+
 func AppendSetSidToSysProcAttr(old *syscall.SysProcAttr) *syscall.SysProcAttr {
 	return old
 }

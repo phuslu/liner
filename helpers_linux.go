@@ -335,6 +335,132 @@ func ReadHTTPHeader(tc *net.TCPConn) ([]byte, *net.TCPConn, error) {
 	return b, tc, err
 }
 
+// PeekTLSClientHelloServerName 从 TCP 连接中 peek 读取 TLS ClientHello 的 SNI 名称。
+// 使用 MSG_PEEK 系统调用，不消耗连接数据流。
+// 返回 SNI 名称和 peek 到的原始数据。
+func (ops ConnOps) PeekTLSClientHelloServerName() (serverName string, header []byte, err error) {
+	if ops.tc == nil {
+		return "", nil, errors.ErrUnsupported
+	}
+
+	f, err := ops.tc.File()
+	if err != nil {
+		return "", nil, err
+	}
+	defer f.Close()
+
+	b := make([]byte, 1500)
+	n, _, err := syscall.Recvfrom(int(f.Fd()), b, syscall.MSG_PEEK)
+	if err != nil {
+		return "", nil, err
+	}
+
+	if n < 5 {
+		return "", nil, io.EOF
+	}
+
+	// 检查是否是 TLS 握手记录 (ContentType = 0x16)
+	if b[0] != 0x16 {
+		return "", nil, io.EOF
+	}
+
+	// TLS 记录头: ContentType(1) + Version(2) + Length(2)
+	recordLen := int(binary.BigEndian.Uint16(b[3:5]))
+	if n < 5+recordLen {
+		// 数据不完整，尝试获取更多
+		if recordLen > len(b)-5 {
+			recordLen = len(b) - 5
+		}
+	}
+
+	// 解析 ClientHello 获取 SNI
+	serverName = parseTLSClientHelloSNI(b[5 : 5+min(recordLen, n-5)])
+
+	header = b[:n]
+	return serverName, header, nil
+}
+
+// parseTLSClientHelloSNI 从 TLS ClientHello 消息中解析 SNI 扩展获取服务器名称
+func parseTLSClientHelloSNI(data []byte) string {
+	if len(data) < 38 {
+		return ""
+	}
+
+	// HandshakeType (1 byte) 必须是 ClientHello (0x01)
+	if data[0] != 0x01 {
+		return ""
+	}
+
+	// Length (3 bytes)
+	handshakeLen := int(data[1])<<16 | int(data[2])<<8 | int(data[3])
+	if len(data) < 4+handshakeLen {
+		handshakeLen = len(data) - 4
+	}
+
+	pos := 4
+
+	// ClientVersion (2 bytes) + Random (32 bytes)
+	pos += 2 + 32
+	if pos >= len(data) {
+		return ""
+	}
+
+	// SessionID Length (1 byte) + SessionID
+	sessionIDLen := int(data[pos])
+	pos += 1 + sessionIDLen
+	if pos+2 > len(data) {
+		return ""
+	}
+
+	// CipherSuites Length (2 bytes) + CipherSuites
+	cipherSuitesLen := int(binary.BigEndian.Uint16(data[pos : pos+2]))
+	pos += 2 + cipherSuitesLen
+	if pos+1 > len(data) {
+		return ""
+	}
+
+	// CompressionMethods Length (1 byte) + CompressionMethods
+	compressionMethodsLen := int(data[pos])
+	pos += 1 + compressionMethodsLen
+	if pos+2 > len(data) {
+		return ""
+	}
+
+	// Extensions Length (2 bytes)
+	extensionsLen := int(binary.BigEndian.Uint16(data[pos : pos+2]))
+	pos += 2
+	extensionsEnd := pos + extensionsLen
+	if extensionsEnd > len(data) {
+		extensionsEnd = len(data)
+	}
+
+	// 遍历扩展查找 SNI (Type = 0x0000)
+	for pos+4 <= extensionsEnd {
+		extType := binary.BigEndian.Uint16(data[pos : pos+2])
+		extLen := int(binary.BigEndian.Uint16(data[pos+2 : pos+4]))
+		pos += 4
+
+		if pos+extLen > extensionsEnd {
+			break
+		}
+
+		// SNI 扩展类型是 0x0000
+		if extType == 0x0000 && extLen > 5 {
+			// SNI 扩展格式: ListLength(2) + NameType(1) + NameLength(2) + Name
+			// sniListLen := int(binary.BigEndian.Uint16(data[pos : pos+2]))
+			nameType := data[pos+2]
+			nameLen := int(binary.BigEndian.Uint16(data[pos+3 : pos+5]))
+			if nameType == 0 && pos+5+nameLen <= extensionsEnd {
+				return string(data[pos+5 : pos+5+nameLen])
+			}
+		}
+
+		pos += extLen
+	}
+
+	return ""
+}
+
 func AppendSetSidToSysProcAttr(old *syscall.SysProcAttr) *syscall.SysProcAttr {
 	if caps, _ := getcap(); !caps.SetUID || !caps.SetGID {
 		return old
