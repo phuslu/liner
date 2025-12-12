@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"net/http"
 	"net/netip"
@@ -28,7 +27,7 @@ import (
 )
 
 type Functions struct {
-	SlogLogger  *slog.Logger
+	Logger      log.Logger
 	GeoResolver *GeoResolver
 
 	FetchUserAgent string
@@ -101,7 +100,7 @@ func (f *Functions) slog(msg string, args ...any) string {
 			}
 		}
 	}
-	f.SlogLogger.Info(msg, args...)
+	f.Logger.Info().Caller(13).KeysAndValues(args...).Msg(msg)
 	return ""
 }
 
