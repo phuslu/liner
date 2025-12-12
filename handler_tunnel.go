@@ -118,9 +118,9 @@ func (h *TunnelHandler) handle(ctx context.Context, rconn net.Conn, laddr string
 
 	defer rconn.Close()
 
-	rhost, _, _ := net.SplitHostPort(rconn.RemoteAddr().String())
+	raddr := AddrPortFromNetAddr(rconn.RemoteAddr())
 	ctx = context.WithValue(ctx, DialerHTTPHeaderContextKey, http.Header{
-		"X-Forwarded-For": []string{rhost},
+		"X-Forwarded-For": []string{raddr.Addr().String()},
 	})
 
 	if h.Config.DialTimeout > 0 {
@@ -129,7 +129,7 @@ func (h *TunnelHandler) handle(ctx context.Context, rconn net.Conn, laddr string
 		defer cancel()
 	}
 
-	log.Info().Str("remote_host", rhost).Str("local_addr", laddr).Msg("tunnel handler connect local addr")
+	log.Info().NetIPAddrPort("remote_addr", raddr).Str("local_addr", laddr).Msg("tunnel handler connect local addr")
 	lconn, err := h.LocalDialer.DialContext(ctx, "tcp", laddr)
 	if err != nil {
 		log.Error().Err(err).Msgf("Fail to dial %v", laddr)
