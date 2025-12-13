@@ -77,6 +77,202 @@
         .toolbar a:hover {
             text-decoration: underline;
         }
+
+        /* TOC 悬浮面板样式 */
+        .toc-panel {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            background: white;
+            border: 1px solid #e1e4e8;
+            border-radius: 6px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+            min-width: 60px;
+            max-width: 300px;
+            z-index: 2000;
+            transition: all 0.3s ease;
+        }
+
+        .toc-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 14px;
+            cursor: pointer;
+            user-select: none;
+            border-bottom: 1px solid transparent;
+        }
+
+        .toc-header:hover {
+            background-color: #f6f8fa;
+        }
+
+        .toc-panel.expanded .toc-header {
+            border-bottom-color: #e1e4e8;
+        }
+
+        .toc-title {
+            font-weight: bold;
+            color: #24292e;
+            font-size: 14px;
+        }
+
+        .toc-toggle {
+            font-size: 12px;
+            color: #6a737d;
+            transition: transform 0.3s ease;
+        }
+
+        .toc-panel.expanded .toc-toggle {
+            transform: rotate(180deg);
+        }
+
+        .toc-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+
+        .toc-panel.expanded .toc-content {
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+
+        .toc-items {
+            padding: 8px 0;
+        }
+
+        .toc-item {
+            display: block;
+            padding: 6px 14px;
+            color: #24292e;
+            text-decoration: none;
+            font-size: 13px;
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .toc-item:hover {
+            background-color: #f6f8fa;
+            color: #0366d6;
+        }
+
+        .toc-item[data-level="2"] { padding-left: 28px; }
+        .toc-item[data-level="3"] { padding-left: 42px; }
+        .toc-item[data-level="4"] { padding-left: 56px; }
+        .toc-item[data-level="5"] { padding-left: 70px; }
+        .toc-item[data-level="6"] { padding-left: 84px; }
+
+        .toc-empty {
+            padding: 16px 14px;
+            color: #6a737d;
+            text-align: center;
+            font-size: 13px;
+        }
+
+        /* 移动端：浮动按钮 + 抽屉式目录 */
+        @media (max-width: 768px) {
+            /* 遮罩层 */
+            .toc-overlay {
+                display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0,0,0,0.5);
+                z-index: 1999;
+            }
+
+            .toc-overlay.active {
+                display: block;
+            }
+
+            /* 右下角浮动按钮 */
+            .toc-panel {
+                top: auto;
+                bottom: 20px;
+                right: 20px;
+                width: 50px;
+                height: 50px;
+                min-width: 50px;
+                max-width: 50px;
+                border-radius: 50%;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+                overflow: hidden;
+            }
+
+            .toc-header {
+                width: 50px;
+                height: 50px;
+                padding: 0;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: 50%;
+            }
+
+            .toc-title {
+                font-size: 20px;
+            }
+
+            .toc-toggle {
+                display: none;
+            }
+
+            .toc-content {
+                display: none;
+            }
+
+            /* 展开时变为右侧抽屉 */
+            .toc-panel.expanded {
+                top: 0;
+                bottom: 0;
+                right: 0;
+                width: 80%;
+                max-width: 320px;
+                height: 100%;
+                border-radius: 0;
+                border-left: 1px solid #e1e4e8;
+                box-shadow: -4px 0 24px rgba(0,0,0,0.15);
+            }
+
+            .toc-panel.expanded .toc-header {
+                width: 100%;
+                height: auto;
+                padding: 16px;
+                border-radius: 0;
+                border-bottom: 1px solid #e1e4e8;
+                justify-content: space-between;
+            }
+
+            .toc-panel.expanded .toc-title {
+                font-size: 16px;
+            }
+
+            .toc-panel.expanded .toc-toggle {
+                display: block;
+                font-size: 18px;
+                transform: none;
+            }
+
+            .toc-panel.expanded .toc-content {
+                display: block;
+                max-height: calc(100vh - 60px);
+                overflow-y: auto;
+            }
+
+            .toc-panel.expanded .toc-item {
+                padding: 12px 16px;
+                font-size: 15px;
+            }
+
+            .toc-panel.expanded .toc-item[data-level="2"] { padding-left: 32px; }
+            .toc-panel.expanded .toc-item[data-level="3"] { padding-left: 48px; }
+            .toc-panel.expanded .toc-item[data-level="4"] { padding-left: 64px; }
+        }
     </style>
 </head>
 <body>
@@ -90,8 +286,8 @@
     <div class="container" style="padding-bottom: 0px; display: flex; justify-content: space-between; align-items: center;">
         <span style="font-weight: bold; color: #24292e;">{{.Title}}</span>
         <div>
-            <a href="../">Parent Directory</a>
-            <a href="?html=0">View Source</a>
+            <a href="../">Parent</a>
+            <a href="?html=0">Source</a>
         </div>
     </div>
 </div>
@@ -100,6 +296,20 @@
     <div style="display: none"><textarea id="markdown-text">{{ .Text }}</textarea></div>
     <div id="content" class="markdown-body"></div>
     <div id="error-msg"></div>
+</div>
+
+<!-- TOC 遮罩层（移动端） -->
+<div id="toc-overlay" class="toc-overlay"></div>
+
+<!-- TOC 悬浮面板 -->
+<div id="toc-panel" class="toc-panel">
+    <div class="toc-header" id="toc-header">
+        <span class="toc-title">📑 TOC</span>
+        <span class="toc-toggle">✕</span>
+    </div>
+    <div class="toc-content">
+        <div class="toc-items" id="toc-items"></div>
+    </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
@@ -122,46 +332,99 @@
         const loadingText = document.getElementById('loading-text');
         const contentEl = document.getElementById('content');
         const errorEl = document.getElementById('error-msg');
+        const tocPanel = document.getElementById('toc-panel');
+        const tocHeader = document.getElementById('toc-header');
+        const tocItems = document.getElementById('toc-items');
+        const tocOverlay = document.getElementById('toc-overlay');
+
+        // 检测是否移动端
+        const isMobile = () => window.innerWidth <= 768;
+
+        // TOC 展开/折叠控制
+        const toggleToc = () => {
+            tocPanel.classList.toggle('expanded');
+            if (isMobile()) {
+                tocOverlay.classList.toggle('active', tocPanel.classList.contains('expanded'));
+            }
+        };
+
+        // 关闭 TOC（移动端）
+        const closeToc = () => {
+            tocPanel.classList.remove('expanded');
+            tocOverlay.classList.remove('active');
+        };
+
+        tocHeader.addEventListener('click', toggleToc);
+        tocOverlay.addEventListener('click', closeToc);
 
         try {
             const text = document.getElementById('markdown-text').innerText;;
 
-            // Configure marked with highlight.js
             loadingText.innerText = 'Rendering ...';
-            marked.setOptions({
-                highlight: (code, lang) => {
-                    if (lang && hljs.getLanguage(lang)) {
-                        return hljs.highlight(code, { language: lang }).value;
-                    }
-                    return hljs.highlightAuto(code).value;
-                }
-            });
 
             // Custom renderer
             const renderer = new marked.Renderer();
 
-            // 1. Mermaid support
-            const originalCodeRenderer = renderer.code.bind(renderer);
+            // 1. Code blocks with syntax highlighting and Mermaid support
             let mermaidCount = 0;
             renderer.code = (code, language, isEscaped) => {
                 if (language === 'mermaid') {
                     const id = `mermaid-${mermaidCount++}`;
                     return `<div class="mermaid" id="${id}">${code}</div>`;
                 }
-                return originalCodeRenderer(code, language, isEscaped);
+                // 代码高亮处理
+                let highlighted;
+                const lang = language || '';
+                if (lang && hljs.getLanguage(lang)) {
+                    highlighted = hljs.highlight(code, { language: lang }).value;
+                } else {
+                    highlighted = hljs.highlightAuto(code).value;
+                }
+                return `<pre><code class="hljs language-${lang}">${highlighted}</code></pre>`;
             };
 
-            // 2. Headings with IDs (supporting Chinese)
+            // 2. Headings with IDs (supporting Chinese) - 收集 TOC 数据
+            const tocData = [];
             renderer.heading = (text, level, raw) => {
                 const id = raw.toLowerCase().trim()
-                    // Remove non-word chars (keeping unicode letters) but dealing with spaces
                     .replace(/[^\w\u4e00-\u9fa5\s-]/g, '')
                     .replace(/\s+/g, '-');
+                tocData.push({ text, level, id });
                 return `<h${level} id="${id}">${text}</h${level}>\n`;
             };
 
             const html = marked.parse(text, { renderer: renderer });
             contentEl.innerHTML = html;
+
+            // 3. 构建 TOC
+            if (tocData.length > 0) {
+                tocItems.innerHTML = tocData.map(item =>
+                    `<a class="toc-item" data-level="${item.level}" href="#${item.id}">${item.text}</a>`
+                ).join('');
+                // 仅桌面端默认展开
+                if (!isMobile()) {
+                    tocPanel.classList.add('expanded');
+                }
+            } else {
+                tocItems.innerHTML = '<div class="toc-empty">No headings</div>';
+            }
+
+            // 4. TOC 点击跳转
+            tocItems.addEventListener('click', (e) => {
+                if (e.target.classList.contains('toc-item')) {
+                    e.preventDefault();
+                    const targetId = e.target.getAttribute('href').substring(1);
+                    const targetEl = document.getElementById(targetId);
+                    if (targetEl) {
+                        targetEl.scrollIntoView({ behavior: 'smooth' });
+                        history.pushState(null, null, `#${targetId}`);
+                        // 移动端：点击后关闭抽屉
+                        if (isMobile()) {
+                            closeToc();
+                        }
+                    }
+                }
+            });
 
             // Render mermaid diagrams
             const mermaidDivs = document.querySelectorAll('.mermaid');
@@ -190,6 +453,7 @@
             contentEl.style.display = 'none';
             errorEl.innerText = 'Load failed: ' + err.message;
             errorEl.style.display = 'block';
+            tocPanel.style.display = 'none';
         }
     })();
 </script>
