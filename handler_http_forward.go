@@ -25,15 +25,16 @@ import (
 )
 
 type HTTPForwardHandler struct {
-	Config         HTTPConfig
-	DataLogger     log.Logger
-	MemoryDialers  *sync.Map // map[string]*MemoryDialer
-	LocalDialer    *LocalDialer
-	LocalTransport *http.Transport
-	Dialers        map[string]Dialer
-	DialerURLs     map[string]string
-	GeoResolver    *GeoResolver
-	Functions      template.FuncMap
+	Config          HTTPConfig
+	DataLogger      log.Logger
+	MemoryDialers   *sync.Map // map[string]*MemoryDialer
+	LocalDialer     *LocalDialer
+	LocalTransport  *http.Transport
+	Dialers         map[string]Dialer
+	DialerURLs      map[string]string
+	GeoResolver     *GeoResolver
+	PerferedLocalIP string
+	Functions       template.FuncMap
 
 	policy        *template.Template
 	tcpcongestion *template.Template
@@ -494,7 +495,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 					Str("logger", "forward").
 					Xid("trace_id", ri.TraceID).
 					NetIPAddrPort("server_addr", ri.ServerAddr).
-					Str("tls_server_name", ri.TLSServerName).
+					Str("tls_server_name", cmp.Or(ri.TLSServerName, h.PerferedLocalIP)).
 					Str("tls_version", ri.TLSVersion.String()).
 					Str("ja4", ri.JA4).
 					Str("username", username).
@@ -610,7 +611,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 					Str("logger", "forward").
 					Xid("trace_id", ri.TraceID).
 					NetIPAddrPort("server_addr", ri.ServerAddr).
-					Str("tls_server_name", ri.TLSServerName).
+					Str("tls_server_name", cmp.Or(ri.TLSServerName, h.PerferedLocalIP)).
 					Str("tls_version", ri.TLSVersion.String()).
 					Str("ja4", ri.JA4).
 					Str("username", username).
