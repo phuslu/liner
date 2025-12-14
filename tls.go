@@ -78,7 +78,11 @@ type TLSClientHelloInfo struct {
 	QuicConn        *quic.Conn
 }
 
-var ErrTLSServerNameNotFound = errors.New("tls server name is not found")
+type TLSInspectorError string
+
+func (err TLSInspectorError) Error() string { return string(err) }
+
+const ErrTLSServerNameNotFound = TLSInspectorError("tls server name is not found")
 
 type TLSServerNameHandle func(ctx context.Context, sni string, data []byte, conn net.Conn) error
 
