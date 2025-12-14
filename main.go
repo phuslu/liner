@@ -647,7 +647,8 @@ func main() {
 				logger.Writer = log.WriterFunc(func(e *log.Entry) (int, error) {
 					// see go/src/net/http/server.go
 					// see liner/handler_sni.go
-					if s := b2s(e.Value()); strings.HasSuffix(s, ": EOF\\n\"}\n") && strings.Contains(s, `:"http: TLS handshake error from`) {
+					const ErrTLSServerNameHijackedSuffix = ": " + string(ErrTLSServerNameHijacked) + "\\n\"}\n"
+					if strings.HasSuffix(b2s(e.Value()), ErrTLSServerNameHijackedSuffix) {
 						return 0, nil
 					}
 					return log.DefaultLogger.Writer.WriteEntry(e)

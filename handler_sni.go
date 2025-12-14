@@ -171,5 +171,5 @@ func (h *SniHandler) ServeConn(ctx context.Context, servername string, header []
 		return fmt.Errorf("sniproxy: proxy_pass %s error: %w", req.ServerName, err)
 	}
 
-	return io.EOF
+	return ErrTLSServerNameHijacked
 }

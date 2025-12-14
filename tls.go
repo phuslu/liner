@@ -83,6 +83,7 @@ type TLSInspectorError string
 func (err TLSInspectorError) Error() string { return string(err) }
 
 const ErrTLSServerNameNotFound = TLSInspectorError("tls server name is not found")
+const ErrTLSServerNameHijacked = TLSInspectorError("tls server name is hijacked")
 
 type TLSServerNameHandle func(ctx context.Context, sni string, data []byte, conn net.Conn) error
 
