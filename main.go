@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	stdLog "log"
 	"log/slog"
 	"net"
 	"net/http"
@@ -641,7 +642,18 @@ func main() {
 				GetConfigForClient: tlsConfigurator.GetConfigForClient,
 			},
 			ConnState: tlsConfigurator.HTTPConnState,
-			ErrorLog:  log.DefaultLogger.Std("", 0),
+			ErrorLog: func() *stdLog.Logger {
+				var logger = log.DefaultLogger
+				logger.Writer = log.WriterFunc(func(e *log.Entry) (int, error) {
+					// see go/src/net/http/server.go
+					// see liner/handler_sni.go
+					if s := b2s(e.Value()); strings.HasSuffix(s, ": EOF\\n\"}\n") && strings.Contains(s, `:"http: TLS handshake error from`) {
+						return 0, nil
+					}
+					return log.DefaultLogger.Writer.WriteEntry(e)
+				})
+				return logger.Std("", 0)
+			}(),
 		}
 
 		http2.ConfigureServer(server, &http2.Server{
