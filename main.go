@@ -412,7 +412,6 @@ func main() {
 			TimeLocation: log.DefaultLogger.TimeLocation,
 			Writer:       log.DefaultLogger.Writer,
 		},
-		LoggerCaller:   config.Global.LogTemplateCaller,
 		GeoResolver:    resolver,
 		FetchUserAgent: ChromeUserAgent,
 		FetchClient:    &http.Client{Transport: transport},

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"cmp"
 	"context"
 	"crypto/tls"
 	"encoding/binary"
@@ -28,9 +27,8 @@ import (
 )
 
 type Functions struct {
-	Logger       log.Logger
-	LoggerCaller int
-	GeoResolver  *GeoResolver
+	Logger      log.Logger
+	GeoResolver *GeoResolver
 
 	FetchUserAgent string
 	FetchClient    *http.Client
@@ -103,7 +101,7 @@ func (f *Functions) slog(msg string, args ...any) string {
 			}
 		}
 	}
-	f.Logger.Info().Caller(cmp.Or(f.LoggerCaller, 1)).KeysAndValues(args...).Msg(msg)
+	f.Logger.Info().Caller(1).KeysAndValues(args...).Msg(msg)
 	return ""
 }
 

@@ -179,32 +179,31 @@ type SshConfig struct {
 
 type Config struct {
 	Global struct {
-		LogDir            string `json:"log_dir" yaml:"log_dir"`
-		LogLevel          string `json:"log_level" yaml:"log_level"`
-		LogBackups        int    `json:"log_backups" yaml:"log_backups"`
-		LogMaxsize        int64  `json:"log_maxsize" yaml:"log_maxsize"`
-		LogLocaltime      bool   `json:"log_localtime" yaml:"log_localtime"`
-		LogChannelSize    uint   `json:"log_channel_size" yaml:"log_channel_size"`
-		LogTemplateCaller int    `json:"log_template_caller" yaml:"log_template_caller"`
-		ForbidLocalAddr   bool   `json:"forbid_local_addr" yaml:"forbid_local_addr"`
-		DialTimeout       int    `json:"dial_timeout" yaml:"dial_timeout"`
-		DialReadBuffer    int    `json:"dial_read_buffer" yaml:"dial_read_buffer"` // Danger, see https://issues.apache.org/jira/browse/KAFKA-16496
-		DialWriteBuffer   int    `json:"dial_write_buffer" yaml:"dial_write_buffer"`
-		DnsServer         string `json:"dns_server" yaml:"dns_server"`
-		DnsCacheDuration  string `json:"dns_cache_duration" yaml:"dns_cache_duration"`
-		DnsCacheSize      int    `json:"dns_cache_size" yaml:"dns_cache_size"`
-		TcpReadBuffer     int    `json:"tcp_read_buffer" yaml:"tcp_read_buffer"`
-		TcpWriteBuffer    int    `json:"tcp_write_buffer" yaml:"tcp_write_buffer"`
-		TlsInsecure       bool   `json:"tls_insecure" yaml:"tls_insecure"`
-		AutocertDir       string `json:"autocert_dir" yaml:"autocert_dir"`
-		GeoipDir          string `json:"geoip_dir" yaml:"geoip_dir"`
-		GeoipCacheSize    int    `json:"geoip_cache_size" yaml:"geoip_cache_size"`
-		GeositeDisabled   bool   `json:"geosite_disabled" yaml:"geosite_disabled"`
-		GeositeCacheSize  int    `json:"geosite_cache_size" yaml:"geosite_cache_size"`
-		IdleConnTimeout   int    `json:"idle_conn_timeout" yaml:"idle_conn_timeout"`
-		MaxIdleConns      int    `json:"max_idle_conns" yaml:"max_idle_conns"`
-		DisableHttp3      bool   `json:"disable_http3" yaml:"disable_http3"`
-		SetProcessName    string `json:"set_process_name" yaml:"set_process_name"`
+		LogDir           string `json:"log_dir" yaml:"log_dir"`
+		LogLevel         string `json:"log_level" yaml:"log_level"`
+		LogBackups       int    `json:"log_backups" yaml:"log_backups"`
+		LogMaxsize       int64  `json:"log_maxsize" yaml:"log_maxsize"`
+		LogLocaltime     bool   `json:"log_localtime" yaml:"log_localtime"`
+		LogChannelSize   uint   `json:"log_channel_size" yaml:"log_channel_size"`
+		ForbidLocalAddr  bool   `json:"forbid_local_addr" yaml:"forbid_local_addr"`
+		DialTimeout      int    `json:"dial_timeout" yaml:"dial_timeout"`
+		DialReadBuffer   int    `json:"dial_read_buffer" yaml:"dial_read_buffer"` // Danger, see https://issues.apache.org/jira/browse/KAFKA-16496
+		DialWriteBuffer  int    `json:"dial_write_buffer" yaml:"dial_write_buffer"`
+		DnsServer        string `json:"dns_server" yaml:"dns_server"`
+		DnsCacheDuration string `json:"dns_cache_duration" yaml:"dns_cache_duration"`
+		DnsCacheSize     int    `json:"dns_cache_size" yaml:"dns_cache_size"`
+		TcpReadBuffer    int    `json:"tcp_read_buffer" yaml:"tcp_read_buffer"`
+		TcpWriteBuffer   int    `json:"tcp_write_buffer" yaml:"tcp_write_buffer"`
+		TlsInsecure      bool   `json:"tls_insecure" yaml:"tls_insecure"`
+		AutocertDir      string `json:"autocert_dir" yaml:"autocert_dir"`
+		GeoipDir         string `json:"geoip_dir" yaml:"geoip_dir"`
+		GeoipCacheSize   int    `json:"geoip_cache_size" yaml:"geoip_cache_size"`
+		GeositeDisabled  bool   `json:"geosite_disabled" yaml:"geosite_disabled"`
+		GeositeCacheSize int    `json:"geosite_cache_size" yaml:"geosite_cache_size"`
+		IdleConnTimeout  int    `json:"idle_conn_timeout" yaml:"idle_conn_timeout"`
+		MaxIdleConns     int    `json:"max_idle_conns" yaml:"max_idle_conns"`
+		DisableHttp3     bool   `json:"disable_http3" yaml:"disable_http3"`
+		SetProcessName   string `json:"set_process_name" yaml:"set_process_name"`
 	} `json:"global" yaml:"global"`
 	Cron []struct {
 		Spec    string `json:"spec" yaml:"spec"`
