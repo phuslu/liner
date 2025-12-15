@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -90,17 +89,6 @@ func (f *Functions) Load() error {
 }
 
 func (f *Functions) slog(msg string, args ...any) string {
-	for i := 1; i < len(args); i += 2 {
-		switch args[i].(type) {
-		case string, bool, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
-		default:
-			if b, err := json.Marshal(args[i]); err == nil {
-				args[i] = string(b)
-			} else {
-				args[i] = fmt.Sprintf("%+v", args[i])
-			}
-		}
-	}
 	f.Logger.Info().Caller(1).KeysAndValues(args...).Msg(msg)
 	return ""
 }

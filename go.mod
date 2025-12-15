@@ -13,7 +13,7 @@ require (
 	github.com/phuslu/fastcgi v0.0.0-20231004164338-7aec0d4ba593
 	github.com/phuslu/fastdns v0.16.3
 	github.com/phuslu/geosite v1.0.20250901
-	github.com/phuslu/log v1.0.120
+	github.com/phuslu/log v1.0.121
 	github.com/phuslu/lru v1.0.18
 	github.com/pkg/sftp v1.13.10
 	github.com/puzpuzpuz/xsync/v4 v4.2.0
