@@ -141,18 +141,33 @@ func (ops ConnOps) GetOriginalDST() (addrport netip.AddrPort, err error) {
 		return
 	}
 
-	err = c.Control(func(fd uintptr) {
-		const SO_ORIGINAL_DST = 80 // Linux netfilter original destination
-		var sa syscall.RawSockaddrInet4
-		size := uint32(unsafe.Sizeof(sa))
-		_, _, errno := syscall.Syscall6(syscall.SYS_GETSOCKOPT, fd, uintptr(syscall.SOL_IP), uintptr(SO_ORIGINAL_DST), uintptr(unsafe.Pointer(&sa)), uintptr(unsafe.Pointer(&size)), 0)
-		if errno != 0 {
-			err = errno
-			return
-		}
-		port := binary.BigEndian.Uint16((*[2]byte)(unsafe.Pointer(&sa.Port))[:])
-		addrport = netip.AddrPortFrom(netip.AddrFrom4(sa.Addr), port)
-	})
+	if ip := AddrPortFromNetAddr(ops.tc.LocalAddr()).Addr(); ip.Is6() {
+		err = c.Control(func(fd uintptr) {
+			const IP6T_SO_ORIGINAL_DST = 80 // Linux netfilter original destination
+			var sa syscall.RawSockaddrInet6
+			size := uint32(unsafe.Sizeof(sa))
+			_, _, errno := syscall.Syscall6(syscall.SYS_GETSOCKOPT, fd, uintptr(syscall.SOL_IP), uintptr(IP6T_SO_ORIGINAL_DST), uintptr(unsafe.Pointer(&sa)), uintptr(unsafe.Pointer(&size)), 0)
+			if errno != 0 {
+				err = errno
+				return
+			}
+			port := binary.BigEndian.Uint16((*[2]byte)(unsafe.Pointer(&sa.Port))[:])
+			addrport = netip.AddrPortFrom(netip.AddrFrom16(sa.Addr), port)
+		})
+	} else {
+		err = c.Control(func(fd uintptr) {
+			const SO_ORIGINAL_DST = 80 // Linux netfilter original destination
+			var sa syscall.RawSockaddrInet4
+			size := uint32(unsafe.Sizeof(sa))
+			_, _, errno := syscall.Syscall6(syscall.SYS_GETSOCKOPT, fd, uintptr(syscall.SOL_IP), uintptr(SO_ORIGINAL_DST), uintptr(unsafe.Pointer(&sa)), uintptr(unsafe.Pointer(&size)), 0)
+			if errno != 0 {
+				err = errno
+				return
+			}
+			port := binary.BigEndian.Uint16((*[2]byte)(unsafe.Pointer(&sa.Port))[:])
+			addrport = netip.AddrPortFrom(netip.AddrFrom4(sa.Addr), port)
+		})
+	}
 
 	return
 }
