@@ -141,7 +141,7 @@ func (ops ConnOps) GetOriginalDST() (addrport netip.AddrPort, err error) {
 		return
 	}
 
-	if ip := AddrPortFromNetAddr(ops.tc.LocalAddr()).Addr(); ip.Is6() {
+	if ip := AddrPortFromNetAddr(ops.tc.LocalAddr()).Addr(); ip.Is6() && !ip.Is4In6() {
 		err = c.Control(func(fd uintptr) {
 			const IP6T_SO_ORIGINAL_DST = 80 // Linux netfilter original destination
 			var sa syscall.RawSockaddrInet6
