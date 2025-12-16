@@ -4,10 +4,10 @@ function setup() {
 	export DEBIAN_FRONTEND=noninteractive
 	if test -f /etc/alpine-release; then
 		apk update
-		apk add git curl jq zip xz github-cli patch make build-base py3-pip python3-dev patchelf
+		apk add git curl jq zip xz github-cli patch make build-base py3-pip python3-dev patchelf upx
 	else
 		apt update -y
-		apt install -yq git curl jq zip xz-utils gh build-essential python3-pip python3-venv python3-dev patchelf
+		apt install -yq git curl jq zip xz-utils gh build-essential python3-pip python3-venv python3-dev patchelf upx
 	fi
 
 	git config --global --add safe.directory '*'

@@ -61,6 +61,13 @@ build () {
 
 dist () {
     pushd ${BUILDDIR}
+    if type -p upx; then
+        case "${GOARCH}" in
+            arm64 | armv7)
+                upx --best liner
+                ;;
+        esac
+    fi
     tar cv * | gzip -9 >../${DISTFILE}.tar.gz
     # test ${GOOS}_${GOARCH} = linux_amd64 && tar cv * | xz -9 >../${DISTFILE}.tar.xz
     popd
