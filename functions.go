@@ -356,14 +356,17 @@ func (f *Functions) readfile(filename string) string {
 	return string(data)
 }
 
+//lint:ignore U1000 Ignore unused function
 func (f *Functions) contains(substr, s string) bool {
 	return strings.Contains(s, substr)
 }
 
+//lint:ignore U1000 Ignore unused function
 func (f *Functions) hasSuffix(suffix, s string) bool {
 	return strings.HasSuffix(s, suffix)
 }
 
+//lint:ignore U1000 Ignore unused function
 func (f *Functions) hasPrefix(suffix, s string) bool {
 	return strings.HasPrefix(s, suffix)
 }

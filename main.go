@@ -445,8 +445,6 @@ func main() {
 
 	memoryDialers := new(sync.Map)
 
-	servers := make([]*http.Server, 0)
-
 	// tls inspector
 	tlsConfigurator := &TLSInspector{
 		Logger:         &log.DefaultLogger,
@@ -672,8 +670,6 @@ func main() {
 			TLSConfig:       server.TLSConfig,
 		})
 
-		servers = append(servers, server)
-
 		// start http3 server
 		if !config.Global.DisableHttp3 {
 			go (&http3.Server{
@@ -807,8 +803,6 @@ func main() {
 		}
 
 		go server.Serve(ln)
-
-		servers = append(servers, server)
 	}
 
 	// socks handler

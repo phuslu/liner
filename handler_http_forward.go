@@ -649,6 +649,8 @@ func RejectRequest(rw http.ResponseWriter, req *http.Request) {
 }
 
 // see https://github.com/golang/go/blob/master/src/net/net.go#L785C1-L791C2
+//
+//lint:ignore U1000 Ignore unused
 type noWriteTo struct{}
 
 func (noWriteTo) WriteTo(io.Writer) (int64, error) {
@@ -656,7 +658,7 @@ func (noWriteTo) WriteTo(io.Writer) (int64, error) {
 }
 
 type tcpConnWithoutWriteTo struct {
-	noWriteTo
+	noWriteTo //lint:ignore U1000 Ignore unused
 	*net.TCPConn
 }
 
