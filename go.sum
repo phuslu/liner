@@ -34,8 +34,8 @@ github.com/photostorm/pty/v2 v2.0.0-20240405180724-bf40468acd65 h1:rdE4GJ3uNl5AY
 github.com/photostorm/pty/v2 v2.0.0-20240405180724-bf40468acd65/go.mod h1:kRtDiAOt7dBUeWqznZK5Mh+T3a793k+L0ATiwKC3wWg=
 github.com/phuslu/fastcgi v0.0.0-20231004164338-7aec0d4ba593 h1:VKuHxeB0uqGkdp4iqjFJKOEkD6yZZbU42brsRMi6/a4=
 github.com/phuslu/fastcgi v0.0.0-20231004164338-7aec0d4ba593/go.mod h1:HBhPDGs/2sMFuRqzVCHnsmY9tCQy1tXiJ89DytaRs2Y=
-github.com/phuslu/fastdns v0.16.3 h1:TOEJXYrfHu3R73DKCK8jBNwyDyG/9oOaIgNQ5zvGvx8=
-github.com/phuslu/fastdns v0.16.3/go.mod h1:whxYhN/LvgE3EK+n2E73vt5CY44cZVbk6j9ZsqE8G3Q=
+github.com/phuslu/fastdns v0.16.4 h1:mtnLgBJYVKMZiM0z3MrcmH6KFARj6NH2b4spDgQ17X0=
+github.com/phuslu/fastdns v0.16.4/go.mod h1:whxYhN/LvgE3EK+n2E73vt5CY44cZVbk6j9ZsqE8G3Q=
 github.com/phuslu/geosite v1.0.20250901 h1:9BHxSm7M1OMic7H8q3Nzyd9PvjFtzMtUX2d1hE5WiIQ=
 github.com/phuslu/geosite v1.0.20250901/go.mod h1:qKR55nWrjbN1JOvK1WvZIqh341CGpq22OHx2BLMOrKE=
 github.com/phuslu/log v1.0.121 h1:3QlfHf/UG+QArETQFUhpHAn4my7Ik2T2zbK5UqG/amM=

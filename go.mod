@@ -11,7 +11,7 @@ require (
 	github.com/mileusna/useragent v1.3.5
 	github.com/oschwald/maxminddb-golang/v2 v2.1.1
 	github.com/phuslu/fastcgi v0.0.0-20231004164338-7aec0d4ba593
-	github.com/phuslu/fastdns v0.16.3
+	github.com/phuslu/fastdns v0.16.4
 	github.com/phuslu/geosite v1.0.20250901
 	github.com/phuslu/log v1.0.121
 	github.com/phuslu/lru v1.0.18

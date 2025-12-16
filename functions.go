@@ -194,6 +194,16 @@ func (f *Functions) nslookup(host string, nameservers ...string) ([]string, erro
 		host = s
 	}
 
+	if addr, err := netip.ParseAddr(host); err == nil && addr.IsValid() {
+		ptr, err := resolver.Client.LookupPTR(context.Background(), host)
+
+		if err != nil {
+			return nil, err
+		}
+
+		return []string{ptr}, nil
+	}
+
 	ips, err := resolver.LookupNetIP(context.Background(), "ip", host)
 	if err != nil {
 		return nil, err
