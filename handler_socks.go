@@ -272,7 +272,7 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 	}
 
 	go io.Copy(rconn, conn)
-	_, err = io.Copy(conn, rconn)
+	_, _ = io.Copy(conn, rconn)
 
 	if h.Config.Forward.Log {
 		var info GeoIPInfo
@@ -295,8 +295,6 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 			Str("forward_dialer_name", dialerName).
 			Msg("")
 	}
-
-	return
 }
 
 func WriteSocks5Status(conn net.Conn, status Socks5Status) (int, error) {

@@ -92,7 +92,7 @@ func (d *HTTPDialer) DialContext(ctx context.Context, network, addr string) (net
 
 	hostport := net.JoinHostPort(d.Host, d.Port)
 	for _, key := range []string{hostport, d.Host} {
-		if value, _ := d.Resolve[key]; value != "" {
+		if value := d.Resolve[key]; value != "" {
 			hostport = net.JoinHostPort(value, d.Port)
 			break
 		}

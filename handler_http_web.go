@@ -169,7 +169,7 @@ func (h *HTTPWebHandler) Load() error {
 }
 
 func (h *HTTPWebHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	if config, _ := h.Config.ServerConfig[req.Host]; !config.DisableHttp3 && req.ProtoMajor != 3 && req.TLS != nil {
+	if config := h.Config.ServerConfig[req.Host]; !config.DisableHttp3 && req.ProtoMajor != 3 && req.TLS != nil {
 		if addr, ok := req.Context().Value(http.LocalAddrContextKey).(net.Addr).(*net.TCPAddr); ok {
 			rw.Header().Add("alt-svc", `h3=":`+strconv.Itoa(addr.Port)+`"`)
 		}

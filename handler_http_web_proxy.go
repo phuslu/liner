@@ -314,7 +314,7 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	if resp.StatusCode == http.StatusSwitchingProtocols {
 		conn, ok := resp.Body.(io.ReadWriteCloser)
 		if !ok {
-			http.Error(rw, fmt.Sprintf("internal error: 101 switching protocols response with non-writable body"), 500)
+			http.Error(rw, "internal error: 101 switching protocols response with non-writable body", 500)
 			return
 		}
 		defer conn.Close()

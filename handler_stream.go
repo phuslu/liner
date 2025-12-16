@@ -139,7 +139,7 @@ func (h *StreamHandler) ServeConn(conn net.Conn) {
 	}
 
 	go io.Copy(rconn, conn)
-	_, err = io.Copy(conn, rconn)
+	_, _ = io.Copy(conn, rconn)
 
 	if h.Config.Log {
 		var info GeoIPInfo
@@ -158,6 +158,4 @@ func (h *StreamHandler) ServeConn(conn net.Conn) {
 			Str("stream_dialer_name", h.Config.Dialer).
 			Msg("")
 	}
-
-	return
 }

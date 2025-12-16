@@ -102,8 +102,6 @@ func (h *TunnelHandler) Serve(ctx context.Context) {
 		time.Sleep(delay)
 		last = time.Now()
 	}
-
-	return
 }
 
 func (h *TunnelHandler) handle(ctx context.Context, rconn net.Conn, laddr string) {

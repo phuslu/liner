@@ -55,21 +55,21 @@ func (h *SshHandler) Load() error {
 	if h.Config.HostKey != "" {
 		key, err := os.ReadFile(h.Config.HostKey)
 		if err != nil {
-			return fmt.Errorf("Failed to load private key (%s): %w", h.Config.HostKey, err)
+			return fmt.Errorf("failed to load private key (%s): %w", h.Config.HostKey, err)
 		}
 		sshSigner, err = ssh.ParsePrivateKey(key)
 		if err != nil {
-			return fmt.Errorf("Failed to parse private key; %w", err)
+			return fmt.Errorf("failed to parse private key; %w", err)
 		}
 	} else {
 		h.Logger.Warn().Strs("ssh_listens", h.Config.Listen).Msg("host_key is not configured, generating ssh key.")
 		_, key, err := ed25519.GenerateKey(rand.Reader)
 		if err != nil {
-			return fmt.Errorf("Failed to generate ed25519 key; %w", err)
+			return fmt.Errorf("failed to generate ed25519 key; %w", err)
 		}
 		sshSigner, err = ssh.NewSignerFromKey(key)
 		if err != nil {
-			return fmt.Errorf("Failed to create ssh private key; %w", err)
+			return fmt.Errorf("failed to create ssh private key; %w", err)
 		}
 	}
 

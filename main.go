@@ -208,7 +208,7 @@ func main() {
 			case "GeoIP2-Connection-Type":
 				resolver.ConnectionTypeReader = newerdb(resolver.ConnectionTypeReader, reader)
 			case "GeoIP2-ASN":
-				break
+				log.Info().Str("geoip_database_name", name).Str("geoip_database_type", reader.Metadata.DatabaseType).Msg("skip geoip database")
 			case "GeoLite2-City":
 				resolver.CityReader = newerdb(resolver.CityReader, reader)
 			case "GeoLite2-ISP":
@@ -218,7 +218,7 @@ func main() {
 			case "GeoLite2-Connection-Type":
 				resolver.ConnectionTypeReader = newerdb(resolver.ConnectionTypeReader, reader)
 			case "GeoLite2-ASN":
-				break
+				log.Info().Str("geoip_database_name", name).Str("geoip_database_type", reader.Metadata.DatabaseType).Msg("skip geoip database")
 			}
 			log.Info().Str("geoip_database_name", name).Str("geoip_database_type", reader.Metadata.DatabaseType).Time("geoip_database_date", time.Unix(int64(reader.Metadata.BuildEpoch), 0)).Msg("load geoip database ok")
 		}
@@ -548,7 +548,7 @@ func main() {
 
 		for _, listen := range server.Listen {
 			for _, name := range server.ServerName {
-				config, _ := server.ServerConfig[name]
+				config := server.ServerConfig[name]
 				if config.Keyfile == "" {
 					config.Keyfile, config.Certfile = server.Keyfile, server.Certfile
 				}

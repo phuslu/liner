@@ -123,7 +123,7 @@ func (h *RedsocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 	defer rconn.Close()
 
 	go io.Copy(rconn, conn)
-	_, err = io.Copy(conn, rconn)
+	_, _ = io.Copy(conn, rconn)
 
 	if h.Config.Forward.Log {
 		h.DataLogger.Log().
@@ -137,6 +137,4 @@ func (h *RedsocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 			Str("forward_dialer_name", dialerName).
 			Msg("")
 	}
-
-	return
 }

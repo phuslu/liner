@@ -86,6 +86,9 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialer string) (net.Listen
 
 	// see https://www.ietf.org/archive/id/draft-kazuho-httpbis-reverse-tunnel-00.html
 	req, err := http.NewRequestWithContext(ctx, http.MethodConnect, "https://"+u.Host+HTTPTunnelReverseTCPPathPrefix+targetHost+"/"+targetPort+"/", pr)
+	if err != nil {
+		return nil, err
+	}
 	req.ContentLength = -1
 	req.Header.Set(":protocol", "websocket")
 	req.Header.Set("content-type", "application/octet-stream")
