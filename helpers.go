@@ -287,35 +287,35 @@ func AppendTemplate(dst []byte, template string, startTag, endTag byte, m map[st
 				j = i
 				continue
 			}
-			switch v.(type) {
+			switch v := v.(type) {
 			case string:
-				dst = append(dst, v.(string)...)
+				dst = append(dst, v...)
 			case []byte:
-				dst = append(dst, v.([]byte)...)
+				dst = append(dst, v...)
 			case int:
-				dst = strconv.AppendInt(dst, int64(v.(int)), 10)
+				dst = strconv.AppendInt(dst, int64(v), 10)
 			case int8:
-				dst = strconv.AppendInt(dst, int64(v.(int8)), 10)
+				dst = strconv.AppendInt(dst, int64(v), 10)
 			case int16:
-				dst = strconv.AppendInt(dst, int64(v.(int16)), 10)
+				dst = strconv.AppendInt(dst, int64(v), 10)
 			case int32:
-				dst = strconv.AppendInt(dst, int64(v.(int32)), 10)
+				dst = strconv.AppendInt(dst, int64(v), 10)
 			case int64:
-				dst = strconv.AppendInt(dst, v.(int64), 10)
+				dst = strconv.AppendInt(dst, v, 10)
 			case uint:
-				dst = strconv.AppendUint(dst, uint64(v.(uint)), 10)
+				dst = strconv.AppendUint(dst, uint64(v), 10)
 			case uint8:
-				dst = strconv.AppendUint(dst, uint64(v.(uint8)), 10)
+				dst = strconv.AppendUint(dst, uint64(v), 10)
 			case uint16:
-				dst = strconv.AppendUint(dst, uint64(v.(uint16)), 10)
+				dst = strconv.AppendUint(dst, uint64(v), 10)
 			case uint32:
-				dst = strconv.AppendUint(dst, uint64(v.(uint32)), 10)
+				dst = strconv.AppendUint(dst, uint64(v), 10)
 			case uint64:
-				dst = strconv.AppendUint(dst, v.(uint64), 10)
+				dst = strconv.AppendUint(dst, v, 10)
 			case float32:
-				dst = strconv.AppendFloat(dst, float64(v.(float32)), 'f', -1, 64)
+				dst = strconv.AppendFloat(dst, float64(v), 'f', -1, 64)
 			case float64:
-				dst = strconv.AppendFloat(dst, v.(float64), 'f', -1, 64)
+				dst = strconv.AppendFloat(dst, v, 'f', -1, 64)
 			default:
 				dst = fmt.Append(dst, v)
 			}
@@ -1480,6 +1480,7 @@ func IsCloudflareIP(ip netip.Addr) bool {
 	}
 
 	if prefix32>>3 == 0x2a0698c0>>3 {
+		// slow path
 		return true
 	}
 
@@ -1722,15 +1723,15 @@ func SetHTTP2ResponseWriterSentHeader(rw http.ResponseWriter, sent bool) error {
 
 func GetOCSPStaple(ctx context.Context, transport http.RoundTripper, cert *x509.Certificate) ([]byte, error) {
 	if cert == nil {
-		return nil, errors.New("Nil x509 certificate")
+		return nil, errors.New("null x509 certificate")
 	}
 
 	if len(cert.OCSPServer) == 0 {
-		return nil, errors.New("No OCSP server in certificate")
+		return nil, errors.New("no ocsp server in certificate")
 	}
 
 	if len(cert.IssuingCertificateURL) == 0 {
-		return nil, errors.New("no URL to issuing certificate")
+		return nil, errors.New("no url to issuing certificate")
 	}
 
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, cert.IssuingCertificateURL[0], nil)
@@ -1854,10 +1855,11 @@ Loop:
 	// Check if the remaining pattern characters are '*' or '?', which can match the end of the string.
 checkPattern:
 	if patternIndex < patternLen {
-		if pattern[patternIndex] == '*' {
+		switch pattern[patternIndex] {
+		case '*':
 			patternIndex++
 			goto checkPattern
-		} else if pattern[patternIndex] == '?' {
+		case '?':
 			if sIndex >= sLen {
 				sIndex--
 			}
