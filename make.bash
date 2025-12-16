@@ -63,7 +63,7 @@ dist () {
     pushd ${BUILDDIR}
     if type -p upx; then
         case "${GOOS}_${GOARCH}" in
-            linux_arm64 | linux_armv7)
+            linux_arm64 | linux_arm)
                 upx --best liner
                 ;;
         esac
