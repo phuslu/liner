@@ -2,8 +2,6 @@ module liner
 
 go 1.26
 
-toolchain go1.26rc1
-
 require (
 	github.com/coder/websocket v1.8.14
 	github.com/creack/pty/v2 v2.0.1
