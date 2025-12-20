@@ -45,12 +45,21 @@ else
 fi
 
 build () {
+    # Disable optimization for ARM to workaround Go 1.26rc1 runtime bug on ARM32
+    # See: runtime.exitsyscall() atomic operation alignment issue
+    if [ "${GOARCH}" == "arm" ]; then
+        GCFLAGS="liner=-N"
+        echo "ARM architecture detected, disabling optimization: -gcflags=\"${GCFLAGS}\""
+    else
+        GCFLAGS=""
+    fi
+
     # go build
     mkdir -p ${BUILDDIR}
     env GOOS=${GOOS} \
         GOARCH=${GOARCH} \
         CGO_ENABLED=${CGO_ENABLED} \
-    go build -v -trimpath -ldflags="${LDFLAGS}" -o ${BUILDDIR}/${PROJECT}${GOEXE} .
+    go build -v -trimpath -gcflags="${GCFLAGS}" -ldflags="${LDFLAGS}" -o ${BUILDDIR}/${PROJECT}${GOEXE} .
     # go test
     # go test -v .
     # cp files
