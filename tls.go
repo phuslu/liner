@@ -284,7 +284,7 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 		cacert, _ = x509.ParseCertificate(cert.Certificate[n-2])
 	}
 
-	if !disableOCSP && len(cacert.OCSPServer) != 0 {
+	if !disableOCSP && cacert != nil && len(cacert.OCSPServer) != 0 {
 		ctx, cancel := context.WithTimeout(hello.Context(), 5*time.Second)
 		defer cancel()
 		cert.OCSPStaple, err = GetOCSPStaple(ctx, http.DefaultTransport, cacert)
