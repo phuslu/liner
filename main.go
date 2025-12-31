@@ -160,6 +160,23 @@ func main() {
 
 	slog.SetDefault(log.DefaultLogger.Slog())
 
+	// default resolver
+	if config.Global.DisableIpv6 {
+		dial := net.DefaultResolver.Dial
+		if dial == nil {
+			dial = (&net.Dialer{}).DialContext
+		}
+		net.DefaultResolver.Dial = func(ctx context.Context, network, address string) (net.Conn, error) {
+			switch network {
+			case "udp":
+				network = "udp4"
+			case "tcp":
+				network = "tcp4"
+			}
+			return dial(ctx, network, address)
+		}
+	}
+
 	// global resolver with geo support
 	if config.Global.DnsServer == "" {
 		switch runtime.GOOS {
