@@ -202,6 +202,7 @@ type Config struct {
 		GeositeCacheSize int    `json:"geosite_cache_size" yaml:"geosite_cache_size"`
 		IdleConnTimeout  int    `json:"idle_conn_timeout" yaml:"idle_conn_timeout"`
 		MaxIdleConns     int    `json:"max_idle_conns" yaml:"max_idle_conns"`
+		DisableIpv6      bool   `json:"disable_ipv6" yaml:"disable_ipv6"`
 		DisableHttp3     bool   `json:"disable_http3" yaml:"disable_http3"`
 		SetProcessName   string `json:"set_process_name" yaml:"set_process_name"`
 	} `json:"global" yaml:"global"`
