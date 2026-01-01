@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -21,7 +22,7 @@ import (
 func (h *TunnelHandler) h1tunnel(ctx context.Context, dialer string) (net.Listener, error) {
 	log.Info().Str("dialer", dialer).Msg("connecting tunnel host")
 
-	ctx, cancel := context.WithTimeout(ctx, time.Duration(h.Config.DialTimeout)*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(cmp.Or(h.Config.DialTimeout, 10))*time.Second)
 	defer cancel()
 
 	u, err := url.Parse(dialer)

@@ -32,7 +32,7 @@ func (h *TunnelHandler) Load() error {
 }
 
 func (h *TunnelHandler) Serve(ctx context.Context) {
-	loop := func() bool {
+	loop := func(ctx context.Context) bool {
 		dialer := h.Dialers[h.Config.Dialer]
 
 		var ln net.Listener
@@ -93,7 +93,7 @@ func (h *TunnelHandler) Serve(ctx context.Context) {
 	}
 
 	last := time.Now()
-	for loop() {
+	for loop(ctx) {
 		delay := time.Duration(5+log.Fastrandn(10)) * time.Second
 		if time.Since(last) > 1*time.Minute {
 			delay = 2 * time.Second

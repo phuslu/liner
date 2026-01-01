@@ -49,6 +49,8 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialer string) (net.Listen
 			if dialer == nil {
 				dialer = &net.Dialer{}
 			}
+			ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			defer cancel()
 			conn, err := dialer.DialContext(ctx, "tcp", hostport)
 			if err != nil {
 				return nil, err
