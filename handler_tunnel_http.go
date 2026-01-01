@@ -191,6 +191,13 @@ func (h *TunnelHandler) h1tunnel(ctx context.Context, dialer string) (net.Listen
 		return nil, fmt.Errorf("tunnel: failed to tunnel remote %s via %s: %s", h.Config.RemoteListen[0], conn.RemoteAddr().String(), bytes.TrimRight(b, "\x00"))
 	}
 
+	if h.Config.EnableKeepAlive {
+		conn = &IdleTimeoutConn{
+			Conn:        conn,
+			IdleTimeout: 600 * time.Second,
+		}
+	}
+
 	ln, err := yamux.Server(conn, &yamux.Config{
 		AcceptBacklog:           256,
 		PingBacklog:             32,
