@@ -41,12 +41,12 @@ type HTTPConfig struct {
 		IdleTimeout      int64  `json:"idle_timeout" yaml:"idle_timeout"`
 	} `json:"forward" yaml:"forward"`
 	Tunnel struct {
-		Enabled         bool     `json:"enabled" yaml:"enabled"`
-		AuthTable       string   `json:"auth_table" yaml:"auth_table"`
-		AllowListens    []string `json:"allow_listens" yaml:"allow_listens"`
-		SpeedLimit      int64    `json:"speed_limit" yaml:"speed_limit"`
-		EnableKeepAlive bool     `json:"enable_keep_alive" yaml:"enable_keep_alive"`
-		Log             bool     `json:"log" yaml:"log"`
+		Enabled          bool     `json:"enabled" yaml:"enabled"`
+		AuthTable        string   `json:"auth_table" yaml:"auth_table"`
+		AllowListens     []string `json:"allow_listens" yaml:"allow_listens"`
+		SpeedLimit       int64    `json:"speed_limit" yaml:"speed_limit"`
+		DisableKeepalive bool     `json:"disable_keepalive" yaml:"disable_keepalive"`
+		Log              bool     `json:"log" yaml:"log"`
 	} `json:"tunnel" yaml:"tunnel"`
 	Web []struct {
 		Location      string `json:"location" yaml:"location"`
@@ -142,14 +142,14 @@ type StreamConfig struct {
 }
 
 type TunnelConfig struct {
-	RemoteListen    []string `json:"remote_listen" yaml:"remote_listen"`
-	ProxyPass       string   `json:"proxy_pass" yaml:"proxy_pass"`
-	Resolver        string   `json:"resolver" yaml:"resolver"`
-	DialTimeout     int      `json:"dial_timeout" yaml:"dial_timeout"`
-	Dialer          string   `json:"dialer" yaml:"dialer"`
-	SpeedLimit      int64    `json:"speed_limit" yaml:"speed_limit"`
-	EnableKeepAlive bool     `json:"enable_keep_alive" yaml:"enable_keep_alive"`
-	Log             bool     `json:"log" yaml:"log"`
+	RemoteListen     []string `json:"remote_listen" yaml:"remote_listen"`
+	ProxyPass        string   `json:"proxy_pass" yaml:"proxy_pass"`
+	Resolver         string   `json:"resolver" yaml:"resolver"`
+	DialTimeout      int      `json:"dial_timeout" yaml:"dial_timeout"`
+	Dialer           string   `json:"dialer" yaml:"dialer"`
+	SpeedLimit       int64    `json:"speed_limit" yaml:"speed_limit"`
+	DisableKeepalive bool     `json:"disable_keepalive" yaml:"disable_keepalive"`
+	Log              bool     `json:"log" yaml:"log"`
 }
 
 type DnsConfig struct {

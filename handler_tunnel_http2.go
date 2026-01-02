@@ -143,7 +143,7 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialer string) (net.Listen
 	ln, err := yamux.Server(conn, &yamux.Config{
 		AcceptBacklog:           256,
 		PingBacklog:             32,
-		EnableKeepAlive:         h.Config.EnableKeepAlive,
+		EnableKeepAlive:         !h.Config.DisableKeepalive,
 		KeepAliveInterval:       30 * time.Second,
 		MeasureRTTInterval:      30 * time.Second,
 		ConnectionWriteTimeout:  10 * time.Second,
