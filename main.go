@@ -35,6 +35,7 @@ import (
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
+	utls "github.com/refraction-networking/utls"
 	"github.com/robfig/cron/v3"
 	"github.com/smallnest/ringbuffer"
 	"go4.org/netipx"
@@ -46,7 +47,7 @@ var (
 	timeNow = time.Now
 
 	DefaultUserAgent = "Liner/" + version
-	ChromeUserAgent  = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+	ChromeUserAgent  = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + utls.HelloChrome_Auto.Version + ".0.0.0 Safari/537.36"
 )
 
 func main() {
