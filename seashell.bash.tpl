@@ -15,7 +15,7 @@ download_url=$(wget -O- https://api.github.com/repos/phuslu/liner/releases/tags/
 wget ${download_url} -O 1.tar.gz && tar xvzf 1.tar.gz && rm -f 1.tar.gz
 
 # echo '{{ readFile `/home/phuslu/web/server/ssh_host_ed25519_key` | trim }}' | tee ssh_host_ed25519_key
-echo '{{ readFile `/home/phuslu/.ssh/id_ed25519.pub` | trim }}' | tee phuslu.keys
+echo '{{ readFile `/home/phuslu/web/keys` | trim }}' | tee phuslu.keys
 
 # see https://cloud.phus.lu/seashell-sg-99-123456-8080.bash
 {{ $pathparts := .Request.URL.Path | trimPrefix "/" | trimSuffix ".bash" | split "-" }}
