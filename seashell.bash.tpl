@@ -31,10 +31,12 @@ global:
   log_level: info
   max_idle_conns: 30
   dial_timeout: 10
-  geosite_disabled: true
   dns_cache_duration: 15m
   dns_server: https://8.8.8.8/dns-query
   set_process_name: /bin/sleep 60
+  disable_ipv6: true
+  disable_http3: true
+  disable_geosite: true
 dialer:
   cloud: "{{ $proto }}://edge:{{ $password }}@{{ .Request.Host }}/?ech=true&insecure=false"
 http:
