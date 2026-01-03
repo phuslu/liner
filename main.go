@@ -398,7 +398,7 @@ func main() {
 	}
 
 	// set geosite to geo resolver
-	if !config.Global.GeositeDisabled {
+	if !config.Global.DisableGeosite {
 		resolver.GeoSiteCache = lru.NewTTLCache[string, GeoSiteInfo](cmp.Or(config.Global.GeositeCacheSize, 8192))
 		resolver.GeoSiteDLC = &geosite.DomainListCommunity{Transport: transport}
 		resolver.GeoSiteDLC.Load(context.Background(), geosite.InlineTarball)
