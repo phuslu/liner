@@ -25,10 +25,15 @@ import (
 
 type DnsResolverGenerator struct {
 	Logger      *log.Logger
-	LRUCache    *lru.TTLCache[string, []netip.Addr]
+	LRUCache    *lru.TTLCache[DnsResolverCacheKey, []netip.Addr]
 	DisableIPv6 bool
 
 	resolvers *xsync.Map[string, dnsresolvererr]
+}
+
+type DnsResolverCacheKey struct {
+	Addr string
+	Host string
 }
 
 type dnsresolvererr struct {
@@ -147,7 +152,7 @@ func (rg *DnsResolverGenerator) Get(addr string, ttl time.Duration) (*DnsResolve
 
 type DnsResolver struct {
 	Logger        *log.Logger
-	LRUCache      *lru.TTLCache[string, []netip.Addr]
+	LRUCache      *lru.TTLCache[DnsResolverCacheKey, []netip.Addr]
 	Client        *fastdns.Client
 	CacheDuration time.Duration
 }
@@ -156,7 +161,7 @@ var godebugnetdns = strings.Contains(os.Getenv("GODEBUG"), "netdns=")
 
 func (r *DnsResolver) LookupNetIP(ctx context.Context, network, host string) (ips []netip.Addr, err error) {
 	if r.LRUCache != nil {
-		if v, ok := r.LRUCache.Get(host); ok {
+		if v, ok := r.LRUCache.Get(DnsResolverCacheKey{r.Client.Addr, host}); ok {
 			return v, nil
 		}
 	}
@@ -172,7 +177,7 @@ func (r *DnsResolver) LookupNetIP(ctx context.Context, network, host string) (ip
 	}
 	if err != nil {
 		if r.Logger != nil {
-			r.Logger.Error().Err(err).Str("host", host).Str("dns_server", r.Client.Addr).NetIPAddrs("ips", ips).Msg("LookupNetIP")
+			r.Logger.Error().Err(err).Str("dns_server", r.Client.Addr).Str("host", host).NetIPAddrs("ips", ips).Msg("LookupNetIP")
 		}
 		if len(ips) == 0 {
 			return nil, err
@@ -182,11 +187,11 @@ func (r *DnsResolver) LookupNetIP(ctx context.Context, network, host string) (ip
 	slices.SortStableFunc(ips, func(a, b netip.Addr) int { return cmp.Compare(btoi(b.Is4()), btoi(a.Is4())) })
 
 	if r.LRUCache != nil && r.CacheDuration > 0 && len(ips) > 0 {
-		r.LRUCache.Set(host, ips, r.CacheDuration)
+		r.LRUCache.Set(DnsResolverCacheKey{r.Client.Addr, host}, ips, r.CacheDuration)
 	}
 
 	if r.Logger != nil {
-		r.Logger.Debug().Str("host", host).Str("dns_server", r.Client.Addr).NetIPAddrs("ips", ips).Msg("LookupNetIP")
+		r.Logger.Debug().Str("dns_server", r.Client.Addr).Str("host", host).NetIPAddrs("ips", ips).Msg("LookupNetIP")
 	}
 
 	return ips, nil

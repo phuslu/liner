@@ -22,7 +22,7 @@ func TestDnsResolver(t *testing.T) {
 			Addr: "8.8.8.8:53",
 		},
 		CacheDuration: time.Minute,
-		LRUCache:      lru.NewTTLCache[string, []netip.Addr](32 * 1024),
+		LRUCache:      lru.NewTTLCache[DnsResolverCacheKey, []netip.Addr](32 * 1024),
 	}
 
 	fmt.Println(r.LookupNetIP(context.Background(), "ip", "gmail.com"))
