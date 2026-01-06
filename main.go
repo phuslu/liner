@@ -179,7 +179,7 @@ func main() {
 	}
 
 	// dns resolver generator
-	dnsResolverGenerator := &DnsResolverGenerator{
+	dnsResolverPool := &DnsResolverPool{
 		Logger:      &log.DefaultLogger,
 		LRUCache:    lru.NewTTLCache[DnsResolverCacheKey, []netip.Addr](cmp.Or(config.Global.DnsCacheSize, 32*1024)),
 		DisableIPv6: config.Global.DisableIpv6,
@@ -206,7 +206,7 @@ func main() {
 		}
 		log.Info().Str("dns_server", config.Global.DnsServer).Msg("auto enable dns_server for global resolver")
 	}
-	dnsResolver, err := dnsResolverGenerator.Get(config.Global.DnsServer, 600*time.Second)
+	dnsResolver, err := dnsResolverPool.Get(config.Global.DnsServer, 600*time.Second)
 	if err != nil {
 		log.Fatal().Err(err).Str("dns_server", config.Global.DnsServer).Msg("NewConfig() error")
 	}
@@ -442,15 +442,15 @@ func main() {
 			TimeLocation: log.DefaultLogger.TimeLocation,
 			Writer:       log.DefaultLogger.Writer,
 		},
-		DnsResolverGenerator: dnsResolverGenerator,
-		DnsResolver:          dnsResolver,
-		GeoResolver:          geoResolver,
-		FetchUserAgent:       ChromeUserAgent,
-		FetchClient:          &http.Client{Transport: transport},
-		FetchCache:           lru.NewTTLCache[string, *FetchResponse](1024),
-		RegexpCache:          xsync.NewMap[string, *regexp.Regexp](),
-		FileLineCache:        xsync.NewMap[string, *FileLoader[[]string]](),
-		FileIPSetCache:       xsync.NewMap[string, *FileLoader[*netipx.IPSet]](),
+		DnsResolverPool: dnsResolverPool,
+		DnsResolver:     dnsResolver,
+		GeoResolver:     geoResolver,
+		FetchUserAgent:  ChromeUserAgent,
+		FetchClient:     &http.Client{Transport: transport},
+		FetchCache:      lru.NewTTLCache[string, *FetchResponse](1024),
+		RegexpCache:     xsync.NewMap[string, *regexp.Regexp](),
+		FileLineCache:   xsync.NewMap[string, *FileLoader[[]string]](),
+		FileIPSetCache:  xsync.NewMap[string, *FileLoader[*netipx.IPSet]](),
 	}
 	if err := functions.Load(); err != nil {
 		log.Fatal().Err(err).Msgf("%T.Load() fatal", functions)
@@ -532,12 +532,12 @@ func main() {
 				MemoryDialers: memoryDialers,
 			},
 			WebHandler: &HTTPWebHandler{
-				Config:               server,
-				DnsResolverGenerator: dnsResolverGenerator,
-				MemoryDialers:        memoryDialers,
-				MemoryLogWriter:      memoryLogWriter,
-				Transport:            transport,
-				Functions:            functions.FuncMap(),
+				Config:          server,
+				DnsResolverPool: dnsResolverPool,
+				MemoryDialers:   memoryDialers,
+				MemoryLogWriter: memoryLogWriter,
+				Transport:       transport,
+				Functions:       functions.FuncMap(),
 			},
 			Hostnames: filter(server.ServerName, func(s string) bool {
 				return !strings.Contains(s, "*")
@@ -758,12 +758,12 @@ func main() {
 				MemoryDialers: memoryDialers,
 			},
 			WebHandler: &HTTPWebHandler{
-				Config:               httpConfig,
-				DnsResolverGenerator: dnsResolverGenerator,
-				MemoryDialers:        memoryDialers,
-				MemoryLogWriter:      memoryLogWriter,
-				Transport:            transport,
-				Functions:            functions.FuncMap(),
+				Config:          httpConfig,
+				DnsResolverPool: dnsResolverPool,
+				MemoryDialers:   memoryDialers,
+				MemoryLogWriter: memoryLogWriter,
+				Transport:       transport,
+				Functions:       functions.FuncMap(),
 			},
 			Hostnames: filter(httpConfig.ServerName, func(s string) bool {
 				return !strings.Contains(s, "*")
@@ -1010,7 +1010,7 @@ func main() {
 			Dialers:         config.Dialer,
 		}
 		if tunnel.Resolver != "" {
-			h.DnsResolver = must(dnsResolverGenerator.Get(tunnel.Resolver, 600*time.Second))
+			h.DnsResolver = must(dnsResolverPool.Get(tunnel.Resolver, 600*time.Second))
 		}
 
 		go h.Serve(context.Background())
@@ -1028,10 +1028,10 @@ func main() {
 			}
 
 			h := &DnsHandler{
-				Config:               dns,
-				Functions:            functions.FuncMap(),
-				DataLogger:           dataLogger,
-				DnsResolverGenerator: dnsResolverGenerator,
+				Config:          dns,
+				Functions:       functions.FuncMap(),
+				DataLogger:      dataLogger,
+				DnsResolverPool: dnsResolverPool,
 			}
 			if err = h.Load(); err != nil {
 				log.Fatal().Err(err).Str("address", addr).Msg("dns handler load error")

@@ -18,12 +18,12 @@ import (
 )
 
 type HTTPWebHandler struct {
-	Config               HTTPConfig
-	DnsResolverGenerator *DnsResolverGenerator
-	MemoryDialers        *sync.Map
-	MemoryLogWriter      *ringbuffer.RingBuffer
-	Transport            *http.Transport
-	Functions            template.FuncMap
+	Config          HTTPConfig
+	DnsResolverPool *DnsResolverPool
+	MemoryDialers   *sync.Map
+	MemoryLogWriter *ringbuffer.RingBuffer
+	Transport       *http.Transport
+	Functions       template.FuncMap
 
 	wildcards []struct {
 		location string
@@ -51,11 +51,11 @@ func (h *HTTPWebHandler) Load() error {
 			}
 		case web.Doh.Enabled:
 			router.handler = &HTTPWebDohHandler{
-				Policy:               web.Doh.Policy,
-				ProxyPass:            web.Doh.ProxyPass,
-				CacheSize:            web.Doh.CacheSize,
-				Functions:            h.Functions,
-				DnsResolverGenerator: h.DnsResolverGenerator,
+				Policy:          web.Doh.Policy,
+				ProxyPass:       web.Doh.ProxyPass,
+				CacheSize:       web.Doh.CacheSize,
+				Functions:       h.Functions,
+				DnsResolverPool: h.DnsResolverPool,
 			}
 		case web.Fastcgi.Enabled:
 			router.handler = &HTTPWebFastcgiHandler{

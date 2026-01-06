@@ -26,10 +26,10 @@ import (
 )
 
 type Functions struct {
-	Logger               log.Logger
-	DnsResolverGenerator *DnsResolverGenerator
-	DnsResolver          *DnsResolver
-	GeoResolver          *GeoResolver
+	Logger          log.Logger
+	DnsResolverPool *DnsResolverPool
+	DnsResolver     *DnsResolver
+	GeoResolver     *GeoResolver
 
 	FetchUserAgent string
 	FetchClient    *http.Client
@@ -186,7 +186,7 @@ func (f *Functions) nslookup(host string, nameservers ...string) ([]string, erro
 		resolver = f.DnsResolver
 	} else {
 		var err error
-		resolver, err = f.DnsResolverGenerator.Get(nameservers[0], 600*time.Second)
+		resolver, err = f.DnsResolverPool.Get(nameservers[0], 600*time.Second)
 		if err != nil {
 			return nil, err
 		}

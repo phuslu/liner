@@ -19,11 +19,10 @@ import (
 )
 
 type DnsHandler struct {
-	Config     DnsConfig
-	Functions  template.FuncMap
-	DataLogger log.Logger
-
-	DnsResolverGenerator *DnsResolverGenerator
+	Config          DnsConfig
+	Functions       template.FuncMap
+	DataLogger      log.Logger
+	DnsResolverPool *DnsResolverPool
 
 	dialer fastdns.Dialer
 	policy *template.Template
@@ -55,7 +54,7 @@ var drPool = sync.Pool{
 }
 
 func (h *DnsHandler) Load() error {
-	resolver, err := h.DnsResolverGenerator.Get(h.Config.ProxyPass, 600*time.Second)
+	resolver, err := h.DnsResolverPool.Get(h.Config.ProxyPass, 600*time.Second)
 	if err != nil {
 		return fmt.Errorf("invaild dns proxy_pass: %#v: %w", h.Config.ProxyPass, err)
 	}
@@ -251,7 +250,7 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, rw fastdns.ResponseWriter, re
 		case "PROXY_PASS", "proxy_pass":
 			if len(parts) == 2 {
 				proxypass = parts[1]
-				resolver, err := h.DnsResolverGenerator.Get(proxypass, 600*time.Second)
+				resolver, err := h.DnsResolverPool.Get(proxypass, 600*time.Second)
 				if err != nil {
 					log.Error().Err(err).Context(req.LogContext).Str("req_domain", req.Domain()).Str("req_qtype", req.QType).Str("proxy_pass", proxypass).Msg("dns policy parse proxy_pass error")
 					fastdns.Error(rw, req.Message, fastdns.RcodeServFail)

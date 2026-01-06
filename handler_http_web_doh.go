@@ -17,19 +17,18 @@ import (
 )
 
 type HTTPWebDohHandler struct {
-	Policy    string
-	ProxyPass string
-	CacheSize int
-	Functions template.FuncMap
-
-	DnsResolverGenerator *DnsResolverGenerator
+	Policy          string
+	ProxyPass       string
+	CacheSize       int
+	Functions       template.FuncMap
+	DnsResolverPool *DnsResolverPool
 
 	dialer fastdns.Dialer
 	policy *template.Template
 }
 
 func (h *HTTPWebDohHandler) Load() error {
-	resolver, err := h.DnsResolverGenerator.Get(h.ProxyPass, 600*time.Second)
+	resolver, err := h.DnsResolverPool.Get(h.ProxyPass, 600*time.Second)
 	if err != nil {
 		return fmt.Errorf("invaild doh proxy_pass: %#v: %w", h.ProxyPass, err)
 	}
@@ -166,7 +165,7 @@ func (h *HTTPWebDohHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		case "PROXY_PASS", "proxy_pass":
 			if len(parts) == 2 {
 				proxypass = parts[1]
-				resolver, err := h.DnsResolverGenerator.Get(proxypass, 600*time.Second)
+				resolver, err := h.DnsResolverPool.Get(proxypass, 600*time.Second)
 				if err != nil {
 					log.Error().Context(ri.LogContext).Err(err).Str("doh_req_domain", dr.Domain()).Str("doh_req_qtype", dr.QType).Str("proxy_pass", proxypass).Msg("dns policy parse proxy_pass error")
 					fastdns.Error(drw, dr.Message, fastdns.RcodeServFail)

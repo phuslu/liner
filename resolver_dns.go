@@ -23,7 +23,7 @@ import (
 	"golang.org/x/net/http2"
 )
 
-type DnsResolverGenerator struct {
+type DnsResolverPool struct {
 	Logger      *log.Logger
 	LRUCache    *lru.TTLCache[DnsResolverCacheKey, []netip.Addr]
 	DisableIPv6 bool
@@ -41,7 +41,7 @@ type dnsresolvererr struct {
 	Err         error
 }
 
-func (rg *DnsResolverGenerator) Get(addr string, ttl time.Duration) (*DnsResolver, error) {
+func (rg *DnsResolverPool) Get(addr string, ttl time.Duration) (*DnsResolver, error) {
 	if rg.resolvers == nil {
 		rg.resolvers = xsync.NewMap[string, dnsresolvererr]()
 	}
