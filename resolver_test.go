@@ -16,8 +16,8 @@ import (
 	"github.com/quic-go/quic-go/http3"
 )
 
-func TestResolver(t *testing.T) {
-	r := &Resolver{
+func TestDnsResolver(t *testing.T) {
+	r := &DnsResolver{
 		Client: &fastdns.Client{
 			Addr: "8.8.8.8:53",
 		},
@@ -28,7 +28,7 @@ func TestResolver(t *testing.T) {
 	fmt.Println(r.LookupNetIP(context.Background(), "ip", "gmail.com"))
 }
 
-func TestResolverDoH(t *testing.T) {
+func TestDnsResolverDoH(t *testing.T) {
 	cases := []struct {
 		Host string
 		IP   string
@@ -55,7 +55,7 @@ func TestResolverDoH(t *testing.T) {
 	}
 }
 
-func TestResolverDoH3(t *testing.T) {
+func TestDnsResolverDoH3(t *testing.T) {
 	cases := []struct {
 		Host string
 		IP   string

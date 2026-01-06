@@ -32,6 +32,7 @@ type HTTPForwardHandler struct {
 	LocalTransport  *http.Transport
 	Dialers         map[string]Dialer
 	DialerURLs      map[string]string
+	DnsResolver     *DnsResolver
 	GeoResolver     *GeoResolver
 	PerferedLocalIP string
 	Functions       template.FuncMap

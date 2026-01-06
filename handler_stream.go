@@ -23,6 +23,7 @@ type StreamRequest struct {
 type StreamHandler struct {
 	Config      StreamConfig
 	DataLogger  log.Logger
+	DnsResolver *DnsResolver
 	GeoResolver *GeoResolver
 	LocalDialer *LocalDialer
 	Dialers     map[string]Dialer

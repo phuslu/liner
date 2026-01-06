@@ -24,6 +24,7 @@ type RedsocksRequest struct {
 type RedsocksHandler struct {
 	Config      RedsocksConfig
 	DataLogger  log.Logger
+	DnsResolver *DnsResolver
 	GeoResolver *GeoResolver
 	LocalDialer *LocalDialer
 	Dialers     map[string]Dialer

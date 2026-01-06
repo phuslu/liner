@@ -23,23 +23,23 @@ import (
 var _ Dialer = (*HTTPDialer)(nil)
 
 type HTTPDialer struct {
-	Username   string
-	Password   string
-	Host       string
-	Port       string
-	TLS        bool
-	PSK        string
-	Websocket  bool
-	Insecure   bool
-	ECH        bool
-	UserAgent  string
-	CACert     string
-	ClientKey  string
-	ClientCert string
-	Resolve    map[string]string
-	Dialer     Dialer
-	Logger     *slog.Logger
-	Resolver   *Resolver
+	Username    string
+	Password    string
+	Host        string
+	Port        string
+	TLS         bool
+	PSK         string
+	Websocket   bool
+	Insecure    bool
+	ECH         bool
+	UserAgent   string
+	CACert      string
+	ClientKey   string
+	ClientCert  string
+	Resolve     map[string]string
+	Dialer      Dialer
+	Logger      *slog.Logger
+	DnsResolver *DnsResolver
 
 	mu        sync.Mutex
 	tlsConfig *tls.Config
@@ -133,7 +133,7 @@ func (d *HTTPDialer) DialContext(ctx context.Context, network, addr string) (net
 		}
 		tlsConfig := d.tlsConfig
 		if d.ECH {
-			https, err := d.Resolver.Client.LookupHTTPS(ctx, d.Host)
+			https, err := d.DnsResolver.Client.LookupHTTPS(ctx, d.Host)
 			if err != nil {
 				return nil, fmt.Errorf("lookup https %v error: %w", d.Host, err)
 			}

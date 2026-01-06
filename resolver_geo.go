@@ -15,7 +15,6 @@ import (
 )
 
 type GeoResolver struct {
-	Resolver             *Resolver
 	Logger               *log.Logger
 	EnableCJKCityName    bool
 	GeoIPCache           *lru.TTLCache[netip.Addr, GeoIPInfo]

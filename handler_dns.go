@@ -54,7 +54,7 @@ var drPool = sync.Pool{
 }
 
 func (h *DnsHandler) Load() error {
-	resolver, err := GetResolver(h.Config.ProxyPass, cmp.Or(h.Config.CacheSize, DefaultDNSCacheSize))
+	resolver, err := GetDnsResolver(h.Config.ProxyPass, cmp.Or(h.Config.CacheSize, DefaultDNSCacheSize))
 	if err != nil {
 		return fmt.Errorf("invaild dns proxy_pass: %#v: %w", h.Config.ProxyPass, err)
 	}
@@ -250,7 +250,7 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, rw fastdns.ResponseWriter, re
 		case "PROXY_PASS", "proxy_pass":
 			if len(parts) == 2 {
 				proxypass = parts[1]
-				resolver, err := GetResolver(proxypass, cmp.Or(h.Config.CacheSize, DefaultDNSCacheSize))
+				resolver, err := GetDnsResolver(proxypass, cmp.Or(h.Config.CacheSize, DefaultDNSCacheSize))
 				if err != nil {
 					log.Error().Err(err).Context(req.LogContext).Str("req_domain", req.Domain()).Str("req_qtype", req.QType).Str("proxy_pass", proxypass).Msg("dns policy parse proxy_pass error")
 					fastdns.Error(rw, req.Message, fastdns.RcodeServFail)

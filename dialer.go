@@ -35,8 +35,8 @@ var DailerReservedIPPrefix = netip.MustParsePrefix("240.0.0.0/8")
 var _ Dialer = (*LocalDialer)(nil)
 
 type LocalDialer struct {
-	Logger   *slog.Logger
-	Resolver *Resolver
+	Logger      *slog.Logger
+	DnsResolver *DnsResolver
 
 	Interface       string
 	DisableIPv6     bool
@@ -97,7 +97,7 @@ func (d *LocalDialer) dialContext(ctx context.Context, network, address string, 
 		return nil, err
 	}
 
-	ips, err := d.Resolver.LookupNetIP(ctx, "ip", host)
+	ips, err := d.DnsResolver.LookupNetIP(ctx, "ip", host)
 	if err != nil {
 		return nil, err
 	}

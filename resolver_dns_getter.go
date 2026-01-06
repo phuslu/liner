@@ -21,17 +21,17 @@ import (
 )
 
 type resolvererr struct {
-	Resolver *Resolver
-	Err      error
+	DnsResolver *DnsResolver
+	Err         error
 }
 
 var resolvers = xsync.NewMap[string, resolvererr]()
 
 const DefaultDNSCacheSize = 32 * 1024
 
-func GetResolver(addr string, cachesize int) (r *Resolver, err error) {
+func GetDnsResolver(addr string, cachesize int) (r *DnsResolver, err error) {
 	racer, _ := resolvers.LoadOrCompute(addr, func() (r resolvererr, cancel bool) {
-		r.Resolver = &Resolver{
+		r.DnsResolver = &DnsResolver{
 			Client: &fastdns.Client{
 				Addr: addr,
 			},
@@ -39,7 +39,7 @@ func GetResolver(addr string, cachesize int) (r *Resolver, err error) {
 			CacheDuration: 10 * time.Minute,
 		}
 		if cachesize > 0 {
-			r.Resolver.LRUCache = lru.NewTTLCache[string, []netip.Addr](cachesize)
+			r.DnsResolver.LRUCache = lru.NewTTLCache[string, []netip.Addr](cachesize)
 		}
 
 		switch {
@@ -56,7 +56,7 @@ func GetResolver(addr string, cachesize int) (r *Resolver, err error) {
 				if _, _, err := net.SplitHostPort(hostport); err != nil {
 					hostport = net.JoinHostPort(hostport, "53")
 				}
-				r.Resolver.Client.Dialer = &fastdns.TCPDialer{
+				r.DnsResolver.Client.Dialer = &fastdns.TCPDialer{
 					Addr:     func() (u *net.TCPAddr) { u, _ = net.ResolveTCPAddr("tcp", hostport); return }(),
 					MaxConns: 16,
 				}
@@ -65,7 +65,7 @@ func GetResolver(addr string, cachesize int) (r *Resolver, err error) {
 				if _, _, err := net.SplitHostPort(hostport); err != nil {
 					hostport = net.JoinHostPort(hostport, "853")
 				}
-				r.Resolver.Client.Dialer = &fastdns.TCPDialer{
+				r.DnsResolver.Client.Dialer = &fastdns.TCPDialer{
 					Addr: func() (ua *net.TCPAddr) { ua, _ = net.ResolveTCPAddr("tcp", hostport); return }(),
 					TLSConfig: &tls.Config{
 						ServerName:         u.Hostname(),
@@ -75,7 +75,7 @@ func GetResolver(addr string, cachesize int) (r *Resolver, err error) {
 				}
 			case "https", "http2", "h2", "doh":
 				u.Scheme = "https"
-				r.Resolver.Client.Dialer = &fastdns.HTTPDialer{
+				r.DnsResolver.Client.Dialer = &fastdns.HTTPDialer{
 					Endpoint: u,
 					Header: http.Header{
 						"content-type": {"application/dns-message"},
@@ -90,7 +90,7 @@ func GetResolver(addr string, cachesize int) (r *Resolver, err error) {
 				}
 			case "http3", "h3", "doh3":
 				u.Scheme = "https"
-				r.Resolver.Client.Dialer = &fastdns.HTTPDialer{
+				r.DnsResolver.Client.Dialer = &fastdns.HTTPDialer{
 					Endpoint: u,
 					Header: http.Header{
 						"content-type": {"application/dns-message"},
@@ -125,7 +125,7 @@ func GetResolver(addr string, cachesize int) (r *Resolver, err error) {
 			if err != nil {
 				r.Err = fmt.Errorf("invalid dns_server addr: %s", addr)
 			}
-			r.Resolver.Client.Dialer = &fastdns.UDPDialer{
+			r.DnsResolver.Client.Dialer = &fastdns.UDPDialer{
 				Addr:     u,
 				Timeout:  3 * time.Second,
 				MaxConns: 128,
@@ -134,5 +134,5 @@ func GetResolver(addr string, cachesize int) (r *Resolver, err error) {
 		return
 	})
 
-	return racer.Resolver, racer.Err
+	return racer.DnsResolver, racer.Err
 }

@@ -18,18 +18,18 @@ import (
 var _ Dialer = (*SocksDialer)(nil)
 
 type SocksDialer struct {
-	Username string
-	Password string
-	Host     string
-	Port     string
-	PSK      string
-	Socks4   bool
-	Socks4A  bool
-	Socks5   bool
-	Socks5H  bool
-	Logger   *slog.Logger
-	Resolver *Resolver
-	Dialer   Dialer
+	Username    string
+	Password    string
+	Host        string
+	Port        string
+	PSK         string
+	Socks4      bool
+	Socks4A     bool
+	Socks5      bool
+	Socks5H     bool
+	Logger      *slog.Logger
+	DnsResolver *DnsResolver
+	Dialer      Dialer
 }
 
 func (d *SocksDialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -101,8 +101,8 @@ func (d *SocksDialer) dialsocks4(ctx context.Context, network, addr string) (net
 		return nil, errors.New("socksdialer: port number out of range: " + portStr)
 	}
 
-	if d.Resolver != nil {
-		if ips, err := d.Resolver.LookupNetIP(ctx, "ip", host); err == nil && len(ips) > 0 {
+	if d.DnsResolver != nil {
+		if ips, err := d.DnsResolver.LookupNetIP(ctx, "ip", host); err == nil && len(ips) > 0 {
 			host = ips[0].String()
 		}
 	}
@@ -123,7 +123,7 @@ func (d *SocksDialer) dialsocks4(ctx context.Context, network, addr string) (net
 		buf = append(buf, 0, 0, 0, 1, 0)
 		buf = append(buf, []byte(host+"\x00")...)
 	} else {
-		ips, err := d.Resolver.LookupNetIP(ctx, "ip", host)
+		ips, err := d.DnsResolver.LookupNetIP(ctx, "ip", host)
 		if err != nil {
 			return nil, err
 		}
@@ -214,8 +214,8 @@ func (d *SocksDialer) dialsocks5(ctx context.Context, network, addr string) (net
 		return nil, errors.New("socksdialer: port number out of range: " + portStr)
 	}
 
-	if !d.Socks5H && d.Resolver != nil {
-		ips, err := d.Resolver.LookupNetIP(ctx, "ip", host)
+	if !d.Socks5H && d.DnsResolver != nil {
+		ips, err := d.DnsResolver.LookupNetIP(ctx, "ip", host)
 		if err == nil && len(ips) > 0 {
 			host = ips[0].String()
 		}

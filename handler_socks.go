@@ -31,6 +31,7 @@ type SocksRequest struct {
 type SocksHandler struct {
 	Config      SocksConfig
 	DataLogger  log.Logger
+	DnsResolver *DnsResolver
 	GeoResolver *GeoResolver
 	LocalDialer *LocalDialer
 	Dialers     map[string]Dialer

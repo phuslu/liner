@@ -19,7 +19,7 @@ import (
 type TunnelHandler struct {
 	Config          TunnelConfig
 	MemoryListeners *sync.Map // map[string]*MemoryListener
-	Resolver        *Resolver
+	DnsResolver     *DnsResolver
 	LocalDialer     Dialer
 	Dialers         map[string]string
 }

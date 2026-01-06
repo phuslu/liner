@@ -27,6 +27,7 @@ import (
 
 type Functions struct {
 	Logger      log.Logger
+	DnsResolver *DnsResolver
 	GeoResolver *GeoResolver
 
 	FetchUserAgent string
@@ -170,7 +171,7 @@ func (f *Functions) dnsResolve(host string) string {
 		host = s
 	}
 
-	ips, _ := f.GeoResolver.Resolver.LookupNetIP(context.Background(), "ip", host)
+	ips, _ := f.DnsResolver.LookupNetIP(context.Background(), "ip", host)
 	if len(ips) != 0 {
 		return ips[0].String()
 	}
@@ -179,12 +180,12 @@ func (f *Functions) dnsResolve(host string) string {
 }
 
 func (f *Functions) nslookup(host string, nameservers ...string) ([]string, error) {
-	var resolver *Resolver
+	var resolver *DnsResolver
 	if len(nameservers) == 0 || nameservers[0] == "" {
-		resolver = f.GeoResolver.Resolver
+		resolver = f.DnsResolver
 	} else {
 		var err error
-		resolver, err = GetResolver(nameservers[0], 65536)
+		resolver, err = GetDnsResolver(nameservers[0], 65536)
 		if err != nil {
 			return nil, err
 		}
@@ -329,7 +330,7 @@ func (f *Functions) isInNet(host, cidr string) bool {
 
 	ip, err := netip.ParseAddr(host)
 	if err != nil {
-		ips, err := f.GeoResolver.Resolver.LookupNetIP(context.Background(), "ip", host)
+		ips, err := f.DnsResolver.LookupNetIP(context.Background(), "ip", host)
 		if err != nil {
 			log.Error().Err(err).Str("host", host).Str("cidr", cidr).Msg("isInNet LookupNetIP error")
 		}
@@ -347,7 +348,7 @@ func (f *Functions) hasIPv6(host string) bool {
 		host = s
 	}
 
-	ips, err := f.GeoResolver.Resolver.LookupNetIP(context.Background(), "ip", host)
+	ips, err := f.DnsResolver.LookupNetIP(context.Background(), "ip", host)
 	if err != nil {
 		return false
 	}

@@ -17,14 +17,14 @@ import (
 
 var godebugnetdns = strings.Contains(os.Getenv("GODEBUG"), "netdns=")
 
-type Resolver struct {
+type DnsResolver struct {
 	Client        *fastdns.Client
 	Logger        *log.Logger
 	LRUCache      *lru.TTLCache[string, []netip.Addr]
 	CacheDuration time.Duration
 }
 
-func (r *Resolver) LookupNetIP(ctx context.Context, network, host string) (ips []netip.Addr, err error) {
+func (r *DnsResolver) LookupNetIP(ctx context.Context, network, host string) (ips []netip.Addr, err error) {
 	if r.LRUCache != nil {
 		if v, ok := r.LRUCache.Get(host); ok {
 			return v, nil

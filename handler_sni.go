@@ -27,6 +27,7 @@ var _ TLSServerNameHandle = (&SniHandler{}).ServeConn
 
 type SniHandler struct {
 	Config      SniConfig
+	DnsResolver *DnsResolver
 	GeoResolver *GeoResolver
 	LocalDialer *LocalDialer
 	Dialers     map[string]Dialer

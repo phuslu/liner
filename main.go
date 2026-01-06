@@ -199,8 +199,13 @@ func main() {
 		}
 		log.Info().Str("dns_server", config.Global.DnsServer).Msg("auto enable dns_server for global resolver")
 	}
-	resolver := &GeoResolver{
-		Resolver:          must(GetResolver(config.Global.DnsServer, cmp.Or(config.Global.DnsCacheSize, DefaultDNSCacheSize))),
+	dnsResolver, err := GetDnsResolver(config.Global.DnsServer, cmp.Or(config.Global.DnsCacheSize, DefaultDNSCacheSize))
+	if err != nil {
+		log.Fatal().Err(err).Str("dns_server", config.Global.DnsServer).Msg("NewConfig() error")
+	}
+
+	// geo resolver
+	geoResolver := &GeoResolver{
 		Logger:            &log.DefaultLogger,
 		EnableCJKCityName: true,
 	}
@@ -218,37 +223,37 @@ func main() {
 			}
 			switch reader.Metadata.DatabaseType {
 			case "GeoIP2-City":
-				resolver.CityReader = newerdb(resolver.CityReader, reader)
+				geoResolver.CityReader = newerdb(geoResolver.CityReader, reader)
 			case "GeoIP2-ISP":
-				resolver.ISPReader = newerdb(resolver.ISPReader, reader)
+				geoResolver.ISPReader = newerdb(geoResolver.ISPReader, reader)
 			case "GeoIP2-Domain":
-				resolver.DomainReader = newerdb(resolver.DomainReader, reader)
+				geoResolver.DomainReader = newerdb(geoResolver.DomainReader, reader)
 			case "GeoIP2-Connection-Type":
-				resolver.ConnectionTypeReader = newerdb(resolver.ConnectionTypeReader, reader)
+				geoResolver.ConnectionTypeReader = newerdb(geoResolver.ConnectionTypeReader, reader)
 			case "GeoIP2-ASN":
 				log.Info().Str("geoip_database_name", name).Str("geoip_database_type", reader.Metadata.DatabaseType).Msg("skip geoip database")
 			case "GeoLite2-City":
-				resolver.CityReader = newerdb(resolver.CityReader, reader)
+				geoResolver.CityReader = newerdb(geoResolver.CityReader, reader)
 			case "GeoLite2-ISP":
-				resolver.ISPReader = newerdb(resolver.ISPReader, reader)
+				geoResolver.ISPReader = newerdb(geoResolver.ISPReader, reader)
 			case "GeoLite2-Domain":
-				resolver.DomainReader = newerdb(resolver.DomainReader, reader)
+				geoResolver.DomainReader = newerdb(geoResolver.DomainReader, reader)
 			case "GeoLite2-Connection-Type":
-				resolver.ConnectionTypeReader = newerdb(resolver.ConnectionTypeReader, reader)
+				geoResolver.ConnectionTypeReader = newerdb(geoResolver.ConnectionTypeReader, reader)
 			case "GeoLite2-ASN":
 				log.Info().Str("geoip_database_name", name).Str("geoip_database_type", reader.Metadata.DatabaseType).Msg("skip geoip database")
 			}
 			log.Info().Str("geoip_database_name", name).Str("geoip_database_type", reader.Metadata.DatabaseType).Time("geoip_database_date", time.Unix(int64(reader.Metadata.BuildEpoch), 0)).Msg("load geoip database ok")
 		}
 	}
-	if cmp.Or(resolver.CityReader, resolver.ISPReader, resolver.DomainReader, resolver.ConnectionTypeReader) != nil {
-		resolver.GeoIPCache = lru.NewTTLCache[netip.Addr, GeoIPInfo](cmp.Or(config.Global.GeoipCacheSize, 8192))
+	if cmp.Or(geoResolver.CityReader, geoResolver.ISPReader, geoResolver.DomainReader, geoResolver.ConnectionTypeReader) != nil {
+		geoResolver.GeoIPCache = lru.NewTTLCache[netip.Addr, GeoIPInfo](cmp.Or(config.Global.GeoipCacheSize, 8192))
 	}
 
 	// global dialer
 	dialer := &LocalDialer{
 		Logger:          slog.Default(),
-		Resolver:        resolver.Resolver,
+		DnsResolver:     dnsResolver,
 		Concurrency:     2,
 		PerferIPv6:      false,
 		DisableIPv6:     config.Global.DisableIpv6,
@@ -268,7 +273,7 @@ func main() {
 		switch u.Scheme {
 		case "local":
 			return &LocalDialer{
-				Resolver:        resolver.Resolver,
+				DnsResolver:     dnsResolver,
 				Interface:       u.Host,
 				PerferIPv6:      u.Query().Get("prefer_ipv6") == "true",
 				Concurrency:     2,
@@ -282,23 +287,23 @@ func main() {
 			}
 		case "http", "https", "ws", "wss":
 			return &HTTPDialer{
-				Username:   u.User.Username(),
-				Password:   first(u.User.Password()),
-				Host:       u.Hostname(),
-				Port:       cmp.Or(u.Port(), map[string]string{"http": "80", "https": "443", "ws": "80", "wss": "443"}[u.Scheme]),
-				TLS:        u.Scheme == "https" || u.Scheme == "wss",
-				PSK:        u.Query().Get("psk"),
-				Websocket:  u.Scheme == "ws" || u.Scheme == "wss",
-				UserAgent:  cmp.Or(u.Query().Get("user_agent"), DefaultUserAgent),
-				Insecure:   u.Query().Get("insecure") == "true",
-				ECH:        u.Query().Get("ech") == "true",
-				CACert:     u.Query().Get("cacert"),
-				ClientKey:  u.Query().Get("key"),
-				ClientCert: u.Query().Get("cert"),
-				Logger:     slog.Default(),
-				Resolve:    map[string]string{u.Host: u.Query().Get("resolve")},
-				Dialer:     underlay,
-				Resolver:   resolver.Resolver,
+				Username:    u.User.Username(),
+				Password:    first(u.User.Password()),
+				Host:        u.Hostname(),
+				Port:        cmp.Or(u.Port(), map[string]string{"http": "80", "https": "443", "ws": "80", "wss": "443"}[u.Scheme]),
+				TLS:         u.Scheme == "https" || u.Scheme == "wss",
+				PSK:         u.Query().Get("psk"),
+				Websocket:   u.Scheme == "ws" || u.Scheme == "wss",
+				UserAgent:   cmp.Or(u.Query().Get("user_agent"), DefaultUserAgent),
+				Insecure:    u.Query().Get("insecure") == "true",
+				ECH:         u.Query().Get("ech") == "true",
+				CACert:      u.Query().Get("cacert"),
+				ClientKey:   u.Query().Get("key"),
+				ClientCert:  u.Query().Get("cert"),
+				Logger:      slog.Default(),
+				Resolve:     map[string]string{u.Host: u.Query().Get("resolve")},
+				DnsResolver: dnsResolver,
+				Dialer:      underlay,
 			}
 		case "http2":
 			return &HTTP2Dialer{
@@ -329,18 +334,18 @@ func main() {
 			}
 		case "socks4", "socks4a", "socks", "socks5", "socks5h":
 			return &SocksDialer{
-				Username: u.User.Username(),
-				Password: first(u.User.Password()),
-				Host:     u.Hostname(),
-				Port:     u.Port(),
-				PSK:      u.Query().Get("psk"),
-				Socks4:   u.Scheme == "socks4" || u.Scheme == "socks4a",
-				Socks4A:  u.Scheme == "socks4a",
-				Socks5:   u.Scheme == "socks" || u.Scheme == "socks5" || u.Scheme == "socks5h",
-				Socks5H:  u.Scheme == "socks5h",
-				Logger:   slog.Default(),
-				Resolver: resolver.Resolver,
-				Dialer:   underlay,
+				Username:    u.User.Username(),
+				Password:    first(u.User.Password()),
+				Host:        u.Hostname(),
+				Port:        u.Port(),
+				PSK:         u.Query().Get("psk"),
+				Socks4:      u.Scheme == "socks4" || u.Scheme == "socks4a",
+				Socks4A:     u.Scheme == "socks4a",
+				Socks5:      u.Scheme == "socks" || u.Scheme == "socks5" || u.Scheme == "socks5h",
+				Socks5H:     u.Scheme == "socks5h",
+				Logger:      slog.Default(),
+				DnsResolver: dnsResolver,
+				Dialer:      underlay,
 			}
 		case "ssh", "ssh2":
 			return &SSHDialer{
@@ -399,12 +404,12 @@ func main() {
 
 	// set geosite to geo resolver
 	if !config.Global.DisableGeosite {
-		resolver.GeoSiteCache = lru.NewTTLCache[string, GeoSiteInfo](cmp.Or(config.Global.GeositeCacheSize, 8192))
-		resolver.GeoSiteDLC = &geosite.DomainListCommunity{Transport: transport}
-		resolver.GeoSiteDLC.Load(context.Background(), geosite.InlineTarball)
+		geoResolver.GeoSiteCache = lru.NewTTLCache[string, GeoSiteInfo](cmp.Or(config.Global.GeositeCacheSize, 8192))
+		geoResolver.GeoSiteDLC = &geosite.DomainListCommunity{Transport: transport}
+		geoResolver.GeoSiteDLC.Load(context.Background(), geosite.InlineTarball)
 		go func() {
 			for range time.Tick(time.Hour) {
-				if err := resolver.GeoSiteDLC.Load(context.Background(), geosite.OnlineTarball); err != nil {
+				if err := geoResolver.GeoSiteDLC.Load(context.Background(), geosite.OnlineTarball); err != nil {
 					log.Error().Err(err).Str("geosite_online_tarball", geosite.OnlineTarball).Msg("geosite load error")
 				}
 			}
@@ -430,7 +435,8 @@ func main() {
 			TimeLocation: log.DefaultLogger.TimeLocation,
 			Writer:       log.DefaultLogger.Writer,
 		},
-		GeoResolver:    resolver,
+		DnsResolver:    dnsResolver,
+		GeoResolver:    geoResolver,
 		FetchUserAgent: ChromeUserAgent,
 		FetchClient:    &http.Client{Transport: transport},
 		FetchCache:     lru.NewTTLCache[string, *FetchResponse](1024),
@@ -474,7 +480,8 @@ func main() {
 	if config.Sni.Enabled {
 		handler := &SniHandler{
 			Config:      config.Sni,
-			GeoResolver: resolver,
+			DnsResolver: dnsResolver,
+			GeoResolver: geoResolver,
 			LocalDialer: dialer,
 			Dialers:     dialers,
 			Functions:   functions.FuncMap(),
@@ -507,7 +514,8 @@ func main() {
 				LocalTransport:  transport,
 				Dialers:         dialers,
 				DialerURLs:      config.Dialer,
-				GeoResolver:     resolver,
+				DnsResolver:     dnsResolver,
+				GeoResolver:     geoResolver,
 				PerferedLocalIP: first(GetPreferedLocalIP("1.1.1.1")).String(),
 				Functions:       functions.FuncMap(),
 			},
@@ -538,7 +546,8 @@ func main() {
 			}),
 			ClientHelloMap: tlsConfigurator.ClientHelloMap,
 			UserAgentMap:   useragentMap,
-			GeoResolver:    resolver,
+			DnsResolver:    dnsResolver,
+			GeoResolver:    geoResolver,
 			Config:         server,
 		}
 
@@ -730,7 +739,8 @@ func main() {
 				LocalTransport:  transport,
 				Dialers:         dialers,
 				DialerURLs:      config.Dialer,
-				GeoResolver:     resolver,
+				DnsResolver:     dnsResolver,
+				GeoResolver:     geoResolver,
 				PerferedLocalIP: first(GetPreferedLocalIP("1.1.1.1")).String(),
 				Functions:       functions.FuncMap(),
 			},
@@ -761,7 +771,8 @@ func main() {
 			}),
 			ClientHelloMap: tlsConfigurator.ClientHelloMap,
 			UserAgentMap:   useragentMap,
-			GeoResolver:    resolver,
+			DnsResolver:    dnsResolver,
+			GeoResolver:    geoResolver,
 			Config:         httpConfig,
 		}
 
@@ -837,7 +848,8 @@ func main() {
 			h := &SocksHandler{
 				Config:      socksConfig,
 				DataLogger:  dataLogger,
-				GeoResolver: resolver,
+				DnsResolver: dnsResolver,
+				GeoResolver: geoResolver,
 				LocalDialer: dialer,
 				Dialers:     dialers,
 				Functions:   functions.FuncMap(),
@@ -884,7 +896,8 @@ func main() {
 			h := &RedsocksHandler{
 				Config:      redsocksConfig,
 				DataLogger:  dataLogger,
-				GeoResolver: resolver,
+				DnsResolver: dnsResolver,
+				GeoResolver: geoResolver,
 				LocalDialer: dialer,
 				Dialers:     dialers,
 				Functions:   functions.FuncMap(),
@@ -922,7 +935,8 @@ func main() {
 			h := &StreamHandler{
 				Config:      streamConfig,
 				DataLogger:  dataLogger,
-				GeoResolver: resolver,
+				DnsResolver: dnsResolver,
+				GeoResolver: geoResolver,
 				LocalDialer: dialer,
 				Dialers:     dialers,
 			}
@@ -981,12 +995,12 @@ func main() {
 		h := &TunnelHandler{
 			Config:          tunnel,
 			MemoryListeners: memoryListeners,
-			Resolver:        resolver.Resolver,
+			DnsResolver:     dnsResolver,
 			LocalDialer:     dialer,
 			Dialers:         config.Dialer,
 		}
 		if tunnel.Resolver != "" {
-			h.Resolver = must(GetResolver(tunnel.Resolver, 0))
+			h.DnsResolver = must(GetDnsResolver(tunnel.Resolver, 0))
 		}
 
 		go h.Serve(context.Background())

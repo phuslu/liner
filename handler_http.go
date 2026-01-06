@@ -29,6 +29,7 @@ type HTTPServerHandler struct {
 	HostnameAffix  [][2]string
 	ClientHelloMap *xsync.Map[PlainAddr, *TLSClientHelloInfo]
 	UserAgentMap   *CachingMap[string, useragent.UserAgent]
+	DnsResolver    *DnsResolver
 	GeoResolver    *GeoResolver
 	ForwardHandler HTTPHandler
 	TunnelHandler  HTTPHandler
