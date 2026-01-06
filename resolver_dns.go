@@ -53,6 +53,12 @@ func (rg *DnsResolverGenerator) Get(addr string, ttl time.Duration) (*DnsResolve
 				Addr: addr,
 			},
 			CacheDuration: cmp.Or(ttl, 10*time.Second),
+			DisableIPv6:   rg.DisableIPv6,
+		}
+
+		tcp := "tcp"
+		if rg.DisableIPv6 {
+			tcp = "tcp4"
 		}
 
 		switch {
@@ -70,7 +76,7 @@ func (rg *DnsResolverGenerator) Get(addr string, ttl time.Duration) (*DnsResolve
 					hostport = net.JoinHostPort(hostport, "53")
 				}
 				r.DnsResolver.Client.Dialer = &fastdns.TCPDialer{
-					Addr:     func() (u *net.TCPAddr) { u, _ = net.ResolveTCPAddr("tcp", hostport); return }(),
+					Addr:     func() (u *net.TCPAddr) { u, _ = net.ResolveTCPAddr(tcp, hostport); return }(),
 					MaxConns: 16,
 				}
 			case "tls", "dot":
@@ -79,7 +85,7 @@ func (rg *DnsResolverGenerator) Get(addr string, ttl time.Duration) (*DnsResolve
 					hostport = net.JoinHostPort(hostport, "853")
 				}
 				r.DnsResolver.Client.Dialer = &fastdns.TCPDialer{
-					Addr: func() (ua *net.TCPAddr) { ua, _ = net.ResolveTCPAddr("tcp", hostport); return }(),
+					Addr: func() (ua *net.TCPAddr) { ua, _ = net.ResolveTCPAddr(tcp, hostport); return }(),
 					TLSConfig: &tls.Config{
 						ServerName:         u.Hostname(),
 						ClientSessionCache: tls.NewLRUClientSessionCache(128),
@@ -98,6 +104,9 @@ func (rg *DnsResolverGenerator) Get(addr string, ttl time.Duration) (*DnsResolve
 						TLSClientConfig: &tls.Config{
 							ServerName:         u.Hostname(),
 							ClientSessionCache: tls.NewLRUClientSessionCache(128),
+						},
+						DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
+							return (&tls.Dialer{Config: cfg}).DialContext(ctx, tcp, addr)
 						},
 					},
 				}
@@ -155,6 +164,7 @@ type DnsResolver struct {
 	LRUCache      *lru.TTLCache[DnsResolverCacheKey, []netip.Addr]
 	Client        *fastdns.Client
 	CacheDuration time.Duration
+	DisableIPv6   bool
 }
 
 var godebugnetdns = strings.Contains(os.Getenv("GODEBUG"), "netdns=")
