@@ -77,10 +77,6 @@ func s2b(s string) (b []byte) {
 	return b
 }
 
-func ptr[T any](v T) *T {
-	return &v
-}
-
 func btoi[B ~bool](x B) int {
 	if x {
 		return 1
@@ -982,7 +978,7 @@ func (ops ConnOps) SupportQUIC() bool {
 
 func (ops ConnOps) GetQuicStats() (stats *quic.ConnectionStats, err error) {
 	if ops.qc != nil {
-		stats = ptr(ops.qc.ConnectionStats())
+		stats = new(ops.qc.ConnectionStats())
 	}
 	return
 }
