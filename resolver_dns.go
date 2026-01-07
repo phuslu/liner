@@ -41,23 +41,23 @@ type dnsresolvererr struct {
 	Err         error
 }
 
-func (rg *DnsResolverPool) Get(addr string, ttl time.Duration) (*DnsResolver, error) {
-	if rg.resolvers == nil {
-		rg.resolvers = xsync.NewMap[string, dnsresolvererr]()
+func (pool *DnsResolverPool) Get(addr string, ttl time.Duration) (*DnsResolver, error) {
+	if pool.resolvers == nil {
+		pool.resolvers = xsync.NewMap[string, dnsresolvererr]()
 	}
-	racer, _ := rg.resolvers.LoadOrCompute(addr, func() (r dnsresolvererr, cancel bool) {
+	racer, _ := pool.resolvers.LoadOrCompute(addr, func() (r dnsresolvererr, cancel bool) {
 		r.DnsResolver = &DnsResolver{
-			Logger:   rg.Logger,
-			LRUCache: rg.LRUCache,
+			Logger:   pool.Logger,
+			LRUCache: pool.LRUCache,
 			Client: &fastdns.Client{
 				Addr: addr,
 			},
 			CacheDuration: cmp.Or(ttl, 600*time.Second),
-			DisableIPv6:   rg.DisableIPv6,
+			DisableIPv6:   pool.DisableIPv6,
 		}
 
 		tcp, udp := "tcp", "udp"
-		if rg.DisableIPv6 {
+		if pool.DisableIPv6 {
 			tcp, udp = "tcp4", "udp4"
 		}
 
@@ -180,6 +180,10 @@ func (r *DnsResolver) LookupNetIP(ctx context.Context, network, host string) (ip
 		return []netip.Addr{ip}, nil
 	}
 
+	if r.DisableIPv6 {
+		network = "ip4"
+	}
+
 	if !godebugnetdns {
 		ips, err = r.Client.AppendLookupNetIP(ips, ctx, network, host)
 	} else {
@@ -194,7 +198,9 @@ func (r *DnsResolver) LookupNetIP(ctx context.Context, network, host string) (ip
 		}
 	}
 
-	slices.SortStableFunc(ips, func(a, b netip.Addr) int { return cmp.Compare(btoi(b.Is4()), btoi(a.Is4())) })
+	if !r.DisableIPv6 {
+		slices.SortStableFunc(ips, func(a, b netip.Addr) int { return cmp.Compare(btoi(b.Is4()), btoi(a.Is4())) })
+	}
 
 	if r.LRUCache != nil && r.CacheDuration > 0 && len(ips) > 0 {
 		r.LRUCache.Set(DnsResolverCacheKey{r.Client.Addr, host}, ips, r.CacheDuration)
