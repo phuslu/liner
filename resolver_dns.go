@@ -52,13 +52,13 @@ func (rg *DnsResolverPool) Get(addr string, ttl time.Duration) (*DnsResolver, er
 			Client: &fastdns.Client{
 				Addr: addr,
 			},
-			CacheDuration: cmp.Or(ttl, 10*time.Second),
+			CacheDuration: cmp.Or(ttl, 600*time.Second),
 			DisableIPv6:   rg.DisableIPv6,
 		}
 
-		tcp := "tcp"
+		tcp, udp := "tcp", "udp"
 		if rg.DisableIPv6 {
-			tcp = "tcp4"
+			tcp, udp = "tcp4", "udp4"
 		}
 
 		switch {
@@ -143,7 +143,7 @@ func (rg *DnsResolverPool) Get(addr string, ttl time.Duration) (*DnsResolver, er
 			if _, _, err := net.SplitHostPort(host); err != nil {
 				host = net.JoinHostPort(host, "53")
 			}
-			u, err := net.ResolveUDPAddr("udp", host)
+			u, err := net.ResolveUDPAddr(udp, host)
 			if err != nil {
 				r.Err = fmt.Errorf("invalid dns_server addr: %s", addr)
 			}
