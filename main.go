@@ -1095,7 +1095,7 @@ func main() {
 	}
 	runner := cron.New(cronOptions...)
 	if config.Global.LogLevel != "discard" && !log.IsTerminal(os.Stderr.Fd()) {
-		runner.AddFunc("0 0 0 * * *", func() { log.DefaultLogger.Writer.(*log.FileWriter).Rotate() })
+		runner.AddFunc("0 0 0 * * *", func() { (*log.DefaultLogger.Writer.(*log.MultiEntryWriter))[0].(*log.FileWriter).Rotate() })
 		if slices.ContainsFunc(config.Http, func(c HTTPConfig) bool { return c.Forward.Log }) ||
 			slices.ContainsFunc(config.Https, func(c HTTPConfig) bool { return c.Forward.Log }) ||
 			len(config.Dns) > 0 {
