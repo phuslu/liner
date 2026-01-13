@@ -1,18 +1,15 @@
 package main
 
 import (
-	"crypto/tls"
 	"expvar"
 	"net"
 	"net/http"
 	"net/http/pprof"
-	"net/netip"
 	"strconv"
 	"strings"
 	"sync"
 	"text/template"
 
-	"github.com/mileusna/useragent"
 	"github.com/phuslu/log"
 	"github.com/smallnest/ringbuffer"
 )
@@ -102,11 +99,11 @@ func (h *HTTPWebHandler) Load() error {
 			log.Info().Str("web_location", web.Location).Msgf("web location is not enabled, skip.")
 			continue
 		}
-		if tcpcongestion := strings.TrimSpace(web.TcpCongestion); tcpcongestion != "" {
-			router.handler = &HTTPWebMiddlewareTcpCongestion{
-				TcpCongestion: tcpcongestion,
-				Functions:     h.Functions,
-				Handler:       router.handler,
+		if forwardAuth := strings.TrimSpace(web.ForwardAuth); forwardAuth != "" {
+			router.handler = &HTTPWebMiddlewareForwardAuth{
+				ForwardAuth: forwardAuth,
+				Functions:   h.Functions,
+				Handler:     router.handler,
 			}
 		}
 		routers = append(routers, router)
@@ -185,85 +182,19 @@ func (h *HTTPWebHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	h.mux.ServeHTTP(rw, req)
 }
 
-var _ HTTPHandler = (*HTTPWebMiddlewareTcpCongestion)(nil)
+var _ HTTPHandler = (*HTTPWebMiddlewareForwardAuth)(nil)
 
-type HTTPWebMiddlewareTcpCongestion struct {
-	TcpCongestion string
-	Functions     template.FuncMap
-	Handler       HTTPHandler
-
-	template *template.Template
+type HTTPWebMiddlewareForwardAuth struct {
+	ForwardAuth string
+	Functions   template.FuncMap
+	Handler     HTTPHandler
 }
 
-func (m *HTTPWebMiddlewareTcpCongestion) Load() error {
-	if strings.Contains(m.TcpCongestion, "{{") {
-		tmpl, err := template.New(m.TcpCongestion).Funcs(m.Functions).Parse(m.TcpCongestion)
-		if err != nil {
-			return err
-		}
-		m.template = tmpl
-	}
+func (m *HTTPWebMiddlewareForwardAuth) Load() error {
 	return m.Handler.Load()
 }
 
-func (m *HTTPWebMiddlewareTcpCongestion) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	ri := req.Context().Value(HTTPRequestInfoContextKey).(*HTTPRequestInfo)
-
-	if ri.ClientConnOps.SupportTCP() && m.TcpCongestion != "" {
-		var tcpCongestion string
-		if m.template != nil {
-			ri.PolicyBuffer.Reset()
-			err := m.template.Execute(&ri.PolicyBuffer, struct {
-				Request         *http.Request
-				RealIP          netip.Addr
-				ClientHelloInfo *tls.ClientHelloInfo
-				JA4             string
-				UserAgent       *useragent.UserAgent
-				ServerAddr      netip.AddrPort
-				User            AuthUserInfo
-			}{req, ri.RealIP, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr, ri.ProxyUserInfo})
-			if err != nil {
-				log.Error().Err(err).Context(ri.LogContext).Str("forward_tcp_congestion", m.TcpCongestion).Msg("execute forward_tcp_congestion error")
-				http.Error(rw, err.Error(), http.StatusBadGateway)
-				return
-			}
-			tcpCongestion = strings.TrimSpace(b2s(ri.PolicyBuffer.B))
-		} else {
-			tcpCongestion = m.TcpCongestion
-		}
-		if tcpCongestion != "" {
-			log.Debug().Context(ri.LogContext).Str("forward_tcp_congestion", tcpCongestion).Msg("execute forward_tcp_congestion ok")
-			if options := strings.Fields(tcpCongestion); len(options) >= 1 {
-				switch name := options[0]; name {
-				case "brutal":
-					if len(options) < 2 {
-						log.Error().Context(ri.LogContext).Strs("forward_tcp_congestion_options", options).Msg("parse forward_tcp_congestion error")
-						http.Error(rw, "invalid tcp_congestion value", http.StatusBadGateway)
-						return
-					}
-					if rate, _ := strconv.Atoi(options[1]); rate > 0 {
-						gain := 20 // hysteria2 default
-						if len(options) >= 3 {
-							if n, _ := strconv.Atoi(options[2]); n > 0 {
-								gain = n
-							}
-						}
-						if err := ri.ClientConnOps.SetTcpCongestion(name, uint64(rate), uint32(gain)); err != nil {
-							log.Error().Context(ri.LogContext).Strs("forward_tcp_congestion_options", options).Msg("set forward_tcp_congestion error")
-							http.Error(rw, err.Error(), http.StatusBadGateway)
-							return
-						}
-						log.Debug().NetIPAddr("remote_ip", ri.RealIP).Strs("forward_tcp_congestion_options", options).Msg("set forward_tcp_congestion ok")
-					}
-				default:
-					if err := ri.ClientConnOps.SetTcpCongestion(name); err != nil {
-						log.Error().Context(ri.LogContext).Strs("forward_tcp_congestion_options", options).Msg("set forward_tcp_congestion error")
-						http.Error(rw, err.Error(), http.StatusBadGateway)
-						return
-					}
-				}
-			}
-		}
-	}
+func (m *HTTPWebMiddlewareForwardAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	// ri := req.Context().Value(HTTPRequestInfoContextKey).(*HTTPRequestInfo)
 	m.Handler.ServeHTTP(rw, req)
 }
