@@ -1,7 +1,7 @@
 #!/sbin/openrc-run
 
-appdir="/root/liner"
 description="a protocol liner"
+appdir="$(dirname "$(readlink "/etc/init.d/${RC_SVCNAME}")")"
 pidfile="/run/${RC_SVCNAME}.pid"
 
 depend() {
