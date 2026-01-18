@@ -206,7 +206,7 @@ func main() {
 		}
 		log.Info().Str("dns_server", config.Global.DnsServer).Msg("auto enable dns_server for global resolver")
 	}
-	dnsResolver, err := dnsResolverPool.Get(config.Global.DnsServer, 600*time.Second)
+	dnsResolver, err := dnsResolverPool.Get(config.Global.DnsServer, cmp.Or(first(time.ParseDuration(config.Global.DnsCacheDuration)), 600*time.Second))
 	if err != nil {
 		log.Fatal().Err(err).Str("dns_server", config.Global.DnsServer).Msg("NewConfig() error")
 	}
