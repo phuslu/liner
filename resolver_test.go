@@ -21,8 +21,8 @@ func TestDnsResolver(t *testing.T) {
 		Client: &fastdns.Client{
 			Addr: "8.8.8.8:53",
 		},
+		Cache:         lru.NewTTLCache[DnsResolverCacheKey, []netip.Addr](32 * 1024),
 		CacheDuration: time.Minute,
-		LRUCache:      lru.NewTTLCache[DnsResolverCacheKey, []netip.Addr](32 * 1024),
 	}
 
 	fmt.Println(r.LookupNetIP(context.Background(), "ip", "gmail.com"))

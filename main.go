@@ -181,7 +181,7 @@ func main() {
 	// dns resolver generator
 	dnsResolverPool := &DnsResolverPool{
 		Logger:      &log.DefaultLogger,
-		LRUCache:    lru.NewTTLCache[DnsResolverCacheKey, []netip.Addr](cmp.Or(config.Global.DnsCacheSize, 32*1024)),
+		Cache:       lru.NewTTLCache[DnsResolverCacheKey, []netip.Addr](cmp.Or(config.Global.DnsCacheSize, 32*1024)),
 		DisableIPv6: config.Global.DisableIpv6,
 	}
 

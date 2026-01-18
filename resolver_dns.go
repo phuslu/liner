@@ -25,7 +25,7 @@ import (
 
 type DnsResolverPool struct {
 	Logger      *log.Logger
-	LRUCache    *lru.TTLCache[DnsResolverCacheKey, []netip.Addr]
+	Cache       *lru.TTLCache[DnsResolverCacheKey, []netip.Addr]
 	DisableIPv6 bool
 
 	resolvers *xsync.Map[string, dnsresolvererr]
@@ -47,8 +47,8 @@ func (pool *DnsResolverPool) Get(addr string, ttl time.Duration) (*DnsResolver, 
 	}
 	racer, _ := pool.resolvers.LoadOrCompute(addr, func() (r dnsresolvererr, cancel bool) {
 		r.DnsResolver = &DnsResolver{
-			Logger:   pool.Logger,
-			LRUCache: pool.LRUCache,
+			Logger: pool.Logger,
+			Cache:  pool.Cache,
 			Client: &fastdns.Client{
 				Addr: addr,
 			},
@@ -161,17 +161,17 @@ func (pool *DnsResolverPool) Get(addr string, ttl time.Duration) (*DnsResolver, 
 
 type DnsResolver struct {
 	Logger        *log.Logger
-	LRUCache      *lru.TTLCache[DnsResolverCacheKey, []netip.Addr]
-	Client        *fastdns.Client
+	Cache         *lru.TTLCache[DnsResolverCacheKey, []netip.Addr]
 	CacheDuration time.Duration
+	Client        *fastdns.Client
 	DisableIPv6   bool
 }
 
 var godebugnetdns = strings.Contains(os.Getenv("GODEBUG"), "netdns=")
 
 func (r *DnsResolver) LookupNetIP(ctx context.Context, network, host string) (ips []netip.Addr, err error) {
-	if r.LRUCache != nil {
-		if v, ok := r.LRUCache.Get(DnsResolverCacheKey{r.Client.Addr, host}); ok {
+	if r.Cache != nil {
+		if v, ok := r.Cache.Get(DnsResolverCacheKey{r.Client.Addr, host}); ok {
 			return v, nil
 		}
 	}
@@ -202,8 +202,8 @@ func (r *DnsResolver) LookupNetIP(ctx context.Context, network, host string) (ip
 		slices.SortStableFunc(ips, func(a, b netip.Addr) int { return cmp.Compare(btoi(b.Is4()), btoi(a.Is4())) })
 	}
 
-	if r.LRUCache != nil && r.CacheDuration > 0 && len(ips) > 0 {
-		r.LRUCache.Set(DnsResolverCacheKey{r.Client.Addr, host}, ips, r.CacheDuration)
+	if r.Cache != nil && r.CacheDuration > 0 && len(ips) > 0 {
+		r.Cache.Set(DnsResolverCacheKey{r.Client.Addr, host}, ips, r.CacheDuration)
 	}
 
 	if r.Logger != nil {
