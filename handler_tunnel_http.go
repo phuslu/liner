@@ -199,7 +199,7 @@ func (h *TunnelHandler) h1tunnel(ctx context.Context, dialer string) (net.Listen
 	}
 
 	ln, err := smux.Server(conn, &smux.Config{
-		Version:           1,
+		Version:           2,
 		KeepAliveInterval: 10 * time.Second,
 		KeepAliveTimeout:  30 * time.Second,
 		MaxFrameSize:      32768,

@@ -221,7 +221,7 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	}
 
 	session, err := smux.Client(conn, &smux.Config{
-		Version:           1,
+		Version:           2,
 		KeepAliveInterval: 10 * time.Second,
 		KeepAliveTimeout:  30 * time.Second,
 		MaxFrameSize:      32768,
