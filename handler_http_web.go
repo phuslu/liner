@@ -54,11 +54,6 @@ func (h *HTTPWebHandler) Load() error {
 				Functions:       h.Functions,
 				DnsResolverPool: h.DnsResolverPool,
 			}
-		case web.Fastcgi.Enabled:
-			router.handler = &HTTPWebFastcgiHandler{
-				Location: web.Location,
-				Root:     web.Fastcgi.Root,
-			}
 		case web.Index.Root != "" || web.Index.Body != "" || web.Index.File != "":
 			router.handler = &HTTPWebIndexHandler{
 				Functions: h.Functions,
