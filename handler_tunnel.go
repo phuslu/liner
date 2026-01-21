@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/libp2p/go-yamux/v5"
 	"github.com/phuslu/log"
+	"github.com/xtaci/smux"
 )
 
 type TunnelHandler struct {
@@ -150,6 +150,18 @@ func (h *TunnelHandler) handle(ctx context.Context, rconn net.Conn, laddr string
 	}
 }
 
+type SmuxSessionListener struct {
+	*smux.Session
+}
+
+func (ln *SmuxSessionListener) Accept() (net.Conn, error) {
+	return ln.Session.AcceptStream()
+}
+
+func (ln *SmuxSessionListener) Addr() net.Addr {
+	return ln.Session.LocalAddr()
+}
+
 type TunnelListener struct {
 	net.Listener
 	closer io.Closer
@@ -157,8 +169,8 @@ type TunnelListener struct {
 }
 
 func (ln *TunnelListener) Accept() (net.Conn, error) {
-	if session, ok := ln.Listener.(*yamux.Session); ok {
-		log.Info().NetAddr("remote_addr", session.RemoteAddr()).Dur("rtt", session.RTT()).Msg("yamux session accept conn")
+	if session, ok := ln.Listener.(*SmuxSessionListener); ok {
+		log.Info().NetAddr("remote_addr", session.RemoteAddr()).Msg("smux session accept conn")
 	}
 	return ln.Listener.Accept()
 }

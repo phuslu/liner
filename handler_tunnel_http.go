@@ -15,8 +15,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/libp2p/go-yamux/v5"
 	"github.com/phuslu/log"
+	"github.com/xtaci/smux"
 )
 
 func (h *TunnelHandler) h1tunnel(ctx context.Context, dialer string) (net.Listener, error) {
@@ -198,28 +198,21 @@ func (h *TunnelHandler) h1tunnel(ctx context.Context, dialer string) (net.Listen
 		}
 	}
 
-	ln, err := yamux.Server(conn, &yamux.Config{
-		AcceptBacklog:           256,
-		PingBacklog:             32,
-		EnableKeepAlive:         !h.Config.DisableKeepalive,
-		KeepAliveInterval:       30 * time.Second,
-		MeasureRTTInterval:      30 * time.Second,
-		ConnectionWriteTimeout:  10 * time.Second,
-		MaxIncomingStreams:      1000,
-		InitialStreamWindowSize: 256 * 1024,
-		MaxStreamWindowSize:     16 * 1024 * 1024,
-		LogOutput:               SlogWriter{Logger: log.DefaultLogger.Slog()},
-		ReadBufSize:             4096,
-		MaxMessageSize:          64 * 1024,
-		WriteCoalesceDelay:      100 * time.Microsecond,
-	}, nil)
+	ln, err := smux.Server(conn, &smux.Config{
+		Version:           1,
+		KeepAliveInterval: 10 * time.Second,
+		KeepAliveTimeout:  30 * time.Second,
+		MaxFrameSize:      32768,
+		MaxReceiveBuffer:  4194304,
+		MaxStreamBuffer:   65536,
+	})
 	if err != nil {
 		_ = conn.Close()
-		return nil, fmt.Errorf("tunnel: open yamux server on remote %s: %w", h.Config.RemoteListen[0], err)
+		return nil, fmt.Errorf("tunnel: open smux server on remote %s: %w", h.Config.RemoteListen[0], err)
 	}
 
 	return &TunnelListener{
-		Listener: ln,
+		Listener: &SmuxSessionListener{ln},
 		closer:   conn,
 		ctx:      nil,
 	}, nil

@@ -27,9 +27,9 @@ import (
 
 	"github.com/creack/pty/v2"
 	"github.com/google/shlex"
-	"github.com/libp2p/go-yamux/v5"
 	"github.com/phuslu/log"
 	"github.com/pkg/sftp"
+	"github.com/xtaci/smux"
 	"golang.org/x/crypto/ed25519"
 	"golang.org/x/crypto/ssh"
 )
@@ -91,8 +91,9 @@ func (h *SshHandler) Load() error {
 							return func() (time.Duration, error) {
 								var rtt time.Duration
 								switch c := nc.(type) {
-								case *yamux.Stream:
-									rtt = c.Session().RTT()
+								case *smux.Stream:
+									// rtt = c.Session().RTT()
+									rtt = 0
 								case *net.TCPConn:
 									if tcpinfo, err := (ConnOps{tc: c}).GetTcpInfo(); err == nil && tcpinfo != nil {
 										v := reflect.ValueOf(tcpinfo).Elem().FieldByName("Rtt")

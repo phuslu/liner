@@ -35,11 +35,11 @@ import (
 	"unicode"
 	"unsafe"
 
-	"github.com/libp2p/go-yamux/v5"
 	"github.com/phuslu/log"
 	"github.com/quic-go/quic-go"
 	"github.com/smallnest/ringbuffer"
 	"github.com/valyala/bytebufferpool"
+	"github.com/xtaci/smux"
 	"golang.org/x/crypto/chacha20"
 	"golang.org/x/crypto/ocsp"
 	"golang.org/x/crypto/ssh"
@@ -755,7 +755,7 @@ var _ Dialer = (*MemoryDialer)(nil)
 
 type MemoryDialer struct {
 	Address   string
-	Session   *yamux.Session
+	Session   *smux.Session
 	CreatedAt int64
 }
 
@@ -771,7 +771,7 @@ func (d *MemoryDialer) DialContext(ctx context.Context, network, address string)
 		return nil, net.InvalidAddrError("memory dialer network mismatched: " + address + " != " + d.Address)
 	}
 
-	return d.Session.Open(ctx)
+	return d.Session.OpenStream()
 }
 
 var _ net.Listener = (*MemoryListener)(nil)

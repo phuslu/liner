@@ -15,8 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/libp2p/go-yamux/v5"
 	"github.com/phuslu/log"
+	"github.com/xtaci/smux"
 	"go4.org/netipx"
 )
 
@@ -220,23 +220,16 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		CloseAt: time.Now().Add(time.Duration(8+fastrandn(4)) * time.Hour),
 	}
 
-	session, err := yamux.Client(conn, &yamux.Config{
-		AcceptBacklog:           256,
-		PingBacklog:             32,
-		EnableKeepAlive:         !h.Config.Tunnel.DisableKeepalive,
-		KeepAliveInterval:       30 * time.Second,
-		MeasureRTTInterval:      30 * time.Second,
-		ConnectionWriteTimeout:  10 * time.Second,
-		MaxIncomingStreams:      1000,
-		InitialStreamWindowSize: 256 * 1024,
-		MaxStreamWindowSize:     16 * 1024 * 1024,
-		LogOutput:               SlogWriter{Logger: log.DefaultLogger.Slog()},
-		ReadBufSize:             4096,
-		MaxMessageSize:          64 * 1024,
-		WriteCoalesceDelay:      100 * time.Microsecond,
-	}, nil)
+	session, err := smux.Client(conn, &smux.Config{
+		Version:           1,
+		KeepAliveInterval: 10 * time.Second,
+		KeepAliveTimeout:  30 * time.Second,
+		MaxFrameSize:      32768,
+		MaxReceiveBuffer:  4194304,
+		MaxStreamBuffer:   65536,
+	})
 	if err != nil {
-		log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Msg("tunnel open yamux session error")
+		log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Msg("tunnel open smux session error")
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -264,7 +257,7 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 				continue
 			}
 
-			lconn, err := session.Open(ctx)
+			lconn, err := session.OpenStream()
 			if err != nil {
 				log.Error().Err(err).Msg("failed to open local session")
 				exit <- err
@@ -297,7 +290,12 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		seconds := 5 + fastrandn(30)
 		for {
 			time.Sleep(time.Duration(seconds) * time.Second)
-			rtt, err := session.Ping()
+			start := time.Now()
+			stream, err := session.OpenStream()
+			rtt := time.Since(start)
+			if stream != nil {
+				stream.Close()
+			}
 			switch {
 			case count == 3:
 				exit <- err
