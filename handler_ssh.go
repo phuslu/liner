@@ -24,6 +24,7 @@ import (
 	"syscall"
 	"text/template"
 	"time"
+	"unsafe"
 
 	"github.com/creack/pty/v2"
 	"github.com/google/shlex"
@@ -87,23 +88,38 @@ func (h *SshHandler) Load() error {
 						} else {
 							h.Logger.Info().Strs("ssh_listens", h.Config.Listen).Type("net_conn_type", nc).NetAddr("net_conn_addr", nc.RemoteAddr()).Msg("get net.Conn from the incoming ssh.ServerPreAuthConn")
 						}
-						getrtt := func(nc net.Conn) func() (time.Duration, error) {
+						getrtt := func(conn net.Conn) func() (time.Duration, error) {
 							return func() (time.Duration, error) {
-								var rtt time.Duration
-								switch c := nc.(type) {
-								case *smux.Stream:
-									// rtt = c.Session().RTT()
-									rtt = 0
-								case *net.TCPConn:
-									if tcpinfo, err := (ConnOps{tc: c}).GetTcpInfo(); err == nil && tcpinfo != nil {
+								if s, ok := conn.(*smux.Stream); ok {
+									type Stream struct {
+										stream *struct {
+											id   uint32
+											sess *struct {
+												conn net.Conn // io.ReadWriteCloser
+											}
+										}
+									}
+									conn = (*Stream)(unsafe.Pointer(s)).stream.sess.conn
+								}
+								for {
+									c, ok := conn.(interface {
+										NetConn() net.Conn
+									})
+									if !ok {
+										break
+									}
+									conn = c.NetConn()
+								}
+								if tc, ok := conn.(*net.TCPConn); ok {
+									if tcpinfo, err := (ConnOps{tc: tc}).GetTcpInfo(); err == nil && tcpinfo != nil {
 										v := reflect.ValueOf(tcpinfo).Elem().FieldByName("Rtt")
 										if !v.IsValid() {
 											return 0, fmt.Errorf("getrtt: tcpinfo %#v has no Rtt field", tcpinfo)
 										}
-										rtt = time.Duration(v.Uint()) * time.Microsecond
+										return time.Duration(v.Uint()) * time.Microsecond, nil
 									}
 								}
-								return rtt, nil
+								return 0, nil
 							}
 						}
 						err = banner.Execute(&sb, struct {
