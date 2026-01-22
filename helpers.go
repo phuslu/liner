@@ -586,6 +586,10 @@ func (c *IdleTimeoutConn) SetWriteDeadline(t time.Time) error {
 	return c.Conn.SetWriteDeadline(t)
 }
 
+func (c *IdleTimeoutConn) NetConn() net.Conn {
+	return c.Conn
+}
+
 func GetNetConnFromServerPreAuthConn(conn ssh.ServerPreAuthConn) (net.Conn, error) {
 	s := fmt.Sprintf("%#v", conn)
 	if !(strings.HasPrefix(s, "&ssh.connection{transport:(*ssh.handshakeTransport)(") &&
