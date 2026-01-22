@@ -150,8 +150,10 @@ func (h *TunnelHandler) handle(ctx context.Context, rconn net.Conn, laddr string
 	}
 }
 
+var _ net.Listener = (*SmuxSessionListener)(nil)
+
 type SmuxSessionListener struct {
-	*smux.Session
+	Session *smux.Session
 }
 
 func (ln *SmuxSessionListener) Accept() (net.Conn, error) {
@@ -160,6 +162,14 @@ func (ln *SmuxSessionListener) Accept() (net.Conn, error) {
 
 func (ln *SmuxSessionListener) Addr() net.Addr {
 	return ln.Session.LocalAddr()
+}
+
+func (ln *SmuxSessionListener) RemoteAddr() net.Addr {
+	return ln.Session.RemoteAddr()
+}
+
+func (ln *SmuxSessionListener) Close() error {
+	return ln.Session.Close()
 }
 
 type TunnelListener struct {
