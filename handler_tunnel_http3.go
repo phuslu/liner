@@ -141,7 +141,7 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialer string) (net.Listen
 		localAddr:  localAddr,
 	}
 
-	ln, err := smux.Server(conn, &smux.Config{
+	session, err := smux.Server(conn, &smux.Config{
 		Version:           2,
 		KeepAliveInterval: 10 * time.Second,
 		KeepAliveTimeout:  30 * time.Second,
@@ -160,7 +160,7 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialer string) (net.Listen
 	}
 
 	return &TunnelListener{
-		Listener: &SmuxSessionListener{ln},
+		Listener: &SmuxSessionListener{session},
 		closer:   conn,
 		ctx:      quicCtx,
 	}, nil
