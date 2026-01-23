@@ -226,7 +226,7 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		KeepAliveTimeout:  30 * time.Second,
 		MaxFrameSize:      32768,
 		MaxReceiveBuffer:  4194304,
-		MaxStreamBuffer:   65536,
+		MaxStreamBuffer:   2097152,
 	})
 	if err != nil {
 		log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Msg("tunnel open smux session error")

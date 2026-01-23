@@ -146,7 +146,7 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialer string) (net.Listen
 		KeepAliveTimeout:  30 * time.Second,
 		MaxFrameSize:      32768,
 		MaxReceiveBuffer:  4194304,
-		MaxStreamBuffer:   65536,
+		MaxStreamBuffer:   2097152,
 	})
 	if err != nil {
 		_ = conn.Close()
