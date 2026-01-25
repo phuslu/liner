@@ -30,6 +30,7 @@ import (
 	"github.com/google/shlex"
 	"github.com/phuslu/log"
 	"github.com/pkg/sftp"
+	"github.com/quic-go/quic-go"
 	"github.com/xtaci/smux"
 	"golang.org/x/crypto/ed25519"
 	"golang.org/x/crypto/ssh"
@@ -109,6 +110,11 @@ func (h *SshHandler) Load() error {
 										break
 									}
 									conn = c.NetConn()
+								}
+								if qc, ok := conn.(interface {
+									QuicConn() *quic.Conn
+								}); ok {
+									return qc.QuicConn().ConnectionStats().SmoothedRTT, nil
 								}
 								if tc, ok := conn.(*net.TCPConn); ok {
 									if tcpinfo, err := (ConnOps{tc: tc}).GetTcpInfo(); err == nil && tcpinfo != nil {
