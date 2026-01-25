@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
@@ -133,10 +134,18 @@ func (d *HTTP3Dialer) DialContext(ctx context.Context, network, addr string) (ne
 	}
 
 	var remoteAddr, localAddr net.Addr
+	var quicConn *quic.Conn
 
 	req = req.WithContext(httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
 		GotConn: func(connInfo httptrace.GotConnInfo) {
 			remoteAddr, localAddr = connInfo.Conn.RemoteAddr(), connInfo.Conn.LocalAddr()
+			// see https://github.com/quic-go/quic-go/blob/master/http3/trace.go
+			if data := (*[2]unsafe.Pointer)(unsafe.Pointer(&connInfo.Conn))[1]; data != nil {
+				type fakeConn struct {
+					conn *quic.Conn
+				}
+				quicConn = (*fakeConn)(data).conn
+			}
 		},
 	}))
 
@@ -170,6 +179,7 @@ func (d *HTTP3Dialer) DialContext(ctx context.Context, network, addr string) (ne
 		closed:     make(chan struct{}),
 		remoteAddr: remoteAddr,
 		localAddr:  localAddr,
+		quicConn:   quicConn,
 	}, nil
 }
 
@@ -181,6 +191,7 @@ type http3Stream struct {
 
 	remoteAddr net.Addr
 	localAddr  net.Addr
+	quicConn   *quic.Conn
 }
 
 func (c *http3Stream) Read(b []byte) (n int, err error) {
@@ -228,4 +239,8 @@ func (c *http3Stream) SetReadDeadline(t time.Time) error {
 func (c *http3Stream) SetWriteDeadline(t time.Time) error {
 	return nil
 	// return &net.OpError{Op: "set", Net: "http3", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
+}
+
+func (c *http3Stream) QuicConn() *quic.Conn {
+	return c.quicConn
 }

@@ -139,6 +139,7 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialer string) (net.Listen
 		closed:     make(chan struct{}),
 		remoteAddr: remoteAddr,
 		localAddr:  localAddr,
+		quicConn:   quicConn,
 	}
 
 	session, err := smux.Server(conn, &smux.Config{
