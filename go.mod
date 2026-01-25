@@ -14,13 +14,13 @@ require (
 	github.com/phuslu/log v1.0.121
 	github.com/phuslu/lru v1.0.18
 	github.com/pkg/sftp v1.13.10
-	github.com/puzpuzpuz/xsync/v4 v4.3.0
+	github.com/puzpuzpuz/xsync/v4 v4.4.0
 	github.com/quic-go/quic-go v0.59.0
 	github.com/refraction-networking/utls v1.8.2
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/smallnest/ringbuffer v0.1.0
 	github.com/valyala/bytebufferpool v1.0.0
-	github.com/xtaci/smux v1.5.50
+	github.com/xtaci/smux v1.5.51
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba
 	golang.org/x/crypto v0.47.0
 	golang.org/x/net v0.49.0
