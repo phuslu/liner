@@ -141,9 +141,7 @@ func (d *HTTP3Dialer) DialContext(ctx context.Context, network, addr string) (ne
 			remoteAddr, localAddr = connInfo.Conn.RemoteAddr(), connInfo.Conn.LocalAddr()
 			// see https://github.com/quic-go/quic-go/blob/master/http3/trace.go
 			if data := (*[2]unsafe.Pointer)(unsafe.Pointer(&connInfo.Conn))[1]; data != nil {
-				type fakeConn struct {
-					conn *quic.Conn
-				}
+				type fakeConn struct{ conn *quic.Conn }
 				quicConn = (*fakeConn)(data).conn
 			}
 		},

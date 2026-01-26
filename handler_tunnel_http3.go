@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unsafe"
 
 	"github.com/phuslu/log"
 	"github.com/quic-go/quic-go"
@@ -33,8 +34,6 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialer string) (net.Listen
 	if u.User == nil {
 		return nil, fmt.Errorf("no user info in dialer: %s", dialer)
 	}
-
-	var quicConn *quic.Conn
 
 	transport := &http3.Transport{
 		DisableCompression: false,
@@ -63,7 +62,6 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialer string) (net.Listen
 			if err != nil {
 				return nil, err
 			}
-			quicConn = conn
 			return conn, nil
 		},
 	}
@@ -105,10 +103,16 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialer string) (net.Listen
 	}
 
 	var remoteAddr, localAddr net.Addr
+	var quicConn *quic.Conn
 
 	req = req.WithContext(httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
 		GotConn: func(connInfo httptrace.GotConnInfo) {
 			remoteAddr, localAddr = connInfo.Conn.RemoteAddr(), connInfo.Conn.LocalAddr()
+			// see https://github.com/quic-go/quic-go/blob/master/http3/trace.go
+			if data := (*[2]unsafe.Pointer)(unsafe.Pointer(&connInfo.Conn))[1]; data != nil {
+				type fakeConn struct{ conn *quic.Conn }
+				quicConn = (*fakeConn)(data).conn
+			}
 		},
 	}))
 
