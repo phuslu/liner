@@ -75,6 +75,7 @@ func (h *TunnelHandler) h1tunnel(ctx context.Context, dialer string) (net.Listen
 
 	hostport := net.JoinHostPort(host, port)
 
+	log.Info().Str("dialer", dialer).Str("hostport", hostport).Msg("connecting tunnel hostport")
 	conn, err := h.LocalDialer.DialContext(ctx, "tcp", hostport)
 	if err != nil {
 		log.Error().Err(err).Str("tunnel_host", hostport).Msg("connect tunnel host error")
@@ -142,7 +143,9 @@ func (h *TunnelHandler) h1tunnel(ctx context.Context, dialer string) (net.Listen
 
 	log.Info().NetAddr("tunnel_conn_addr", conn.RemoteAddr()).Bytes("request_body", buf).Msg("send tunnel request")
 
-	// conn.SetDeadline(time.Now().Add(time.Duration(h.Config.DialTimeout) * time.Second))
+	conn.SetDeadline(time.Now().Add(time.Duration(cmp.Or(h.Config.DialTimeout, 10)) * time.Second))
+	defer conn.SetDeadline(time.Time{})
+
 	_, err = conn.Write(buf)
 	if err != nil {
 		return nil, err
