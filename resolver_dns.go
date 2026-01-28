@@ -150,7 +150,7 @@ func (pool *DnsResolverPool) Get(addr string, ttl time.Duration) (*DnsResolver, 
 			r.DnsResolver.Client.Dialer = &fastdns.UDPDialer{
 				Addr:     u,
 				Timeout:  3 * time.Second,
-				MaxConns: 128,
+				MaxConns: 8,
 			}
 		}
 		return
