@@ -28,8 +28,8 @@ github.com/oschwald/maxminddb-golang/v2 v2.1.1 h1:lA8FH0oOrM4u7mLvowq8IT6a3Q/qEn
 github.com/oschwald/maxminddb-golang/v2 v2.1.1/go.mod h1:PLdx6PR+siSIoXqqy7C7r3SB3KZnhxWr1Dp6g0Hacl8=
 github.com/photostorm/pty/v2 v2.0.0-20240405180724-bf40468acd65 h1:rdE4GJ3uNl5AYWlTWO2qZDmwkerPAM4hNAtyOctk1zM=
 github.com/photostorm/pty/v2 v2.0.0-20240405180724-bf40468acd65/go.mod h1:kRtDiAOt7dBUeWqznZK5Mh+T3a793k+L0ATiwKC3wWg=
-github.com/phuslu/fastdns v0.16.4 h1:mtnLgBJYVKMZiM0z3MrcmH6KFARj6NH2b4spDgQ17X0=
-github.com/phuslu/fastdns v0.16.4/go.mod h1:whxYhN/LvgE3EK+n2E73vt5CY44cZVbk6j9ZsqE8G3Q=
+github.com/phuslu/fastdns v0.16.5 h1:tSJVyuPiJWMNEsdw+OUAztxRzBA7OJiHe3sQ7ZjMZAE=
+github.com/phuslu/fastdns v0.16.5/go.mod h1:whxYhN/LvgE3EK+n2E73vt5CY44cZVbk6j9ZsqE8G3Q=
 github.com/phuslu/geosite v1.0.20250901 h1:9BHxSm7M1OMic7H8q3Nzyd9PvjFtzMtUX2d1hE5WiIQ=
 github.com/phuslu/geosite v1.0.20250901/go.mod h1:qKR55nWrjbN1JOvK1WvZIqh341CGpq22OHx2BLMOrKE=
 github.com/phuslu/log v1.0.121 h1:3QlfHf/UG+QArETQFUhpHAn4my7Ik2T2zbK5UqG/amM=

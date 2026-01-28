@@ -9,7 +9,7 @@ require (
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
 	github.com/mileusna/useragent v1.3.5
 	github.com/oschwald/maxminddb-golang/v2 v2.1.1
-	github.com/phuslu/fastdns v0.16.4
+	github.com/phuslu/fastdns v0.16.5
 	github.com/phuslu/geosite v1.0.20250901
 	github.com/phuslu/log v1.0.121
 	github.com/phuslu/lru v1.0.18
