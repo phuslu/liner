@@ -77,7 +77,8 @@ func (pool *DnsResolverPool) Get(addr string, ttl time.Duration) (*DnsResolver, 
 				}
 				r.DnsResolver.Client.Dialer = &fastdns.TCPDialer{
 					Addr:     func() (u *net.TCPAddr) { u, _ = net.ResolveTCPAddr(tcp, hostport); return }(),
-					MaxConns: 16,
+					Timeout:  4 * time.Second,
+					MaxConns: 8,
 				}
 			case "tls", "dot":
 				hostport := u.Host
@@ -90,7 +91,8 @@ func (pool *DnsResolverPool) Get(addr string, ttl time.Duration) (*DnsResolver, 
 						ServerName:         u.Hostname(),
 						ClientSessionCache: tls.NewLRUClientSessionCache(128),
 					},
-					MaxConns: 16,
+					Timeout:  5 * time.Second,
+					MaxConns: 8,
 				}
 			case "https", "http2", "h2", "doh":
 				u.Scheme = "https"
