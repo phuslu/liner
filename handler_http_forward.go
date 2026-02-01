@@ -578,6 +578,18 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			tr = h.LocalTransport
 		}
 
+		ctx := req.Context()
+		switch {
+		case disableIPv6:
+			ctx = context.WithValue(ctx, DialerDisableIPv6ContextKey, struct{}{})
+		case preferIPv6:
+			ctx = context.WithValue(ctx, DialerPreferIPv6ContextKey, struct{}{})
+		}
+		if h.MemoryDialers != nil {
+			ctx = context.WithValue(ctx, DialerMemoryDialersContextKey, h.MemoryDialers)
+		}
+		req = req.WithContext(ctx)
+
 		resp, err := tr.RoundTrip(req)
 		if err != nil {
 			http.Error(rw, err.Error(), http.StatusBadGateway)
