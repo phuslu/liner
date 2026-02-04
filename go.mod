@@ -18,7 +18,7 @@ require (
 	github.com/quic-go/quic-go v0.59.0
 	github.com/refraction-networking/utls v1.8.2
 	github.com/robfig/cron/v3 v3.0.1
-	github.com/smallnest/ringbuffer v0.1.0
+	github.com/smallnest/ringbuffer v0.1.1
 	github.com/valyala/bytebufferpool v1.0.0
 	github.com/xtaci/smux v1.5.55
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba
