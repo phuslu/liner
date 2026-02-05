@@ -180,7 +180,7 @@ type TunnelListener struct {
 
 func (ln *TunnelListener) Accept() (net.Conn, error) {
 	if session, ok := ln.Listener.(*SmuxSessionListener); ok {
-		log.Info().NetAddr("remote_addr", session.RemoteAddr()).Msg("smux session accept conn")
+		log.Debug().NetAddr("remote_addr", session.RemoteAddr()).Msg("smux session accept conn")
 	}
 	return ln.Listener.Accept()
 }
