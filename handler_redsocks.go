@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"io"
 	"net"
 	"net/http"
@@ -69,13 +70,38 @@ func (h *RedsocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 
 	addrportStr := addrport.String()
 
+	tlsClientHello := func() (*tls.ClientHelloInfo, error) {
+		data := make([]byte, 2048)
+		n, err := conn.Read(data)
+		if err != nil {
+			log.Error().Err(err).Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Msg("failed to peek data from remote tcp connection")
+			return nil, err
+		}
+		data = data[:n]
+		conn = &ConnWithData{conn, data}
+		var clienthello *tls.ClientHelloInfo
+		err = tls.Server(&ConnWithData{nil, data}, &tls.Config{
+			GetConfigForClient: func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
+				clienthello = hello
+				return nil, nil
+			},
+		}).HandshakeContext(ctx)
+		if clienthello != nil {
+			err = nil
+		}
+		return clienthello, err
+	}
+
+	// log.Printf("%#v\n", first(tlsClientHello()))
+
 	var dialerValue = h.Config.Forward.Dialer
 	if h.dialer != nil {
 		var sb strings.Builder
 		err := h.dialer.Execute(&sb, struct {
-			Request    RedsocksRequest
-			ServerAddr netip.AddrPort
-		}{req, req.ServerAddr})
+			Request        RedsocksRequest
+			ServerAddr     netip.AddrPort
+			TLSClientHello func() (*tls.ClientHelloInfo, error)
+		}{req, req.ServerAddr, tlsClientHello})
 		if err != nil {
 			log.Error().Err(err).Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", addrport).Msg("failed to eval dialer template")
 			return
