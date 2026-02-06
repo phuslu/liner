@@ -912,6 +912,9 @@ type ConnWithData struct {
 
 func (c *ConnWithData) Read(b []byte) (int, error) {
 	if c.Data == nil {
+		if c.Conn == nil {
+			return 0, io.EOF
+		}
 		return c.Conn.Read(b)
 	}
 
@@ -923,6 +926,13 @@ func (c *ConnWithData) Read(b []byte) (int, error) {
 	}
 
 	return n, nil
+}
+
+func (c *ConnWithData) Write(b []byte) (int, error) {
+	if c.Conn == nil {
+		return 0, errors.ErrUnsupported
+	}
+	return c.Conn.Write(b)
 }
 
 type ConnWithBuffers struct {
