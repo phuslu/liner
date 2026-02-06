@@ -57,6 +57,7 @@ func (f *Functions) Load() error {
 	f.funcs["set"] = f.set
 	f.funcs["unset"] = f.unset
 	f.funcs["hasKey"] = f.hasKey
+	f.funcs["tlsSNI"] = f.tlsSNI
 
 	// sprig supplement
 	f.funcs["hasPrefixes"] = f.hasPrefixes
@@ -528,4 +529,145 @@ func (f *Functions) regexMatch(pattern, s string) bool {
 		return false
 	}
 	return regex.MatchString(s)
+}
+
+type PeekingConn struct {
+	net.Conn
+	head []byte
+}
+
+func (c *PeekingConn) Read(b []byte) (n int, err error) {
+	if len(c.head) > 0 {
+		n = copy(b, c.head)
+		c.head = c.head[n:]
+		return n, nil
+	}
+	return c.Conn.Read(b)
+}
+
+func (c *PeekingConn) PeekTLSClientHello() (sni string, err error) {
+	// 1. Read Client Hello
+	head := make([]byte, 1024)
+	n, err := c.Conn.Read(head)
+	if err != nil {
+		return "", err
+	}
+	c.head = head[:n]
+
+	// 2. Parse Client Hello
+	return PeekTLSClientHello(c.head)
+}
+
+func PeekTLSClientHello(data []byte) (sni string, err error) {
+	// Skip record header: type(1) + version(2) + length(2)
+	// Handshake header: msg_type(1) + length(3) + version(2) + random(32) + session_id_len(1)
+	const RecordHeaderLen = 5
+	const HandshakeHeaderLen = 4 // msg_type + length
+	const MinClientHelloLen = RecordHeaderLen + HandshakeHeaderLen
+
+	if len(data) < MinClientHelloLen {
+		return "", io.ErrUnexpectedEOF
+	}
+
+	// Check for TLS Handshake (0x16) and Version (0x0301, 0x0302, 0x0303)
+	if data[0] != 0x16 || data[1] < 0x03 || data[2] > 0x03 {
+		return "", fmt.Errorf("not a tls handshake")
+	}
+
+	length := int(data[3])<<8 | int(data[4])
+	if len(data) < RecordHeaderLen+length {
+		// incomplete record, but we might have enough for sni
+	}
+
+	// Check handshake type (0x01 ClientHello)
+	if data[5] != 0x01 {
+		return "", fmt.Errorf("not a client hello")
+	}
+
+	// session_id_len offset: record_header(5) + handshake_header(4) + client_version(2) + random(32) = 43
+	offset := 43
+	if len(data) <= offset {
+		return "", io.ErrUnexpectedEOF
+	}
+
+	sessionIdLen := int(data[offset])
+	offset += 1 + sessionIdLen
+	if len(data) <= offset+2 {
+		return "", io.ErrUnexpectedEOF
+	}
+
+	// cipher_suites_len
+	cipherSuitesLen := int(data[offset])<<8 | int(data[offset+1])
+	offset += 2 + cipherSuitesLen
+	if len(data) <= offset+1 {
+		return "", io.ErrUnexpectedEOF
+	}
+
+	// compression_methods_len
+	compressionMethodsLen := int(data[offset])
+	offset += 1 + compressionMethodsLen
+	if len(data) <= offset+2 {
+		return "", io.ErrUnexpectedEOF
+	}
+
+	// extensions_len
+	extensionsLen := int(data[offset])<<8 | int(data[offset+1])
+	offset += 2
+
+	if len(data) < offset+extensionsLen {
+		// we likely don't have the full extensions, but let's try to parse what we have
+		extensionsLen = len(data) - offset
+	}
+
+	// Parse extensions
+	end := offset + extensionsLen
+	for offset+4 <= end {
+		extType := int(data[offset])<<8 | int(data[offset+1])
+		extLen := int(data[offset+2])<<8 | int(data[offset+3])
+		offset += 4
+
+		if offset+extLen > end {
+			break
+		}
+
+		if extType == 0x00 { // Server Name Indication
+			if extLen < 2 {
+				break
+			}
+			listLen := int(data[offset])<<8 | int(data[offset+1])
+			if listLen+2 != extLen {
+				break
+			}
+			offset += 2
+
+			// NameType(1) + NameLen(2)
+			if offset+3 > end {
+				break
+			}
+
+			nameType := data[offset]
+			nameLen := int(data[offset+1])<<8 | int(data[offset+2])
+			offset += 3
+
+			if nameType == 0 && offset+nameLen <= end {
+				return string(data[offset : offset+nameLen]), nil
+			}
+		}
+
+		offset += extLen
+	}
+
+	return "", fmt.Errorf("sni not found")
+}
+
+func (f *Functions) tlsSNI(conn net.Conn) string {
+	if pc, ok := conn.(*PeekingConn); ok {
+		sni, err := pc.PeekTLSClientHello()
+		if err != nil {
+			f.Logger.Debug().Err(err).Msg("sni peek error")
+			return ""
+		}
+		return sni
+	}
+	return ""
 }

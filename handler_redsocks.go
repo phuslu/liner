@@ -70,12 +70,15 @@ func (h *RedsocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 	addrportStr := addrport.String()
 
 	var dialerValue = h.Config.Forward.Dialer
+	var peekingConn = &PeekingConn{Conn: conn}
+
 	if h.dialer != nil {
 		var sb strings.Builder
 		err := h.dialer.Execute(&sb, struct {
 			Request    RedsocksRequest
 			ServerAddr netip.AddrPort
-		}{req, req.ServerAddr})
+			Conn       net.Conn
+		}{req, req.ServerAddr, peekingConn})
 		if err != nil {
 			log.Error().Err(err).Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", addrport).Msg("failed to eval dialer template")
 			return
@@ -123,7 +126,7 @@ func (h *RedsocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 	}
 	defer rconn.Close()
 
-	go io.Copy(rconn, conn)
+	go io.Copy(rconn, peekingConn)
 	_, _ = io.Copy(conn, rconn)
 
 	if h.Config.Forward.Log {
