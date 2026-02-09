@@ -15,8 +15,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/libp2p/go-yamux/v5"
 	"github.com/phuslu/log"
-	"github.com/xtaci/smux"
 	"go4.org/netipx"
 )
 
@@ -220,16 +220,23 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		CloseAt: time.Now().Add(time.Duration(8+fastrandn(4)) * time.Hour),
 	}
 
-	session, err := smux.Client(conn, &smux.Config{
-		Version:           2,
-		KeepAliveInterval: 10 * time.Second,
-		KeepAliveTimeout:  30 * time.Second,
-		MaxFrameSize:      32768,
-		MaxReceiveBuffer:  4194304,
-		MaxStreamBuffer:   2097152,
-	})
+	session, err := yamux.Client(conn, &yamux.Config{
+		AcceptBacklog:           256,
+		PingBacklog:             32,
+		EnableKeepAlive:         true,
+		KeepAliveInterval:       30 * time.Second,
+		MeasureRTTInterval:      30 * time.Second,
+		ConnectionWriteTimeout:  10 * time.Second,
+		MaxIncomingStreams:      1000,
+		InitialStreamWindowSize: 256 * 1024,
+		MaxStreamWindowSize:     16 * 1024 * 1024,
+		LogOutput:               SlogWriter{Logger: log.DefaultLogger.Slog()},
+		ReadBufSize:             4096,
+		MaxMessageSize:          64 * 1024,
+		WriteCoalesceDelay:      100 * time.Microsecond,
+	}, nil)
 	if err != nil {
-		log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Msg("tunnel open smux session error")
+		log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Msg("tunnel open mux session error")
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -257,7 +264,7 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 				continue
 			}
 
-			lconn, err := session.OpenStream()
+			lconn, err := session.OpenStream(ctx)
 			if err != nil {
 				log.Error().Err(err).Msg("failed to open local session")
 				exit <- err
@@ -291,7 +298,7 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		for {
 			time.Sleep(time.Duration(seconds) * time.Second)
 			start := time.Now()
-			stream, err := session.OpenStream()
+			stream, err := session.OpenStream(ctx)
 			rtt := time.Since(start)
 			if stream != nil {
 				stream.Close()

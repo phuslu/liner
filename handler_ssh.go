@@ -24,14 +24,13 @@ import (
 	"syscall"
 	"text/template"
 	"time"
-	"unsafe"
 
 	"github.com/creack/pty/v2"
 	"github.com/google/shlex"
+	"github.com/libp2p/go-yamux/v5"
 	"github.com/phuslu/log"
 	"github.com/pkg/sftp"
 	"github.com/quic-go/quic-go"
-	"github.com/xtaci/smux"
 	"golang.org/x/crypto/ed25519"
 	"golang.org/x/crypto/ssh"
 )
@@ -91,16 +90,8 @@ func (h *SshHandler) Load() error {
 						}
 						getrtt := func(conn net.Conn) func() (time.Duration, error) {
 							return func() (time.Duration, error) {
-								if s, ok := conn.(*smux.Stream); ok {
-									type Stream struct {
-										stream *struct {
-											id   uint32
-											sess *struct {
-												conn net.Conn // io.ReadWriteCloser
-											}
-										}
-									}
-									conn = (*Stream)(unsafe.Pointer(s)).stream.sess.conn
+								if s, ok := conn.(*yamux.Stream); ok {
+									return s.Session().RTT(), nil
 								}
 								for {
 									c, ok := conn.(interface {

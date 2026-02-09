@@ -17,11 +17,11 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/libp2p/go-yamux/v5"
 	"github.com/phuslu/log"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/smallnest/ringbuffer"
-	"github.com/xtaci/smux"
 )
 
 func (h *TunnelHandler) h3tunnel(ctx context.Context, dialer string) (net.Listener, error) {
@@ -81,7 +81,7 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialer string) (net.Listen
 	req.ContentLength = -1
 	req.Header.Set("location", HTTPTunnelReverseTCPPathPrefix+targetHost+"/"+targetPort+"/")
 	req.Header.Set("content-type", "application/octet-stream")
-	req.Header.Set("user-agent", DefaultUserAgent)
+	req.Header.Set("user-agent", TunnelHTTPUserAgent)
 	if u.User != nil {
 		req.Header.Set("authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(u.User.Username()+":"+first(u.User.Password()))))
 	}
@@ -146,17 +146,24 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialer string) (net.Listen
 		quicConn:   quicConn,
 	}
 
-	session, err := smux.Server(conn, &smux.Config{
-		Version:           2,
-		KeepAliveInterval: 10 * time.Second,
-		KeepAliveTimeout:  30 * time.Second,
-		MaxFrameSize:      32768,
-		MaxReceiveBuffer:  4194304,
-		MaxStreamBuffer:   2097152,
-	})
+	session, err := yamux.Server(conn, &yamux.Config{
+		AcceptBacklog:           256,
+		PingBacklog:             32,
+		EnableKeepAlive:         true,
+		KeepAliveInterval:       30 * time.Second,
+		MeasureRTTInterval:      30 * time.Second,
+		ConnectionWriteTimeout:  10 * time.Second,
+		MaxIncomingStreams:      1000,
+		InitialStreamWindowSize: 256 * 1024,
+		MaxStreamWindowSize:     16 * 1024 * 1024,
+		LogOutput:               SlogWriter{Logger: log.DefaultLogger.Slog()},
+		ReadBufSize:             4096,
+		MaxMessageSize:          64 * 1024,
+		WriteCoalesceDelay:      100 * time.Microsecond,
+	}, nil)
 	if err != nil {
 		_ = conn.Close()
-		return nil, fmt.Errorf("tunnel: open smux server on remote %s: %w", h.Config.RemoteListen[0], err)
+		return nil, fmt.Errorf("tunnel: open mux server on remote %s: %w", h.Config.RemoteListen[0], err)
 	}
 
 	var quicCtx context.Context
@@ -165,7 +172,7 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialer string) (net.Listen
 	}
 
 	return &TunnelListener{
-		Listener: &SmuxSessionListener{session},
+		Listener: &MuxSessionListener{session},
 		closer:   conn,
 		ctx:      quicCtx,
 	}, nil

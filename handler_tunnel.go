@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/libp2p/go-yamux/v5"
 	"github.com/phuslu/log"
-	"github.com/xtaci/smux"
 )
 
 type TunnelHandler struct {
@@ -150,25 +150,25 @@ func (h *TunnelHandler) handle(ctx context.Context, rconn net.Conn, laddr string
 	}
 }
 
-var _ net.Listener = (*SmuxSessionListener)(nil)
+var _ net.Listener = (*MuxSessionListener)(nil)
 
-type SmuxSessionListener struct {
-	Session *smux.Session
+type MuxSessionListener struct {
+	Session *yamux.Session
 }
 
-func (ln *SmuxSessionListener) Accept() (net.Conn, error) {
+func (ln *MuxSessionListener) Accept() (net.Conn, error) {
 	return ln.Session.AcceptStream()
 }
 
-func (ln *SmuxSessionListener) Addr() net.Addr {
+func (ln *MuxSessionListener) Addr() net.Addr {
 	return ln.Session.LocalAddr()
 }
 
-func (ln *SmuxSessionListener) RemoteAddr() net.Addr {
+func (ln *MuxSessionListener) RemoteAddr() net.Addr {
 	return ln.Session.RemoteAddr()
 }
 
-func (ln *SmuxSessionListener) Close() error {
+func (ln *MuxSessionListener) Close() error {
 	return ln.Session.Close()
 }
 
@@ -179,8 +179,8 @@ type TunnelListener struct {
 }
 
 func (ln *TunnelListener) Accept() (net.Conn, error) {
-	if session, ok := ln.Listener.(*SmuxSessionListener); ok {
-		log.Debug().NetAddr("remote_addr", session.RemoteAddr()).Msg("smux session accept conn")
+	if session, ok := ln.Listener.(*MuxSessionListener); ok {
+		log.Debug().NetAddr("remote_addr", session.RemoteAddr()).Msg("mux session accept conn")
 	}
 	return ln.Listener.Accept()
 }

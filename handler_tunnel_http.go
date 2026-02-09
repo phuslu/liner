@@ -12,12 +12,15 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"runtime"
 	"strconv"
 	"time"
 
+	"github.com/libp2p/go-yamux/v5"
 	"github.com/phuslu/log"
-	"github.com/xtaci/smux"
 )
+
+var TunnelHTTPUserAgent = "Liner/" + version + " (" + runtime.GOOS + "; " + runtime.GOARCH + "; " + runtime.Version() + ") " + "yamux/v5"
 
 func (h *TunnelHandler) h1tunnel(ctx context.Context, dialer string) (net.Listener, error) {
 	log.Info().Str("dialer", dialer).Msg("connecting tunnel host")
@@ -128,7 +131,7 @@ func (h *TunnelHandler) h1tunnel(ctx context.Context, dialer string) (net.Listen
 	buf = buf.Str("GET ").Str(HTTPWellknownBase64PathPrefix).Base64(s2b(HTTPTunnelReverseTCPPathPrefix + targetHost + "/" + targetPort + "/")).Str(" HTTP/1.1\r\n")
 	buf = buf.Str("Host: ").Str(u.Hostname()).Str("\r\n")
 	buf = buf.Str("Authorization: Basic ").Base64(AppendableBytes(make([]byte, 0, 128)).Str(u.User.Username()).Byte(':').Str(first(u.User.Password()))).Str("\r\n")
-	buf = buf.Str("User-Agent: ").Str(DefaultUserAgent).Str("\r\n")
+	buf = buf.Str("User-Agent: ").Str(TunnelHTTPUserAgent).Str("\r\n")
 	switch u.Scheme {
 	case "ws", "wss":
 		buf = buf.Str("Connection: Upgrade\r\n")
@@ -201,21 +204,28 @@ func (h *TunnelHandler) h1tunnel(ctx context.Context, dialer string) (net.Listen
 		}
 	}
 
-	session, err := smux.Server(conn, &smux.Config{
-		Version:           2,
-		KeepAliveInterval: 10 * time.Second,
-		KeepAliveTimeout:  30 * time.Second,
-		MaxFrameSize:      32768,
-		MaxReceiveBuffer:  4194304,
-		MaxStreamBuffer:   2097152,
-	})
+	session, err := yamux.Server(conn, &yamux.Config{
+		AcceptBacklog:           256,
+		PingBacklog:             32,
+		EnableKeepAlive:         true,
+		KeepAliveInterval:       30 * time.Second,
+		MeasureRTTInterval:      30 * time.Second,
+		ConnectionWriteTimeout:  10 * time.Second,
+		MaxIncomingStreams:      1000,
+		InitialStreamWindowSize: 256 * 1024,
+		MaxStreamWindowSize:     16 * 1024 * 1024,
+		LogOutput:               SlogWriter{Logger: log.DefaultLogger.Slog()},
+		ReadBufSize:             4096,
+		MaxMessageSize:          64 * 1024,
+		WriteCoalesceDelay:      100 * time.Microsecond,
+	}, nil)
 	if err != nil {
 		_ = conn.Close()
-		return nil, fmt.Errorf("tunnel: open smux server on remote %s: %w", h.Config.RemoteListen[0], err)
+		return nil, fmt.Errorf("tunnel: open mux server on remote %s: %w", h.Config.RemoteListen[0], err)
 	}
 
 	return &TunnelListener{
-		Listener: &SmuxSessionListener{session},
+		Listener: &MuxSessionListener{session},
 		closer:   conn,
 		ctx:      nil,
 	}, nil
