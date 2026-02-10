@@ -35,6 +35,7 @@ require (
 	github.com/kr/fs v0.1.0 // indirect
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
+	github.com/xtaci/smux v1.5.56 // indirect
 	go.uber.org/mock v0.6.0 // indirect
 	golang.org/x/term v0.39.0 // indirect
 	golang.org/x/text v0.33.0 // indirect
