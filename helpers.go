@@ -755,11 +755,21 @@ func (c *MirrorHeaderConn) Read(b []byte) (n int, err error) {
 	return
 }
 
+var _ MemoryDialerSession = (*yamux.Session)(nil)
+
+type MemoryDialerSession interface {
+	Open(context.Context) (net.Conn, error)
+	Close() error
+	Ping() (time.Duration, error)
+	LocalAddr() net.Addr
+	RemoteAddr() net.Addr
+}
+
 var _ Dialer = (*MemoryDialer)(nil)
 
 type MemoryDialer struct {
 	Address   string
-	Session   *yamux.Session
+	Session   MemoryDialerSession
 	CreatedAt int64
 }
 
@@ -775,7 +785,7 @@ func (d *MemoryDialer) DialContext(ctx context.Context, network, address string)
 		return nil, net.InvalidAddrError("memory dialer network mismatched: " + address + " != " + d.Address)
 	}
 
-	return d.Session.OpenStream(ctx)
+	return d.Session.Open(ctx)
 }
 
 var _ net.Listener = (*MemoryListener)(nil)
