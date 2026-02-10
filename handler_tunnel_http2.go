@@ -94,7 +94,7 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialer string) (net.Listen
 	req.ContentLength = -1
 	req.Header.Set(":protocol", "websocket")
 	req.Header.Set("content-type", "application/octet-stream")
-	req.Header.Set("user-agent", TunnelHTTPUserAgent)
+	req.Header.Set("user-agent", TunnelUserAgent)
 	if u.User != nil {
 		req.Header.Set("authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(u.User.Username()+":"+first(u.User.Password()))))
 	}

@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -15,6 +16,8 @@ import (
 	"github.com/libp2p/go-yamux/v5"
 	"github.com/phuslu/log"
 )
+
+var TunnelUserAgent = "Liner/" + version + " (" + runtime.GOOS + "; " + runtime.GOARCH + "; " + runtime.Version() + ") " + "yamux/v5"
 
 type TunnelHandler struct {
 	Config          TunnelConfig

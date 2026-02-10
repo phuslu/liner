@@ -12,15 +12,12 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
-	"runtime"
 	"strconv"
 	"time"
 
 	"github.com/libp2p/go-yamux/v5"
 	"github.com/phuslu/log"
 )
-
-var TunnelHTTPUserAgent = "Liner/" + version + " (" + runtime.GOOS + "; " + runtime.GOARCH + "; " + runtime.Version() + ") " + "yamux/v5"
 
 func (h *TunnelHandler) h1tunnel(ctx context.Context, dialer string) (net.Listener, error) {
 	log.Info().Str("dialer", dialer).Msg("connecting tunnel host")
@@ -131,7 +128,7 @@ func (h *TunnelHandler) h1tunnel(ctx context.Context, dialer string) (net.Listen
 	buf = buf.Str("GET ").Str(HTTPWellknownBase64PathPrefix).Base64(s2b(HTTPTunnelReverseTCPPathPrefix + targetHost + "/" + targetPort + "/")).Str(" HTTP/1.1\r\n")
 	buf = buf.Str("Host: ").Str(u.Hostname()).Str("\r\n")
 	buf = buf.Str("Authorization: Basic ").Base64(AppendableBytes(make([]byte, 0, 128)).Str(u.User.Username()).Byte(':').Str(first(u.User.Password()))).Str("\r\n")
-	buf = buf.Str("User-Agent: ").Str(TunnelHTTPUserAgent).Str("\r\n")
+	buf = buf.Str("User-Agent: ").Str(TunnelUserAgent).Str("\r\n")
 	switch u.Scheme {
 	case "ws", "wss":
 		buf = buf.Str("Connection: Upgrade\r\n")

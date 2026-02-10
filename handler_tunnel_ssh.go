@@ -37,6 +37,7 @@ func (h *TunnelHandler) sshtunnel(ctx context.Context, dialer string) (net.Liste
 		Auth: []ssh.AuthMethod{
 			ssh.Password(first(u.User.Password())),
 		},
+		ClientVersion:   TunnelUserAgent,
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 		Timeout:         60 * time.Second,
 	}
