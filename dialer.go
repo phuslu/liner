@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/puzpuzpuz/xsync/v4"
 )
 
 type Dialer interface {
@@ -70,14 +72,12 @@ func (d *LocalDialer) dialContext(ctx context.Context, network, address string, 
 		return (&net.Dialer{}).DialContext(ctx, network, address)
 	}
 
-	if m, ok := ctx.Value(DialerMemoryDialersContextKey).(*sync.Map); ok && m != nil {
-		if v, ok := m.Load(address); ok && d != nil {
-			if md, ok := v.(*MemoryDialer); ok && md != nil {
-				if d.Logger != nil {
-					d.Logger.Info("local dialer dialing to memory dialer", "memory_dialer_address", md.Address)
-				}
-				return md.DialContext(ctx, network, address)
+	if m, ok := ctx.Value(DialerMemoryDialersContextKey).(*xsync.Map[string, *MemoryDialer]); ok && m != nil {
+		if md, ok := m.Load(address); ok && md != nil {
+			if d.Logger != nil {
+				d.Logger.Info("local dialer dialing to memory dialer", "memory_dialer_address", md.Address)
 			}
+			return md.DialContext(ctx, network, address)
 		}
 	}
 

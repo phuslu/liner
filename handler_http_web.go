@@ -7,17 +7,17 @@ import (
 	"net/http/pprof"
 	"strconv"
 	"strings"
-	"sync"
 	"text/template"
 
 	"github.com/phuslu/log"
+	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/smallnest/ringbuffer"
 )
 
 type HTTPWebHandler struct {
 	Config          HTTPConfig
 	DnsResolverPool *DnsResolverPool
-	MemoryDialers   *sync.Map
+	MemoryDialers   *xsync.Map[string, *MemoryDialer]
 	MemoryLogWriter *ringbuffer.RingBuffer
 	Transport       *http.Transport
 	Functions       template.FuncMap

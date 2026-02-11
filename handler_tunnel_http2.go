@@ -12,11 +12,11 @@ import (
 	"net/http"
 	"net/http/httptrace"
 	"net/url"
-	"sync"
 	"time"
 
 	"github.com/libp2p/go-yamux/v5"
 	"github.com/phuslu/log"
+	"github.com/puzpuzpuz/xsync/v4"
 	utls "github.com/refraction-networking/utls"
 	"github.com/smallnest/ringbuffer"
 	"golang.org/x/net/http2"
@@ -39,11 +39,9 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialer string) (net.Listen
 		DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
 			hostport := net.JoinHostPort(u.Hostname(), cmp.Or(u.Port(), "443"))
 			dialer := h.LocalDialer
-			if m, ok := ctx.Value(DialerMemoryDialersContextKey).(*sync.Map); ok && m != nil {
-				if d, ok := m.Load(hostport); ok && d != nil {
-					if md, ok := d.(*MemoryDialer); ok && md != nil {
-						dialer = md
-					}
+			if m, ok := ctx.Value(DialerMemoryDialersContextKey).(*xsync.Map[string, *MemoryDialer]); ok && m != nil {
+				if md, ok := m.Load(hostport); ok && md != nil {
+					dialer = md
 				}
 			}
 			if dialer == nil {

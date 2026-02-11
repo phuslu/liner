@@ -12,11 +12,11 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/libp2p/go-yamux/v5"
 	"github.com/phuslu/log"
+	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/xtaci/smux"
 	"go4.org/netipx"
 )
@@ -24,7 +24,7 @@ import (
 type HTTPTunnelHandler struct {
 	Config        HTTPConfig
 	TunnelLogger  log.Logger
-	MemoryDialers *sync.Map // map[string]*MemoryDialer
+	MemoryDialers *xsync.Map[string, *MemoryDialer]
 
 	userchecker AuthUserChecker
 	listens     *netipx.IPSet
@@ -344,11 +344,11 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 
 	err = <-exit
 
-	if v, ok := h.MemoryDialers.Load(addrport.String()); ok && v.(*MemoryDialer).CreatedAt == md.CreatedAt {
+	if v, ok := h.MemoryDialers.Load(addrport.String()); ok && v.CreatedAt == md.CreatedAt {
 		log.Info().Str("tunnel_listen", addrport.String()).NetAddr("remote_addr", session.RemoteAddr()).Msg("tunnel delete listener in memory")
-		if v, ok := h.MemoryDialers.LoadAndDelete(addrport.String()); ok && v.(*MemoryDialer).CreatedAt != md.CreatedAt {
+		if v, ok := h.MemoryDialers.LoadAndDelete(addrport.String()); ok && v.CreatedAt != md.CreatedAt {
 			log.Info().Str("tunnel_listen", addrport.String()).NetAddr("remote_addr", session.RemoteAddr()).Msg("tunnel return listener in memory")
-			h.MemoryDialers.Store(addrport.String(), v.(*MemoryDialer))
+			h.MemoryDialers.Store(addrport.String(), v)
 		}
 	}
 

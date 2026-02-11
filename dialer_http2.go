@@ -19,6 +19,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/puzpuzpuz/xsync/v4"
 	utls "github.com/refraction-networking/utls"
 	"github.com/smallnest/ringbuffer"
 	"golang.org/x/net/http2"
@@ -53,14 +54,12 @@ func (d *HTTP2Dialer) DialContext(ctx context.Context, network, addr string) (ne
 			DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
 				hostport := net.JoinHostPort(d.Host, cmp.Or(d.Port, "443"))
 				dialer := d.Dialer
-				if m, ok := ctx.Value(DialerMemoryDialersContextKey).(*sync.Map); ok && m != nil {
-					if v, ok := m.Load(hostport); ok && d != nil {
-						if md, ok := v.(*MemoryDialer); ok && md != nil {
-							if d.Logger != nil {
-								d.Logger.Info("http2 dialer switch to memory dialer", "memory_dialer_address", md.Address)
-							}
-							dialer = md
+				if m, ok := ctx.Value(DialerMemoryDialersContextKey).(*xsync.Map[string, *MemoryDialer]); ok && m != nil {
+					if md, ok := m.Load(hostport); ok && md != nil {
+						if d.Logger != nil {
+							d.Logger.Info("http2 dialer switch to memory dialer", "memory_dialer_address", md.Address)
 						}
+						dialer = md
 					}
 				}
 				if dialer == nil {

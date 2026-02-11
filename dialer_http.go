@@ -18,6 +18,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"github.com/puzpuzpuz/xsync/v4"
 )
 
 var _ Dialer = (*HTTPDialer)(nil)
@@ -99,20 +101,18 @@ func (d *HTTPDialer) DialContext(ctx context.Context, network, addr string) (net
 	}
 
 	dialer := d.Dialer
-	if m, ok := ctx.Value(DialerMemoryDialersContextKey).(*sync.Map); ok && m != nil {
-		if v, ok := m.Load(hostport); ok && d != nil {
-			if md, ok := v.(*MemoryDialer); ok && md != nil {
-				if d.Logger != nil {
-					d.Logger.Info("http dialer switch to memory dialer", "memory_dialer_address", md.Address)
-				}
-				if addrport, err := netip.ParseAddrPort(addr); err == nil {
-					if DailerReservedIPPrefix.Contains(addrport.Addr()) {
-						// Target is a memory address, skip HTTP CONNECT
-						return md.DialContext(ctx, network, hostport)
-					}
-				}
-				dialer = md
+	if m, ok := ctx.Value(DialerMemoryDialersContextKey).(*xsync.Map[string, *MemoryDialer]); ok && m != nil {
+		if md, ok := m.Load(hostport); ok && md != nil {
+			if d.Logger != nil {
+				d.Logger.Info("http dialer switch to memory dialer", "memory_dialer_address", md.Address)
 			}
+			if addrport, err := netip.ParseAddrPort(addr); err == nil {
+				if DailerReservedIPPrefix.Contains(addrport.Addr()) {
+					// Target is a memory address, skip HTTP CONNECT
+					return md.DialContext(ctx, network, hostport)
+				}
+			}
+			dialer = md
 		}
 	}
 

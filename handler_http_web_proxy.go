@@ -15,17 +15,17 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"text/template"
 
 	"github.com/mileusna/useragent"
 	"github.com/phuslu/log"
+	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/valyala/bytebufferpool"
 )
 
 type HTTPWebProxyHandler struct {
-	MemoryDialers *sync.Map // map[string]*MemoryDialer
+	MemoryDialers *xsync.Map[string, *MemoryDialer]
 	Transport     *http.Transport
 	Functions     template.FuncMap
 	Pass          string
