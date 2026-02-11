@@ -250,7 +250,7 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		if err != nil {
 			return nil, err
 		}
-		return &SmuxMemoryDialerSession{mux}, nil
+		return &MemoryDialerSessionAdapterSmux{mux}, nil
 	}()
 	if err != nil {
 		log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Msg("tunnel open mux session error")
@@ -372,28 +372,4 @@ func (c *AutoCloseConn) Write(b []byte) (n int, err error) {
 		return 0, cmp.Or(c.Conn.Close(), net.ErrClosed)
 	}
 	return c.Conn.Write(b)
-}
-
-type SmuxMemoryDialerSession struct {
-	Session *smux.Session
-}
-
-func (s *SmuxMemoryDialerSession) Open(context.Context) (net.Conn, error) {
-	return s.Session.OpenStream()
-}
-
-func (s *SmuxMemoryDialerSession) Close() error {
-	return s.Session.Close()
-}
-
-func (s *SmuxMemoryDialerSession) Ping() (time.Duration, error) {
-	return 0, errors.ErrUnsupported
-}
-
-func (s *SmuxMemoryDialerSession) LocalAddr() net.Addr {
-	return s.Session.LocalAddr()
-}
-
-func (s *SmuxMemoryDialerSession) RemoteAddr() net.Addr {
-	return s.Session.RemoteAddr()
 }

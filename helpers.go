@@ -40,6 +40,7 @@ import (
 	"github.com/quic-go/quic-go"
 	"github.com/smallnest/ringbuffer"
 	"github.com/valyala/bytebufferpool"
+	"github.com/xtaci/smux"
 	"golang.org/x/crypto/chacha20"
 	"golang.org/x/crypto/ocsp"
 	"golang.org/x/crypto/ssh"
@@ -755,14 +756,26 @@ func (c *MirrorHeaderConn) Read(b []byte) (n int, err error) {
 	return
 }
 
-var _ MemoryDialerSession = (*yamux.Session)(nil)
-
 type MemoryDialerSession interface {
 	Open(context.Context) (net.Conn, error)
-	Close() error
 	Ping() (time.Duration, error)
+	Close() error
 	LocalAddr() net.Addr
 	RemoteAddr() net.Addr
+}
+
+var _ MemoryDialerSession = (*yamux.Session)(nil)
+
+var _ MemoryDialerSession = (*MemoryDialerSessionAdapterSmux)(nil)
+
+type MemoryDialerSessionAdapterSmux struct{ *smux.Session }
+
+func (s *MemoryDialerSessionAdapterSmux) Open(context.Context) (net.Conn, error) {
+	return s.Session.OpenStream()
+}
+
+func (s *MemoryDialerSessionAdapterSmux) Ping() (time.Duration, error) {
+	return 0, errors.ErrUnsupported
 }
 
 var _ Dialer = (*MemoryDialer)(nil)
