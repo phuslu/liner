@@ -218,7 +218,7 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 
 	conn = &AutoCloseConn{
 		Conn:    conn,
-		CloseAt: time.Now().Add(time.Duration(8+fastrandn(4)) * time.Hour),
+		CloseAt: time.Now().Add(time.Duration(72000+fastrandn(14400)) * time.Second),
 	}
 
 	session, err := func() (MemoryDialerSession, error) {
