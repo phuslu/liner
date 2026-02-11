@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/phuslu/log"
+	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/smallnest/ringbuffer"
 )
 
@@ -18,7 +18,7 @@ type HTTPWebLogtailHandler struct {
 	MemoryLogWriter *ringbuffer.RingBuffer
 
 	userchecker AuthUserChecker
-	clients     *sync.Map // map[*http.Request]http.ResponseWriter
+	clients     *xsync.Map[*http.Request, http.ResponseWriter]
 }
 
 func (h *HTTPWebLogtailHandler) Load() error {
@@ -32,7 +32,7 @@ func (h *HTTPWebLogtailHandler) Load() error {
 		h.userchecker = &AuthUserLoadChecker{loader}
 	}
 
-	h.clients = new(sync.Map)
+	h.clients = xsync.NewMap[*http.Request, http.ResponseWriter]()
 	go h.broadcast()
 
 	return nil
@@ -51,9 +51,7 @@ func (h *HTTPWebLogtailHandler) broadcast() {
 			return
 		}
 		buf = buf[:n]
-		h.clients.Range(func(key, value any) bool {
-			rw := value.(http.ResponseWriter)
-			// req := key.(*http.Request)
+		h.clients.Range(func(req *http.Request, rw http.ResponseWriter) bool {
 			// level := log.ParseLevel(cmp.Or(req.URL.Query().Get("level"), "info"))
 			fmt.Fprint(rw, string(buf))
 			http.NewResponseController(rw).Flush()
