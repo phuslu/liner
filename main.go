@@ -23,7 +23,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -463,7 +462,7 @@ func main() {
 		DeferAccept: true,
 	}
 
-	memoryListeners := new(sync.Map)
+	memoryListeners := xsync.NewMap[string, *MemoryListener]()
 	for _, sshConfig := range config.Ssh {
 		for _, listen := range sshConfig.Listen {
 			memoryListeners.Store(listen, nil)

@@ -10,7 +10,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/puzpuzpuz/xsync/v4"
@@ -81,14 +80,12 @@ func (d *LocalDialer) dialContext(ctx context.Context, network, address string, 
 		}
 	}
 
-	if m, ok := ctx.Value(DialerMemoryListenersContextKey).(*sync.Map); ok && m != nil {
-		if v, ok := m.Load(address); ok && d != nil {
-			if ml, ok := v.(*MemoryListener); ok && ml != nil {
-				if d.Logger != nil {
-					d.Logger.Info("local dialer dialing memory listener", "memory_listener_address", ml.Address)
-				}
-				return ml.OpenConn(), nil
+	if m, ok := ctx.Value(DialerMemoryListenersContextKey).(*xsync.Map[string, *MemoryListener]); ok && m != nil {
+		if ml, ok := m.Load(address); ok && ml != nil {
+			if d.Logger != nil {
+				d.Logger.Info("local dialer dialing memory listener", "memory_listener_address", ml.Address)
 			}
+			return ml.OpenConn(), nil
 		}
 	}
 

@@ -10,18 +10,18 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/libp2p/go-yamux/v5"
 	"github.com/phuslu/log"
+	"github.com/puzpuzpuz/xsync/v4"
 )
 
 var TunnelUserAgent = "Liner/" + version + " (" + runtime.GOOS + "; " + runtime.GOARCH + "; " + runtime.Version() + ") " + "yamux/v5"
 
 type TunnelHandler struct {
 	Config          TunnelConfig
-	MemoryListeners *sync.Map // map[string]*MemoryListener
+	MemoryListeners *xsync.Map[string, *MemoryListener]
 	DnsResolver     *DnsResolver
 	LocalDialer     Dialer
 	Dialers         map[string]string
@@ -109,10 +109,9 @@ func (h *TunnelHandler) Serve(ctx context.Context) {
 
 func (h *TunnelHandler) handle(ctx context.Context, rconn net.Conn, laddr string) {
 	if h.MemoryListeners != nil {
-		if v, ok := h.MemoryListeners.Load(h.Config.ProxyPass); ok && v != nil {
-			ln, _ := v.(*MemoryListener)
-			log.Info().NetAddr("remote_host", rconn.RemoteAddr()).NetAddr("local_addr", ln.Addr()).Msg("tunnel handler memory listener local addr")
-			ln.SendConn(rconn)
+		if ml, ok := h.MemoryListeners.Load(h.Config.ProxyPass); ok && ml != nil {
+			log.Info().NetAddr("remote_host", rconn.RemoteAddr()).NetAddr("local_addr", ml.Addr()).Msg("tunnel handler memory listener local addr")
+			ml.SendConn(rconn)
 			return
 		}
 	}
