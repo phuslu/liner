@@ -320,7 +320,7 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		seconds := 5 + fastrandn(30)
 		for {
 			time.Sleep(time.Duration(seconds) * time.Second)
-			rtt, err := session.Ping()
+			rtt, err := session.Ping(ctx)
 			switch {
 			case count == 3:
 				exit <- err

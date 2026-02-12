@@ -771,7 +771,7 @@ func (s *MuxSession) OpenConn(ctx context.Context) (net.Conn, error) {
 	return nil, errors.ErrUnsupported
 }
 
-func (s *MuxSession) Ping() (time.Duration, error) {
+func (s *MuxSession) Ping(_ context.Context) (time.Duration, error) {
 	switch {
 	case s.YamuxSession != nil:
 		return s.YamuxSession.Ping()
