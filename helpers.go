@@ -761,7 +761,7 @@ type MuxSession struct {
 	SmuxSession  *smux.Session
 }
 
-func (s *MuxSession) Open(ctx context.Context) (net.Conn, error) {
+func (s *MuxSession) OpenConn(ctx context.Context) (net.Conn, error) {
 	switch {
 	case s.YamuxSession != nil:
 		return s.YamuxSession.Open(ctx)
@@ -837,7 +837,7 @@ func (d *MemoryDialer) DialContext(ctx context.Context, network, address string)
 		return nil, net.InvalidAddrError("memory dialer network mismatched: " + address + " != " + d.Address)
 	}
 
-	return d.Session.Open(ctx)
+	return d.Session.OpenConn(ctx)
 }
 
 var _ net.Listener = (*MemoryListener)(nil)

@@ -287,7 +287,7 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 				continue
 			}
 
-			lconn, err := session.Open(ctx)
+			lconn, err := session.OpenConn(ctx)
 			if err != nil {
 				log.Error().Err(err).Msg("failed to open local session")
 				exit <- err
