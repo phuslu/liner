@@ -221,9 +221,10 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		CloseAt: time.Now().Add(time.Duration(72000+fastrandn(14400)) * time.Second),
 	}
 
-	session, err := func() (MemoryDialerSession, error) {
-		if strings.Contains(req.UserAgent(), " yamux/") {
-			return yamux.Client(conn, &yamux.Config{
+	session, err := func() (*MuxSession, error) {
+		switch {
+		case strings.Contains(req.UserAgent(), " yamux/"):
+			client, err := yamux.Client(conn, &yamux.Config{
 				AcceptBacklog:           256,
 				PingBacklog:             32,
 				EnableKeepAlive:         true,
@@ -238,19 +239,24 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 				MaxMessageSize:          64 * 1024,
 				WriteCoalesceDelay:      100 * time.Microsecond,
 			}, nil)
+			if err != nil {
+				return nil, err
+			}
+			return &MuxSession{YamuxSession: client}, nil
+		default:
+			client, err := smux.Client(conn, &smux.Config{
+				Version:           1,
+				KeepAliveInterval: 10 * time.Second,
+				KeepAliveTimeout:  30 * time.Second,
+				MaxFrameSize:      32768,
+				MaxReceiveBuffer:  4194304,
+				MaxStreamBuffer:   65536,
+			})
+			if err != nil {
+				return nil, err
+			}
+			return &MuxSession{SmuxSession: client}, nil
 		}
-		mux, err := smux.Client(conn, &smux.Config{
-			Version:           1,
-			KeepAliveInterval: 10 * time.Second,
-			KeepAliveTimeout:  30 * time.Second,
-			MaxFrameSize:      32768,
-			MaxReceiveBuffer:  4194304,
-			MaxStreamBuffer:   65536,
-		})
-		if err != nil {
-			return nil, err
-		}
-		return &MemoryDialerSessionAdapterSmux{mux}, nil
 	}()
 	if err != nil {
 		log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Msg("tunnel open mux session error")

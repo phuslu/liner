@@ -756,33 +756,66 @@ func (c *MirrorHeaderConn) Read(b []byte) (n int, err error) {
 	return
 }
 
-type MemoryDialerSession interface {
-	Open(context.Context) (net.Conn, error)
-	Ping() (time.Duration, error)
-	Close() error
-	LocalAddr() net.Addr
-	RemoteAddr() net.Addr
+type MuxSession struct {
+	YamuxSession *yamux.Session
+	SmuxSession  *smux.Session
 }
 
-var _ MemoryDialerSession = (*yamux.Session)(nil)
-
-var _ MemoryDialerSession = (*MemoryDialerSessionAdapterSmux)(nil)
-
-type MemoryDialerSessionAdapterSmux struct{ *smux.Session }
-
-func (s *MemoryDialerSessionAdapterSmux) Open(context.Context) (net.Conn, error) {
-	return s.Session.OpenStream()
+func (s *MuxSession) Open(ctx context.Context) (net.Conn, error) {
+	switch {
+	case s.YamuxSession != nil:
+		return s.YamuxSession.Open(ctx)
+	case s.SmuxSession != nil:
+		return s.SmuxSession.OpenStream()
+	}
+	return nil, errors.ErrUnsupported
 }
 
-func (s *MemoryDialerSessionAdapterSmux) Ping() (time.Duration, error) {
+func (s *MuxSession) Ping() (time.Duration, error) {
+	switch {
+	case s.YamuxSession != nil:
+		return s.YamuxSession.Ping()
+	case s.SmuxSession != nil:
+		return 0, errors.ErrUnsupported
+	}
 	return 0, errors.ErrUnsupported
+}
+
+func (s *MuxSession) Close() error {
+	switch {
+	case s.YamuxSession != nil:
+		return s.YamuxSession.Close()
+	case s.SmuxSession != nil:
+		return s.SmuxSession.Close()
+	}
+	return errors.ErrUnsupported
+}
+
+func (s *MuxSession) LocalAddr() net.Addr {
+	switch {
+	case s.YamuxSession != nil:
+		return s.YamuxSession.LocalAddr()
+	case s.SmuxSession != nil:
+		return s.SmuxSession.LocalAddr()
+	}
+	return nil
+}
+
+func (s *MuxSession) RemoteAddr() net.Addr {
+	switch {
+	case s.YamuxSession != nil:
+		return s.YamuxSession.RemoteAddr()
+	case s.SmuxSession != nil:
+		return s.SmuxSession.RemoteAddr()
+	}
+	return nil
 }
 
 var _ Dialer = (*MemoryDialer)(nil)
 
 type MemoryDialer struct {
 	Address   string
-	Session   MemoryDialerSession
+	Session   *MuxSession
 	CreatedAt int64
 }
 
