@@ -776,7 +776,13 @@ func (s *MuxSession) Ping() (time.Duration, error) {
 	case s.YamuxSession != nil:
 		return s.YamuxSession.Ping()
 	case s.SmuxSession != nil:
-		return 0, errors.ErrUnsupported
+		start := time.Now()
+		stream, err := s.SmuxSession.OpenStream()
+		if err != nil {
+			return 0, err
+		}
+		defer stream.Close()
+		return time.Since(start) / 2, nil
 	}
 	return 0, errors.ErrUnsupported
 }
