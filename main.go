@@ -546,8 +546,8 @@ func main() {
 				case 0:
 					return [2]string{"", ""}, false
 				case 1:
-					i := strings.Index(s, "*")
-					return [2]string{s[:i], s[i+1:]}, true
+					before, after, _ := strings.Cut(s, "*")
+					return [2]string{before, after}, true
 				default:
 					panic("unsupported server_name: " + s)
 				}
@@ -613,14 +613,14 @@ func main() {
 				case 0:
 					h2handlers[listen].Names[name] = handler
 				case 1:
-					i := strings.IndexByte(name, '*')
+					before, after, _ := strings.Cut(name, "*")
 					h2handlers[listen].Affix = append(h2handlers[listen].Affix, struct {
 						Prefix  string
 						Suffix  string
 						Handler HTTPHandler
 					}{
-						Prefix:  name[:i],
-						Suffix:  name[i+1:],
+						Prefix:  before,
+						Suffix:  after,
 						Handler: handler,
 					})
 				default:
@@ -631,7 +631,6 @@ func main() {
 	}
 
 	for addr, handlers := range h2handlers {
-		addr, handlers := addr, handlers
 
 		var ln net.Listener
 
@@ -772,8 +771,8 @@ func main() {
 				case 0:
 					return [2]string{"", ""}, false
 				case 1:
-					i := strings.Index(s, "*")
-					return [2]string{s[:i], s[i+1:]}, true
+					before, after, _ := strings.Cut(s, "*")
+					return [2]string{before, after}, true
 				default:
 					panic("unsupported server_name: " + s)
 				}
@@ -810,7 +809,6 @@ func main() {
 	}
 
 	for addr, handler := range h1handlers {
-		addr, handler := addr, handler
 
 		server := &http.Server{
 			Handler:   handler.HTTPHandler,
