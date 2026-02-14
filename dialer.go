@@ -31,6 +31,15 @@ var (
 	DialerMemoryListenersContextKey any = &DialerContextKey{"dailer-memory-listeners"}
 )
 
+func MemoryDialerOf(ctx context.Context, network, address string) *MemoryDialer {
+	if mds, ok := ctx.Value(DialerMemoryDialersContextKey).(*xsync.Map[string, *MemoryDialer]); ok && mds != nil {
+		if md, ok := mds.Load(address); ok && md != nil {
+			return md
+		}
+	}
+	return nil
+}
+
 var DailerReservedIPPrefix = netip.MustParsePrefix("240.0.0.0/8")
 
 var _ Dialer = (*LocalDialer)(nil)
@@ -71,13 +80,11 @@ func (d *LocalDialer) dialContext(ctx context.Context, network, address string, 
 		return (&net.Dialer{}).DialContext(ctx, network, address)
 	}
 
-	if m, ok := ctx.Value(DialerMemoryDialersContextKey).(*xsync.Map[string, *MemoryDialer]); ok && m != nil {
-		if md, ok := m.Load(address); ok && md != nil {
-			if d.Logger != nil {
-				d.Logger.Info("local dialer dialing to memory dialer", "memory_dialer_address", md.Address)
-			}
-			return md.DialContext(ctx, network, address)
+	if md := MemoryDialerOf(ctx, network, address); md != nil {
+		if d.Logger != nil {
+			d.Logger.Info("local dialer dialing to memory dialer", "memory_dialer_address", md.Address)
 		}
+		return md.DialContext(ctx, network, address)
 	}
 
 	if m, ok := ctx.Value(DialerMemoryListenersContextKey).(*xsync.Map[string, *MemoryListener]); ok && m != nil {

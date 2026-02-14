@@ -11,7 +11,6 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/puzpuzpuz/xsync/v4"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
 )
@@ -68,13 +67,11 @@ func (d *SSHDialer) DialContext(ctx context.Context, network, addr string) (net.
 		}
 		hostport := net.JoinHostPort(d.Host, cmp.Or(d.Port, "22"))
 		dialer := d.Dialer
-		if m, ok := ctx.Value(DialerMemoryDialersContextKey).(*xsync.Map[string, *MemoryDialer]); ok && m != nil {
-			if md, ok := m.Load(hostport); ok && md != nil {
-				if d.Logger != nil {
-					d.Logger.Info("ssh dialer switch to memory dialer", "memory_dialer_address", md.Address)
-				}
-				dialer = md
+		if md := MemoryDialerOf(ctx, network, hostport); md != nil {
+			if d.Logger != nil {
+				d.Logger.Info("ssh dialer switch to memory dialer", "memory_dialer_address", md.Address)
 			}
+			dialer = md
 		}
 		if dialer == nil {
 			dialer = &net.Dialer{Timeout: config.Timeout}

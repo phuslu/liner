@@ -12,8 +12,6 @@ import (
 	"net/netip"
 	"strconv"
 	"time"
-
-	"github.com/puzpuzpuz/xsync/v4"
 )
 
 var _ Dialer = (*SocksDialer)(nil)
@@ -51,19 +49,17 @@ func (d *SocksDialer) dialsocks4(ctx context.Context, network, addr string) (net
 	}
 
 	dialer := d.Dialer
-	if m, ok := ctx.Value(DialerMemoryDialersContextKey).(*xsync.Map[string, *MemoryDialer]); ok && m != nil {
-		if md, ok := m.Load(addr); ok && md != nil {
-			if d.Logger != nil {
-				d.Logger.Info("socks4 dialer switch to memory dialer", "memory_dialer_address", md.Address)
-			}
-			if addrport, err := netip.ParseAddrPort(addr); err == nil {
-				if DailerReservedIPPrefix.Contains(addrport.Addr()) {
-					// Target is a memory address, skip SOCKS CONNECT
-					return md.DialContext(ctx, network, net.JoinHostPort(d.Host, d.Port))
-				}
-			}
-			dialer = md
+	if md := MemoryDialerOf(ctx, network, addr); md != nil {
+		if d.Logger != nil {
+			d.Logger.Info("socks4 dialer switch to memory dialer", "memory_dialer_address", md.Address)
 		}
+		if addrport, err := netip.ParseAddrPort(addr); err == nil {
+			if DailerReservedIPPrefix.Contains(addrport.Addr()) {
+				// Target is a memory address, skip SOCKS CONNECT
+				return md.DialContext(ctx, network, net.JoinHostPort(d.Host, d.Port))
+			}
+		}
+		dialer = md
 	}
 
 	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(d.Host, d.Port))
@@ -162,19 +158,17 @@ func (d *SocksDialer) dialsocks4(ctx context.Context, network, addr string) (net
 
 func (d *SocksDialer) dialsocks5(ctx context.Context, network, addr string) (net.Conn, error) {
 	dialer := d.Dialer
-	if m, ok := ctx.Value(DialerMemoryDialersContextKey).(*xsync.Map[string, *MemoryDialer]); ok && m != nil {
-		if md, ok := m.Load(addr); ok && md != nil {
-			if d.Logger != nil {
-				d.Logger.Info("socks5 dialer switch to memory dialer", "memory_dialer_address", md.Address)
-			}
-			if addrport, err := netip.ParseAddrPort(addr); err == nil {
-				if DailerReservedIPPrefix.Contains(addrport.Addr()) {
-					// Target is a memory address, skip SOCKS CONNECT
-					return md.DialContext(ctx, network, net.JoinHostPort(d.Host, d.Port))
-				}
-			}
-			dialer = md
+	if md := MemoryDialerOf(ctx, network, addr); md != nil {
+		if d.Logger != nil {
+			d.Logger.Info("socks5 dialer switch to memory dialer", "memory_dialer_address", md.Address)
 		}
+		if addrport, err := netip.ParseAddrPort(addr); err == nil {
+			if DailerReservedIPPrefix.Contains(addrport.Addr()) {
+				// Target is a memory address, skip SOCKS CONNECT
+				return md.DialContext(ctx, network, net.JoinHostPort(d.Host, d.Port))
+			}
+		}
+		dialer = md
 	}
 
 	conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(d.Host, d.Port))
