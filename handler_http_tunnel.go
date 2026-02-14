@@ -16,7 +16,6 @@ import (
 
 	"github.com/libp2p/go-yamux/v5"
 	"github.com/phuslu/log"
-	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/xtaci/smux"
 	"go4.org/netipx"
 )
@@ -24,7 +23,7 @@ import (
 type HTTPTunnelHandler struct {
 	Config        HTTPConfig
 	TunnelLogger  log.Logger
-	MemoryDialers *xsync.Map[string, *MemoryDialer]
+	MemoryDialers *MemoryDialers
 
 	userchecker AuthUserChecker
 	listens     *netipx.IPSet

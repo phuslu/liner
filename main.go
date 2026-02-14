@@ -474,7 +474,7 @@ func main() {
 		}
 	}
 
-	memoryDialers := xsync.NewMap[string, *MemoryDialer]()
+	memoryDialers := &MemoryDialers{xsync.NewMap[string, *MemoryDialer]()}
 
 	// tls inspector
 	tlsConfigurator := &TLSInspector{

@@ -20,14 +20,13 @@ import (
 
 	"github.com/mileusna/useragent"
 	"github.com/phuslu/log"
-	"github.com/puzpuzpuz/xsync/v4"
 	"golang.org/x/net/publicsuffix"
 )
 
 type HTTPForwardHandler struct {
 	Config          HTTPConfig
 	DataLogger      log.Logger
-	MemoryDialers   *xsync.Map[string, *MemoryDialer]
+	MemoryDialers   *MemoryDialers
 	LocalDialer     *LocalDialer
 	LocalTransport  *http.Transport
 	Dialers         map[string]Dialer

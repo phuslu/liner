@@ -10,14 +10,13 @@ import (
 	"text/template"
 
 	"github.com/phuslu/log"
-	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/smallnest/ringbuffer"
 )
 
 type HTTPWebHandler struct {
 	Config          HTTPConfig
 	DnsResolverPool *DnsResolverPool
-	MemoryDialers   *xsync.Map[string, *MemoryDialer]
+	MemoryDialers   *MemoryDialers
 	MemoryLogWriter *ringbuffer.RingBuffer
 	Transport       *http.Transport
 	Functions       template.FuncMap

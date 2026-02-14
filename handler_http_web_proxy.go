@@ -19,13 +19,12 @@ import (
 
 	"github.com/mileusna/useragent"
 	"github.com/phuslu/log"
-	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/valyala/bytebufferpool"
 )
 
 type HTTPWebProxyHandler struct {
-	MemoryDialers *xsync.Map[string, *MemoryDialer]
+	MemoryDialers *MemoryDialers
 	Transport     *http.Transport
 	Functions     template.FuncMap
 	Pass          string

@@ -53,8 +53,12 @@ func (d *MemoryDialer) DialContext(ctx context.Context, network, address string)
 	return d.Session.OpenConn(ctx)
 }
 
+type MemoryDialers struct {
+	*xsync.Map[string, *MemoryDialer]
+}
+
 func MemoryDialerOf(ctx context.Context, network, address string) *MemoryDialer {
-	if mds, ok := ctx.Value(DialerMemoryDialersContextKey).(*xsync.Map[string, *MemoryDialer]); ok && mds != nil {
+	if mds, ok := ctx.Value(DialerMemoryDialersContextKey).(*MemoryDialers); ok && mds != nil {
 		if md, ok := mds.Load(address); ok && md != nil {
 			return md
 		}
