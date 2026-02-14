@@ -28,7 +28,7 @@ var (
 	DialerMemoryListenersContextKey any = &DialerContextKey{"dailer-memory-listeners"}
 )
 
-var DailerReservedIPPrefix = netip.MustParsePrefix("240.0.0.0/8")
+var MemoryDialerIPPrefix = netip.MustParsePrefix("240.0.0.0/8")
 
 var _ Dialer = (*MemoryDialer)(nil)
 

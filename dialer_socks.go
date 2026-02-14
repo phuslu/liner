@@ -54,7 +54,7 @@ func (d *SocksDialer) dialsocks4(ctx context.Context, network, addr string) (net
 			d.Logger.Info("socks4 dialer switch to memory dialer", "memory_dialer_address", md.Address)
 		}
 		if addrport, err := netip.ParseAddrPort(addr); err == nil {
-			if DailerReservedIPPrefix.Contains(addrport.Addr()) {
+			if MemoryDialerIPPrefix.Contains(addrport.Addr()) {
 				// Target is a memory address, skip SOCKS CONNECT
 				return md.DialContext(ctx, network, net.JoinHostPort(d.Host, d.Port))
 			}
@@ -163,7 +163,7 @@ func (d *SocksDialer) dialsocks5(ctx context.Context, network, addr string) (net
 			d.Logger.Info("socks5 dialer switch to memory dialer", "memory_dialer_address", md.Address)
 		}
 		if addrport, err := netip.ParseAddrPort(addr); err == nil {
-			if DailerReservedIPPrefix.Contains(addrport.Addr()) {
+			if MemoryDialerIPPrefix.Contains(addrport.Addr()) {
 				// Target is a memory address, skip SOCKS CONNECT
 				return md.DialContext(ctx, network, net.JoinHostPort(d.Host, d.Port))
 			}

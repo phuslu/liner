@@ -25,7 +25,7 @@ func (h *TunnelHandler) sshtunnel(ctx context.Context, dialer string) (net.Liste
 	}
 
 	if addrport, err := netip.ParsePrefix(h.Config.RemoteListen[0]); err == nil {
-		if DailerReservedIPPrefix.Contains(addrport.Addr()) {
+		if MemoryDialerIPPrefix.Contains(addrport.Addr()) {
 			return nil, fmt.Errorf("invalid listen_remote address in ssh tunnel: %s", h.Config.RemoteListen[0])
 		}
 	} else {

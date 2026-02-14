@@ -104,7 +104,7 @@ func (d *HTTPDialer) DialContext(ctx context.Context, network, addr string) (net
 			d.Logger.Info("http dialer switch to memory dialer", "memory_dialer_address", md.Address)
 		}
 		if addrport, err := netip.ParseAddrPort(addr); err == nil {
-			if DailerReservedIPPrefix.Contains(addrport.Addr()) {
+			if MemoryDialerIPPrefix.Contains(addrport.Addr()) {
 				// Target is a memory address, skip HTTP CONNECT
 				return md.DialContext(ctx, network, hostport)
 			}

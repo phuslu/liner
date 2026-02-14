@@ -128,7 +128,7 @@ func (d *LocalDialer) dialContext(ctx context.Context, network, address string, 
 
 func (d *LocalDialer) dialSerial(ctx context.Context, network, hostname string, ips []netip.Addr, port uint16, tlsConfig *tls.Config) (conn net.Conn, err error) {
 	for i, ip := range ips {
-		if DailerReservedIPPrefix.Contains(ip) {
+		if MemoryDialerIPPrefix.Contains(ip) {
 			return nil, net.InvalidAddrError("reserved address is unreachable: " + ip.String())
 		}
 
@@ -200,7 +200,7 @@ func (d *LocalDialer) dialParallel(ctx context.Context, network, hostname string
 	lane := make(chan dialResult, level)
 	for i := 0; i < level; i++ {
 		go func(ip netip.Addr, port uint16, tlsConfig *tls.Config) {
-			if DailerReservedIPPrefix.Contains(ip) {
+			if MemoryDialerIPPrefix.Contains(ip) {
 				lane <- dialResult{nil, net.InvalidAddrError("reserved address is unreachable: " + ip.String())}
 				return
 			}
