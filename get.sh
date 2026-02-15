@@ -89,7 +89,7 @@ EOF
 
 cat <<EOF > users.csv
 username,password,speed_limit,allow_client
-user,$(xxd -p -l 3 /dev/urandom),0,1
+user,$(awk 'BEGIN{srand();for(i=0;i<3;i++)printf"%02x",rand()*256;print""}'),0,1
 EOF
 
 if test "$(cat /proc/1/comm)" == "systemd"; then
@@ -122,7 +122,7 @@ elif /sbin/rc-update -V; then
   ${sudo} chmod +x /etc/local.d/10-liner.start
   ${sudo} /etc/local.d/10-liner.start
 else
-  pgrep liner && pkill -9 liner
+  kill -9 $(pidof liner) 2>/dev/null || true
   echo 'while :; do "$@"; sleep 2; done' >keepalive
   (/bin/sh keepalive $(pwd)/liner production.yaml &) </dev/null &>/dev/null
 fi
