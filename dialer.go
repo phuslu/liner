@@ -57,6 +57,13 @@ type MemoryDialers struct {
 	*xsync.Map[string, *MemoryDialer]
 }
 
+func MemoryDialersWith(ctx context.Context, mds *MemoryDialers) context.Context {
+	if mds != nil {
+		ctx = context.WithValue(ctx, DialerMemoryDialersContextKey, mds)
+	}
+	return ctx
+}
+
 func MemoryDialerOf(ctx context.Context, network, address string) *MemoryDialer {
 	if mds, ok := ctx.Value(DialerMemoryDialersContextKey).(*MemoryDialers); ok && mds != nil {
 		if md, ok := mds.Load(address); ok && md != nil {

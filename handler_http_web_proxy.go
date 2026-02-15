@@ -141,7 +141,7 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	}
 
 	if h.MemoryDialers != nil {
-		req = req.WithContext(context.WithValue(req.Context(), DialerMemoryDialersContextKey, h.MemoryDialers))
+		req = req.WithContext(MemoryDialersWith(req.Context(), h.MemoryDialers))
 	}
 
 	if protocol := req.Header.Get(":protocol"); protocol != "" && req.ProtoMajor == 2 && req.Method == http.MethodConnect && req.RequestURI[0] == '/' {

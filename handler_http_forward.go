@@ -395,7 +395,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			ctx = context.WithValue(ctx, DialerPreferIPv6ContextKey, struct{}{})
 		}
 		if h.MemoryDialers != nil {
-			ctx = context.WithValue(ctx, DialerMemoryDialersContextKey, h.MemoryDialers)
+			ctx = MemoryDialersWith(ctx, h.MemoryDialers)
 		}
 		if header, _ := ctx.Value(DialerHTTPHeaderContextKey).(http.Header); header != nil {
 			if s := header.Get("x-forwarded-for"); s != "" {
@@ -585,7 +585,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			ctx = context.WithValue(ctx, DialerPreferIPv6ContextKey, struct{}{})
 		}
 		if h.MemoryDialers != nil {
-			ctx = context.WithValue(ctx, DialerMemoryDialersContextKey, h.MemoryDialers)
+			ctx = MemoryDialersWith(ctx, h.MemoryDialers)
 		}
 		req = req.WithContext(ctx)
 
