@@ -50,7 +50,8 @@ func (pool *DnsResolverPool) Get(addr string, ttl time.Duration) (*DnsResolver, 
 			Logger: pool.Logger,
 			Cache:  pool.Cache,
 			Client: &fastdns.Client{
-				Addr: addr,
+				Addr:    addr,
+				Timeout: 5 * time.Second,
 			},
 			CacheDuration: cmp.Or(ttl, 600*time.Second),
 			DisableIPv6:   pool.DisableIPv6,
@@ -151,7 +152,6 @@ func (pool *DnsResolverPool) Get(addr string, ttl time.Duration) (*DnsResolver, 
 			}
 			r.DnsResolver.Client.Dialer = &fastdns.UDPDialer{
 				Addr:     u,
-				Timeout:  3 * time.Second,
 				MaxConns: 8,
 			}
 		}
