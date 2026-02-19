@@ -63,8 +63,8 @@ func (h *HTTPWebDavHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		}
 	}
 
-	if strings.Contains(req.RequestURI, "..") {
-		http.Error(rw, "404 Bad Request: "+req.RequestURI, http.StatusBadRequest)
+	if strings.Contains(req.RequestURI, "../") || strings.Contains(req.RequestURI, "/..") {
+		http.Error(rw, "400 Bad Request: "+req.RequestURI, http.StatusBadRequest)
 		return
 	}
 
