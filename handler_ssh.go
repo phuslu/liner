@@ -258,27 +258,31 @@ func (h *SshHandler) Load() error {
 // ListenAndServe let the server listen and serve.
 func (h *SshHandler) Serve(ctx context.Context, ln net.Listener) error {
 	for {
-		netConn, err := ln.Accept()
+		conn, err := ln.Accept()
 		if err != nil {
 			if h.closed.Load() {
 				return nil
 			}
 			return fmt.Errorf("accept incoming connection: %s", err)
 		}
-		if c, ok := netConn.(*net.TCPConn); ok {
-			c.SetReadBuffer(cmp.Or(h.Config.TcpReadBuffer, 128*1024))
-			c.SetWriteBuffer(cmp.Or(h.Config.TcpWriteBuffer, 128*1024))
+		h.Logger.Info()
+		switch v := conn.(type) {
+		case *net.TCPConn:
+			v.SetReadBuffer(cmp.Or(h.Config.TcpReadBuffer, 128*1024))
+			v.SetWriteBuffer(cmp.Or(h.Config.TcpWriteBuffer, 128*1024))
 			if !h.Config.DisableKeepalive {
-				c.SetKeepAliveConfig(net.KeepAliveConfig{
+				v.SetKeepAliveConfig(net.KeepAliveConfig{
 					Enable:   true,
 					Idle:     15 * time.Second,
 					Interval: 15 * time.Second,
 					Count:    9,
 				})
 			}
+		case *yamux.Stream:
+			break
 		}
 		// Before use, a handshake must be performed on the incoming net.Conn.
-		go h.handleConn(ctx, netConn)
+		go h.handleConn(ctx, conn)
 	}
 }
 
@@ -291,7 +295,7 @@ func (h *SshHandler) handleConn(ctx context.Context, netConn net.Conn) {
 		}
 		return
 	}
-	h.Logger.Printf("New SSH connection from %s (%s)", conn.RemoteAddr(), conn.ClientVersion())
+	h.Logger.Printf("New SSH connection from %T %s (%s)", netConn, conn.RemoteAddr(), conn.ClientVersion())
 	// Discard all global out-of-band Requests
 	go ssh.DiscardRequests(reqs)
 	// Accept all channels
