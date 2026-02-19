@@ -2,9 +2,9 @@
 
 ## Project Overview
 Liner is a high-performance, modular network proxy and tunneling tool developed in Go.
-- **Language**: Go 1.25+
-- **Architecture**: Modular design based on a three-tier "Listen-Handle-Dial" architecture
-- **Core Features**: HTTP/HTTPS/SOCKS5 proxy, intranet penetration, DNS service, SNI routing, GeoIP/GeoSite intelligent traffic splitting
+- **Language**: Go 1.26+
+- **Architecture**: Modular Listen → Handle → Dial pipeline with pluggable building blocks
+- **Core Features**: HTTP/HTTPS/SOCKS5 proxy, tunnel service (client & server), DNS service (UDP/TCP/DoT/DoH/DoQ), SSH server, SNI routing, GeoIP/GeoSite aware traffic splitting, memory listeners for zero-copy hops, real-time log tailing
 
 ## Core Architecture Concepts
 
@@ -24,100 +24,114 @@ Liner's core workflow follows the **Listen -> Handle -> Dial** design pattern:
 ```
 
 ### Core Design Principles
-1. **Modularity**: Each functional module is independently implemented and combined through configuration
-2. **Extensibility**: Flexible combination of multiple protocols and transport methods
-3. **Performance First**: Connection pooling, caching, concurrency optimization
-4. **Intelligent Routing**: Traffic splitting based on GeoIP/GeoSite/Policy
+1. **Modularity**: Each protocol or feature is encapsulated in a dedicated handler/dialer with shared helpers
+2. **Extensibility**: Configuration wires listeners, handlers, dialers, and policy templates to form arbitrary proxy chains
+3. **Performance First**: Parallel dialing, memory listeners, ring-buffer log fan-out, TLS/session caches
+4. **Intelligent Routing**: GeoIP/GeoSite/policy templates steer traffic per request metadata
 
 ## Key Terms and Concepts
 
 ### Listeners
-Responsible for accepting client connections on specified ports:
-- **HTTP/HTTPS**: Support HTTP/1.1, HTTP/2, HTTP/3 (QUIC)
-- **SOCKS5**: SOCKS proxy protocol
-- **SSH**: SSH server
-- **DNS**: DNS service (UDP/TCP/DoT)
-- **Stream**: Generic port forwarding
-- **Tunnel**: Intranet penetration listener
+Responsible for accepting client connections on configured ports or in-memory endpoints:
+- **HTTP/HTTPS**: HTTP/1.1, HTTP/2, HTTP/3 (QUIC) with autocert, custom certificates, per-server TLS toggles and optional PSK wrapping
+- **SOCKS5**: SOCKS proxy (TCP), supports username/password, CSV/JSON/command auth tables, PSK transport encryption
+- **SSH**: Full SSH server with shell, SFTP, remote command execution and port forwarding
+- **DNS**: UDP, TCP, DoT, DoH/DoH3 (quic-go) frontends with caching and policy routing
+- **Stream**: Generic TCP/PSK ingress for port forwarding or proxy protocol targets
+- **Tunnel**: Intranet penetration listener plus remote tunnel clients (HTTP/1/2/3/WebSocket/SSH) using yamux/smux multiplexers
+- **Redsocks**: Transparent TCP proxy (Linux only) for iptables-based interception
+- **MemoryListener**: In-process listener bound to reserved `240.0.0.0/8` addresses for zero-copy wiring between modules
 
 ### Handlers
-Contains specific business logic and protocol processing:
-- **HTTPForwardHandler**: HTTP forward proxy, handles CONNECT method and HTTP forwarding
-- **HTTPWebHandler**: Static file service, WebDAV, DoH, WebShell
-- **HTTPTunnelHandler**: HTTP tunnel protocol handling
-- **SocksHandler**: SOCKS5 protocol handshake and forwarding
-- **SniHandler**: TLS traffic splitting based on SNI
-- **StreamHandler**: Simple TCP port forwarding
-- **SshHandler**: SSH server implementation
-- **DnsHandler**: DNS query processing
+Contain business logic, routing and protocol-specific behavior:
+- **HTTPForwardHandler**: HTTP forward proxy (CONNECT & plaintext), deny-list enforcement, per-user speed limits, auth, TCP congestion hints, per-request dialer selection & logging
+- **HTTPWebHandler**: Hosts multiple sub-handlers such as static index pages, WebDAV, DoH, reverse proxy, WebShell, and Logtail SSE streaming
+  - `handler_http_web_index.go`: Static file/directory serving with templated headers/body
+  - `handler_http_web_dav.go`: WebDAV with AuthUser integration
+  - `handler_http_web_doh.go`: DNS-over-HTTPS resolver backed by fastdns caches
+  - `handler_http_web_proxy.go`: Reverse proxy with header rewriting and failure dumps
+  - `handler_http_web_shell.go`: PTY-backed shell sharing, templated prompts, per-user quotas
+  - `handler_http_web_logtail.go`: Real-time log streaming sourced from the ring buffer (requires `allow_logtail` attribute)
+- **HTTPTunnelHandler**: HTTP tunnel protocol, access control via `auth_table`, listen allowlists and connection logging
+- **SocksHandler**: Implements SOCKS5 handshake, UDP associate, auth, deny domains, IPv6 preferences
+- **SniHandler**: TLS SNI splitter selecting policies/dialers by template decisions
+- **StreamHandler**: Plain TCP port forwarding with optional TLS/PSK and Proxy Protocol parsing
+- **SshHandler**: SSH server (host keys, autocert-like banners, authorized_keys, PTY, SFTP, QUIC multiplexing, env injection)
+- **DnsHandler**: DNS policy engine with template-based routing, logging, UDP/TCP/DoT/DoH handling and caching via fastdns
+- **RedsocksHandler**: Transparent proxy bridging intercepted TCP to configured dialers
+- **TunnelHandler** (`handler_tunnel*.go`): Remote tunnel client orchestrating HTTP/1.1, HTTP/2, HTTP/3, SSH multiplexed listeners and MemoryListener hand-offs
 
 ### Dialers
-Establish connections to upstream servers:
-- **LocalDialer**: Direct local network connection, supports interface binding, IPv4/IPv6 preference
-- **HTTPDialer**: Connect through HTTP/HTTPS proxy
-- **HTTP2Dialer**: Connect through HTTP/2 proxy
-- **HTTP3Dialer**: Connect through HTTP/3 (QUIC) proxy
-- **SocksDialer**: Connect through SOCKS4/SOCKS5 proxy
-- **SSHDialer**: Connect through SSH tunnel
-- **Dialer Chain**: Support multi-layer proxy nesting (e.g., SOCKS over SSH)
+Establish upstream connections, optionally chaining through other dialers:
+- **LocalDialer** (`dialer_local.go`): Direct socket dialing with interface binding, IPv4/IPv6 preference toggles, per-request overrides, DNS resolver integration, parallel dialing and optional TLS client config
+- **HTTPDialer/HTTP2Dialer/HTTP3Dialer**: Forward requests via HTTP/1.1, HTTP/2 or HTTP/3 proxies, support websocket upgrades, header injection, PSK encryption, JA4/TLS fingerprint shaping
+- **SocksDialer**: SOCKS4/SOCKS5 upstream with username/password or PSK, UDP associate, chained authentication
+- **SSHDialer**: Establishes yamux/smux sessions over SSH tunnels with keepalive controls
+- **MemoryDialer**: In-memory net.Conn provider tied to MemoryListener addresses, bypassing kernel networking for tunnels and SSH subsystems
+- **Dialer Chain**: Multi-line `dialer.proxy_chain` config composes dialers from bottom to top (e.g., local → SOCKS → SSH → HTTP3)
 
 ### Core Utility Components
 
-#### GeoResolver (Geolocation Resolver)
-- Integrates MaxMind GeoIP database (country, city, ISP, ASN)
-- Integrates GeoSite domain classification database
-- Provides DNS resolution functionality
-- Cache mechanism optimizes query performance
-- Location: `resolver_geo.go`
+#### DnsResolverPool (`resolver_dns.go`)
+- Builds fastdns clients for UDP, TCP, DoT, DoH/DoH3 endpoints with TLS session caches
+- Shares LRU caches across handlers with per-address TTLs
+- Honors global IPv6 disablement, DoH user-agent overrides and HTTP3 transports
 
-#### TLSInspector (TLS Inspector)
-- TLS handshake information inspection and fingerprinting (JA4)
-- Dynamic certificate management (supports autocert for automatic Let's Encrypt certificates)
-- Intelligent TLS configuration generation to simulate browser fingerprints
-- Location: `tls.go`
+#### GeoResolver (Geolocation Resolver, `resolver_geo.go`)
+- Integrates MaxMind GeoIP (country/city/ASN) and GeoSite domain DBs with template helpers and LRU caches
+- Provides DNS resolution helpers and IPv4/IPv6 aware memory dialers
 
-#### Functions (Template Function Library)
-- Provides dynamic logic functions for use in configuration files
-- Supports routing policies based on GeoIP
-- Supports regular expressions, file reading, HTTP requests, etc.
-- Location: `functions.go`
+#### TLSInspector (`tls.go`)
+- Extracts JA4 fingerprints, inspects TLS ClientHello, handles autocert, multi-cert SNI routing and lets handlers emulate browser stacks
+
+#### Functions (`functions.go`)
+- Template helper library for policies (GeoIP/GeoSite checks, header matching, regex, file reads, HTTP fetches, DNS lookups)
+- Results cached where safe to avoid recomputation
 
 ## Directory Structure
 
 ```
 liner/
-├── main.go                         # Program entry, initialization and startup of all services
-├── config.go                       # Configuration definition and loading (YAML/JSON)
-├── dialer.go                       # Dialer interface and LocalDialer implementation
-├── dialer_http.go                  # HTTP/HTTPS Dialer
-├── dialer_http2.go                 # HTTP/2 Dialer
-├── dialer_http3.go                 # HTTP/3 (QUIC) Dialer
-├── dialer_socks.go                 # SOCKS4/SOCKS5 Dialer
-├── dialer_ssh.go                   # SSH Dialer
-├── handler_http.go                 # HTTP main handler
-├── handler_http_forward.go         # HTTP forward proxy handling
-├── handler_http_tunnel.go          # HTTP tunnel handling
-├── handler_http_web.go             # HTTP Web service foundation
+├── main.go                         # Program entry, service bootstrap, logging, cron, MCP server
+├── config.go                       # Configuration schema, loaders (.d overlay, @file support)
+├── dialer.go                       # Dialer interface, memory dialers/listeners
+├── dialer_local.go                 # LocalDialer implementation and racing logic
+├── dialer_http.go                  # HTTP/1.1 + WebSocket dialer with PSK support
+├── dialer_http2.go                 # HTTP/2 dialer
+├── dialer_http3.go                 # HTTP/3/QUIC dialer
+├── dialer_socks.go                 # SOCKS4/SOCKS5 dialer with PSK
+├── dialer_ssh.go                   # SSH dialer (yamux/smux muxers)
+├── handler_http.go                 # HTTP multiplexer (Forward/Tunnel/Web)
+├── handler_http_forward.go         # HTTP forward proxy logic
+├── handler_http_tunnel.go          # HTTP tunnel protocol handler
+├── handler_http_web.go             # Web handler dispatcher
 ├── handler_http_web_dav.go         # WebDAV implementation
-├── handler_http_web_doh.go         # DNS over HTTPS
-├── handler_http_web_index.go       # Static file service
+├── handler_http_web_doh.go         # DNS over HTTPS service
+├── handler_http_web_index.go       # Static file/directory server
+├── handler_http_web_logtail.go     # Logtail streaming
 ├── handler_http_web_proxy.go       # Reverse proxy
-├── handler_http_web_shell.go       # Web terminal
-├── handler_http_web_fastcgi.go     # FastCGI support
-├── handler_socks.go                # SOCKS5 handler
-├── handler_sni.go                  # SNI routing handler
-├── handler_stream.go               # Port forwarding handler
-├── handler_ssh.go                  # SSH server handler
+├── handler_http_web_shell.go       # WebShell + PTY management
 ├── handler_dns.go                  # DNS server handler
-├── handler_redsocks.go             # Redsocks transparent proxy handler
-├── handler_tunnel_*.go             # Various tunnel protocol implementations
-├── resolver.go                     # DNS resolver foundation
+├── handler_redsocks.go             # Redsocks transparent proxy
+├── handler_sni.go                  # TLS SNI router
+├── handler_socks.go                # SOCKS5 handler
+├── handler_stream.go               # Generic port forwarding handler
+├── handler_ssh.go                  # SSH server handler
+├── handler_tunnel.go               # Tunnel client orchestrator
+├── handler_tunnel_http.go          # HTTP/1.1 tunnel transport
+├── handler_tunnel_http2.go         # HTTP/2 tunnel transport
+├── handler_tunnel_http3.go         # HTTP/3/QUIC tunnel transport
+├── handler_tunnel_ssh.go           # SSH tunnel transport
+├── resolver_dns.go                 # DNS resolver pool + caching
 ├── resolver_geo.go                 # GeoIP/GeoSite resolver
-├── resolver_getter.go              # DNS resolver getter function
-├── tls.go                          # TLS handling and fingerprinting
-├── functions.go                    # Template function library
-├── auth_user.go                    # User authentication
-└── x509.go                         # X.509 certificate handling
+├── resolver_getter.go              # DNS resolver getter helpers
+├── tls.go                          # TLS inspection, autocert, JA4
+├── functions.go                    # Template functions
+├── auth_user.go                    # Auth table loaders/checkers (file/command/hash)
+├── helpers.go                      # Networking helpers, MemoryListener, listener factory
+├── helpers_linux.go / helpers_others.go  # Platform-specific helpers
+├── mime_types.go                   # MIME DB for static serving
+└── x509.go                         # X.509 certificate utilities
 ```
 
 ## Code Patterns and Conventions
@@ -130,8 +144,9 @@ type HTTPHandler interface {
     ServeHTTP(w http.ResponseWriter, r *http.Request)
 }
 
-// Configuration files support YAML and JSON, support .d directory pattern
+// Configuration files support YAML/JSON and `.d` overlay directories
 config, err := NewConfig("config.yaml")
+// Strings beginning with '@' are treated as file includes for policies, headers, etc.
 ```
 
 ### Dialer Interface Specification
@@ -141,48 +156,36 @@ type Dialer interface {
 }
 
 // Dialer chain composition
-underlay := &LocalDialer{...}
-proxy := &SocksDialer{Dialer: underlay, ...}
+underlay := &LocalDialer{DnsResolver: resolver, Interface: "eth0"}
+proxy := &SocksDialer{Dialer: underlay, AuthUser: "foo", AuthPassword: "bar"}
+conn, err := proxy.DialContext(ctx, "tcp", "example.com:443")
 ```
 
-### Handler Loading Pattern
+### Context Keys
 ```go
-handler := &HTTPServerHandler{
-    ForwardHandler: &HTTPForwardHandler{...},
-    TunnelHandler:  &HTTPTunnelHandler{...},
-    WebHandler:     &HTTPWebHandler{...},
-}
-
-// All sub-handlers must call Load()
-for _, h := range []HTTPHandler{
-    handler.ForwardHandler,
-    handler.TunnelHandler,
-    handler.WebHandler,
-    handler,
-} {
-    if err := h.Load(); err != nil {
-        log.Fatal(err)
-    }
-}
-```
-
-### Context Passing Key Information
-```go
-// Context Keys for passing dialer configuration
 var (
     DialerHTTPHeaderContextKey      any = &DialerContextKey{"dailer-http-header"}
     DialerDisableIPv6ContextKey     any = &DialerContextKey{"dailer-disable-ipv6"}
+    DialerPreferIPv6ContextKey      any = &DialerContextKey{"dailer-prefer-ipv6"}
     DialerMemoryDialersContextKey   any = &DialerContextKey{"dailer-memory-dialers"}
+    DialerMemoryListenersContextKey any = &DialerContextKey{"dailer-memory-listeners"}
 )
 
-// Usage example
 ctx = context.WithValue(ctx, DialerDisableIPv6ContextKey, true)
 conn, err := dialer.DialContext(ctx, "tcp", "example.com:80")
 ```
 
+### Memory Dialers / Listeners
+```go
+mds := &MemoryDialers{xsync.NewMap[string, *MemoryDialer]()}
+ctx = MemoryDialersWith(ctx, mds)
+md := &MemoryDialer{Address: "240.1.1.1:10000", Session: muxSession}
+mds.Store(md.Address, md)
+```
+This allows TunnelHandler and LocalDialer to exchange in-process connections without touching the OS stack (`MemoryDialerIPPrefix` = `240.0.0.0/8`).
+
 ### Error Handling
 ```go
-// Unified error handling pattern
 if err != nil {
     log.Error().Err(err).Str("address", addr).Msg("description")
     return fmt.Errorf("operation failed: %w", err)
@@ -193,20 +196,20 @@ if err != nil {
 
 ### Adding a New Dialer
 1. Create `dialer_<protocol>.go` in the root directory
-2. Implement the `Dialer` interface
-3. Add URL scheme parsing in the `dialerof` function in `main.go`
-4. Update configuration documentation
+2. Implement the `Dialer` (and optional TLS) interface
+3. Register URL scheme handling in `dialerof`/`main.go` so configs can reference it
+4. Document configuration syntax and options
 
 ### Adding a New Handler
-1. Create `handler_<feature>.go` in the root directory
-2. Implement the `Load()` method and core logic
-3. Register and start in `main.go`
-4. Add configuration struct in `config.go`
+1. Create `handler_<feature>.go`
+2. Implement `Load()` (for validation, auth table loading, templating) and serving logic
+3. Register it in `main.go` alongside required listeners/dialers
+4. Update `Config` structs in `config.go` and sample configs
 
 ### Adding Routing Policy
-1. Add template functions in `functions.go`
-2. Use Go template syntax in the `policy` field of the configuration file
-3. Access GeoIP, GeoSite, request headers, etc.
+1. Extend `functions.go` with new template helpers
+2. Reference functions inside `policy`/`forward.policy` fields
+3. Policies can inspect GeoIP, GeoSite, request headers, user attributes, JA4, etc.
 
 ### Configuration Examples
 
@@ -216,8 +219,9 @@ http:
   - listen:
       - "0.0.0.0:8080"
     forward:
-      policy: "direct"  # Or use template: {{ if geoip_cn .RemoteAddr }}direct{{ else }}proxy{{ end }}
+      policy: "direct"  # Or template, e.g. {{ if geoip_cn .RemoteAddr }}direct{{ else }}proxy{{ end }}
       dialer: "local"
+      deny_domains_table: "@deny_domains.txt"
 ```
 
 #### SOCKS5 Proxy Configuration
@@ -225,9 +229,11 @@ http:
 socks:
   - listen:
       - "0.0.0.0:1080"
+    psk: "3xamplePSK"         # Optional ChaCha20 layer
     auth_table: "authuser.csv"
     forward:
       dialer: "local"
+      policy: "direct"
 ```
 
 #### Intranet Penetration Configuration
@@ -238,6 +244,8 @@ tunnel:
       - "0.0.0.0:4433"
     server_name: "tunnel.example.com"
     keyfile: "/path/to/key.pem"
+    psks:
+      - "shared-secret"
 ```
 
 #### SNI Routing Configuration
@@ -246,64 +254,82 @@ sni:
   enabled: true
   forward:
     policy: |
-      {{ if geoip_cn .RemoteAddr }}direct{{ else }}proxy{{ end }}
+      {{ if geosite_cn .SNI }}direct{{ else }}proxy{{ end }}
     dialer: "local"
+    log: true
 ```
 
 ## Performance Optimization Features
 
 ### Connection Management
-- TCP Keep-Alive default 30 seconds
-- Connection pool reuse (HTTP/2, SSH)
-- MemoryListener for local inter-module communication
+- LocalDialer parallel dials across IPv4/IPv6 with configurable concurrency, keepalives and interface binding
+- TCP Keep-Alive defaults to 30s, tunable per listener
+- MemoryDialer/MemoryListener pairs bypass kernel networking for tunnels/SSH/streams
+- HTTP/2, HTTP/3 and SSH dialers reuse mux sessions for thousands of streams
 
 ### Caching Mechanisms
-- DNS query result caching
-- GeoIP/GeoSite query result caching (LRU)
-- TLS session caching
-- Template function result caching
+- DNS query caching via `fastdns` + TTL LRU caches sharing across resolvers
+- GeoIP/GeoSite caches (LRU with configurable sizes)
+- TLS ClientHello fingerprint cache, TLS session cache, template function memoization
+- Ring buffer backed log broadcaster feeding HTTP logtail without disk seeks
 
 ### Concurrency Control
-- Goroutine pool management (especially SSH, HTTP/2)
-- Concurrent DNS resolution (IPv4/IPv6)
-- Request rate limiting and traffic control
+- Goroutine pools and context cancellation to avoid leaks
+- Concurrent DNS resolution for IPv4/IPv6 answers
+- Rate limiting hooks (`speed_limit`, `request`, `stream`) enforced via user attributes and handler config
 
 ### Zero-Copy Optimization
-- Use `io.Copy` for efficient data forwarding
-- Configurable buffer sizes
-- TCP congestion control algorithm selection
+- `io.Copy` streaming for TCP forwarding, optional buffer sizing via config
+- MemoryListener/MemoryDialer to avoid kernel loops between tunnel entry and internal handlers
+- Configurable TCP congestion algorithms per forward proxy
 
 ## Important Configuration Items
 
 ### Global Configuration
-- `dns_server`: DNS server (supports DoH/DoT)
-- `geoip_dir`: GeoIP database directory
-- `log_level`: Log level (debug/info/warn/error/discard)
-- `dial_timeout`: Dial timeout duration
-- `max_idle_conns`: Maximum idle connections
-- `tcp_read_buffer`/`tcp_write_buffer`: TCP buffer sizes
+- Logging: `log_dir`, `log_level`, `log_backups`, `log_maxsize`, `log_localtime`, `log_channel_size` control stdout file/async writers feeding the logtail ring buffer
+- Networking: `forbid_local_addr`, `dial_timeout`, `dial_read_buffer`, `dial_write_buffer`, `tcp_read_buffer`, `tcp_write_buffer`, `idle_conn_timeout`, `max_idle_conns`
+- DNS: `dns_server` (supports `udp://`, `tcp://`, `dot://`, `https://`, `http3://`), `dns_cache_duration`, `dns_cache_size`
+- TLS & Certificates: `tls_insecure`, `autocert_dir`, `disable_http3`, plus HTTP server-specific `server_config`
+- Geo: `geoip_dir`, `geoip_cache_size`, `geosite_cache_size`, `disable_geosite`
+- Misc: `set_process_name` (rename process), `cron` array (`spec`, `command`) executed via embedded gosh shell
 
 ### Dialer Configuration
-Supports multi-line configuration, each line represents a proxy layer, building the proxy chain from bottom to top:
+Supports multi-line configuration where each line is one proxy layer (built bottom-up):
 ```yaml
 dialer:
   proxy_chain: |
-    local://eth0
+    local://eth0?disable_ipv6=1
     socks5://user:pass@proxy1.com:1080
-    ssh://user@proxy2.com:22?key=/path/to/key
+    ssh://user@proxy2.com:22?key=/path/to/key&keepalive=10s
+    http3://proxy3.example.com:7443?ja4=chrome&psk=secret
 ```
+Additional per-dialer knobs (time outs, headers, JA4/TLS fingerprints) live inside each scheme's query params.
+
+### HTTP/HTTPS Configuration
+- Listener security: `psk` (ChaCha20 overlay), `server_config` toggles (disable HTTP/2/3/TLS1.1, prefer ChaCha20, OCSP)
+- Forward proxy: `policy`, `auth_table`, `dialer`, `tcp_congestion`, `deny_domains_table`, `speed_limit`, IPv6 toggles, `log`, `io_copy_buffer`, `idle_timeout`
+- Tunnel sub-block: enable per-listen tunnels, `auth_table`, `allow_listens`, `disable_keepalive`
+- Web sub-handlers: `forward_auth`, `dav`, `doh`, `index`, `proxy`, `shell` (command, home, template), `logtail` (requires `allow_logtail=1` attribute)
+
+### SOCKS / Stream / Tunnel / SNI / DNS / SSH
+- **SOCKS**: `psk`, `auth_table`, `deny_domains_table`, IPv6 preferences, speed limits
+- **Stream**: `proxy_protocol`, TLS/PSK, `dialer`, `dial_timeout`, `speed_limit`, logging
+- **Tunnel**: `remote_listen`, `proxy_pass`, `resolver`, `dial_timeout`, `dialer`, `disable_keepalive`, `log`
+- **SNI**: template-driven routing with IPv6 toggles, logging, dialer reference
+- **DNS**: `listen`, optional TLS key pair, `policy`, `proxy_pass`, `cache_size`, `log`
+- **SSH**: `listen`, `server_version`, TCP buffers, keepalive toggle, `banner_file` (Go template), `host_key`, `auth_table`, `authorized_keys`, `shell`, `home`, `env_file`, `log`
 
 ### Authentication Configuration
-- `auth_table`: Supports `user:pass` or `file:///path/to/auth.csv` format
-- CSV format: `username,password,permissions`
+- `auth_table` accepts inline `user:pass`, CSV/JSON files, or external commands (detected automatically); also supports `file:///` URIs via shell quoting
+- Passwords may be stored plaintext, hex (`0x` prefixed) MD5/SHA1/SHA256, bcrypt (`$2y$`), or argon2id
+- Command-based loaders/checkers can return JSON attributes; attributes such as `speed_limit`, `allow_tunnel`, `allow_client`, `allow_webdav`, `allow_logtail`, `allow_ssh` drive handler decisions
 
 ## Debugging and Testing
 
 ### Logging System
-- Main log: Records program runtime status
-- Data log: Records proxy traffic details (requires `forward.log` to be enabled)
-- Error log: Captures panic and error output
-- Supports log rotation and compression
+- Main log + data log + error log with rotation; logs are mirrored into an in-memory ring buffer consumed by `web.logtail`
+- Configure `log_channel_size` to avoid dropping events; set `log_level: discard` for silent runs
+- Trace IDs are attached to DNS/HTTP handlers to correlate events in logs
 
 ### Testing Commands
 ```bash
@@ -323,65 +349,70 @@ go build -ldflags "-X main.version=$(git describe --tags)"
 ## Extension and Integration
 
 ### MCP Server Integration
-Project includes MCP server for configuration file generation:
-- `generate_liner_config`: Generate complete configuration
-- `generate_http_config`: Generate HTTP configuration
-- `generate_dialer_config`: Generate Dialer configuration
-- `validate_liner_config`: Validate configuration correctness
-- See `.mcp.json` for details
+The project exposes MCP server commands for config management:
+- `generate_liner_config` – produce a comprehensive config
+- `generate_http_config` – HTTP module helper
+- `generate_dialer_config` – compose proxy chains
+- `validate_liner_config` – structural validation
+See `.mcp.json` for transport details.
 
 ### Third-Party Library Dependencies
-- `github.com/phuslu/log`: High-performance logging library
-- `github.com/oschwald/maxminddb-golang`: GeoIP database
-- `github.com/phuslu/geosite`: GeoSite domain classification
-- `github.com/quic-go/quic-go`: HTTP/3 (QUIC) support
-- `golang.org/x/net/http2`: HTTP/2 support
+- `github.com/phuslu/log` – structured logging
+- `github.com/phuslu/fastdns` – DNS protocol stack, DoH/DoQ transports
+- `github.com/phuslu/geosite`, `github.com/oschwald/maxminddb-golang/v2` – GeoIP/GeoSite DBs
+- `github.com/puzpuzpuz/xsync/v4` – concurrent maps for dialers, auth tables, logtail clients
+- `github.com/quic-go/quic-go`, `github.com/quic-go/quic-go/http3` – HTTP/3/QUIC transports
+- `github.com/libp2p/go-yamux/v5`, `github.com/xtaci/smux` – tunnel/SSH multiplexers
+- `github.com/refraction-networking/utls` – JA4/TLS fingerprint shaping
+- `github.com/mileusna/useragent` – UA parsing for policy templates
+- `github.com/robfig/cron/v3` – Cron scheduler for background commands
+- `github.com/smallnest/ringbuffer` – in-memory log broadcaster
 
 ## Common Issues and Notes
 
 ### Certificate Management
-- Supports manual certificate configuration (keyfile/certfile)
-- Supports autocert for automatic Let's Encrypt certificate application
-- Supports multi-certificate management based on SNI
+- HTTPS listeners support manual key/cert, autocert, multi-cert `server_config` entries
+- TLS inspector can auto-select certs per SNI and emulate browser JA4 strings; PSK overlays (ChaCha20) require matching keys on dialers/listeners
 
 ### Memory Listener
-- Used for inter-module communication, avoiding network stack overhead
-- Reserved IP range: `240.0.0.0/8`
-- Applicable to Tunnel and SSH modules
+- Reserved IP range `240.0.0.0/8` is used for MemoryDialer/MemoryListener pairs
+- Tunnel/SSH modules inject connections directly into MemoryListener queues, so ensure address uniqueness per module
 
 ### IPv6 Support
-- Supports IPv4/IPv6 dual stack
-- Configurable preference (prefer_ipv6) or disable (disable_ipv6)
-- Concurrent resolution of both address families to improve performance
+- IPv4/IPv6 handled concurrently; `disable_ipv6`, `prefer_ipv6` flags exist globally and per-forward/policy context
+- LocalDialer falls back between address families based on error heuristics
 
 ### Transparent Proxy
-- Redsocks mode supports iptables transparent proxy (Linux only)
-- SNI mode supports TLS traffic splitting (without decryption)
+- Redsocks requires Linux (uses iptables + transparent sockets)
+- SNI handler can steer TLS connections based solely on SNI without decrypting traffic
+
+### Authentication Tables
+- Ensure CSV headers include attribute names required by handlers (e.g., `allow_client`, `speed_limit`)
+- Web logtail demands `allow_logtail=1`; WebDAV/SSH/tunnel respect their respective `allow_*` flags
 
 ## Development Guide
 
 ### Steps to Add New Features
-1. Reference existing implementations (e.g., `handler_http.go`)
-2. Follow naming conventions: `handler_<feature>.go`, `dialer_<protocol>.go`
-3. Implement necessary interfaces (`Load()`, `ServeHTTP()`, etc.)
-4. Register new module in `main.go`
-5. Update configuration structs and documentation
-6. Write test cases
+1. Study similar modules (e.g., HTTP tunnel vs. SSH tunnel) for patterns (Load, Serve, logging)
+2. Name files `handler_<feature>.go` or `dialer_<protocol>.go`
+3. Update `config.go` structs and `NewConfig` merging logic
+4. Register new components in `main.go` (listener setup, goroutines, signal handling)
+5. Document config usage (AGENTS.md/README/tests) and provide sample YAML entries
+6. Add tests (unit or integration) and run `go test ./...`
 
 ### Code Style
-- Follow Go standard library style
-- Use `gofmt` to format code
-- Error handling must be explicit, cannot ignore
-- Exported types and functions must have comments
-- Prefer standard library, reduce third-party dependencies
+- Go 1.26 module, enforce `gofmt`
+- Explicit error handling (no ignored returns)
+- Exported types/functions require comments
+- Prefer standard lib or existing vendored deps
 
 ### Performance Considerations
-- Avoid unnecessary memory allocations
-- Use object pool reuse (e.g., `sync.Pool`)
-- Watch out for goroutine leaks
-- Use context appropriately to control timeouts
-- Use streaming for large data transfers
+- Avoid per-request allocations; reuse buffers and `sync.Pool` (see DNS handler)
+- Guard against goroutine leaks via context cancellation and deadline propagation
+- Use streaming (`io.Copy`) for large transfers, tune buffers via config
+- Use `context` to propagate auth, dialer hints, logging metadata
 
 ## Related Files
-- Configuration examples: `*.yaml` files in project root
-- Build script: `build.bash`, `make.bash`
+- Configuration examples: `*.yaml` in project root (`example.yaml`, `test.yaml`, `phuslu.yaml`)
+- Build scripts: `build.bash`, `make.bash`
+- CLI helper: `gosh.go` (embedded shell used by cron/autop commands)
