@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"net/netip"
 	"net/url"
 	"os"
 	"time"
@@ -24,12 +23,8 @@ func (h *TunnelHandler) sshtunnel(ctx context.Context, dialer string) (net.Liste
 		return nil, fmt.Errorf("no user info in dialer: %s", dialer)
 	}
 
-	if addrport, err := netip.ParsePrefix(h.Config.RemoteListen[0]); err == nil {
-		if MemoryDialerIPPrefix.Contains(addrport.Addr()) {
-			return nil, fmt.Errorf("invalid listen_remote address in ssh tunnel: %s", h.Config.RemoteListen[0])
-		}
-	} else {
-		return nil, fmt.Errorf("invalid listen_remote address in ssh tunnel: %s", h.Config.RemoteListen[0])
+	if IsMemoryAddress(h.Config.RemoteListen[0]) {
+		return nil, fmt.Errorf("invalid remote_listen memory address in ssh tunnel: %s", h.Config.RemoteListen[0])
 	}
 
 	config := &ssh.ClientConfig{

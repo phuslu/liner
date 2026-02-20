@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"net/netip"
+	"strings"
 	"time"
 
 	"github.com/libp2p/go-yamux/v5"
@@ -28,7 +29,16 @@ var (
 	DialerMemoryListenersContextKey any = &DialerContextKey{"dailer-memory-listeners"}
 )
 
-var MemoryDialerIPPrefix = netip.MustParsePrefix("240.0.0.0/8")
+// IsMemoryAddress check ip address is in 240.0.0.0/8
+func IsMemoryAddress[Addr string | netip.Addr](ip Addr) bool {
+	switch v := any(ip).(type) {
+	case string:
+		return strings.HasPrefix(v, "240.")
+	case netip.Addr:
+		return v.Is4() && v.As4()[0] == 240
+	}
+	return false
+}
 
 var _ Dialer = (*MemoryDialer)(nil)
 
