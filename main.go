@@ -529,6 +529,7 @@ func main() {
 			TunnelHandler: &HTTPTunnelHandler{
 				Config:        server,
 				MemoryDialers: memoryDialers,
+				Functions:     functions.FuncMap(),
 			},
 			WebHandler: &HTTPWebHandler{
 				Config:          server,
@@ -754,6 +755,7 @@ func main() {
 			TunnelHandler: &HTTPTunnelHandler{
 				Config:        httpConfig,
 				MemoryDialers: memoryDialers,
+				Functions:     functions.FuncMap(),
 			},
 			WebHandler: &HTTPWebHandler{
 				Config:          httpConfig,

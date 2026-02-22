@@ -43,6 +43,7 @@ type HTTPConfig struct {
 		Enabled          bool     `json:"enabled" yaml:"enabled"`
 		AuthTable        string   `json:"auth_table" yaml:"auth_table"`
 		AllowListens     []string `json:"allow_listens" yaml:"allow_listens"`
+		TcpCongestion    string   `json:"tcp_congestion" yaml:"tcp_congestion"`
 		SpeedLimit       int64    `json:"speed_limit" yaml:"speed_limit"`
 		DisableKeepalive bool     `json:"disable_keepalive" yaml:"disable_keepalive"`
 		Log              bool     `json:"log" yaml:"log"`

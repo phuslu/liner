@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"crypto/sha1"
+	"crypto/tls"
 	"encoding/base64"
 	"errors"
 	"io"
@@ -12,9 +13,11 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/libp2p/go-yamux/v5"
+	"github.com/mileusna/useragent"
 	"github.com/phuslu/log"
 	"github.com/xtaci/smux"
 	"go4.org/netipx"
@@ -24,9 +27,11 @@ type HTTPTunnelHandler struct {
 	Config        HTTPConfig
 	TunnelLogger  log.Logger
 	MemoryDialers *MemoryDialers
+	Functions     template.FuncMap
 
-	userchecker AuthUserChecker
-	listens     *netipx.IPSet
+	userchecker   AuthUserChecker
+	tcpcongestion *template.Template
+	listens       *netipx.IPSet
 }
 
 func (h *HTTPTunnelHandler) Load() error {
@@ -38,6 +43,14 @@ func (h *HTTPTunnelHandler) Load() error {
 		}
 		log.Info().Strs("server_name", h.Config.ServerName).Str("auth_table", table).Int("auth_table_size", len(records)).Msg("load auth_table ok")
 		h.userchecker = &AuthUserLoadChecker{loader}
+	}
+
+	h.Config.Tunnel.TcpCongestion = strings.TrimSpace(h.Config.Tunnel.TcpCongestion)
+	if s := h.Config.Tunnel.TcpCongestion; strings.Contains(s, "{{") {
+		var err error
+		if h.tcpcongestion, err = template.New(s).Funcs(h.Functions).Parse(s); err != nil {
+			return err
+		}
 	}
 
 	if len(h.Config.Tunnel.AllowListens) > 0 {
@@ -105,6 +118,64 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 			log.DefaultLogger.Err(err).Context(ri.LogContext).Int64("tunnel_speedlimit", speedLimit).Msg("set tunnel_speedlimit")
 		} else {
 			// TODO: speed limiter in user space
+		}
+	}
+
+	// eval tcp_congestion template
+	if ri.ClientConnOps.SupportTCP() && h.Config.Tunnel.TcpCongestion != "" {
+		var tcpCongestion string
+		if h.tcpcongestion != nil {
+			var sb strings.Builder
+			err := h.tcpcongestion.Execute(&sb, struct {
+				Request         *http.Request
+				RealIP          netip.Addr
+				ClientHelloInfo *tls.ClientHelloInfo
+				JA4             string
+				UserAgent       *useragent.UserAgent
+				ServerAddr      netip.AddrPort
+				User            AuthUserInfo
+			}{req, ri.RealIP, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr, ri.ProxyUserInfo})
+			if err != nil {
+				log.Error().Err(err).Context(ri.LogContext).Str("tunnel_tcp_congestion", h.Config.Tunnel.TcpCongestion).Msg("execute tunnel_tcp_congestion error")
+				http.Error(rw, err.Error(), http.StatusBadGateway)
+				return
+			}
+			tcpCongestion = sb.String()
+		} else {
+			tcpCongestion = h.Config.Tunnel.TcpCongestion
+		}
+		if tcpCongestion != "" {
+			log.Debug().Context(ri.LogContext).Str("tunnel_tcp_congestion", tcpCongestion).Msg("execute tunnel_tcp_congestion ok")
+			if options := strings.Fields(tcpCongestion); len(options) >= 1 {
+				switch name := options[0]; name {
+				case "brutal":
+					if len(options) < 2 {
+						log.Error().Context(ri.LogContext).Strs("tunnel_tcp_congestion_options", options).Msg("parse tunnel_tcp_congestion error")
+						http.Error(rw, "invalid tcp_congestion value", http.StatusBadGateway)
+						return
+					}
+					if rate, _ := strconv.Atoi(options[1]); rate > 0 {
+						gain := 20 // hysteria2 default
+						if len(options) >= 3 {
+							if n, _ := strconv.Atoi(options[2]); n > 0 {
+								gain = n
+							}
+						}
+						if err := ri.ClientConnOps.SetTcpCongestion(name, uint64(rate), uint32(gain)); err != nil {
+							log.Error().Context(ri.LogContext).Strs("tunnel_tcp_congestion_options", options).Msg("set tunnel_tcp_congestion error")
+							http.Error(rw, err.Error(), http.StatusBadGateway)
+							return
+						}
+						log.Debug().NetIPAddr("remote_ip", ri.RealIP).Strs("tunnel_tcp_congestion_options", options).Msg("set tunnel_tcp_congestion ok")
+					}
+				default:
+					if err := ri.ClientConnOps.SetTcpCongestion(name); err != nil {
+						log.Error().Context(ri.LogContext).Strs("tunnel_tcp_congestion_options", options).Msg("set tunnel_tcp_congestion error")
+						http.Error(rw, err.Error(), http.StatusBadGateway)
+						return
+					}
+				}
+			}
 		}
 	}
 
