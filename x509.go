@@ -72,8 +72,8 @@ func (ca *RootCA) init() error {
 			},
 			DNSNames: []string{ca.CommonName},
 
-			NotBefore: timeNow().Add(-time.Duration(30 * 24 * time.Hour)),
-			NotAfter:  timeNow().Add(ca.Duration),
+			NotBefore: time.Now().Add(-time.Duration(30 * 24 * time.Hour)),
+			NotAfter:  time.Now().Add(ca.Duration),
 
 			KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 			ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
@@ -181,9 +181,9 @@ func (ca *RootCA) Issue(commonName string) error {
 		DNSNames:           []string{commonName},
 		PublicKeyAlgorithm: csr.PublicKeyAlgorithm,
 		PublicKey:          csr.PublicKey,
-		SerialNumber:       big.NewInt(timeNow().UnixNano()),
-		NotBefore:          timeNow().Add(-time.Duration(30 * 24 * time.Hour)),
-		NotAfter:           timeNow().Add(ca.Duration),
+		SerialNumber:       big.NewInt(time.Now().UnixNano()),
+		NotBefore:          time.Now().Add(-time.Duration(30 * 24 * time.Hour)),
+		NotAfter:           time.Now().Add(ca.Duration),
 		KeyUsage:           x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		ExtKeyUsage: []x509.ExtKeyUsage{
 			x509.ExtKeyUsageServerAuth,

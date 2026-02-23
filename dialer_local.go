@@ -98,7 +98,7 @@ func (d *LocalDialer) dialContext(ctx context.Context, network, address string, 
 	port, _ := strconv.Atoi(portStr)
 
 	if d.DialTimeout > 0 {
-		deadline := timeNow().Add(d.DialTimeout)
+		deadline := time.Now().Add(d.DialTimeout)
 		if d, ok := ctx.Deadline(); ok && deadline.After(d) {
 			deadline = d
 		}

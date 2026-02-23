@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -323,7 +324,7 @@ func NewConfig(filename string) (*Config, error) {
 	}
 
 	if filename == "development.yaml" {
-		fmt.Fprintf(os.Stderr, "%s WAN 1 config.go:122 > liner is running in the development mode.\n", timeNow().Format("15:04:05"))
+		fmt.Fprintf(os.Stderr, "%s WAN 1 config.go:122 > liner is running in the development mode.\n", time.Now().Format("15:04:05"))
 	}
 
 	for _, server := range config.Https {
