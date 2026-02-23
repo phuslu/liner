@@ -63,107 +63,90 @@ func (pool *DnsResolverPool) Get(addr string, ttl time.Duration) (*DnsResolver, 
 			tcp, udp = "tcp4", "udp4"
 		}
 
-		switch {
-		case addr == "":
+		u, err := url.Parse(addr)
+		if err != nil || u.Host == "" {
 			r.Err = fmt.Errorf("invalid dns_server addr: %s", addr)
-		case strings.Contains(addr, "://"):
-			u, err := url.Parse(addr)
-			if err != nil {
-				r.Err = fmt.Errorf("invalid dns_server addr: %s", addr)
+		}
+
+		switch u.Scheme {
+		case "udp", "":
+			hostport := u.Host
+			if _, _, err := net.SplitHostPort(hostport); err != nil {
+				hostport = net.JoinHostPort(hostport, "53")
 			}
-			switch u.Scheme {
-			case "udp":
-				hostport := u.Host
-				if _, _, err := net.SplitHostPort(hostport); err != nil {
-					hostport = net.JoinHostPort(hostport, "53")
-				}
-				r.DnsResolver.Client.Dialer = &fastdns.UDPDialer{
-					Addr:     func() (u *net.UDPAddr) { u, _ = net.ResolveUDPAddr(tcp, hostport); return }(),
-					MaxConns: cmp.Or(uint16(first(strconv.Atoi(u.Query().Get("max_conns")))), 8),
-				}
-			case "tcp":
-				hostport := u.Host
-				if _, _, err := net.SplitHostPort(hostport); err != nil {
-					hostport = net.JoinHostPort(hostport, "53")
-				}
-				r.DnsResolver.Client.Dialer = &fastdns.TCPDialer{
-					Addr:     func() (u *net.TCPAddr) { u, _ = net.ResolveTCPAddr(tcp, hostport); return }(),
-					Timeout:  4 * time.Second,
-					MaxConns: cmp.Or(uint16(first(strconv.Atoi(u.Query().Get("max_conns")))), 8),
-				}
-			case "tls", "dot":
-				hostport := u.Host
-				if _, _, err := net.SplitHostPort(hostport); err != nil {
-					hostport = net.JoinHostPort(hostport, "853")
-				}
-				r.DnsResolver.Client.Dialer = &fastdns.TCPDialer{
-					Addr: func() (ua *net.TCPAddr) { ua, _ = net.ResolveTCPAddr(tcp, hostport); return }(),
-					TLSConfig: &tls.Config{
+			r.DnsResolver.Client.Dialer = &fastdns.UDPDialer{
+				Addr:     func() (u *net.UDPAddr) { u, _ = net.ResolveUDPAddr(udp, hostport); return }(),
+				MaxConns: cmp.Or(uint16(first(strconv.Atoi(u.Query().Get("max_conns")))), 8),
+			}
+		case "tcp":
+			hostport := u.Host
+			if _, _, err := net.SplitHostPort(hostport); err != nil {
+				hostport = net.JoinHostPort(hostport, "53")
+			}
+			r.DnsResolver.Client.Dialer = &fastdns.TCPDialer{
+				Addr:     func() (u *net.TCPAddr) { u, _ = net.ResolveTCPAddr(tcp, hostport); return }(),
+				Timeout:  4 * time.Second,
+				MaxConns: cmp.Or(uint16(first(strconv.Atoi(u.Query().Get("max_conns")))), 8),
+			}
+		case "tls", "dot":
+			hostport := u.Host
+			if _, _, err := net.SplitHostPort(hostport); err != nil {
+				hostport = net.JoinHostPort(hostport, "853")
+			}
+			r.DnsResolver.Client.Dialer = &fastdns.TCPDialer{
+				Addr: func() (ua *net.TCPAddr) { ua, _ = net.ResolveTCPAddr(tcp, hostport); return }(),
+				TLSConfig: &tls.Config{
+					ServerName:         u.Hostname(),
+					ClientSessionCache: tls.NewLRUClientSessionCache(128),
+				},
+				Timeout:  5 * time.Second,
+				MaxConns: cmp.Or(uint16(first(strconv.Atoi(u.Query().Get("max_conns")))), 8),
+			}
+		case "https", "http2", "h2", "doh":
+			u.Scheme = "https"
+			r.DnsResolver.Client.Dialer = &fastdns.HTTPDialer{
+				Endpoint: u,
+				Header: http.Header{
+					"content-type": {"application/dns-message"},
+					"user-agent":   {cmp.Or(u.Query().Get("user_agent"), DefaultUserAgent)},
+				},
+				Transport: &http2.Transport{
+					TLSClientConfig: &tls.Config{
 						ServerName:         u.Hostname(),
 						ClientSessionCache: tls.NewLRUClientSessionCache(128),
 					},
-					Timeout:  5 * time.Second,
-					MaxConns: cmp.Or(uint16(first(strconv.Atoi(u.Query().Get("max_conns")))), 8),
-				}
-			case "https", "http2", "h2", "doh":
-				u.Scheme = "https"
-				r.DnsResolver.Client.Dialer = &fastdns.HTTPDialer{
-					Endpoint: u,
-					Header: http.Header{
-						"content-type": {"application/dns-message"},
-						"user-agent":   {cmp.Or(u.Query().Get("user_agent"), DefaultUserAgent)},
+					DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
+						return (&tls.Dialer{Config: cfg}).DialContext(ctx, tcp, addr)
 					},
-					Transport: &http2.Transport{
-						TLSClientConfig: &tls.Config{
-							ServerName:         u.Hostname(),
-							ClientSessionCache: tls.NewLRUClientSessionCache(128),
-						},
-						DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
-							return (&tls.Dialer{Config: cfg}).DialContext(ctx, tcp, addr)
-						},
+				},
+			}
+		case "http3", "h3", "doh3":
+			u.Scheme = "https"
+			r.DnsResolver.Client.Dialer = &fastdns.HTTPDialer{
+				Endpoint: u,
+				Header: http.Header{
+					"content-type": {"application/dns-message"},
+					"user-agent":   {cmp.Or(u.Query().Get("user_agent"), DefaultUserAgent)},
+				},
+				Transport: &http3.Transport{
+					DisableCompression: false,
+					EnableDatagrams:    true,
+					TLSClientConfig: &tls.Config{
+						NextProtos:         []string{"h3"},
+						InsecureSkipVerify: u.Query().Get("insecure") == "true",
+						ServerName:         u.Hostname(),
+						ClientSessionCache: tls.NewLRUClientSessionCache(128),
 					},
-				}
-			case "http3", "h3", "doh3":
-				u.Scheme = "https"
-				r.DnsResolver.Client.Dialer = &fastdns.HTTPDialer{
-					Endpoint: u,
-					Header: http.Header{
-						"content-type": {"application/dns-message"},
-						"user-agent":   {cmp.Or(u.Query().Get("user_agent"), DefaultUserAgent)},
+					QUICConfig: &quic.Config{
+						DisablePathMTUDiscovery: false,
+						EnableDatagrams:         true,
+						MaxIncomingUniStreams:   200,
+						MaxIncomingStreams:      200,
 					},
-					Transport: &http3.Transport{
-						DisableCompression: false,
-						EnableDatagrams:    true,
-						TLSClientConfig: &tls.Config{
-							NextProtos:         []string{"h3"},
-							InsecureSkipVerify: u.Query().Get("insecure") == "true",
-							ServerName:         u.Hostname(),
-							ClientSessionCache: tls.NewLRUClientSessionCache(128),
-						},
-						QUICConfig: &quic.Config{
-							DisablePathMTUDiscovery: false,
-							EnableDatagrams:         true,
-							MaxIncomingUniStreams:   200,
-							MaxIncomingStreams:      200,
-						},
-					},
-				}
-			default:
-				r.Err = fmt.Errorf("unspported dns_server addr: %s", addr)
+				},
 			}
 		default:
-			host := addr
-			if _, _, err := net.SplitHostPort(host); err != nil {
-				host = net.JoinHostPort(host, "53")
-			}
-			u, err := net.ResolveUDPAddr(udp, host)
-			if err != nil {
-				r.Err = fmt.Errorf("invalid dns_server addr: %s", addr)
-			}
-			r.DnsResolver.Client.Dialer = &fastdns.UDPDialer{
-				Addr:     u,
-				MaxConns: 8,
-			}
+			r.Err = fmt.Errorf("invalid dns_server addr: %s", addr)
 		}
 		return
 	})
