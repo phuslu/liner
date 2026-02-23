@@ -64,12 +64,18 @@ func (pool *DnsResolverPool) Get(addr string, ttl time.Duration) (*DnsResolver, 
 		}
 
 		u, err := url.Parse(addr)
-		if err != nil || u.Host == "" {
+		if err != nil {
 			r.Err = fmt.Errorf("invalid dns_server addr: %s", addr)
 		}
 
 		switch u.Scheme {
-		case "udp", "":
+		case "":
+			hostport := addr
+			if _, _, err := net.SplitHostPort(hostport); err != nil {
+				hostport = net.JoinHostPort(hostport, "53")
+			}
+			r.DnsResolver.Client.Addr = hostport
+		case "udp":
 			hostport := u.Host
 			if _, _, err := net.SplitHostPort(hostport); err != nil {
 				hostport = net.JoinHostPort(hostport, "53")
