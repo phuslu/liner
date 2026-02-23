@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -71,6 +72,15 @@ func (pool *DnsResolverPool) Get(addr string, ttl time.Duration) (*DnsResolver, 
 				r.Err = fmt.Errorf("invalid dns_server addr: %s", addr)
 			}
 			switch u.Scheme {
+			case "udp":
+				hostport := u.Host
+				if _, _, err := net.SplitHostPort(hostport); err != nil {
+					hostport = net.JoinHostPort(hostport, "53")
+				}
+				r.DnsResolver.Client.Dialer = &fastdns.UDPDialer{
+					Addr:     func() (u *net.UDPAddr) { u, _ = net.ResolveUDPAddr(tcp, hostport); return }(),
+					MaxConns: cmp.Or(uint16(first(strconv.Atoi(u.Query().Get("max_conns")))), 8),
+				}
 			case "tcp":
 				hostport := u.Host
 				if _, _, err := net.SplitHostPort(hostport); err != nil {
@@ -79,7 +89,7 @@ func (pool *DnsResolverPool) Get(addr string, ttl time.Duration) (*DnsResolver, 
 				r.DnsResolver.Client.Dialer = &fastdns.TCPDialer{
 					Addr:     func() (u *net.TCPAddr) { u, _ = net.ResolveTCPAddr(tcp, hostport); return }(),
 					Timeout:  4 * time.Second,
-					MaxConns: 8,
+					MaxConns: cmp.Or(uint16(first(strconv.Atoi(u.Query().Get("max_conns")))), 8),
 				}
 			case "tls", "dot":
 				hostport := u.Host
@@ -93,7 +103,7 @@ func (pool *DnsResolverPool) Get(addr string, ttl time.Duration) (*DnsResolver, 
 						ClientSessionCache: tls.NewLRUClientSessionCache(128),
 					},
 					Timeout:  5 * time.Second,
-					MaxConns: 8,
+					MaxConns: cmp.Or(uint16(first(strconv.Atoi(u.Query().Get("max_conns")))), 8),
 				}
 			case "https", "http2", "h2", "doh":
 				u.Scheme = "https"
