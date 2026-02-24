@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/binary"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -58,7 +59,22 @@ func (h *SshHandler) Load() error {
 	if h.Config.HostKey != "" {
 		key, err := os.ReadFile(h.Config.HostKey)
 		if err != nil {
-			return fmt.Errorf("failed to load private key (%s): %w", h.Config.HostKey, err)
+			if !os.IsNotExist(err) {
+				return fmt.Errorf("failed to load private key (%s): %w", h.Config.HostKey, err)
+			}
+			_, priv, err := ed25519.GenerateKey(rand.Reader)
+			if err != nil {
+				return fmt.Errorf("failed to generate ed25519 key: %w", err)
+			}
+			data, err := ssh.MarshalPrivateKey(priv, "")
+			if err != nil {
+				return fmt.Errorf("failed to marshal ed25519 key: %w", err)
+			}
+			key = pem.EncodeToMemory(data)
+			err = os.WriteFile(h.Config.HostKey, key, 0600)
+			if err != nil {
+				return fmt.Errorf("failed to write ed25519 key: %w", err)
+			}
 		}
 		sshSigner, err = ssh.ParsePrivateKey(key)
 		if err != nil {
@@ -68,11 +84,11 @@ func (h *SshHandler) Load() error {
 		h.Logger.Warn().Strs("ssh_listens", h.Config.Listen).Msg("host_key is not configured, generating ssh key.")
 		_, key, err := ed25519.GenerateKey(rand.Reader)
 		if err != nil {
-			return fmt.Errorf("failed to generate ed25519 key; %w", err)
+			return fmt.Errorf("failed to generate ed25519 key: %w", err)
 		}
 		sshSigner, err = ssh.NewSignerFromKey(key)
 		if err != nil {
-			return fmt.Errorf("failed to create ssh private key; %w", err)
+			return fmt.Errorf("failed to create ssh private key: %w", err)
 		}
 	}
 
