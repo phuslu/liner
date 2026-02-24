@@ -80,86 +80,88 @@ func (h *SshHandler) Load() error {
 		MaxAuthTries:  3,
 		ServerVersion: cmp.Or(h.Config.ServerVersion, fmt.Sprintf("SSH-2.0-liner-%s", version)),
 		PreAuthConnCallback: func(conn ssh.ServerPreAuthConn) {
-			if data, err := os.ReadFile(cmp.Or(h.Config.BannerFile, "/etc/motd")); err == nil {
-				if strings.Contains(b2s(data), "{{") {
-					if banner, err := template.New("ssh_banner_file").Funcs(h.Functions).Parse(string(data)); err == nil {
-						var sb strings.Builder
-						nc, err := GetNetConnFromServerPreAuthConn(conn)
-						if err != nil {
-							h.Logger.Error().Err(err).Strs("ssh_listens", h.Config.Listen).Msg("cannot get net.Conn from the incoming ssh.ServerPreAuthConn")
-						} else {
-							h.Logger.Info().Strs("ssh_listens", h.Config.Listen).Type("net_conn_type", nc).NetAddr("net_conn_addr", nc.RemoteAddr()).Msg("get net.Conn from the incoming ssh.ServerPreAuthConn")
-						}
-						getrtt := func(conn net.Conn) func() (time.Duration, error) {
-							return func() (time.Duration, error) {
-								if s, ok := conn.(*yamux.Stream); ok {
-									return s.Session().RTT(), nil
-								}
-								if s, ok := conn.(*smux.Stream); ok {
-									type Stream struct {
-										stream *struct {
-											id   uint32
-											sess *struct {
-												conn net.Conn // io.ReadWriteCloser
-											}
-										}
-									}
-									conn = (*Stream)(unsafe.Pointer(s)).stream.sess.conn
-								}
-								for {
-									c, ok := conn.(interface {
-										NetConn() net.Conn
-									})
-									if !ok {
-										break
-									}
-									conn = c.NetConn()
-								}
-								if qc, ok := conn.(interface {
-									QuicConn() *quic.Conn
-								}); ok {
-									return qc.QuicConn().ConnectionStats().SmoothedRTT, nil
-								}
-								if tc, ok := conn.(*net.TCPConn); ok {
-									if tcpinfo, err := (ConnOps{tc: tc}).GetTcpInfo(); err == nil && tcpinfo != nil {
-										v := reflect.ValueOf(tcpinfo).Elem().FieldByName("Rtt")
-										if !v.IsValid() {
-											return 0, fmt.Errorf("getrtt: tcpinfo %#v has no Rtt field", tcpinfo)
-										}
-										return time.Duration(v.Uint()) * time.Microsecond, nil
-									}
-								}
-								return 0, nil
+			bannerData := h.Config.BannerFile
+			if data, err := os.ReadFile(cmp.Or(bannerData, "/etc/motd")); err == nil {
+				bannerData = string(data)
+			}
+			if strings.Contains(bannerData, "{{") {
+				if banner, err := template.New("ssh_banner_file").Funcs(h.Functions).Parse(bannerData); err == nil {
+					var sb strings.Builder
+					nc, err := GetNetConnFromServerPreAuthConn(conn)
+					if err != nil {
+						h.Logger.Error().Err(err).Strs("ssh_listens", h.Config.Listen).Msg("cannot get net.Conn from the incoming ssh.ServerPreAuthConn")
+					} else {
+						h.Logger.Info().Strs("ssh_listens", h.Config.Listen).Type("net_conn_type", nc).NetAddr("net_conn_addr", nc.RemoteAddr()).Msg("get net.Conn from the incoming ssh.ServerPreAuthConn")
+					}
+					getrtt := func(conn net.Conn) func() (time.Duration, error) {
+						return func() (time.Duration, error) {
+							if s, ok := conn.(*yamux.Stream); ok {
+								return s.Session().RTT(), nil
 							}
-						}
-						err = banner.Execute(&sb, struct {
-							User          string
-							SessionID     string
-							ClientVersion string
-							ServerVersion string
-							RemoteAddr    string
-							LocalAddr     string
-							RTT           func() (time.Duration, error)
-						}{
-							User:          conn.User(),
-							SessionID:     string(conn.SessionID()),
-							ClientVersion: string(conn.ClientVersion()),
-							ServerVersion: string(conn.ServerVersion()),
-							RemoteAddr:    conn.RemoteAddr().String(),
-							LocalAddr:     conn.LocalAddr().String(),
-							RTT:           getrtt(nc),
-						})
-						if err != nil {
-							log.Error().Err(err).Strs("ssh_listens", h.Config.Listen).NetAddr("net_conn_addr", nc.RemoteAddr()).Str("ssh_banner_file", h.Config.BannerFile).Msg("motd eval template error")
-						}
-						err = conn.SendAuthBanner(sb.String())
-						if err != nil {
-							log.Error().Err(err).Strs("ssh_listens", h.Config.Listen).NetAddr("net_conn_addr", nc.RemoteAddr()).Str("ssh_banner_file", h.Config.BannerFile).Msg("motd send auth banner error")
+							if s, ok := conn.(*smux.Stream); ok {
+								type Stream struct {
+									stream *struct {
+										id   uint32
+										sess *struct {
+											conn net.Conn // io.ReadWriteCloser
+										}
+									}
+								}
+								conn = (*Stream)(unsafe.Pointer(s)).stream.sess.conn
+							}
+							for {
+								c, ok := conn.(interface {
+									NetConn() net.Conn
+								})
+								if !ok {
+									break
+								}
+								conn = c.NetConn()
+							}
+							if qc, ok := conn.(interface {
+								QuicConn() *quic.Conn
+							}); ok {
+								return qc.QuicConn().ConnectionStats().SmoothedRTT, nil
+							}
+							if tc, ok := conn.(*net.TCPConn); ok {
+								if tcpinfo, err := (ConnOps{tc: tc}).GetTcpInfo(); err == nil && tcpinfo != nil {
+									v := reflect.ValueOf(tcpinfo).Elem().FieldByName("Rtt")
+									if !v.IsValid() {
+										return 0, fmt.Errorf("getrtt: tcpinfo %#v has no Rtt field", tcpinfo)
+									}
+									return time.Duration(v.Uint()) * time.Microsecond, nil
+								}
+							}
+							return 0, nil
 						}
 					}
-				} else {
-					_ = conn.SendAuthBanner(string(data))
+					err = banner.Execute(&sb, struct {
+						User          string
+						SessionID     string
+						ClientVersion string
+						ServerVersion string
+						RemoteAddr    string
+						LocalAddr     string
+						RTT           func() (time.Duration, error)
+					}{
+						User:          conn.User(),
+						SessionID:     string(conn.SessionID()),
+						ClientVersion: string(conn.ClientVersion()),
+						ServerVersion: string(conn.ServerVersion()),
+						RemoteAddr:    conn.RemoteAddr().String(),
+						LocalAddr:     conn.LocalAddr().String(),
+						RTT:           getrtt(nc),
+					})
+					if err != nil {
+						log.Error().Err(err).Strs("ssh_listens", h.Config.Listen).NetAddr("net_conn_addr", nc.RemoteAddr()).Str("ssh_banner_file", h.Config.BannerFile).Msg("motd eval template error")
+					}
+					err = conn.SendAuthBanner(sb.String())
+					if err != nil {
+						log.Error().Err(err).Strs("ssh_listens", h.Config.Listen).NetAddr("net_conn_addr", nc.RemoteAddr()).Str("ssh_banner_file", h.Config.BannerFile).Msg("motd send auth banner error")
+					}
 				}
+			} else {
+				_ = conn.SendAuthBanner(bannerData)
 			}
 		},
 	}
