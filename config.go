@@ -220,7 +220,15 @@ type Config struct {
 func NewConfig(filename string) (*Config, error) {
 	datas := [][]byte{}
 	if data, err := ReadFile(filename); err == nil {
-		datas = append(datas, data)
+		if s := strings.TrimSpace(string(data)); strings.HasPrefix(s, "https://") {
+			data, err = ReadFile(s)
+			if err != nil {
+				return nil, err
+			}
+			datas = append(datas, data)
+		} else {
+			datas = append(datas, data)
+		}
 	} else {
 		return nil, err
 	}
