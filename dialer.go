@@ -2,15 +2,12 @@ package main
 
 import (
 	"context"
-	"errors"
 	"net"
 	"net/netip"
 	"strings"
-	"time"
 
 	"github.com/libp2p/go-yamux/v5"
 	"github.com/puzpuzpuz/xsync/v4"
-	"github.com/xtaci/smux"
 )
 
 type Dialer interface {
@@ -44,7 +41,7 @@ var _ Dialer = (*MemoryDialer)(nil)
 
 type MemoryDialer struct {
 	Address   string
-	Session   *MuxSession
+	Session   *yamux.Session
 	CreatedAt int64
 }
 
@@ -60,7 +57,7 @@ func (d *MemoryDialer) DialContext(ctx context.Context, network, address string)
 		return nil, net.InvalidAddrError("memory dialer network mismatched: " + address + " != " + d.Address)
 	}
 
-	return d.Session.OpenConn(ctx)
+	return d.Session.OpenStream(ctx)
 }
 
 type MemoryDialers struct {
@@ -79,67 +76,6 @@ func MemoryDialerOf(ctx context.Context, network, address string) *MemoryDialer 
 		if md, ok := mds.Load(address); ok && md != nil {
 			return md
 		}
-	}
-	return nil
-}
-
-type MuxSession struct {
-	YamuxSession *yamux.Session
-	SmuxSession  *smux.Session
-}
-
-func (s *MuxSession) OpenConn(ctx context.Context) (net.Conn, error) {
-	switch {
-	case s.YamuxSession != nil:
-		return s.YamuxSession.Open(ctx)
-	case s.SmuxSession != nil:
-		return s.SmuxSession.OpenStream()
-	}
-	return nil, errors.ErrUnsupported
-}
-
-func (s *MuxSession) Ping(_ context.Context) (time.Duration, error) {
-	switch {
-	case s.YamuxSession != nil:
-		return s.YamuxSession.Ping()
-	case s.SmuxSession != nil:
-		start := time.Now()
-		stream, err := s.SmuxSession.OpenStream()
-		if err != nil {
-			return 0, err
-		}
-		defer stream.Close()
-		return time.Since(start) / 2, nil
-	}
-	return 0, errors.ErrUnsupported
-}
-
-func (s *MuxSession) Close() error {
-	switch {
-	case s.YamuxSession != nil:
-		return s.YamuxSession.Close()
-	case s.SmuxSession != nil:
-		return s.SmuxSession.Close()
-	}
-	return errors.ErrUnsupported
-}
-
-func (s *MuxSession) LocalAddr() net.Addr {
-	switch {
-	case s.YamuxSession != nil:
-		return s.YamuxSession.LocalAddr()
-	case s.SmuxSession != nil:
-		return s.SmuxSession.LocalAddr()
-	}
-	return nil
-}
-
-func (s *MuxSession) RemoteAddr() net.Addr {
-	switch {
-	case s.YamuxSession != nil:
-		return s.YamuxSession.RemoteAddr()
-	case s.SmuxSession != nil:
-		return s.SmuxSession.RemoteAddr()
 	}
 	return nil
 }
