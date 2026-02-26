@@ -347,7 +347,7 @@ func ReadHTTPHeader(tc *net.TCPConn) ([]byte, *net.TCPConn, error) {
 	return b, tc, err
 }
 
-func AppendSetSidToSysProcAttr(old *syscall.SysProcAttr) *syscall.SysProcAttr {
+func AppendSetSidToSysProcAttr(old *syscall.SysProcAttr, uid, gid int) *syscall.SysProcAttr {
 	if caps, _ := getcap(); !caps.SetUID || !caps.SetGID {
 		return old
 	}
@@ -357,8 +357,8 @@ func AppendSetSidToSysProcAttr(old *syscall.SysProcAttr) *syscall.SysProcAttr {
 	spa.Setctty = true
 	spa.Ctty = 0
 	spa.Credential = &syscall.Credential{
-		Uid: uint32(os.Getuid()),
-		Gid: uint32(os.Getgid()),
+		Uid: uint32(uid),
+		Gid: uint32(gid),
 	}
 
 	return &spa
