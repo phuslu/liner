@@ -16,7 +16,7 @@ os.chdir('wheel')
 
 os.environ['CGO_ENABLED'] = '1'
 
-revsion = os.getenv('REVSION', '1984')
+revsion = '1.0.' + os.getenv('REVSION', '1984')
 is_darwin = platform.system() == 'Darwin'
 go = 'garble -literals -tiny -seed=o9WDTZ4CN4w' if os.getenv('GOGARBLE') else 'go'
 
