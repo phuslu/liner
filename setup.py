@@ -1,10 +1,10 @@
 """Build a Python wheel for the liner Go shared library."""
-# pylint: disable=too-many-statements, line-too-long, C0103
+# pylint: disable=too-many-statements, line-too-long, C0103, W0105
 
+import base64
 import os
 import platform
 import setuptools
-
 
 def system(cmd):
     """os.system with echo"""
@@ -28,10 +28,29 @@ system(f'{go} build -v -trimpath -ldflags="{go_ldflags}" -buildmode=c-shared -o 
 system('ln -sf ../../start.c.in liner/start.c')
 system('ln -sf ../../README.md liner/README.md')
 system('ln -sf ../../LICENSE liner/LICENSE')
-with open('liner/__init__.py', 'wb') as file:
-    file.write(b'from .liner import start')
 with open('liner/__main__.py', 'wb') as file:
     file.write(b'from .liner import start\nstart()')
+if is_darwin:
+    '''
+    def rot():
+        import os, mmap
+        with open(os.path.dirname(__file__) + '/libliner.cp39.so', "r+b") as file:
+            m = mmap.mmap(file.fileno(), 0)
+            m[:] = m[:].translate(bytes.maketrans(b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", b"NOPQRSTUVWXYZABCDEFGHIJKLMnopqrstuvwxyzabcdefghijklm"))
+    try:
+        from .liner import start
+        rot()
+    except ImportError:
+        rot()
+        from .liner import start
+        rot()
+    '''
+    with open('liner/__init__.pyc', 'wb') as file:
+        file.write(base64.b64decode('YQ0NCgAAAADMyKJpsQEAAOMAAAAAAAAAAAAAAAAAAAAACAAAAEAAAABzTgAAAGQAZAGEAFoAehZkAmQDbAFtAloCAQBlAIMAAQBXAG4qBABlA3lIAQABAAEAZQCDAAEAZAJkA2wBbQJaAgEAZQCDAAEAWQBuAjAAZARTACkFYwAAAAAAAAAAAAAAAAQAAAAIAAAAQwAAAHN8AAAAZAFkAGwAfQBkAWQAbAF9AXQCfABqA6AEdAWhAWQCFwBkA4MCj0J9AnwBoAF8AqAGoQBkAaECfQN8A2QAZASFAhkAoAd0CKAJZAVkBqECoQF8A2QAZASFAjwAVwBkAAQABACDAwEAbhAxAHNuMAABAAEAAQBZAAEAZABTACkHTukAAAAAehEvbGlibGluZXIuY3AzOS5zb3oDcitiaQAQAABzNAAAAEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXpzNAAAAE5PUFFSU1RVVldYWVpBQkNERUZHSElKS0xNbm9wcXJzdHV2d3h5emFiY2RlZmdoaWprbG0pCtoCb3PaBG1tYXDaBG9wZW7aBHBhdGjaB2Rpcm5hbWXaCF9fZmlsZV9f2gZmaWxlbm/aCXRyYW5zbGF0ZdoFYnl0ZXPaCW1ha2V0cmFucykEcgIAAAByAwAAANoEZmlsZdoBbakAcg4AAAD6C19faW5pdF9fLnB52gNyb3QBAAAAcwgAAAAAARABGAEQAXIQAAAA6QEAAAApAdoFc3RhcnROKQRyEAAAAFoFbGluZXJyEgAAANoLSW1wb3J0RXJyb3JyDgAAAHIOAAAAcg4AAAByDwAAANoIPG1vZHVsZT4BAAAAcw4AAAAIBgIBDAEKAQwBBgEMAQ=='))
+else:
+    with open('liner/__init__.py', 'wb') as file:
+        file.write(b'from .liner import start')
+
 
 liner_extension = setuptools.Extension(
     'liner.liner',
