@@ -280,6 +280,7 @@ func main() {
 			return &LocalDialer{
 				DnsResolver:     dnsResolver,
 				Interface:       u.Host,
+				DisableIPv6:     u.Query().Get("disable_ipv6") == "true",
 				PerferIPv6:      u.Query().Get("prefer_ipv6") == "true",
 				Concurrency:     2,
 				ForbidLocalAddr: config.Global.ForbidLocalAddr,
