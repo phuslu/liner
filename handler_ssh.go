@@ -136,22 +136,15 @@ func (h *SshHandler) Load() error {
 							return 0, nil
 						}
 					}
-					err = banner.Execute(&sb, struct {
-						User          string
-						SessionID     string
-						ClientVersion string
-						ServerVersion string
-						RemoteAddr    string
-						LocalAddr     string
-						RTT           func() (time.Duration, error)
-					}{
-						User:          conn.User(),
-						SessionID:     string(conn.SessionID()),
-						ClientVersion: string(conn.ClientVersion()),
-						ServerVersion: string(conn.ServerVersion()),
-						RemoteAddr:    conn.RemoteAddr().String(),
-						LocalAddr:     conn.LocalAddr().String(),
-						RTT:           getrtt(nc),
+					// use map[string]any to defense garble
+					err = banner.Execute(&sb, map[string]any{
+						"User":          conn.User(),
+						"SessionID":     string(conn.SessionID()),
+						"ClientVersion": string(conn.ClientVersion()),
+						"ServerVersion": string(conn.ServerVersion()),
+						"RemoteAddr":    conn.RemoteAddr().String(),
+						"LocalAddr":     conn.LocalAddr().String(),
+						"RTT":           getrtt(nc),
 					})
 					if err != nil {
 						log.Error().Err(err).Strs("ssh_listens", h.Config.Listen).NetAddr("net_conn_addr", nc.RemoteAddr()).Str("ssh_banner_file", h.Config.BannerFile).Msg("motd eval template error")
@@ -606,17 +599,13 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, width, he
 			return "", err
 		}
 
+		// use map[string]any to defense garble
 		var sb strings.Builder
-		err = tmpl.Execute(&sb, struct {
-			Version string
-			User    *user.User
-			Env     map[string]string
-			Shell   string
-		}{
-			Version: version,
-			User:    currentUser,
-			Shell:   shell,
-			Env:     envs,
+		err = tmpl.Execute(&sb, map[string]any{
+			"Version": version,
+			"User":    currentUser,
+			"Shell":   shell,
+			"Env":     envs,
 		})
 		if err != nil {
 			return "", err

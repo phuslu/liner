@@ -66,7 +66,11 @@ function wheel() {
 	export REVSION=$(git rev-list --count HEAD)
 
 	#go install -v mvdan.cc/garble@latest
-	#export GOGARBLE=liner
+	if [ "$(uname)" = "Darwin" ]; then
+		if command -v garble; then
+			export GOGARBLE=liner
+		fi
+	fi
 
 	python3 setup.py bdist_wheel
 
