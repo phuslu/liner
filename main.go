@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"text/template"
 	"time"
 
 	"github.com/mileusna/useragent"
@@ -1104,6 +1105,24 @@ func main() {
 	for _, job := range config.Cron {
 		spec, command := job.Spec, job.Command
 		runner.AddFunc(spec, func() {
+			if strings.Contains(command, "{{") {
+				tmpl, err := template.New(command).Funcs(functions.FuncMap()).Parse(command)
+				if err != nil {
+					log.Error().Str("command", command).Err(err).Msg("parse cron_command error")
+					return
+				}
+				var sb strings.Builder
+				err = tmpl.Execute(&sb, struct{}{})
+				if err != nil {
+					log.Error().Str("command", command).Err(err).Msg("render cron_command error")
+					return
+				}
+				log.Info().Str("cron_command", command).Str("output", sb.String()).Msg("eval cron_command OK")
+				command = strings.TrimSpace(sb.String())
+				if command == "" || command == "true" {
+					return
+				}
+			}
 			cmd := exec.CommandContext(context.Background(), "/bin/bash", "-c", command)
 			if err := cmd.Run(); err != nil {
 				log.Warn().Strs("cmd_args", cmd.Args).Err(err).Msg("exec cron_command error")
