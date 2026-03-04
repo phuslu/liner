@@ -79,17 +79,24 @@ func (h *RedsocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 		}
 		data = data[:n]
 		conn = &ConnWithData{conn, data}
-		var clienthello *tls.ClientHelloInfo
-		err = tls.Server(&ConnWithData{nil, data}, &tls.Config{
-			GetConfigForClient: func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
-				clienthello = hello
-				return nil, nil
-			},
-		}).HandshakeContext(ctx)
-		if clienthello != nil {
-			err = nil
+
+		if n > 40 && data[0] == 0x16 && data[1] == 0x03 {
+			var clienthello *tls.ClientHelloInfo
+			err = tls.Server(&ConnWithData{nil, data}, &tls.Config{
+				GetConfigForClient: func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
+					clienthello = hello
+					return nil, nil
+				},
+			}).HandshakeContext(ctx)
+			if clienthello != nil {
+				return clienthello, nil
+			}
+			if err != nil {
+				log.Debug().Err(err).Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Msg("parse tls client hello failed")
+			}
 		}
-		return clienthello, err
+
+		return nil, nil
 	}
 
 	// log.Printf("%#v\n", first(tlsClientHello()))
