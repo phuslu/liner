@@ -86,6 +86,7 @@ func (f *Functions) Load() error {
 	// file related
 	f.funcs["readFile"] = f.readfile
 	f.funcs["readfile"] = f.readfile
+	f.funcs["savefile"] = f.savefile
 
 	return nil
 }
@@ -366,6 +367,23 @@ func (f *Functions) hasIPv6(host string) bool {
 func (f *Functions) readfile(filename string) string {
 	data, _ := os.ReadFile(filename)
 	return string(data)
+}
+
+func (f *Functions) savefile(uri, filename string) (string, error) {
+	data, err := ReadFile(uri)
+	if err != nil {
+		return "", err
+	}
+	if filename == os.DevNull {
+		return "", err
+	}
+	if err := os.WriteFile(filename+".tmp", data, 0600); err != nil {
+		return "", err
+	}
+	if err := os.Rename(filename+".tmp", filename); err != nil {
+		return "", err
+	}
+	return "", nil
 }
 
 //lint:ignore U1000 Ignore unused function
