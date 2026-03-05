@@ -58,6 +58,52 @@ EOF
 
 }
 
+function wheel() {
+	pushd wheel
+
+	export CGO_ENABLED=1
+	export GOROOT=${GOROOT:-/tmp/go}
+	export GOPATH=${GOPATH:-/tmp/gopath}
+	export PATH=${GOPATH:-~/go}/bin:${GOROOT}/bin:$PATH
+
+	case $(uname) in
+		Darwin )
+			export CGO_CFLAGS="-I/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Headers/"
+			export CGO_LDFLAGS="-L/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/ -lpython3.9"
+			;;
+		Linux )
+			export CGO_CFLAGS="$(python3-config --includes)"
+			export CGO_LDFLAGS="$(python3-config --ldflags)"
+			;;
+	esac
+
+	#go install -v mvdan.cc/garble@latest
+	if command -v garble; then
+		export GOGARBLE=liner
+		GO="garble -literals -tiny -seed=o9WDTZ4CN4w"
+	else
+		GO=go
+	fi
+
+	$GO build -v -buildmode=c-shared -o liner.so ..
+	mv -f liner.so liner/liner.so
+
+	if [ "$(uname)" = "Linux" ]; then
+		sed -i "s/Tag: cp39-.*/Tag: cp39-abi3-linux_$(arch)/" liner_py-1.0.3.dist-info/WHEEL
+	fi
+	find liner liner_py-1.0.3.dist-info -type f ! -name 'RECORD' -exec sh -c '
+		for f; do
+		  size=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f")
+		  hash=$(openssl dgst -sha256 -binary "$f" | openssl base64 | tr -d "\n=")
+		  echo "${f#./},sha256=$hash,$size"
+		done
+		echo "liner_py-1.0.3.dist-info/RECORD,,"
+	' sh {} + | tee liner_py-1.0.3.dist-info/RECORD
+	zip -r ../liner_py-1.0.3-cp39-abi3-macosx_11_0_x86_64.whl liner liner_py-1.0.3.dist-info
+	
+	popd
+}
+
 function release() {
 	pushd build
 
