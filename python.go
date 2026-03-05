@@ -3,10 +3,10 @@ package main
 /*
 #include <Python.h>
 
-extern PyObject* say();
+extern PyObject* landing();
 
 static PyMethodDef methods[] = {
-    {"say", (PyCFunction)say, METH_NOARGS, ""},
+    {"landing", (PyCFunction)landing, METH_NOARGS, ""},
     {NULL, NULL, 0, NULL}
 };
 
