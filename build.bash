@@ -117,6 +117,12 @@ function release() {
 		pushd python
 		gh release view v0.0.0 --json assets --jq .assets[].name | egrep '^liner_py-' | grep "_$(arch).whl$" | xargs -i gh release delete-asset v0.0.0 {} --yes
 		gh release upload v0.0.0 liner_py-*.whl --clobber
+		if git log -1 --oneline | grep -q ' +pypi$'; then
+			apt install -yq python3-virtualenv
+			virtualenv ~/.venv
+			~/.venv/bin/pip install twine
+			~/.venv/bin/twine upload liner_py-*.whl
+		fi
 		popd
 	else
 		pushd build

@@ -14,6 +14,8 @@ jobs:
       - run: sudo -E ./build.bash release
         env:
           GITHUB_TOKEN: ${{ secrets.GOTIP_TOKEN }}
+          TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
+          TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
   manylinux_aarch64:
     name: manylinux_aarch64
     runs-on: ubuntu-22.04-arm
@@ -24,6 +26,8 @@ jobs:
       - run: sudo -E ./build.bash release
         env:
           GITHUB_TOKEN: ${{ secrets.GOTIP_TOKEN }}
+          TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
+          TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
   # musllinux_x86_64:
   #   name: musllinux_x86_64
   #   runs-on: ubuntu-latest
