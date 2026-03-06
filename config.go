@@ -198,6 +198,7 @@ type Config struct {
 		MaxIdleConns     int    `json:"max_idle_conns" yaml:"max_idle_conns"`
 		DisableIpv6      bool   `json:"disable_ipv6" yaml:"disable_ipv6"`
 		DisableHttp3     bool   `json:"disable_http3" yaml:"disable_http3"`
+		DisableGeoip     bool   `json:"disable_geoip" yaml:"disable_geoip"`
 		DisableGeosite   bool   `json:"disable_geosite" yaml:"disable_geosite"`
 		SetProcessName   string `json:"set_process_name" yaml:"set_process_name"`
 	} `json:"global" yaml:"global"`

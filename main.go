@@ -223,6 +223,9 @@ func main() {
 			return r1
 		}
 		for _, name := range names {
+			if config.Global.DisableGeoip {
+				continue
+			}
 			reader, err := maxminddb.Open(name)
 			if err != nil {
 				log.Fatal().Err(err).Str("geoip_database_name", name).Msg("load geoip database error")
