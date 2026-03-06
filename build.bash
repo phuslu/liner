@@ -107,21 +107,26 @@ function python() {
 		echo liner_py-1.0.${REVSION}.dist-info/RECORD,,
 	' sh {} + | tee liner_py-1.0.${REVSION}.dist-info/RECORD
 
-	zip -r ../liner_py-1.0.${REVSION}-cp39-abi3-${PLATFORM_TAG}.whl liner liner_py-1.0.${REVSION}.dist-info
+	zip -r liner_py-1.0.${REVSION}-cp39-abi3-${PLATFORM_TAG}.whl liner liner_py-1.0.${REVSION}.dist-info
 
 	popd
 }
 
 function release() {
-	pushd build
-
-	sha1sum liner* >checksums.txt
-	git log --oneline --pretty=format:"%h %s" -5 | tee changelog.txt
-	gh release view v0.0.0 --json assets --jq .assets[].name | egrep -v '^liner_py-' | xargs -i gh release delete-asset v0.0.0 {} --yes
-	gh release upload v0.0.0 liner_* checksums.txt --clobber
-	gh release edit v0.0.0 --notes-file changelog.txt
-
-	popd
+	if ls python/liner_py-*.whl 2>/dev/null; then
+		pushd python
+		gh release view v0.0.0 --json assets --jq .assets[].name | egrep '^liner_py-' | grep "_$(arch).whl$" | xargs -i gh release delete-asset v0.0.0 {} --yes
+		gh release upload v0.0.0 liner_py-*.whl --clobber
+		popd
+	else
+		pushd build
+		sha1sum liner* >checksums.txt
+		git log --oneline --pretty=format:"%h %s" -5 | tee changelog.txt
+		gh release view v0.0.0 --json assets --jq .assets[].name | egrep -v '^liner_py-' | xargs -i gh release delete-asset v0.0.0 {} --yes
+		gh release upload v0.0.0 liner_* checksums.txt --clobber
+		gh release edit v0.0.0 --notes-file changelog.txt
+		popd
+	fi
 }
 
 
