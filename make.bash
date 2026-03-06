@@ -31,14 +31,6 @@ elif [ "${GOARCH:0:3}" == "arm" ]; then
         BUILDDIR=${BUILDROOT}/${GOOS}_armv${GOARM}
         DISTFILE=${PROJECT}_${GOOS}_armv${GOARM}-${REVSION}
     fi
-elif [ "${GOARCH:0:4}" == "mips" ]; then
-    if [ "$GOMIPS" == "softfloat" ]; then
-        BUILDDIR=${BUILDROOT}/${GOOS}_${GOARCH}_${GOMIPS}
-        DISTFILE=${PROJECT}_${GOOS}_${GOARCH}_${GOMIPS}-${REVSION}
-    else
-        BUILDDIR=${BUILDROOT}/${GOOS}_${GOARCH}
-        DISTFILE=${PROJECT}_${GOOS}_${GOARCH}-${REVSION}
-    fi
 else
     BUILDDIR=${BUILDROOT}/${GOOS}_${GOARCH}
     DISTFILE=${PROJECT}_${GOOS}_${GOARCH}-${REVSION}
