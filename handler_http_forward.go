@@ -147,15 +147,27 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 	speedLimit := h.Config.Forward.SpeedLimit
 	if h.policy != nil {
 		ri.PolicyBuffer.Reset()
-		err = h.policy.Execute(&ri.PolicyBuffer, struct {
-			Request         *http.Request
-			RealIP          netip.Addr
-			ClientHelloInfo *tls.ClientHelloInfo
-			JA4             string
-			User            AuthUserInfo
-			UserAgent       *useragent.UserAgent
-			ServerAddr      netip.AddrPort
-		}{req, ri.RealIP, ri.ClientHelloInfo, ri.JA4, ri.ProxyUserInfo, &ri.UserAgent, ri.ServerAddr})
+		if obfuscated {
+			err = h.policy.Execute(&ri.PolicyBuffer, map[string]any{
+				"Request":         req,
+				"RealIP":          ri.RealIP,
+				"ClientHelloInfo": ri.ClientHelloInfo,
+				"JA4":             ri.JA4,
+				"User":            ri.ProxyUserInfo,
+				"UserAgent":       &ri.UserAgent,
+				"ServerAddr":      ri.ServerAddr,
+			})
+		} else {
+			err = h.policy.Execute(&ri.PolicyBuffer, struct {
+				Request         *http.Request
+				RealIP          netip.Addr
+				ClientHelloInfo *tls.ClientHelloInfo
+				JA4             string
+				User            AuthUserInfo
+				UserAgent       *useragent.UserAgent
+				ServerAddr      netip.AddrPort
+			}{req, ri.RealIP, ri.ClientHelloInfo, ri.JA4, ri.ProxyUserInfo, &ri.UserAgent, ri.ServerAddr})
+		}
 		if err != nil {
 			log.Error().Err(err).Context(ri.LogContext).Str("forward_policy", h.Config.Forward.Policy).Interface("client_hello_info", ri.ClientHelloInfo).Interface("tls_connection_state", req.TLS).Msg("execute forward_policy error")
 			http.NotFound(rw, req)
@@ -250,15 +262,28 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		var tcpCongestion string
 		if h.tcpcongestion != nil {
 			ri.PolicyBuffer.Reset()
-			err := h.tcpcongestion.Execute(&ri.PolicyBuffer, struct {
-				Request         *http.Request
-				RealIP          netip.Addr
-				ClientHelloInfo *tls.ClientHelloInfo
-				JA4             string
-				UserAgent       *useragent.UserAgent
-				ServerAddr      netip.AddrPort
-				User            AuthUserInfo
-			}{req, ri.RealIP, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr, ri.ProxyUserInfo})
+			var err error
+			if obfuscated {
+				err = h.tcpcongestion.Execute(&ri.PolicyBuffer, map[string]any{
+					"Request":         req,
+					"RealIP":          ri.RealIP,
+					"ClientHelloInfo": ri.ClientHelloInfo,
+					"JA4":             ri.JA4,
+					"UserAgent":       &ri.UserAgent,
+					"ServerAddr":      ri.ServerAddr,
+					"User":            ri.ProxyUserInfo,
+				})
+			} else {
+				err = h.tcpcongestion.Execute(&ri.PolicyBuffer, struct {
+					Request         *http.Request
+					RealIP          netip.Addr
+					ClientHelloInfo *tls.ClientHelloInfo
+					JA4             string
+					UserAgent       *useragent.UserAgent
+					ServerAddr      netip.AddrPort
+					User            AuthUserInfo
+				}{req, ri.RealIP, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr, ri.ProxyUserInfo})
+			}
 			if err != nil {
 				log.Error().Err(err).Context(ri.LogContext).Str("forward_tcp_congestion", h.Config.Forward.TcpCongestion).Msg("execute forward_tcp_congestion error")
 				http.Error(rw, err.Error(), http.StatusBadGateway)
@@ -311,15 +336,28 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 	var dialerValue = h.Config.Forward.Dialer
 	if h.dialer != nil {
 		ri.PolicyBuffer.Reset()
-		err := h.dialer.Execute(&ri.PolicyBuffer, struct {
-			Request         *http.Request
-			RealIP          netip.Addr
-			ClientHelloInfo *tls.ClientHelloInfo
-			JA4             string
-			UserAgent       *useragent.UserAgent
-			ServerAddr      netip.AddrPort
-			User            AuthUserInfo
-		}{req, ri.RealIP, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr, ri.ProxyUserInfo})
+		var err error
+		if obfuscated {
+			err = h.dialer.Execute(&ri.PolicyBuffer, map[string]any{
+				"Request":         req,
+				"RealIP":          ri.RealIP,
+				"ClientHelloInfo": ri.ClientHelloInfo,
+				"JA4":             ri.JA4,
+				"UserAgent":       &ri.UserAgent,
+				"ServerAddr":      ri.ServerAddr,
+				"User":            ri.ProxyUserInfo,
+			})
+		} else {
+			err = h.dialer.Execute(&ri.PolicyBuffer, struct {
+				Request         *http.Request
+				RealIP          netip.Addr
+				ClientHelloInfo *tls.ClientHelloInfo
+				JA4             string
+				UserAgent       *useragent.UserAgent
+				ServerAddr      netip.AddrPort
+				User            AuthUserInfo
+			}{req, ri.RealIP, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr, ri.ProxyUserInfo})
+		}
 		if err != nil {
 			log.Error().Err(err).Context(ri.LogContext).Str("forward_dialer_name", h.Config.Forward.Dialer).Msg("execute forward_dialer error")
 			http.NotFound(rw, req)
