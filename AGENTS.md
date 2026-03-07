@@ -368,6 +368,26 @@ See `.mcp.json` for transport details.
 - `github.com/robfig/cron/v3` – Cron scheduler for background commands
 - `github.com/smallnest/ringbuffer` – in-memory log broadcaster
 
+### Operational Scripts and Deployment
+
+#### Bootstrap Script (`get.sh`)
+- Detects the current architecture, downloads the latest release tarball, verifies SHA1 sums and updates the `liner` binary in-place when needed.
+- Generates an opinionated `production.yaml` plus `users.csv` (with random PAC paths and credentials) so HTTPS forward proxy instances can start immediately.
+- Installs the templated `liner@production.service` when systemd is detected, or writes keepalive scripts for OpenRC/local shells to keep the process running when systemd is unavailable.
+
+#### System Service Units
+- `liner@.service` runs `%i.yaml` configs, grants `cap_net_bind_service`/`cap_setuid`/`cap_setgid`, runs as user `phuslu`, and enforces `LimitNOFILE=1048576` with restart-on-failure semantics.
+- `liner.openrc` expects symlinked instance names (e.g., `liner.production`), refuses direct invocations, and uses `supervise-daemon` to manage start/stop/status hooks around the matching binary and config file.
+
+#### Vector Log Shipping
+- `liner-vector.yaml` tails `data.*.log`, parses JSON log lines, annotates metadata (timestamp/app), filters records where `logger == "forward"`, and ships them to Elasticsearch via Vector.
+- `liner-vector.service` ensures Vector is installed (downloading releases on the fly if needed), loads credentials from `liner-vector.env`, and runs `vector -c $(pwd)/liner-vector.yaml` within `/home/phuslu/liner`.
+- `liner-vector.env` keeps `ELASTICSEARCH_URL`, `ELASTICSEARCH_USERNAME`, and `ELASTICSEARCH_PASSWORD` values for the Vector service so secrets stay out of the unit file.
+
+#### Seashell Artifacts
+- `seashell.bash.tpl` automates lightweight edge deployments by downloading releases, provisioning configs that expose HTTP/SSH listeners on `240.0.0.x` memory addresses, wiring tunnels via a cloud dialer, and emitting MOTD templates with GeoIP-derived fields.
+- `seashell.dockerfile` builds the `phuslu/seashell` image on Alpine, installs troubleshooting tools plus runit, and creates an entrypoint that executes cloud-init style scripts before supervising user services.
+
 ## Common Issues and Notes
 
 ### Certificate Management
@@ -414,5 +434,8 @@ See `.mcp.json` for transport details.
 
 ## Related Files
 - Configuration examples: `*.yaml` in project root (`example.yaml`, `test.yaml`, `phuslu.yaml`)
-- Build scripts: `build.bash`, `make.bash`
+- Build and bootstrap helpers: `build.bash`, `get.sh`
+- Service definitions: `liner@.service`, `liner.openrc`
+- Vector shipping assets: `liner-vector.yaml`, `liner-vector.service`, `liner-vector.env`
+- Seashell bootstrap artifacts: `seashell.bash.tpl`, `seashell.dockerfile`
 - CLI helper: `gosh.go` (embedded shell used by cron/autop commands)
