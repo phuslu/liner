@@ -119,14 +119,25 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		proxypass = h.proxypass.URL
 	default:
 		ri.PolicyBuffer.Reset()
-		h.proxypass.Template.Execute(&ri.PolicyBuffer, struct {
-			Request         *http.Request
-			RealIP          netip.Addr
-			ClientHelloInfo *tls.ClientHelloInfo
-			JA4             string
-			UserAgent       *useragent.UserAgent
-			ServerAddr      netip.AddrPort
-		}{req, ri.RealIP, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr})
+		if obfuscated {
+			h.proxypass.Template.Execute(&ri.PolicyBuffer, map[string]any{
+				"Request":         req,
+				"RealIP":          ri.RealIP,
+				"ClientHelloInfo": ri.ClientHelloInfo,
+				"JA4":             ri.JA4,
+				"UserAgent":       &ri.UserAgent,
+				"ServerAddr":      ri.ServerAddr,
+			})
+		} else {
+			h.proxypass.Template.Execute(&ri.PolicyBuffer, struct {
+				Request         *http.Request
+				RealIP          netip.Addr
+				ClientHelloInfo *tls.ClientHelloInfo
+				JA4             string
+				UserAgent       *useragent.UserAgent
+				ServerAddr      netip.AddrPort
+			}{req, ri.RealIP, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr})
+		}
 		var err error
 		proxypass, err = url.Parse(strings.TrimSpace(b2s(ri.PolicyBuffer.B)))
 		if err != nil {
@@ -362,14 +373,25 @@ func (h *HTTPWebProxyHandler) setHeaders(req *http.Request, ri *HTTPRequestInfo)
 		bb := bytebufferpool.Get()
 		defer bytebufferpool.Put(bb)
 		bb.Reset()
-		h.headers.Execute(bb, struct {
-			Request         *http.Request
-			RealIP          netip.Addr
-			ClientHelloInfo *tls.ClientHelloInfo
-			JA4             string
-			UserAgent       *useragent.UserAgent
-			ServerAddr      netip.AddrPort
-		}{req, ri.RealIP, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr})
+		if obfuscated {
+			h.headers.Execute(bb, map[string]any{
+				"Request":         req,
+				"RealIP":          ri.RealIP,
+				"ClientHelloInfo": ri.ClientHelloInfo,
+				"JA4":             ri.JA4,
+				"UserAgent":       &ri.UserAgent,
+				"ServerAddr":      ri.ServerAddr,
+			})
+		} else {
+			h.headers.Execute(bb, struct {
+				Request         *http.Request
+				RealIP          netip.Addr
+				ClientHelloInfo *tls.ClientHelloInfo
+				JA4             string
+				UserAgent       *useragent.UserAgent
+				ServerAddr      netip.AddrPort
+			}{req, ri.RealIP, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr})
+		}
 		headers = bb.String()
 	} else {
 		headers = h.SetHeaders
