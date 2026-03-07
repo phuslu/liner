@@ -58,59 +58,61 @@ function liner::build() {
 		build/liner_windows_amd64 \
 		build/liner_windows_arm64
 
+	git log --oneline --pretty=format:"%h %s" -10 | tee build/changelog.txt
+
 	cat <<EOF | parallel --line-buffer
 GOOS=linux GOARCH=amd64 \
 	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -gcflags='liner=-N' -o build/liner_linux_amd64/liner && \
-	cp example.yaml build/liner_linux_amd64/ && \
+	cp example.yaml liner@.service build/changelog.txt build/liner_linux_amd64/ && \
 	cd build/liner_linux_amd64 && \
 	tar cv * | gzip -9 >../liner_linux_amd64-${REVSION}.tar.gz
 
 GOOS=linux GOARCH=arm64 \
 	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -gcflags='liner=-N' -o build/liner_linux_arm64/liner && \
 	upx -9 build/liner_linux_arm64/liner && \
-	cp example.yaml build/liner_linux_arm64/ && \
+	cp example.yaml liner@.service build/changelog.txt build/liner_linux_arm64/ && \
 	cd build/liner_linux_arm64 && \
 	tar cv * | gzip -9 >../liner_linux_arm64-${REVSION}.tar.gz
 
 GOOS=linux GOARCH=arm GOARM=7 \
 	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -gcflags='liner=-N' -o build/liner_linux_armv7/liner&& \
 	upx -9 build/liner_linux_armv7/liner && \
-	cp example.yaml build/liner_linux_armv7/ && \
+	cp example.yaml build/changelog.txt build/liner_linux_armv7/ && \
 	cd build/liner_linux_armv7 && \
 	tar cv * | gzip -9 >../liner_linux_armv7-${REVSION}.tar.gz
 
 GOOS=darwin GOARCH=amd64 \
 	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -o build/liner_darwin_amd64/liner && \
-	cp example.yaml build/liner_darwin_amd64/ && \
+	cp example.yaml build/changelog.txt build/liner_darwin_amd64/ && \
 	cd build/liner_darwin_amd64 && \
 	tar cv * | gzip -9 >../liner_darwin_amd64-${REVSION}.tar.gz
 
 GOOS=darwin GOARCH=arm64 \
 	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -o build/liner_darwin_arm64/liner && \
-	cp example.yaml build/liner_darwin_arm64/ && \
+	cp example.yaml build/changelog.txt build/liner_darwin_arm64/ && \
 	cd build/liner_darwin_arm64 && \
 	tar cv * | gzip -9 >../liner_darwin_arm64-${REVSION}.tar.gz
 
 GOOS=android GOARCH=arm64 \
 	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -o build/liner_android_arm64/liner && \
-	cp example.yaml build/liner_android_arm64/ && \
+	cp example.yaml build/changelog.txt build/liner_android_arm64/ && \
 	cd build/liner_android_arm64 && \
 	tar cv * | gzip -9 >../liner_android_arm64-${REVSION}.tar.gz
 
 GOOS=windows GOARCH=amd64 \
 	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -o build/liner_windows_amd64/liner.exe && \
-	cp example.yaml liner-gui.exe build/liner_windows_amd64/ && \
+	cp example.yaml liner-gui.exe build/changelog.txt build/liner_windows_amd64/ && \
 	cd build/liner_windows_amd64 && \
 	tar cv * | gzip -9 >../liner_windows_amd64-${REVSION}.tar.gz
 
 GOOS=windows GOARCH=arm64 \
 	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -o build/liner_windows_arm64/liner.exe && \
-	cp example.yaml liner-gui.exe build/liner_windows_arm64/ && \
+	cp example.yaml liner-gui.exe build/changelog.txt build/liner_windows_arm64/ && \
 	cd build/liner_windows_arm64 && \
 	tar cv * | gzip -9 >../liner_windows_arm64-${REVSION}.tar.gz
 EOF
 	
-	rm -rf $(find build -mindepth 1 -maxdepth 1 -type d -name "liner_*")
+	rm -rf build/changelog.txt $(find build -mindepth 1 -maxdepth 1 -type d -name "liner_*")
 }
 
 function liner::python() {
