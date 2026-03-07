@@ -22,29 +22,6 @@ import (
 	"golang.org/x/sys/cpu"
 )
 
-type TLSVersion uint16
-
-var (
-	TLSVersion13 TLSVersion = tls.VersionTLS13
-	TLSVersion12 TLSVersion = tls.VersionTLS12
-	TLSVersion11 TLSVersion = tls.VersionTLS11
-	TLSVersion10 TLSVersion = tls.VersionTLS10
-)
-
-func (v TLSVersion) String() string {
-	switch v {
-	case TLSVersion13:
-		return "TLSv1.3"
-	case TLSVersion12:
-		return "TLSv1.2"
-	case TLSVersion11:
-		return "TLSv1.1"
-	case TLSVersion10:
-		return "TLSv1.0"
-	}
-	return ""
-}
-
 type TLSInspectorEntry struct {
 	ServerName     string
 	KeyFile        string
@@ -330,7 +307,7 @@ var HTTP3ClientHelloInfoContextKey any = &HTTPContextKey{"http3-clienthello-info
 func (m *TLSInspector) HTTP3ConnContext(ctx context.Context, conn *quic.Conn) context.Context {
 	addr := PlainAddrFromNetAddr(conn.RemoteAddr())
 	if info, ok := m.ClientHelloMap.Load(addr); ok {
-		AppendJA4Fingerprint(info.JA4[:0], TLSVersion(conn.ConnectionState().TLS.Version), info.ClientHelloInfo, true)
+		AppendJA4Fingerprint(info.JA4[:0], conn.ConnectionState().TLS.Version, info.ClientHelloInfo, true)
 		info.QuicConn = conn
 		ctx = context.WithValue(ctx, HTTP3ClientHelloInfoContextKey, info)
 		m.ClientHelloMap.Delete(addr)
@@ -348,7 +325,7 @@ func (m *TLSInspector) HTTPConnState(c net.Conn, cs http.ConnState) {
 				ConnectionState() tls.ConnectionState
 			}); ok {
 				cs := tc.ConnectionState()
-				AppendJA4Fingerprint(info.JA4[:0], TLSVersion(cs.Version), info.ClientHelloInfo, false)
+				AppendJA4Fingerprint(info.JA4[:0], cs.Version, info.ClientHelloInfo, false)
 			}
 			info.NetConn = c
 		} else {

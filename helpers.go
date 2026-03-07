@@ -1051,7 +1051,7 @@ func IsTLSGreaseCode(c uint16) bool {
 	return c&0x0f0f == 0x0a0a && c&0xff == c>>8
 }
 
-func AppendJA3Fingerprint(dst []byte, version TLSVersion, info *tls.ClientHelloInfo) []byte {
+func AppendJA3Fingerprint(dst []byte, version uint16, info *tls.ClientHelloInfo) []byte {
 	b := AppendableBytes(dst)
 
 	// version
@@ -1109,7 +1109,7 @@ func AppendJA3Fingerprint(dst []byte, version TLSVersion, info *tls.ClientHelloI
 	return b
 }
 
-func AppendJA4Fingerprint(dst []byte, version TLSVersion, info *tls.ClientHelloInfo, isquic bool) []byte {
+func AppendJA4Fingerprint(dst []byte, version uint16, info *tls.ClientHelloInfo, isquic bool) []byte {
 	b := AppendableBytes(dst)
 
 	ciphers := make([]uint16, 0, 32)
@@ -1136,13 +1136,13 @@ func AppendJA4Fingerprint(dst []byte, version TLSVersion, info *tls.ClientHelloI
 		b = b.Byte('t')
 	}
 	switch version {
-	case TLSVersion13:
+	case tls.VersionTLS13:
 		b = b.Str("13")
-	case TLSVersion12:
+	case tls.VersionTLS12:
 		b = b.Str("12")
-	case TLSVersion11:
+	case tls.VersionTLS11:
 		b = b.Str("11")
-	case TLSVersion10:
+	case tls.VersionTLS10:
 		b = b.Str("10")
 	default:
 		b = b.Str("00")

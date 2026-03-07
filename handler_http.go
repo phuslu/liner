@@ -41,7 +41,7 @@ type HTTPRequestInfo struct {
 	RealIP          netip.Addr
 	ServerAddr      netip.AddrPort
 	TLSServerName   string
-	TLSVersion      TLSVersion
+	TLSVersion      uint16
 	JA4             string
 	ClientHelloInfo *tls.ClientHelloInfo
 	ClientHelloRaw  []byte
@@ -88,7 +88,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	ri.ServerAddr = AddrPortFromNetAddr(req.Context().Value(http.LocalAddrContextKey).(net.Addr))
 	if req.TLS != nil {
 		ri.TLSServerName = req.TLS.ServerName
-		ri.TLSVersion = TLSVersion(req.TLS.Version)
+		ri.TLSVersion = req.TLS.Version
 	} else {
 		ri.TLSServerName = ""
 		ri.TLSVersion = 0
@@ -230,7 +230,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		Xid("trace_id", ri.TraceID).
 		NetIPAddrPort("server_addr", ri.ServerAddr).
 		Str("tls_server_name", ri.TLSServerName).
-		Str("tls_version", ri.TLSVersion.String()).
+		Str("tls_version", tls.VersionName(ri.TLSVersion)).
 		Str("ja4", ri.JA4).
 		NetIPAddr("remote_ip", ri.RealIP).
 		Str("user_agent", req.UserAgent()).

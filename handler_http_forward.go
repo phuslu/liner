@@ -534,7 +534,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 					Xid("trace_id", ri.TraceID).
 					NetIPAddrPort("server_addr", ri.ServerAddr).
 					Str("tls_server_name", cmp.Or(ri.TLSServerName, h.PerferedLocalIP)).
-					Str("tls_version", ri.TLSVersion.String()).
+					Str("tls_version", tls.VersionName(ri.TLSVersion)).
 					Str("ja4", ri.JA4).
 					Str("username", username).
 					NetIPAddr("remote_ip", ri.RealIP).
@@ -662,7 +662,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 					Xid("trace_id", ri.TraceID).
 					NetIPAddrPort("server_addr", ri.ServerAddr).
 					Str("tls_server_name", cmp.Or(ri.TLSServerName, h.PerferedLocalIP)).
-					Str("tls_version", ri.TLSVersion.String()).
+					Str("tls_version", tls.VersionName(ri.TLSVersion)).
 					Str("ja4", ri.JA4).
 					Str("username", username).
 					NetIPAddr("remote_ip", ri.RealIP).
