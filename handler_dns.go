@@ -170,9 +170,15 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, rw fastdns.ResponseWriter, re
 		req.QType = req.Message.Question.Type.String()
 
 		req.PolicyBuffer.Reset()
-		err = h.policy.Execute(&req.PolicyBuffer, struct {
-			Request *DnsRequest
-		}{req})
+		if obfuscated {
+			err = h.policy.Execute(&req.PolicyBuffer, map[string]any{
+				"Request": req,
+			})
+		} else {
+			err = h.policy.Execute(&req.PolicyBuffer, struct {
+				Request *DnsRequest
+			}{req})
+		}
 		if err != nil {
 			log.Error().Err(err).Context(req.LogContext).Msg("dns execute policy error")
 			return
