@@ -1,6 +1,6 @@
 #!/bin/bash -xe
 
-function setup() {
+function liner::setup() {
 	export DEBIAN_FRONTEND=noninteractive
 	if test -f /etc/alpine-release; then
 		apk update
@@ -18,7 +18,7 @@ function setup() {
 	tar xvJ -C /tmp/
 }
 
-function build() {
+function liner::build() {
 	rm -rf build && mkdir build
 
 	export CGO_ENABLED=0
@@ -113,7 +113,7 @@ EOF
 	rm -rf $(find build -mindepth 1 -maxdepth 1 -type d -name "liner_*")
 }
 
-function python() {
+function liner::python() {
 	rm -rf python && unzip python.zip -d python && pushd python
 
 	export CGO_ENABLED=1
@@ -173,7 +173,7 @@ function python() {
 	popd
 }
 
-function release() {
+function liner::release() {
 	if ls python/liner_py-*.whl 2>/dev/null; then
 		pushd python
 		gh release view v0.0.0 --json assets --jq .assets[].name | egrep '^liner_py-' | grep "_$(arch).whl$" | xargs -i gh release delete-asset v0.0.0 {} --yes
@@ -196,5 +196,4 @@ function release() {
 	fi
 }
 
-
-$1
+liner::$1
