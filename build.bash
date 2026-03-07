@@ -86,7 +86,7 @@ function python() {
 	#go install -v mvdan.cc/garble@latest
 	if command -v garble; then
 		export GOGARBLE=liner
-		GO="garble -literals -tiny -seed=o9WDTZ4CN4w"
+		GO="garble -literals -tiny -seed=${GARBLE_SEED:-random}"
 	else
 		GO=go
 	fi
