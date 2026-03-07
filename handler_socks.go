@@ -157,10 +157,18 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 	var policyName = h.Config.Forward.Policy
 	if h.policy != nil {
 		bb.Reset()
-		err := h.policy.Execute(bb, struct {
-			Request    SocksRequest
-			ServerAddr netip.AddrPort
-		}{req, req.ServerAddr})
+		var err error
+		if obfuscated {
+			err = h.policy.Execute(bb, map[string]any{
+				"Request":    req,
+				"ServerAddr": req.ServerAddr,
+			})
+		} else {
+			err = h.policy.Execute(bb, struct {
+				Request    SocksRequest
+				ServerAddr netip.AddrPort
+			}{req, req.ServerAddr})
+		}
 		if err != nil {
 			log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("forward_policy", h.Config.Forward.Policy).Msg("execute forward_policy error")
 			return
@@ -180,10 +188,18 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 	var dialerValue = h.Config.Forward.Dialer
 	if h.dialer != nil {
 		bb.Reset()
-		err := h.dialer.Execute(bb, struct {
-			Request    SocksRequest
-			ServerAddr netip.AddrPort
-		}{req, req.ServerAddr})
+		var err error
+		if obfuscated {
+			err = h.dialer.Execute(bb, map[string]any{
+				"Request":    req,
+				"ServerAddr": req.ServerAddr,
+			})
+		} else {
+			err = h.dialer.Execute(bb, struct {
+				Request    SocksRequest
+				ServerAddr netip.AddrPort
+			}{req, req.ServerAddr})
+		}
 		if err != nil {
 			log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("forward_dialer_name", h.Config.Forward.Dialer).Msg("execute forward_dialer error")
 			WriteSocks5Status(conn, Socks5StatusGeneralFailure)
