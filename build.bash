@@ -4,10 +4,10 @@ function setup() {
 	export DEBIAN_FRONTEND=noninteractive
 	if test -f /etc/alpine-release; then
 		apk update
-		apk add git curl jq unzip zip xz github-cli patch make build-base upx
+		apk add git curl jq unzip zip xz github-cli patch make build-base parallel upx
 	else
 		apt update -y
-		apt install -yq git curl jq unzip zip xz-utils gh build-essential upx
+		apt install -yq git curl jq unzip zip xz-utils gh build-essential parallel upx
 	fi
 
 	git config --global --add safe.directory '*'
@@ -19,10 +19,13 @@ function setup() {
 }
 
 function build() {
+	rm -rf build && mkdir build
+
 	export CGO_ENABLED=0
-	export GOROOT=/tmp/go
-	export GOPATH=/tmp/gopath
+	export GOROOT=${GOROOT:-/tmp/go}
+	export GOPATH=${GOPATH:-/tmp/gopath}
 	export PATH=${GOPATH:-~/go}/bin:${GOROOT}/bin:$PATH
+	export REVSION=$(git rev-list --count HEAD)
 
 	if grep -lr $(printf '\r\n') * | grep '.go$' ; then
 		echo -e "\e[1;31mPlease run dos2unix for go source files\e[0m"
@@ -42,25 +45,76 @@ function build() {
 	chmod -R +w ${golang_org_x_net}
 	patch -p1 -d ${golang_org_x_net} <http2date.patch
 
-	go build -v .
-	go test -v .
+	go build -v -trimpath
+	go test -v
 
-	cat <<EOF |
-CGO_ENABLED=0 GOOS=android GOARCH=arm64 ./make.bash build dist
-CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 ./make.bash build dist
-CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 ./make.bash build dist
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 ./make.bash build dist
-CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 ./make.bash build dist
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 ./make.bash build dist
-CGO_ENABLED=0 GOOS=windows GOARCH=amd64 ./make.bash build dist
+	mkdir \
+		build/liner_linux_amd64 \
+		build/liner_linux_arm64 \
+		build/liner_linux_armv7 \
+		build/liner_darwin_amd64 \
+		build/liner_darwin_arm64 \
+		build/liner_android_arm64 \
+		build/liner_windows_amd64 \
+		build/liner_windows_arm64
+
+	cat <<EOF | parallel --line-buffer
+GOOS=linux GOARCH=amd64 \
+	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -gcflags='liner=-N' -o build/liner_linux_amd64/liner && \
+	cp example.yaml build/liner_linux_amd64/ && \
+	cd build/liner_linux_amd64 && \
+	tar cv * | gzip -9 >../liner_linux_amd64-${REVSION}.tar.gz
+
+GOOS=linux GOARCH=arm64 \
+	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -gcflags='liner=-N' -o build/liner_linux_arm64/liner && \
+	upx -9 build/liner_linux_arm64/liner && \
+	cp example.yaml build/liner_linux_arm64/ && \
+	cd build/liner_linux_arm64 && \
+	tar cv * | gzip -9 >../liner_linux_arm64-${REVSION}.tar.gz
+
+GOOS=linux GOARCH=arm GOARM=7 \
+	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -gcflags='liner=-N' -o build/liner_linux_armv7/liner&& \
+	upx -9 build/liner_linux_armv7/liner && \
+	cp example.yaml build/liner_linux_armv7/ && \
+	cd build/liner_linux_armv7 && \
+	tar cv * | gzip -9 >../liner_linux_armv7-${REVSION}.tar.gz
+
+GOOS=darwin GOARCH=amd64 \
+	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -o build/liner_darwin_amd64/liner && \
+	cp example.yaml build/liner_darwin_amd64/ && \
+	cd build/liner_darwin_amd64 && \
+	tar cv * | gzip -9 >../liner_darwin_amd64-${REVSION}.tar.gz
+
+GOOS=darwin GOARCH=arm64 \
+	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -o build/liner_darwin_arm64/liner && \
+	cp example.yaml build/liner_darwin_arm64/ && \
+	cd build/liner_darwin_arm64 && \
+	tar cv * | gzip -9 >../liner_darwin_arm64-${REVSION}.tar.gz
+
+GOOS=android GOARCH=arm64 \
+	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -o build/liner_android_arm64/liner && \
+	cp example.yaml build/liner_android_arm64/ && \
+	cd build/liner_android_arm64 && \
+	tar cv * | gzip -9 >../liner_android_arm64-${REVSION}.tar.gz
+
+GOOS=windows GOARCH=amd64 \
+	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -o build/liner_windows_amd64/liner.exe && \
+	cp example.yaml liner-gui.exe build/liner_windows_amd64/ && \
+	cd build/liner_windows_amd64 && \
+	tar cv * | gzip -9 >../liner_windows_amd64-${REVSION}.tar.gz
+
+GOOS=windows GOARCH=arm64 \
+	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -o build/liner_windows_arm64/liner.exe && \
+	cp example.yaml liner-gui.exe build/liner_windows_arm64/ && \
+	cd build/liner_windows_arm64 && \
+	tar cv * | gzip -9 >../liner_windows_arm64-${REVSION}.tar.gz
 EOF
-	xargs --max-procs=8 -n1 -i bash -c {}
-
+	
+	rm -rf $(find build -mindepth 1 -maxdepth 1 -type d -name "liner_*")
 }
 
 function python() {
-	rm -rf python && unzip python.zip -d python
-	pushd python
+	rm -rf python && unzip python.zip -d python && pushd python
 
 	export CGO_ENABLED=1
 	export GOROOT=${GOROOT:-/tmp/go}
@@ -97,10 +151,11 @@ function python() {
 	case $(uname) in
 		Darwin )
 			perl -pi -e "s/^Version: .*/Version: 1.0.${REVSION}/" liner_py-1.0.${REVSION}.dist-info/METADATA
+			perl -pi -e "s/Tag: cp39-abi3-.*/Tag: cp39-abi3-macosx_11_0_x86_64/" liner_py-1.0.${REVSION}.dist-info/WHEEL
 			;;
 		Linux )
 			sed -i "s/^Version: .*/Version: 1.0.${REVSION}/" liner_py-1.0.${REVSION}.dist-info/METADATA
-			sed -i "s/Tag: cp39-.*/Tag: cp39-abi3-linux_$(arch)/" liner_py-1.0.${REVSION}.dist-info/WHEEL
+			sed -i "s/Tag: cp39-abi3-.*/Tag: cp39-abi3-linux_$(arch)/" liner_py-1.0.${REVSION}.dist-info/WHEEL
 			;;
 	esac
 
@@ -132,10 +187,10 @@ function release() {
 		popd
 	else
 		pushd build
-		sha1sum liner* >checksums.txt
+		sha1sum liner_*.tar.gz >checksums.txt
 		git log --oneline --pretty=format:"%h %s" -5 | tee changelog.txt
 		gh release view v0.0.0 --json assets --jq .assets[].name | egrep -v '^liner_py-' | xargs -i gh release delete-asset v0.0.0 {} --yes
-		gh release upload v0.0.0 liner_* checksums.txt --clobber
+		gh release upload v0.0.0 liner_*.tar.gz checksums.txt --clobber
 		gh release edit v0.0.0 --notes-file changelog.txt
 		popd
 	fi
