@@ -74,7 +74,7 @@ function python() {
 		Darwin )
 			export CGO_CFLAGS="-I/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Headers/"
 			export CGO_LDFLAGS="-L/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/ -lpython3.9"
-			export PLATFORM_TAG="macosx_11_0_$(arch)"
+			export PLATFORM_TAG="macosx_11_0_x86_64"
 			;;
 		Linux )
 			export CGO_CFLAGS="$(python3-config --includes)"
@@ -94,10 +94,16 @@ function python() {
 	$GO build -v -trimpath -ldflags="-s -w -X main.version=${REVSION}" -buildmode=c-shared -o liner.so ..
 	mv -f liner.so liner/liner.so
 
-	sed -i "s/^Version: .*/Version: 1.0.${REVSION}/" liner_py-1.0.${REVSION}.dist-info/METADATA
-	if [ "$(uname)" = "Linux" ]; then
-		sed -i "s/Tag: cp39-.*/Tag: cp39-abi3-linux_$(arch)/" liner_py-1.0.${REVSION}.dist-info/WHEEL
-	fi
+	case $(uname) in
+		Darwin )
+			perl -pi -e "s/^Version: .*/Version: 1.0.${REVSION}/" liner_py-1.0.${REVSION}.dist-info/METADATA
+			;;
+		Linux )
+			sed -i "s/^Version: .*/Version: 1.0.${REVSION}/" liner_py-1.0.${REVSION}.dist-info/METADATA
+			sed -i "s/Tag: cp39-.*/Tag: cp39-abi3-linux_$(arch)/" liner_py-1.0.${REVSION}.dist-info/WHEEL
+			;;
+	esac
+
 	find liner liner_py-1.0.${REVSION}.dist-info -type f ! -name 'RECORD' -exec sh -c '
 		for f; do
 		  size=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f")
