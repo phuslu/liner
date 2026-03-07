@@ -87,10 +87,17 @@ func (h *HTTPWebDohHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		dr.QType = dr.Message.Question.Type.String()
 
 		ri.PolicyBuffer.Reset()
-		err = h.policy.Execute(&ri.PolicyBuffer, struct {
-			Request *http.Request
-			Dns     *DnsRequest
-		}{req, dr})
+		if obfuscated {
+			err = h.policy.Execute(&ri.PolicyBuffer, map[string]any{
+				"Request": req,
+				"Dns":     dr,
+			})
+		} else {
+			err = h.policy.Execute(&ri.PolicyBuffer, struct {
+				Request *http.Request
+				Dns     *DnsRequest
+			}{req, dr})
+		}
 		if err != nil {
 			log.Error().Context(ri.LogContext).Err(err).Msg("dns execute policy error")
 			return
