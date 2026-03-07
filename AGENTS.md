@@ -343,7 +343,7 @@ go test -v -run TestResolverLookup
 go build -v
 
 # Build with version information
-go build -ldflags "-X main.version=$(git describe --tags)"
+go build -ldflags "-X main.version=1.0.$(git describe --tags)"
 ```
 
 ## Extension and Integration

@@ -7,7 +7,7 @@ PROJECT=liner
 BUILDROOT=build
 
 REVSION=$(git rev-list --count HEAD)
-LDFLAGS="-s -w -X main.version=${REVSION}"
+LDFLAGS="-s -w -X main.version=1.0.${REVSION}"
 SOURCES="README.md china.pac example.yaml liner-vector.yaml liner-vector.service"
 
 GOOS=${GOOS:-$(go env GOOS)}

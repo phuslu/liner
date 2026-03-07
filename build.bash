@@ -91,7 +91,7 @@ function python() {
 		GO=go
 	fi
 
-	$GO build -v -trimpath -ldflags="-s -w -X main.version=${REVSION}" -buildmode=c-shared -o liner.so ..
+	$GO build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -buildmode=c-shared -o liner.so ..
 	mv -f liner.so liner/liner.so
 
 	case $(uname) in
