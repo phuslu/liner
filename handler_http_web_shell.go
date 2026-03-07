@@ -92,10 +92,18 @@ func (h *HTTPWebShellHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		break
 	case "":
 		var b bytes.Buffer
-		err := h.webshell.Execute(&b, struct {
-			Request  *http.Request
-			Template map[string]string
-		}{req, h.Template})
+		var err error
+		if obfuscated {
+			err = h.webshell.Execute(&b, map[string]any{
+				"Request":  req,
+				"Template": h.Template,
+			})
+		} else {
+			err = h.webshell.Execute(&b, struct {
+				Request  *http.Request
+				Template map[string]string
+			}{req, h.Template})
+		}
 		if err != nil {
 			http.Error(rw, err.Error(), http.StatusInternalServerError)
 			return
