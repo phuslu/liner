@@ -63,9 +63,16 @@ func (h *SniHandler) ServeConn(ctx context.Context, servername string, header []
 	req.TraceID = log.NewXID()
 
 	var sb strings.Builder
-	err := h.policy.Execute(&sb, struct {
-		Request SniRequest
-	}{req})
+	var err error
+	if obfuscated {
+		err = h.policy.Execute(&sb, map[string]any{
+			"Request": req,
+		})
+	} else {
+		err = h.policy.Execute(&sb, struct {
+			Request SniRequest
+		}{req})
+	}
 	if err != nil {
 		log.Error().Err(err).Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddrPort("remote_addr", req.RemoteAddr).Msg("sniproxy execute policy template error")
 		return err
@@ -82,9 +89,16 @@ func (h *SniHandler) ServeConn(ctx context.Context, servername string, header []
 	var dialerValue = h.Config.Forward.Dialer
 	if h.dialer != nil {
 		var sb strings.Builder
-		err := h.policy.Execute(&sb, struct {
-			Request SniRequest
-		}{req})
+		var err error
+		if obfuscated {
+			err = h.policy.Execute(&sb, map[string]any{
+				"Request": req,
+			})
+		} else {
+			err = h.policy.Execute(&sb, struct {
+				Request SniRequest
+			}{req})
+		}
 		if err != nil {
 			log.Error().Err(err).Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddrPort("remote_addr", req.RemoteAddr).Str("hostport", hostport).Msg("sniproxy execute dialer template error")
 			return err
