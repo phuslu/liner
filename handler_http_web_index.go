@@ -127,29 +127,45 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 			rw.Header().Set("content-encoding", "gzip")
 		}
 
-		err := tmpl.Execute(w, struct {
-			ServerVersion   string
-			ServerAddr      netip.AddrPort
-			Request         *http.Request
-			RealIP          netip.Addr
-			UserAgent       *useragent.UserAgent
-			ClientHelloInfo *tls.ClientHelloInfo
-			JA4             string
-			TCPInfo         func() (*TCPInfo, error)
-			QuicStats       func() (*quic.ConnectionStats, error)
-			FileInfo        fs.FileInfo
-		}{
-			ServerVersion:   version,
-			ServerAddr:      ri.ServerAddr,
-			Request:         req,
-			RealIP:          ri.RealIP,
-			UserAgent:       &ri.UserAgent,
-			ClientHelloInfo: ri.ClientHelloInfo,
-			JA4:             ri.JA4,
-			TCPInfo:         ri.ClientConnOps.GetTcpInfo,
-			QuicStats:       ri.ClientConnOps.GetQuicStats,
-			FileInfo:        fi,
-		})
+		var err error
+		if obfuscated {
+			err = tmpl.Execute(w, map[string]any{
+				"ServerVersion":   version,
+				"ServerAddr":      ri.ServerAddr,
+				"Request":         req,
+				"RealIP":          ri.RealIP,
+				"UserAgent":       &ri.UserAgent,
+				"ClientHelloInfo": ri.ClientHelloInfo,
+				"JA4":             ri.JA4,
+				"TCPInfo":         ri.ClientConnOps.GetTcpInfo,
+				"QuicStats":       ri.ClientConnOps.GetQuicStats,
+				"FileInfo":        fi,
+			})
+		} else {
+			err = tmpl.Execute(w, struct {
+				ServerVersion   string
+				ServerAddr      netip.AddrPort
+				Request         *http.Request
+				RealIP          netip.Addr
+				UserAgent       *useragent.UserAgent
+				ClientHelloInfo *tls.ClientHelloInfo
+				JA4             string
+				TCPInfo         func() (*TCPInfo, error)
+				QuicStats       func() (*quic.ConnectionStats, error)
+				FileInfo        fs.FileInfo
+			}{
+				ServerVersion:   version,
+				ServerAddr:      ri.ServerAddr,
+				Request:         req,
+				RealIP:          ri.RealIP,
+				UserAgent:       &ri.UserAgent,
+				ClientHelloInfo: ri.ClientHelloInfo,
+				JA4:             ri.JA4,
+				TCPInfo:         ri.ClientConnOps.GetTcpInfo,
+				QuicStats:       ri.ClientConnOps.GetQuicStats,
+				FileInfo:        fi,
+			})
+		}
 		if err != nil {
 			log.Error().Context(ri.LogContext).Err(err).Str("index_file", h.File).Msg("execute index file error")
 			http.Error(rw, err.Error(), http.StatusInternalServerError)
@@ -197,13 +213,20 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 				return
 			}
 
-			err = h.markdown.Execute(b, struct {
-				Title string
-				Text  string
-			}{
-				Title: filepath.Base(fullname),
-				Text:  string(text),
-			})
+			if obfuscated {
+				err = h.markdown.Execute(b, map[string]any{
+					"Title": filepath.Base(fullname),
+					"Text":  string(text),
+				})
+			} else {
+				err = h.markdown.Execute(b, struct {
+					Title string
+					Text  string
+				}{
+					Title: filepath.Base(fullname),
+					Text:  string(text),
+				})
+			}
 			if err != nil {
 				log.Error().Context(ri.LogContext).Err(err).Str("file", fullname).Msg("execute markdown template error")
 				http.Error(rw, err.Error(), http.StatusInternalServerError)
@@ -324,16 +347,29 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	defer bytebufferpool.Put(b)
 	b.Reset()
 
-	err = h.body.Execute(b, struct {
-		WebRoot         string
-		Request         *http.Request
-		RealIP          netip.Addr
-		ClientHelloInfo *tls.ClientHelloInfo
-		JA4             string
-		UserAgent       *useragent.UserAgent
-		ServerAddr      netip.AddrPort
-		FileInfos       []fs.FileInfo
-	}{h.Root, req, ri.RealIP, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr, infos})
+	if obfuscated {
+		err = h.body.Execute(b, map[string]any{
+			"WebRoot":         h.Root,
+			"Request":         req,
+			"RealIP":          ri.RealIP,
+			"ClientHelloInfo": ri.ClientHelloInfo,
+			"JA4":             ri.JA4,
+			"UserAgent":       &ri.UserAgent,
+			"ServerAddr":      ri.ServerAddr,
+			"FileInfos":       infos,
+		})
+	} else {
+		err = h.body.Execute(b, struct {
+			WebRoot         string
+			Request         *http.Request
+			RealIP          netip.Addr
+			ClientHelloInfo *tls.ClientHelloInfo
+			JA4             string
+			UserAgent       *useragent.UserAgent
+			ServerAddr      netip.AddrPort
+			FileInfos       []fs.FileInfo
+		}{h.Root, req, ri.RealIP, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr, infos})
+	}
 	if err != nil {
 		http.Error(rw, "500 internal server error", http.StatusInternalServerError)
 		return
@@ -349,16 +385,29 @@ func (h *HTTPWebIndexHandler) addHeaders(rw http.ResponseWriter, req *http.Reque
 	defer bytebufferpool.Put(bb)
 	bb.Reset()
 
-	h.headers.Execute(bb, struct {
-		WebRoot         string
-		Request         *http.Request
-		RealIP          netip.Addr
-		ClientHelloInfo *tls.ClientHelloInfo
-		JA4             string
-		UserAgent       *useragent.UserAgent
-		ServerAddr      netip.AddrPort
-		FileInfos       []fs.FileInfo
-	}{h.Root, req, ri.RealIP, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr, nil})
+	if obfuscated {
+		h.headers.Execute(bb, map[string]any{
+			"WebRoot":         h.Root,
+			"Request":         req,
+			"RealIP":          ri.RealIP,
+			"ClientHelloInfo": ri.ClientHelloInfo,
+			"JA4":             ri.JA4,
+			"UserAgent":       &ri.UserAgent,
+			"ServerAddr":      ri.ServerAddr,
+			"FileInfos":       nil,
+		})
+	} else {
+		h.headers.Execute(bb, struct {
+			WebRoot         string
+			Request         *http.Request
+			RealIP          netip.Addr
+			ClientHelloInfo *tls.ClientHelloInfo
+			JA4             string
+			UserAgent       *useragent.UserAgent
+			ServerAddr      netip.AddrPort
+			FileInfos       []fs.FileInfo
+		}{h.Root, req, ri.RealIP, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr, nil})
+	}
 
 	var statusCode int
 	for line := range strings.Lines(bb.String()) {
