@@ -167,7 +167,10 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 			err = h.policy.Execute(bb, struct {
 				Request    SocksRequest
 				ServerAddr netip.AddrPort
-			}{req, req.ServerAddr})
+			}{
+				Request:    req,
+				ServerAddr: req.ServerAddr,
+			})
 		}
 		if err != nil {
 			log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("forward_policy", h.Config.Forward.Policy).Msg("execute forward_policy error")
@@ -198,7 +201,10 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 			err = h.dialer.Execute(bb, struct {
 				Request    SocksRequest
 				ServerAddr netip.AddrPort
-			}{req, req.ServerAddr})
+			}{
+				Request:    req,
+				ServerAddr: req.ServerAddr,
+			})
 		}
 		if err != nil {
 			log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("forward_dialer_name", h.Config.Forward.Dialer).Msg("execute forward_dialer error")

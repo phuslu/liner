@@ -71,7 +71,9 @@ func (h *SniHandler) ServeConn(ctx context.Context, servername string, header []
 	} else {
 		err = h.policy.Execute(&sb, struct {
 			Request SniRequest
-		}{req})
+		}{
+			Request: req,
+		})
 	}
 	if err != nil {
 		log.Error().Err(err).Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddrPort("remote_addr", req.RemoteAddr).Msg("sniproxy execute policy template error")
@@ -97,7 +99,9 @@ func (h *SniHandler) ServeConn(ctx context.Context, servername string, header []
 		} else {
 			err = h.policy.Execute(&sb, struct {
 				Request SniRequest
-			}{req})
+			}{
+				Request: req,
+			})
 		}
 		if err != nil {
 			log.Error().Err(err).Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddrPort("remote_addr", req.RemoteAddr).Str("hostport", hostport).Msg("sniproxy execute dialer template error")

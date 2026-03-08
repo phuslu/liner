@@ -145,7 +145,15 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 					UserAgent       *useragent.UserAgent
 					ServerAddr      netip.AddrPort
 					User            AuthUserInfo
-				}{req, ri.RealIP, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr, ri.ProxyUserInfo})
+				}{
+					Request:         req,
+					RealIP:          ri.RealIP,
+					ClientHelloInfo: ri.ClientHelloInfo,
+					JA4:             ri.JA4,
+					UserAgent:       &ri.UserAgent,
+					ServerAddr:      ri.ServerAddr,
+					User:            ri.ProxyUserInfo,
+				})
 			}
 			if err != nil {
 				log.Error().Err(err).Context(ri.LogContext).Str("tunnel_tcp_congestion", h.Config.Tunnel.TcpCongestion).Msg("execute tunnel_tcp_congestion error")

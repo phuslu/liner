@@ -368,7 +368,16 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 			UserAgent       *useragent.UserAgent
 			ServerAddr      netip.AddrPort
 			FileInfos       []fs.FileInfo
-		}{h.Root, req, ri.RealIP, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr, infos})
+		}{
+			WebRoot:         h.Root,
+			Request:         req,
+			RealIP:          ri.RealIP,
+			ClientHelloInfo: ri.ClientHelloInfo,
+			JA4:             ri.JA4,
+			UserAgent:       &ri.UserAgent,
+			ServerAddr:      ri.ServerAddr,
+			FileInfos:       infos,
+		})
 	}
 	if err != nil {
 		http.Error(rw, "500 internal server error", http.StatusInternalServerError)
@@ -406,7 +415,16 @@ func (h *HTTPWebIndexHandler) addHeaders(rw http.ResponseWriter, req *http.Reque
 			UserAgent       *useragent.UserAgent
 			ServerAddr      netip.AddrPort
 			FileInfos       []fs.FileInfo
-		}{h.Root, req, ri.RealIP, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr, nil})
+		}{
+			WebRoot:         h.Root,
+			Request:         req,
+			RealIP:          ri.RealIP,
+			ClientHelloInfo: ri.ClientHelloInfo,
+			JA4:             ri.JA4,
+			UserAgent:       &ri.UserAgent,
+			ServerAddr:      ri.ServerAddr,
+			FileInfos:       nil,
+		})
 	}
 
 	var statusCode int

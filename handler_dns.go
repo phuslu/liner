@@ -177,7 +177,9 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, rw fastdns.ResponseWriter, re
 		} else {
 			err = h.policy.Execute(&req.PolicyBuffer, struct {
 				Request *DnsRequest
-			}{req})
+			}{
+				Request: req,
+			})
 		}
 		if err != nil {
 			log.Error().Err(err).Context(req.LogContext).Msg("dns execute policy error")

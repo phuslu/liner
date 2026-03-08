@@ -102,7 +102,10 @@ func (h *HTTPWebShellHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 			err = h.webshell.Execute(&b, struct {
 				Request  *http.Request
 				Template map[string]string
-			}{req, h.Template})
+			}{
+				Request:  req,
+				Template: h.Template,
+			})
 		}
 		if err != nil {
 			http.Error(rw, err.Error(), http.StatusInternalServerError)

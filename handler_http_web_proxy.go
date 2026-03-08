@@ -136,7 +136,14 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 				JA4             string
 				UserAgent       *useragent.UserAgent
 				ServerAddr      netip.AddrPort
-			}{req, ri.RealIP, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr})
+			}{
+				Request:         req,
+				RealIP:          ri.RealIP,
+				ClientHelloInfo: ri.ClientHelloInfo,
+				JA4:             ri.JA4,
+				UserAgent:       &ri.UserAgent,
+				ServerAddr:      ri.ServerAddr,
+			})
 		}
 		var err error
 		proxypass, err = url.Parse(strings.TrimSpace(b2s(ri.PolicyBuffer.B)))
@@ -390,7 +397,14 @@ func (h *HTTPWebProxyHandler) setHeaders(req *http.Request, ri *HTTPRequestInfo)
 				JA4             string
 				UserAgent       *useragent.UserAgent
 				ServerAddr      netip.AddrPort
-			}{req, ri.RealIP, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr})
+			}{
+				Request:         req,
+				RealIP:          ri.RealIP,
+				ClientHelloInfo: ri.ClientHelloInfo,
+				JA4:             ri.JA4,
+				UserAgent:       &ri.UserAgent,
+				ServerAddr:      ri.ServerAddr,
+			})
 		}
 		headers = bb.String()
 	} else {

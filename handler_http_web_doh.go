@@ -96,7 +96,10 @@ func (h *HTTPWebDohHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 			err = h.policy.Execute(&ri.PolicyBuffer, struct {
 				Request *http.Request
 				Dns     *DnsRequest
-			}{req, dr})
+			}{
+				Request: req,
+				Dns:     dr,
+			})
 		}
 		if err != nil {
 			log.Error().Context(ri.LogContext).Err(err).Msg("dns execute policy error")

@@ -166,7 +166,15 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 				User            AuthUserInfo
 				UserAgent       *useragent.UserAgent
 				ServerAddr      netip.AddrPort
-			}{req, ri.RealIP, ri.ClientHelloInfo, ri.JA4, ri.ProxyUserInfo, &ri.UserAgent, ri.ServerAddr})
+			}{
+				Request:         req,
+				RealIP:          ri.RealIP,
+				ClientHelloInfo: ri.ClientHelloInfo,
+				JA4:             ri.JA4,
+				User:            ri.ProxyUserInfo,
+				UserAgent:       &ri.UserAgent,
+				ServerAddr:      ri.ServerAddr,
+			})
 		}
 		if err != nil {
 			log.Error().Err(err).Context(ri.LogContext).Str("forward_policy", h.Config.Forward.Policy).Interface("client_hello_info", ri.ClientHelloInfo).Interface("tls_connection_state", req.TLS).Msg("execute forward_policy error")
@@ -282,7 +290,15 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 					UserAgent       *useragent.UserAgent
 					ServerAddr      netip.AddrPort
 					User            AuthUserInfo
-				}{req, ri.RealIP, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr, ri.ProxyUserInfo})
+				}{
+					Request:         req,
+					RealIP:          ri.RealIP,
+					ClientHelloInfo: ri.ClientHelloInfo,
+					JA4:             ri.JA4,
+					UserAgent:       &ri.UserAgent,
+					ServerAddr:      ri.ServerAddr,
+					User:            ri.ProxyUserInfo,
+				})
 			}
 			if err != nil {
 				log.Error().Err(err).Context(ri.LogContext).Str("forward_tcp_congestion", h.Config.Forward.TcpCongestion).Msg("execute forward_tcp_congestion error")
@@ -356,7 +372,15 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 				UserAgent       *useragent.UserAgent
 				ServerAddr      netip.AddrPort
 				User            AuthUserInfo
-			}{req, ri.RealIP, ri.ClientHelloInfo, ri.JA4, &ri.UserAgent, ri.ServerAddr, ri.ProxyUserInfo})
+			}{
+				Request:         req,
+				RealIP:          ri.RealIP,
+				ClientHelloInfo: ri.ClientHelloInfo,
+				JA4:             ri.JA4,
+				UserAgent:       &ri.UserAgent,
+				ServerAddr:      ri.ServerAddr,
+				User:            ri.ProxyUserInfo,
+			})
 		}
 		if err != nil {
 			log.Error().Err(err).Context(ri.LogContext).Str("forward_dialer_name", h.Config.Forward.Dialer).Msg("execute forward_dialer error")
