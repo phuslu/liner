@@ -53,6 +53,7 @@ var (
 
 func main() {
 	if os.Getenv("GOSH") == "1" {
+		SetProcessName(os.Args[0])
 		err := gosh(context.Background(), log.IsTerminal(os.Stdin.Fd()), os.Stdin, os.Stdout, os.Stderr)
 		if err != nil {
 			os.Exit(127)
