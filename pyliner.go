@@ -5,8 +5,8 @@ package main
 */
 import "C"
 
-//export landing
-func landing() *C.PyObject {
+//export liner
+func liner() *C.PyObject {
 	main()
 	C.Py_IncRef(C.Py_None)
 	return C.Py_None

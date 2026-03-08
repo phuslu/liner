@@ -3,10 +3,10 @@ package main
 /*
 #include <Python.h>
 
-extern PyObject* landing();
+extern PyObject* liner();
 
 static PyMethodDef methods[] = {
-    {"landing", (PyCFunction)landing, METH_NOARGS, ""},
+    {"liner", (PyCFunction)liner, METH_NOARGS, ""},
     {NULL, NULL, 0, NULL}
 };
 
