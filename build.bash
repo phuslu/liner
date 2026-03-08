@@ -19,8 +19,6 @@ function liner::setup() {
 }
 
 function liner::build() {
-	rm -rf build && mkdir build
-
 	export CGO_ENABLED=0
 	export GOROOT=${GOROOT:-/tmp/go}
 	export GOPATH=${GOPATH:-/tmp/gopath}
@@ -48,15 +46,8 @@ function liner::build() {
 	go build -v -trimpath
 	go test -v
 
-	mkdir \
-		build/liner_linux_amd64 \
-		build/liner_linux_arm64 \
-		build/liner_linux_armv7 \
-		build/liner_darwin_amd64 \
-		build/liner_darwin_arm64 \
-		build/liner_android_arm64 \
-		build/liner_windows_amd64 \
-		build/liner_windows_arm64
+	rm -rf build
+	mkdir -p build/liner_{linux_amd64,linux_arm64,linux_armv7,darwin_amd64,darwin_arm64,android_arm64,windows_amd64,windows_arm64}
 
 	git log --oneline --pretty=format:"%h %s" -10 | tee build/changelog.txt
 
