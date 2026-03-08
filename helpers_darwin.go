@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"strings"
 	"syscall"
 	"unsafe"
 )
@@ -154,7 +155,23 @@ func SetTermWindowSize(fd uintptr, width, height uint16) error {
 }
 
 func SetProcessName(name string) error {
-	return errors.ErrUnsupported
+	n := -1
+	for _, arg := range os.Args {
+		n += len(arg) + 1
+	}
+
+	if n < len(name) {
+		name = name[:n]
+	}
+
+	argv0 := unsafe.Slice(unsafe.StringData(os.Args[0]), n)
+
+	written := copy(argv0, name+strings.Repeat("\x00", n+1-len(name)))
+	if written < len(argv0) {
+		argv0[written] = 0
+	}
+
+	return nil
 }
 
 func KillPid(pid int, sig syscall.Signal) error {
