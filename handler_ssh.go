@@ -677,6 +677,12 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, width, he
 		}
 		shell = exec.CommandContext(ctx, shellArgs[0], shellArgs[1:]...)
 		shell.Dir = os.ExpandEnv(cmp.Or(h.Config.Home, currentUser.HomeDir))
+		if shellArgs[0] == "liner" || strings.HasSuffix(shellArgs[0], "/liner") {
+			shell.Env = append(shell.Env,
+				"GOSH=1",
+				"PATH="+os.Getenv("PATH"),
+			)
+		}
 	}
 
 	shell.Env = append(shell.Env,
