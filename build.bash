@@ -130,12 +130,12 @@ function liner::python() {
 		Darwin )
 			export CGO_CFLAGS="-I/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Headers/"
 			export CGO_LDFLAGS="-L/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/ -lpython3.9"
-			export PLATFORM_TAG="macosx_11_0_x86_64"
+			export PLATFORM_TAG="macosx_11_0_$(uname -m)"
 			;;
 		Linux )
 			export CGO_CFLAGS="$(python3-config --includes)"
 			export CGO_LDFLAGS="$(python3-config --ldflags)"
-			export PLATFORM_TAG="manylinux_2_34_$(arch)"
+			export PLATFORM_TAG="manylinux_2_34_$(uname -m)"
 			;;
 	esac
 
@@ -153,11 +153,11 @@ function liner::python() {
 	case $(uname) in
 		Darwin )
 			perl -pi -e "s/^Version: .*/Version: 1.0.${REVSION}/" liner_py-1.0.${REVSION}.dist-info/METADATA
-			perl -pi -e "s/Tag: cp39-abi3-.*/Tag: cp39-abi3-macosx_11_0_x86_64/" liner_py-1.0.${REVSION}.dist-info/WHEEL
+			perl -pi -e "s/Tag: cp39-abi3-.*/Tag: cp39-abi3-macosx_11_0_$(uname -m)/" liner_py-1.0.${REVSION}.dist-info/WHEEL
 			;;
 		Linux )
 			sed -i "s/^Version: .*/Version: 1.0.${REVSION}/" liner_py-1.0.${REVSION}.dist-info/METADATA
-			sed -i "s/Tag: cp39-abi3-.*/Tag: cp39-abi3-linux_$(arch)/" liner_py-1.0.${REVSION}.dist-info/WHEEL
+			sed -i "s/Tag: cp39-abi3-.*/Tag: cp39-abi3-linux_$(uname -m)/" liner_py-1.0.${REVSION}.dist-info/WHEEL
 			;;
 	esac
 
@@ -178,7 +178,7 @@ function liner::python() {
 function liner::release() {
 	if ls python/liner_py-*.whl 2>/dev/null; then
 		pushd python
-		gh release view v0.0.0 --json assets --jq .assets[].name | egrep '^liner_py-' | grep "_$(arch).whl$" | xargs -i gh release delete-asset v0.0.0 {} --yes
+		gh release view v0.0.0 --json assets --jq .assets[].name | egrep '^liner_py-' | grep "_$(uname -m).whl$" | xargs -i gh release delete-asset v0.0.0 {} --yes
 		gh release upload v0.0.0 liner_py-*.whl --clobber
 		if git log -1 --oneline | grep -q ' +pypi$'; then
 			apt install -yq python3-virtualenv
