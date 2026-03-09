@@ -655,17 +655,22 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, width, he
 
 	var shell *exec.Cmd
 	if shellPath == "$" {
-		args0 := os.Args[0]
+		shellArgs := append([]string{}, os.Args...)
 		if runtime.GOOS == "windows" {
-			args0, err = filepath.Abs(args0)
+			shellArgs[0], err = filepath.Abs(shellArgs[0])
 			if err != nil {
 				return nil, err
 			}
-			if !strings.HasSuffix(args0, ".exe") {
-				args0 += ".exe"
+			if !strings.HasSuffix(shellArgs[0], ".exe") {
+				shellArgs[0] += ".exe"
 			}
 		}
-		shell = exec.CommandContext(ctx, args0, os.Args[1:]...)
+		if len(shellArgs) == 1 && strings.HasPrefix(strings.ToLower(filepath.Base(shellArgs[0])), "python") {
+			if s, err := exec.LookPath("python"); err != nil {
+				shellArgs = []string{s, "-m", "liner"}
+			}
+		}
+		shell = exec.CommandContext(ctx, shellArgs[0], shellArgs[1:]...)
 		shell.Env = append(shell.Env,
 			"GOSH=1",
 			"PATH="+os.Getenv("PATH"),
@@ -677,12 +682,6 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, width, he
 		}
 		shell = exec.CommandContext(ctx, shellArgs[0], shellArgs[1:]...)
 		shell.Dir = os.ExpandEnv(cmp.Or(h.Config.Home, currentUser.HomeDir))
-		if shellArgs[0] == "liner" || strings.HasSuffix(shellArgs[0], "/liner") {
-			shell.Env = append(shell.Env,
-				"GOSH=1",
-				"PATH="+os.Getenv("PATH"),
-			)
-		}
 	}
 
 	shell.Env = append(shell.Env,
