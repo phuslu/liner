@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -74,8 +75,13 @@ func (h *RedsocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 		data := make([]byte, 2048)
 		n, err := conn.Read(data)
 		if err != nil {
-			log.Error().Err(err).Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Msg("failed to peek data from remote tcp connection")
-			return nil, err
+			if errors.Is(err, io.EOF) {
+				log.Debug().Err(err).Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Msg("failed to peek data from remote tcp connection")
+				return nil, nil
+			} else {
+				log.Error().Err(err).Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Msg("failed to peek data from remote tcp connection")
+				return nil, err
+			}
 		}
 		data = data[:n]
 		conn = &ConnWithData{conn, data}
