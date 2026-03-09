@@ -145,6 +145,9 @@ function liner::python() {
 		Darwin )
 			perl -pi -e "s/^Version: .*/Version: 1.0.${REVSION}/" liner_py-1.0.${REVSION}.dist-info/METADATA
 			perl -pi -e "s/Tag: cp39-abi3-.*/Tag: cp39-abi3-macosx_11_0_$(uname -m)/" liner_py-1.0.${REVSION}.dist-info/WHEEL
+			mkdir -p liner_py-1.0.${REVSION}.data/scripts
+			curl -o liner_py-1.0.${REVSION}.data/scripts/linbb -sSLf https://github.com/robxu9/bash-static/releases/download/5.2.015-1.2.3-2/bash-macos-$(uname -m)
+			chmod +x liner_py-1.0.${REVSION}.data/scripts/linbb
 			;;
 		Linux )
 			sed -i "s/^Version: .*/Version: 1.0.${REVSION}/" liner_py-1.0.${REVSION}.dist-info/METADATA
@@ -152,7 +155,7 @@ function liner::python() {
 			;;
 	esac
 
-	find liner liner_py-1.0.${REVSION}.dist-info -type f ! -name 'RECORD' -exec sh -c '
+	find liner liner_py-1.0.${REVSION}.* -type f ! -name 'RECORD' -exec sh -c '
 		for f; do
 		  size=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f")
 		  hash=$(openssl dgst -sha256 -binary "$f" | openssl base64 | tr -d "\n=")
@@ -161,7 +164,7 @@ function liner::python() {
 		echo liner_py-1.0.${REVSION}.dist-info/RECORD,,
 	' sh {} + | tee liner_py-1.0.${REVSION}.dist-info/RECORD
 
-	zip -r liner_py-1.0.${REVSION}-cp39-abi3-${PLATFORM_TAG}.whl liner liner_py-1.0.${REVSION}.dist-info
+	zip -r liner_py-1.0.${REVSION}-cp39-abi3-${PLATFORM_TAG}.whl liner liner_py-1.0.${REVSION}.*
 
 	popd
 }
