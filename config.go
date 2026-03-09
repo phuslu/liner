@@ -166,9 +166,10 @@ type SshConfig struct {
 	HostKey          string   `json:"host_key" yaml:"host_key"`
 	AuthTable        string   `json:"auth_table" yaml:"auth_table"`
 	AuthorizedKeys   string   `json:"authorized_keys" yaml:"authorized_keys"`
-	Shell            string   `json:"shell" yaml:"shell"`
-	Home             string   `json:"home" yaml:"home"`
+	Env              string   `json:"env" yaml:"env"`
 	EnvFile          string   `json:"env_file" yaml:"env_file"`
+	Home             string   `json:"home" yaml:"home"`
+	Shell            string   `json:"shell" yaml:"shell"`
 	Log              bool     `json:"log" yaml:"log"`
 }
 

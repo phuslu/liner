@@ -706,10 +706,21 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, width, he
 			}
 		}
 	}
-	if data, err := os.ReadFile(h.Config.EnvFile); err == nil {
-		text, err := eval(os.ExpandEnv(string(data)), shellPath)
-		if err != nil {
-			return nil, err
+	if h.Config.Env != "" || h.Config.EnvFile != "" {
+		var text string
+		if data := h.Config.Env; data != "" {
+			output, err := eval(os.ExpandEnv(string(data)), shellPath)
+			if err != nil {
+				return nil, err
+			}
+			text += output + "\n"
+		}
+		if data, err := os.ReadFile(h.Config.EnvFile); err == nil {
+			output, err := eval(os.ExpandEnv(string(data)), shellPath)
+			if err != nil {
+				return nil, err
+			}
+			text += output
 		}
 		for line := range strings.Lines(text) {
 			line = strings.TrimSpace(line)
