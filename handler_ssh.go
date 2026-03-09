@@ -675,7 +675,7 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, width, he
 		if err != nil {
 			return nil, err
 		}
-		shell = exec.CommandContext(ctx, shellArgs[0], shellArgs[1:]...)
+		shell = exec.CommandContext(ctx, os.ExpandEnv(shellArgs[0]), shellArgs[1:]...)
 		shell.Dir = os.ExpandEnv(cmp.Or(h.Config.Home, currentUser.HomeDir))
 		if shellArgs[0] == "liner" || strings.HasSuffix(shellArgs[0], "/liner") {
 			shell.Env = append(shell.Env,
@@ -709,18 +709,18 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, width, he
 	if h.Config.Env != "" || h.Config.EnvFile != "" {
 		var text string
 		if data := h.Config.Env; data != "" {
-			output, err := eval(os.ExpandEnv(string(data)), shellPath)
+			output, err := eval(data, shellPath)
 			if err != nil {
 				return nil, err
 			}
-			text += output + "\n"
+			text += os.ExpandEnv(output) + "\n"
 		}
 		if data, err := os.ReadFile(h.Config.EnvFile); err == nil {
-			output, err := eval(os.ExpandEnv(string(data)), shellPath)
+			output, err := eval(string(data), shellPath)
 			if err != nil {
 				return nil, err
 			}
-			text += output
+			text += os.ExpandEnv(output)
 		}
 		for line := range strings.Lines(text) {
 			line = strings.TrimSpace(line)
