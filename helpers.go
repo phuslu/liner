@@ -812,6 +812,7 @@ func (ln *MemoryListener) Close() (err error) {
 	for item := range ln.queue {
 		if item.conn != nil {
 			_ = item.conn.Close()
+			break
 		}
 	}
 	return
