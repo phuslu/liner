@@ -411,6 +411,7 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 		rap, lap := AddrPortFromNetAddr(raddr), AddrPortFromNetAddr(laddr)
 		envs["SSH_CONNECTION"] = fmt.Sprintf("%s %d %s %d", rap.Addr(), rap.Port(), lap.Addr(), lap.Port())
 		envs["SSH_CLIENT"] = fmt.Sprintf("%s %d %d", rap.Addr(), rap.Port(), lap.Port())
+		envs["SSH_CLIENT_VERSION"] = string(conn.ClientVersion())
 	}
 
 	for req := range requests {
