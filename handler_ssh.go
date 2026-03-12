@@ -734,6 +734,9 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, width, he
 		}
 	}
 	for key, value := range envs {
+		if strings.HasPrefix(key, "_") {
+			continue
+		}
 		shell.Env = append(shell.Env, key+"="+value)
 	}
 	if spa := AppendSetSidToSysProcAttr(shell.SysProcAttr, os.Geteuid(), os.Getuid()); spa != nil {
