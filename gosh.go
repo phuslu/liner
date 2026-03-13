@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -65,13 +64,8 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 	}
 
 	// bash -c "xxxx"
-	if i := slices.Index(os.Args, "-c"); 1 < i && i < len(os.Args)-1 {
-		prog, err := parser.Parse(strings.NewReader(os.Args[i+1]), "")
-		if err != nil {
-			return err
-		}
-		runner.Reset()
-		return runner.Run(ctx, prog)
+	if slices.Contains(os.Args, "-c") {
+		return fmt.Errorf("gosh: cannot support -c option: %q", os.Args)
 	}
 
 	histFile := ""
@@ -80,7 +74,7 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 	}
 
 	rl, err := readline.NewEx(&readline.Config{
-		Prompt:          currentPrompt,
+		Prompt:          currentPrompt.prompt,
 		HistoryFile:     histFile,
 		HistoryLimit:    1000,
 		InterruptPrompt: "^C",
@@ -98,6 +92,19 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 		return err
 	}
 	defer rl.Close()
+	printPromptPrefix(rl.Stdout(), currentPrompt.prefix)
+	nextPrefix := ""
+	setPrompt := func(parts promptParts) {
+		rl.SetPrompt(parts.prompt)
+		nextPrefix = parts.prefix
+	}
+	flushPrefix := func() {
+		if nextPrefix == "" {
+			return
+		}
+		printPromptPrefix(rl.Stdout(), nextPrefix)
+		nextPrefix = ""
+	}
 
 	// goshReader wraps readline so parser.Interactive can consume it as an
 	// io.Reader. Each call to Read invokes Readline() to fetch one line.
@@ -111,13 +118,14 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 		// unclosed if/for blocks). Switch to the continuation prompt and keep
 		// reading without executing anything yet.
 		if parser.Incomplete() {
-			rl.SetPrompt(goshPromptString(ctx, runner, stdin, stderr, "PS2", "> ", promptSeq))
+			setPrompt(goshPromptString(ctx, runner, stdin, stderr, "PS2", "> ", promptSeq))
+			flushPrefix()
 			return true
 		}
 
 		// Restore the main prompt, updating it in case the effective UID
 		// changed (e.g. via su).
-		rl.SetPrompt(goshPromptString(ctx, runner, stdin, stderr, "PS1", goshDefaultPrompt(), promptSeq))
+		setPrompt(goshPromptString(ctx, runner, stdin, stderr, "PS1", goshDefaultPrompt(), promptSeq))
 		promptSeq++
 
 		for _, stmt := range stmts {
@@ -128,6 +136,7 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 				return false
 			}
 		}
+		flushPrefix()
 		return true
 	})
 }
@@ -174,7 +183,7 @@ func goshDefaultPrompt() string {
 	return "$ "
 }
 
-func goshPromptString(ctx context.Context, runner *interp.Runner, stdin io.Reader, stderr io.Writer, name, fallback string, seq int) string {
+func goshPromptString(ctx context.Context, runner *interp.Runner, stdin io.Reader, stderr io.Writer, name, fallback string, seq int) promptParts {
 	host := "localhost"
 	if h, err := os.Hostname(); err == nil {
 		host = h
@@ -196,9 +205,32 @@ func goshPromptString(ctx context.Context, runner *interp.Runner, stdin io.Reade
 	}
 	val, err := state.runScript(fmt.Sprintf("printf %%s \"${%s-}\"", name))
 	if err != nil || val == "" {
-		return fallback
+		return promptParts{prompt: fallback}
 	}
-	return newPromptRenderer(val, state).render()
+	return splitPromptLines(newPromptRenderer(val, state).render())
+}
+
+type promptParts struct {
+	prefix string
+	prompt string
+}
+
+func splitPromptLines(val string) promptParts {
+	idx := strings.LastIndexByte(val, '\n')
+	if idx < 0 {
+		return promptParts{prompt: val}
+	}
+	return promptParts{
+		prefix: val[:idx+1],
+		prompt: val[idx+1:],
+	}
+}
+
+func printPromptPrefix(w io.Writer, prefix string) {
+	if prefix == "" || w == nil {
+		return
+	}
+	fmt.Fprint(w, prefix)
 }
 
 type goshPromptState struct {
@@ -320,24 +352,9 @@ func (r *goshPromptRenderer) render() string {
 }
 
 func (r *goshPromptRenderer) scanNonPrinting(start int) (string, int) {
-	depth := 1
 	for i := start; i < len(r.src)-1; i++ {
-		if r.src[i] != '\\' {
-			continue
-		}
-		next := r.src[i+1]
-		if next == '[' {
-			depth++
-			i++
-			continue
-		}
-		if next == ']' {
-			depth--
-			if depth == 0 {
-				return r.src[start:i], i + 2
-			}
-			i++
-			continue
+		if r.src[i] == '\\' && r.src[i+1] == ']' {
+			return r.src[start:i], i + 2
 		}
 	}
 	return "", -1
