@@ -7,10 +7,8 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"syscall"
@@ -24,17 +22,6 @@ import (
 func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.Writer) error {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-
-	if exe, err := exec.LookPath("bash"); err == nil {
-		os.Setenv("SHELL", exe)
-	} else {
-		switch runtime.GOOS {
-		case "windows":
-			os.Setenv("SHELL", "cmd.exe")
-		default:
-			os.Setenv("SHELL", "/bin/sh")
-		}
-	}
 
 	parser := syntax.NewParser()
 	runner, err := interp.New(
