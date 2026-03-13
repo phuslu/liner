@@ -76,6 +76,12 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 		EOFPrompt:       "exit",
 		Stdout:          cmp.Or(stdout.(*os.File), os.Stdout),
 		Stderr:          cmp.Or(stderr.(*os.File), os.Stderr),
+		FuncGetWidth: func() int {
+			if w := readline.GetScreenWidth(); w > 0 {
+				return w
+			}
+			return 80
+		},
 	})
 	if err != nil {
 		return err
@@ -271,7 +277,6 @@ func (r *goshPromptRenderer) render() string {
 			if next == '[' {
 				inner, pos := r.scanNonPrinting(i + 2)
 				if pos == -1 {
-					b.WriteString("\\[")
 					i += 2
 					continue
 				}
@@ -304,9 +309,24 @@ func (r *goshPromptRenderer) render() string {
 }
 
 func (r *goshPromptRenderer) scanNonPrinting(start int) (string, int) {
+	depth := 1
 	for i := start; i < len(r.src)-1; i++ {
-		if r.src[i] == '\\' && r.src[i+1] == ']' {
-			return r.src[start:i], i + 2
+		if r.src[i] != '\\' {
+			continue
+		}
+		next := r.src[i+1]
+		if next == '[' {
+			depth++
+			i++
+			continue
+		}
+		if next == ']' {
+			depth--
+			if depth == 0 {
+				return r.src[start:i], i + 2
+			}
+			i++
+			continue
 		}
 	}
 	return "", -1
