@@ -667,10 +667,7 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, width, he
 			}
 		}
 		shell = exec.CommandContext(ctx, args0, os.Args[1:]...)
-		shell.Env = append(shell.Env,
-			"GOSH=1",
-			"PATH="+os.Getenv("PATH"),
-		)
+		shell.Env = append(shell.Env, "GOSH=1")
 	} else {
 		shellArgs, err := shlex.Split(shellPath)
 		if err != nil {
@@ -678,15 +675,10 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, width, he
 		}
 		shell = exec.CommandContext(ctx, os.ExpandEnv(shellArgs[0]), shellArgs[1:]...)
 		shell.Dir = os.ExpandEnv(cmp.Or(h.Config.Home, currentUser.HomeDir))
-		if shellArgs[0] == "liner" || strings.HasSuffix(shellArgs[0], "/liner") {
-			shell.Env = append(shell.Env,
-				"GOSH=1",
-				"PATH="+os.Getenv("PATH"),
-			)
-		}
 	}
 
 	shell.Env = append(shell.Env,
+		"PATH="+os.Getenv("PATH"),
 		"USER="+currentUser.Username,
 		"HOME="+cmp.Or(h.Config.Home, currentUser.HomeDir),
 		"SHELL="+shell.Args[0],
