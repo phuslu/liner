@@ -45,21 +45,17 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 		return err
 	}
 
-	// Source the init file specified by GOSH_ENV, if set.
-	if filename := os.Getenv("GOSH_ENV"); filename != "" {
-		if file, err := os.Open(filename); err == nil {
-			prog, err := parser.Parse(file, filename)
-			if err != nil {
-				fmt.Fprintln(stderr, "failed to parse", filename, ":", err)
-			} else {
-				if err := runner.Run(ctx, prog); err != nil {
-					fmt.Fprintln(stderr, "failed to run", filename, ":", err)
-				}
-			}
-			file.Close()
+	// source the init files.
+	if file, err := os.Open(cmp.Or(os.Getenv("GOSH_ENV"), os.ExpandEnv("$HOME/.profile"))); err == nil {
+		prog, err := parser.Parse(file, file.Name())
+		if err != nil {
+			fmt.Fprintln(stderr, "failed to parse", file.Name(), ":", err)
 		} else {
-			fmt.Fprintln(stderr, "failed to open", filename, ":", err)
+			if err := runner.Run(ctx, prog); err != nil {
+				fmt.Fprintln(stderr, "failed to run", file.Name(), ":", err)
+			}
 		}
+		file.Close()
 	}
 
 	defaultPrompt := goshDefaultPrompt()
@@ -84,7 +80,7 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 
 	histFile := ""
 	if home, err := os.UserHomeDir(); err == nil {
-		histFile = home + "/.gosh_history"
+		histFile = home + "/.ash_history"
 	}
 
 	rl, err := readline.NewEx(&readline.Config{
