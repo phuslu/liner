@@ -25,6 +25,8 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
+	SetProcessName(os.Args[0])
+
 	if exe, err := exec.LookPath("bash"); err == nil {
 		os.Setenv("SHELL", exe)
 	} else {
