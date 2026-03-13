@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -56,6 +57,16 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 	// Non-interactive: parse stdin as a script and run it directly.
 	if !isatty {
 		prog, err := parser.Parse(stdin, "")
+		if err != nil {
+			return err
+		}
+		runner.Reset()
+		return runner.Run(ctx, prog)
+	}
+
+	// bash -c "xxxx"
+	if i := slices.Index(os.Args, "-c"); 1 < i && i < len(os.Args)-1 {
+		prog, err := parser.Parse(strings.NewReader(os.Args[i+1]), "")
 		if err != nil {
 			return err
 		}
