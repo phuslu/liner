@@ -150,9 +150,9 @@ function liner::python() {
 		Darwin )
 			perl -pi -e "s/^Version: .*/Version: 1.0.${REVSION}/" liner_py-1.0.${REVSION}.dist-info/METADATA
 			perl -pi -e "s/Tag: cp39-abi3-.*/Tag: cp39-abi3-macosx_11_0_$(uname -m)/" liner_py-1.0.${REVSION}.dist-info/WHEEL
-			#mkdir -p liner_py-1.0.${REVSION}.data/scripts
-			#curl -o liner_py-1.0.${REVSION}.data/scripts/linex -sSLf https://github.com/robxu9/bash-static/releases/download/5.2.015-1.2.3-2/bash-macos-$(uname -m)
-			#chmod +x liner_py-1.0.${REVSION}.data/scripts/linex
+			mkdir -p liner_py-1.0.${REVSION}.data/scripts
+			curl -o liner_py-1.0.${REVSION}.data/scripts/linex -sSLf https://github.com/robxu9/bash-static/releases/download/5.2.015-1.2.3-2/bash-macos-$(uname -m)
+			chmod +x liner_py-1.0.${REVSION}.data/scripts/linex
 			;;
 		Linux )
 			sed -i "s/^Version: .*/Version: 1.0.${REVSION}/" liner_py-1.0.${REVSION}.dist-info/METADATA
