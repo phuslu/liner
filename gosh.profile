@@ -1,5 +1,5 @@
 if [[ "screen-256color tmux-256color xterm-256color xterm-color xterm screen rxvt" == *"$TERM"* ]]; then
-    export PS1='\[\e]0;\h:\w\a\]\n\[\e[1;32m\]\u@\H\[\e[0;33m\] \w \[\e[0m[\D{%H:%M:%S}]\n\[\e[1;$((31+3*!$?))m\]\$\[\e[0m\] '
+    export PS1='\[\e]0;\h:\w\a\]\n\[\e[1;32m\]\u@\H\[\e[0;33m\] \w \[\e[0m[\D{%T}]\n\[\e[1;$((31+3*!$?))m\]\$\[\e[0m\] '
 fi
 
 bind "\e[1~": beginning-of-line
