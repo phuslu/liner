@@ -12,7 +12,9 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -39,9 +41,11 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 	}
 
 	parser := syntax.NewParser()
+	bindings := &goshKeyBindingManager{entries: make(map[string]*goKeyBindingEntry)}
 	runner, err := interp.New(
 		interp.Interactive(true),
 		interp.StdIO(stdin, stdout, stderr),
+		interp.ExecHandlers(goBindExecMiddleware(bindings)),
 	)
 	if err != nil {
 		return err
@@ -85,12 +89,14 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 		histFile = home + "/.ash_history"
 	}
 
+	boundStdin := &goshKeyBindingInput{src: stdin, mgr: bindings}
 	rl, err := readline.NewEx(&readline.Config{
 		Prompt:          currentPrompt.prompt,
 		HistoryFile:     histFile,
 		HistoryLimit:    1000,
 		InterruptPrompt: "^C",
 		EOFPrompt:       "exit",
+		Stdin:           readline.NewCancelableStdin(boundStdin),
 		Stdout:          cmp.Or(stdout.(*os.File), os.Stdout),
 		Stderr:          cmp.Or(stderr.(*os.File), os.Stderr),
 		FuncGetWidth: func() int {
@@ -104,9 +110,9 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 		return err
 	}
 	defer rl.Close()
-	printPromptPrefix(rl.Stdout(), currentPrompt.prefix)
+	goshPrintPromptPrefix(rl.Stdout(), currentPrompt.prefix)
 	nextPrefix := ""
-	setPrompt := func(parts promptParts) {
+	setPrompt := func(parts goshPromptParts) {
 		rl.SetPrompt(parts.prompt)
 		nextPrefix = parts.prefix
 	}
@@ -114,7 +120,7 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 		if nextPrefix == "" {
 			return
 		}
-		printPromptPrefix(rl.Stdout(), nextPrefix)
+		goshPrintPromptPrefix(rl.Stdout(), nextPrefix)
 		nextPrefix = ""
 	}
 
@@ -195,7 +201,7 @@ func goshDefaultPrompt() string {
 	return "$ "
 }
 
-func goshPromptString(ctx context.Context, runner *interp.Runner, stdin io.Reader, stderr io.Writer, name, fallback string, seq int) promptParts {
+func goshPromptString(ctx context.Context, runner *interp.Runner, stdin io.Reader, stderr io.Writer, name, fallback string, seq int) goshPromptParts {
 	host := "localhost"
 	if h, err := os.Hostname(); err == nil {
 		host = h
@@ -217,28 +223,28 @@ func goshPromptString(ctx context.Context, runner *interp.Runner, stdin io.Reade
 	}
 	val, err := state.runScript(fmt.Sprintf("printf %%s \"${%s-}\"", name))
 	if err != nil || val == "" {
-		return promptParts{prompt: fallback}
+		return goshPromptParts{prompt: fallback}
 	}
-	return splitPromptLines(newPromptRenderer(val, state).render())
+	return goshSplitPromptLines((&goshPromptRenderer{src: val, state: state}).render())
 }
 
-type promptParts struct {
+type goshPromptParts struct {
 	prefix string
 	prompt string
 }
 
-func splitPromptLines(val string) promptParts {
+func goshSplitPromptLines(val string) goshPromptParts {
 	idx := strings.LastIndexByte(val, '\n')
 	if idx < 0 {
-		return promptParts{prompt: val}
+		return goshPromptParts{prompt: val}
 	}
-	return promptParts{
+	return goshPromptParts{
 		prefix: val[:idx+1],
 		prompt: val[idx+1:],
 	}
 }
 
-func printPromptPrefix(w io.Writer, prefix string) {
+func goshPrintPromptPrefix(w io.Writer, prefix string) {
 	if prefix == "" || w == nil {
 		return
 	}
@@ -314,10 +320,6 @@ type goshPromptRenderer struct {
 	state *goshPromptState
 }
 
-func newPromptRenderer(src string, state *goshPromptState) *goshPromptRenderer {
-	return &goshPromptRenderer{src: src, state: state}
-}
-
 func (r *goshPromptRenderer) render() string {
 	var b strings.Builder
 	for i := 0; i < len(r.src); {
@@ -335,7 +337,7 @@ func (r *goshPromptRenderer) render() string {
 					i += 2
 					continue
 				}
-				b.WriteString(newPromptRenderer(inner, r.state).render())
+				b.WriteString((&goshPromptRenderer{src: inner, state: r.state}).render())
 				i = pos
 				continue
 			}
@@ -670,4 +672,245 @@ func (p *goshPromptState) escapeDouble(s string) string {
 	s = strings.ReplaceAll(s, "\\", "\\\\")
 	s = strings.ReplaceAll(s, "\"", "\\\"")
 	return s
+}
+
+func goBindExecMiddleware(mgr *goshKeyBindingManager) func(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
+	return func(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
+		return func(ctx context.Context, args []string) error {
+			if len(args) > 0 && args[0] == "bind" {
+				return mgr.handleBind(args[1:])
+			}
+			return next(ctx, args)
+		}
+	}
+}
+
+type goshKeyBindingManager struct {
+	mu      sync.RWMutex
+	entries map[string]*goKeyBindingEntry
+}
+
+type goKeyBindingEntry struct {
+	seq    []byte
+	action rune
+}
+
+func (m *goshKeyBindingManager) handleBind(args []string) error {
+	keySpec, actionSpec, err := goshParseBindArgs(args)
+	if err != nil {
+		return err
+	}
+	seq, err := parseKeySequence(keySpec)
+	if err != nil {
+		return err
+	}
+	if len(seq) == 0 {
+		return fmt.Errorf("bind: empty key sequence")
+	}
+	actionRune, ok := goshLookupBindAction(actionSpec)
+	if !ok {
+		return fmt.Errorf("bind: unsupported action %q", actionSpec)
+	}
+	m.store(seq, actionRune)
+	return nil
+}
+
+func (m *goshKeyBindingManager) store(seq []byte, action rune) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := string(seq)
+	entry := &goKeyBindingEntry{seq: append([]byte(nil), seq...), action: action}
+	m.entries[key] = entry
+}
+
+func (m *goshKeyBindingManager) match(buf []byte) (rune, int, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if len(m.entries) == 0 {
+		return 0, 0, false
+	}
+	needMore := false
+	var matched rune
+	var matchedLen int
+	for _, entry := range m.entries {
+		seq := entry.seq
+		switch {
+		case len(buf) >= len(seq) && bytes.Equal(buf[:len(seq)], seq):
+			if len(seq) > matchedLen {
+				matched = entry.action
+				matchedLen = len(seq)
+			}
+		case len(buf) < len(seq) && bytes.Equal(seq[:len(buf)], buf):
+			needMore = true
+		}
+	}
+	if matchedLen > 0 {
+		return matched, matchedLen, false
+	}
+	return 0, 0, needMore
+}
+
+func goshParseBindArgs(args []string) (string, string, error) {
+	if len(args) == 0 {
+		return "", "", fmt.Errorf("bind: missing arguments")
+	}
+	if len(args) == 1 {
+		parts := strings.SplitN(args[0], ":", 2)
+		if len(parts) != 2 {
+			return "", "", fmt.Errorf("bind: invalid format, expected key: action")
+		}
+		return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]), nil
+	}
+	key := args[0]
+	if strings.HasSuffix(key, ":") {
+		key = key[:len(key)-1]
+	}
+	action := strings.Join(args[1:], " ")
+	return strings.TrimSpace(key), strings.TrimSpace(action), nil
+}
+
+func parseKeySequence(spec string) ([]byte, error) {
+	s := goshTrimOuterQuotes(strings.TrimSpace(spec))
+	var out []byte
+	for i := 0; i < len(s); i++ {
+		ch := s[i]
+		if ch != '\\' {
+			out = append(out, ch)
+			continue
+		}
+		i++
+		if i >= len(s) {
+			return nil, fmt.Errorf("bind: trailing escape in %q", spec)
+		}
+		switch s[i] {
+		case 'e', 'E':
+			out = append(out, 0x1b)
+		case 'n':
+			out = append(out, '\n')
+		case 'r':
+			out = append(out, '\r')
+		case 't':
+			out = append(out, '\t')
+		case '\\':
+			out = append(out, '\\')
+		case '\'':
+			out = append(out, '\'')
+		case '"':
+			out = append(out, '"')
+		case 'x', 'X':
+			if i+2 >= len(s) {
+				return nil, fmt.Errorf("bind: incomplete hex escape in %q", spec)
+			}
+			val, err := strconv.ParseUint(s[i+1:i+3], 16, 8)
+			if err != nil {
+				return nil, fmt.Errorf("bind: invalid hex escape in %q", spec)
+			}
+			out = append(out, byte(val))
+			i += 2
+		case 'C', 'c':
+			if i+1 >= len(s) || s[i+1] != '-' {
+				out = append(out, s[i])
+				continue
+			}
+			i += 2
+			if i >= len(s) {
+				return nil, fmt.Errorf("bind: malformed control sequence in %q", spec)
+			}
+			if s[i] == '?' {
+				out = append(out, 0x7f)
+			} else {
+				out = append(out, s[i]&0x1f)
+			}
+		case 'M', 'm':
+			if i+1 >= len(s) || s[i+1] != '-' {
+				out = append(out, s[i])
+				continue
+			}
+			i += 2
+			if i >= len(s) {
+				return nil, fmt.Errorf("bind: malformed meta sequence in %q", spec)
+			}
+			out = append(out, 0x80|s[i])
+		default:
+			out = append(out, s[i])
+		}
+	}
+	return out, nil
+}
+
+func goshLookupBindAction(action string) (rune, bool) {
+	switch strings.ToLower(goshTrimOuterQuotes(strings.TrimSpace(action))) {
+	case "beginning-of-line", "start-of-line", "home":
+		return readline.CharLineStart, true
+	case "end-of-line", "cursor-end", "end":
+		return readline.CharLineEnd, true
+	case "previous-screen":
+		return readline.CharPrev, true
+	case "next-screen":
+		return readline.CharNext, true
+	default:
+		return 0, false
+	}
+}
+
+func goshTrimOuterQuotes(s string) string {
+	if len(s) >= 2 {
+		if (s[0] == '"' && s[len(s)-1] == '"') || (s[0] == '\'' && s[len(s)-1] == '\'') {
+			return s[1 : len(s)-1]
+		}
+	}
+	return s
+}
+
+type goshKeyBindingInput struct {
+	src io.Reader
+	mgr *goshKeyBindingManager
+	buf []byte
+	out []byte
+	tmp [64]byte
+}
+
+func (r *goshKeyBindingInput) Read(p []byte) (int, error) {
+	for len(r.out) == 0 {
+		n, err := r.src.Read(r.tmp[:])
+		if n > 0 {
+			r.buf = append(r.buf, r.tmp[:n]...)
+			r.processBuffer()
+		}
+		if len(r.out) > 0 {
+			break
+		}
+		if err != nil {
+			if err == io.EOF {
+				if len(r.buf) > 0 {
+					r.out = append(r.out, r.buf...)
+					r.buf = nil
+					continue
+				}
+				if len(r.out) > 0 {
+					break
+				}
+			}
+			return 0, err
+		}
+	}
+	n := copy(p, r.out)
+	r.out = r.out[n:]
+	return n, nil
+}
+
+func (r *goshKeyBindingInput) processBuffer() {
+	for len(r.buf) > 0 {
+		action, size, needMore := r.mgr.match(r.buf)
+		if size > 0 {
+			r.out = append(r.out, byte(action))
+			r.buf = r.buf[size:]
+			continue
+		}
+		if needMore {
+			return
+		}
+		r.out = append(r.out, r.buf[0])
+		r.buf = r.buf[1:]
+	}
 }
