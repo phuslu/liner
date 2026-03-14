@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -151,6 +152,10 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 
 		for _, stmt := range stmts {
 			if err := runner.Run(ctx, stmt); err != nil {
+				var status interp.ExitStatus
+				if errors.As(err, &status) {
+					continue
+				}
 				fmt.Fprintln(rl.Stdout(), err.Error())
 			}
 			if runner.Exited() {
