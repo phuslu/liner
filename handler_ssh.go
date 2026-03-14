@@ -210,7 +210,32 @@ func (h *SshHandler) Load() error {
 		}
 	}
 
-	if h.Config.AuthorizedKeys != "" {
+	switch {
+	case strings.HasPrefix(h.Config.AuthorizedKeys, "ssh-ed25519 "):
+		pubkeys := make(map[string]bool)
+		data := []byte(h.Config.AuthorizedKeys)
+		for len(data) > 0 {
+			pub, _, _, rest, err := ssh.ParseAuthorizedKey(data)
+			if err != nil {
+				h.Logger.Printf("parse authorized_keys %s error: %+v", data, err)
+			}
+			if pub != nil {
+				pubkeys[string(pub.Marshal())] = true
+			}
+			data = rest
+		}
+		h.sshConfig.PublicKeyCallback = func(c ssh.ConnMetadata, pub ssh.PublicKey) (*ssh.Permissions, error) {
+			if pubkey := pub.Marshal(); !pubkeys[string(pubkey)] {
+				return nil, fmt.Errorf("invalid pub key: %s", pubkey)
+			}
+			return &ssh.Permissions{
+				// Record the public key used for authentication.
+				Extensions: map[string]string{
+					"pubkey-fp": ssh.FingerprintSHA256(pub),
+				},
+			}, nil
+		}
+	case h.Config.AuthorizedKeys != "":
 		h.Config.AuthorizedKeys = os.ExpandEnv(h.Config.AuthorizedKeys)
 		h.keyloader = &FileLoader[[]string]{
 			Filename: h.Config.AuthorizedKeys,
