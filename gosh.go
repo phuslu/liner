@@ -976,7 +976,8 @@ func (c *goshAutoCompleter) Do(line []rune, pos int) ([][]rune, int) {
 	if ctx.isCommand && !strings.ContainsAny(ctx.prefix, "/\\") {
 		options = c.commandCandidates(ctx.prefix)
 	} else {
-		options = c.pathCandidates(ctx.prefix)
+		onlyDirs := !ctx.isCommand && strings.EqualFold(ctx.command, "cd")
+		options = c.pathCandidates(ctx.prefix, onlyDirs)
 	}
 	if len(options) == 0 {
 		return nil, 0
@@ -1002,6 +1003,7 @@ func (c *goshAutoCompleter) Do(line []rune, pos int) ([][]rune, int) {
 type goshCompletionContext struct {
 	prefix    string
 	isCommand bool
+	command   string
 }
 
 func (c *goshAutoCompleter) completionContext(line []rune, pos int) goshCompletionContext {
@@ -1021,7 +1023,8 @@ func (c *goshAutoCompleter) completionContext(line []rune, pos int) goshCompleti
 	}
 	prefixRunes := line[start:pos]
 	isCommand := c.isCommandPosition(line, start)
-	return goshCompletionContext{prefix: string(prefixRunes), isCommand: isCommand}
+	cmd := c.resolveCommand(line, start)
+	return goshCompletionContext{prefix: string(prefixRunes), isCommand: isCommand, command: cmd}
 }
 
 func (c *goshAutoCompleter) isCommandPosition(line []rune, start int) bool {
@@ -1043,6 +1046,33 @@ func (c *goshAutoCompleter) isCommandPosition(line []rune, start int) bool {
 		return goshKeywordStartsCommand(word)
 	}
 	return true
+}
+
+func (c *goshAutoCompleter) resolveCommand(line []rune, wordStart int) string {
+	idx := wordStart - 1
+	for idx >= 0 {
+		r := line[idx]
+		if r == '\n' {
+			break
+		}
+		if goshIsCommandSeparator(r) {
+			break
+		}
+		idx--
+	}
+	if idx < 0 {
+		idx = 0
+	} else {
+		idx++
+	}
+	for idx < len(line) && unicode.IsSpace(line[idx]) {
+		idx++
+	}
+	start := idx
+	for idx < len(line) && !goshIsCompletionBreak(line[idx]) {
+		idx++
+	}
+	return string(line[start:idx])
 }
 
 func (c *goshAutoCompleter) commandCandidates(prefix string) []string {
@@ -1134,7 +1164,7 @@ func (c *goshAutoCompleter) buildCommandIndexLocked(path, home string) []string 
 	return cmds
 }
 
-func (c *goshAutoCompleter) pathCandidates(prefix string) []string {
+func (c *goshAutoCompleter) pathCandidates(prefix string, dirsOnly bool) []string {
 	dirPart, base := goshSplitPathPrefix(prefix)
 	search := dirPart
 	if search == "" {
@@ -1162,6 +1192,9 @@ func (c *goshAutoCompleter) pathCandidates(prefix string) []string {
 	for _, entry := range entries {
 		name := entry.Name()
 		if !strings.HasPrefix(name, base) {
+			continue
+		}
+		if dirsOnly && !entry.IsDir() {
 			continue
 		}
 		candidate := dirPart + name
