@@ -48,7 +48,7 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 	runner, err := interp.New(
 		interp.Interactive(true),
 		interp.StdIO(stdin, stdout, stderr),
-		interp.ExecHandlers(goBindExecMiddleware(bindings)),
+		interp.ExecHandlers(goshBindExecMiddleware(bindings)),
 	)
 	if err != nil {
 		return err
@@ -705,7 +705,7 @@ func (p *goshPromptState) escapeDouble(s string) string {
 	return s
 }
 
-func goBindExecMiddleware(mgr *goshKeyBindingManager) func(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
+func goshBindExecMiddleware(mgr *goshKeyBindingManager) func(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 	return func(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 		return func(ctx context.Context, args []string) error {
 			if len(args) > 0 && args[0] == "bind" {
@@ -731,7 +731,7 @@ func (m *goshKeyBindingManager) handleBind(args []string) error {
 	if err != nil {
 		return err
 	}
-	seq, err := parseKeySequence(keySpec)
+	seq, err := goshParseKeySequence(keySpec)
 	if err != nil {
 		return err
 	}
@@ -800,7 +800,7 @@ func goshParseBindArgs(args []string) (string, string, error) {
 	return strings.TrimSpace(key), strings.TrimSpace(action), nil
 }
 
-func parseKeySequence(spec string) ([]byte, error) {
+func goshParseKeySequence(spec string) ([]byte, error) {
 	s := goshTrimOuterQuotes(strings.TrimSpace(spec))
 	var out []byte
 	for i := 0; i < len(s); i++ {
