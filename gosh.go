@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/chzyer/readline"
 	"mvdan.cc/sh/v3/interp"
@@ -91,7 +92,10 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 	}
 
 	boundStdin := &goshKeyBindingInput{src: stdin, mgr: bindings}
-	completer := newGoshAutoCompleter(ctx, runner, stdin, stderr)
+	promptPrinter := &goshPromptPrinter{}
+	rlStdout := cmp.Or(stdout.(*os.File), os.Stdout)
+	rlStderr := cmp.Or(stderr.(*os.File), os.Stderr)
+	completer := &goshAutoCompleter{ctx: ctx, runner: runner, stdin: stdin, stderr: stderr, stdout: rlStdout, promptPrinter: promptPrinter}
 	rl, err := readline.NewEx(&readline.Config{
 		Prompt:          currentPrompt.prompt,
 		HistoryFile:     histFile,
@@ -99,8 +103,8 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 		InterruptPrompt: "^C",
 		EOFPrompt:       "exit",
 		Stdin:           readline.NewCancelableStdin(boundStdin),
-		Stdout:          cmp.Or(stdout.(*os.File), os.Stdout),
-		Stderr:          cmp.Or(stderr.(*os.File), os.Stderr),
+		Stdout:          rlStdout,
+		Stderr:          rlStderr,
 		AutoComplete:    completer,
 		FuncGetWidth: func() int {
 			if w := readline.GetScreenWidth(); w > 0 {
@@ -112,8 +116,9 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 	if err != nil {
 		return err
 	}
+	completer.attach(rl)
 	defer rl.Close()
-	goshPrintPromptPrefix(rl.Stdout(), currentPrompt.prefix)
+	promptPrinter.Print(rl.Stdout(), currentPrompt.prefix)
 	nextPrefix := ""
 	setPrompt := func(parts goshPromptParts) {
 		rl.SetPrompt(parts.prompt)
@@ -123,7 +128,7 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 		if nextPrefix == "" {
 			return
 		}
-		goshPrintPromptPrefix(rl.Stdout(), nextPrefix)
+		promptPrinter.Print(rl.Stdout(), nextPrefix)
 		nextPrefix = ""
 	}
 
@@ -236,6 +241,27 @@ type goshPromptParts struct {
 	prompt string
 }
 
+type goshPromptPrinter struct {
+	mu     sync.RWMutex
+	prefix string
+}
+
+func (p *goshPromptPrinter) Print(w io.Writer, prefix string) {
+	p.mu.Lock()
+	p.prefix = prefix
+	p.mu.Unlock()
+	if prefix == "" || w == nil {
+		return
+	}
+	fmt.Fprint(w, prefix)
+}
+
+func (p *goshPromptPrinter) Prefix() string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.prefix
+}
+
 func goshSplitPromptLines(val string) goshPromptParts {
 	idx := strings.LastIndexByte(val, '\n')
 	if idx < 0 {
@@ -245,13 +271,6 @@ func goshSplitPromptLines(val string) goshPromptParts {
 		prefix: val[:idx+1],
 		prompt: val[idx+1:],
 	}
-}
-
-func goshPrintPromptPrefix(w io.Writer, prefix string) {
-	if prefix == "" || w == nil {
-		return
-	}
-	fmt.Fprint(w, prefix)
 }
 
 type goshPromptState struct {
@@ -923,10 +942,15 @@ func (r *goshKeyBindingInput) processBuffer() {
 }
 
 type goshAutoCompleter struct {
-	ctx    context.Context
-	runner *interp.Runner
-	stdin  io.Reader
-	stderr io.Writer
+	ctx           context.Context
+	runner        *interp.Runner
+	stdin         io.Reader
+	stdout        io.Writer
+	stderr        io.Writer
+	promptPrinter *goshPromptPrinter
+
+	rlMu sync.Mutex
+	rl   *readline.Instance
 
 	mu              sync.Mutex
 	cachedPath      string
@@ -935,8 +959,10 @@ type goshAutoCompleter struct {
 	cachedCommands  []string
 }
 
-func newGoshAutoCompleter(ctx context.Context, runner *interp.Runner, stdin io.Reader, stderr io.Writer) *goshAutoCompleter {
-	return &goshAutoCompleter{ctx: ctx, runner: runner, stdin: stdin, stderr: stderr}
+func (c *goshAutoCompleter) attach(rl *readline.Instance) {
+	c.rlMu.Lock()
+	c.rl = rl
+	c.rlMu.Unlock()
 }
 
 func (c *goshAutoCompleter) Do(line []rune, pos int) ([][]rune, int) {
@@ -950,22 +976,22 @@ func (c *goshAutoCompleter) Do(line []rune, pos int) ([][]rune, int) {
 	if len(options) == 0 {
 		return nil, 0
 	}
-	results := make([][]rune, 0, len(options))
-	for _, option := range options {
-		if !strings.HasPrefix(option, ctx.prefix) {
-			continue
-		}
-		results = append(results, []rune(option[len(ctx.prefix):]))
+	prefixLen := utf8.RuneCountInString(ctx.prefix)
+	common := goshLongestCommonPrefix(options)
+	commonRunes := []rune(common)
+	if len(commonRunes) > prefixLen {
+		addition := append([]rune(nil), commonRunes[prefixLen:]...)
+		return [][]rune{addition}, prefixLen
 	}
-	if len(results) == 0 {
+	if len(options) == 1 {
 		return nil, 0
 	}
-	return results, ctx.prefixLen
+	c.printMatches(options)
+	return nil, 0
 }
 
 type goshCompletionContext struct {
 	prefix    string
-	prefixLen int
 	isCommand bool
 }
 
@@ -979,18 +1005,14 @@ func (c *goshAutoCompleter) completionContext(line []rune, pos int) goshCompleti
 	start := pos
 	for start > 0 {
 		r := line[start-1]
-		if isCompletionBreak(r) {
+		if goshIsCompletionBreak(r) {
 			break
 		}
 		start--
 	}
 	prefixRunes := line[start:pos]
 	isCommand := c.isCommandPosition(line, start)
-	return goshCompletionContext{
-		prefix:    string(prefixRunes),
-		prefixLen: len(prefixRunes),
-		isCommand: isCommand,
-	}
+	return goshCompletionContext{prefix: string(prefixRunes), isCommand: isCommand}
 }
 
 func (c *goshAutoCompleter) isCommandPosition(line []rune, start int) bool {
@@ -1001,11 +1023,11 @@ func (c *goshAutoCompleter) isCommandPosition(line []rune, start int) bool {
 			idx--
 			continue
 		}
-		if isCommandSeparator(r) {
+		if goshIsCommandSeparator(r) {
 			return true
 		}
 		end := idx + 1
-		for idx >= 0 && !isCompletionBreak(line[idx]) {
+		for idx >= 0 && !goshIsCompletionBreak(line[idx]) {
 			idx--
 		}
 		word := string(line[idx+1 : end])
@@ -1074,7 +1096,7 @@ func (c *goshAutoCompleter) buildCommandIndexLocked(path, home string) []string 
 			if dir == "" {
 				dir = "."
 			}
-			if expanded, ok := expandTilde(dir, home); ok {
+			if expanded, ok := goshExpandTilde(dir, home); ok {
 				dir = expanded
 			}
 			if !filepath.IsAbs(dir) {
@@ -1104,13 +1126,13 @@ func (c *goshAutoCompleter) buildCommandIndexLocked(path, home string) []string 
 }
 
 func (c *goshAutoCompleter) pathCandidates(prefix string) []string {
-	dirPart, base := splitPathPrefix(prefix)
+	dirPart, base := goshSplitPathPrefix(prefix)
 	search := dirPart
 	if search == "" {
 		search = "."
 	}
 	home := c.userHome()
-	if expanded, ok := expandTilde(search, home); ok {
+	if expanded, ok := goshExpandTilde(search, home); ok {
 		search = expanded
 	}
 	clean := filepath.Clean(search)
@@ -1143,6 +1165,95 @@ func (c *goshAutoCompleter) pathCandidates(prefix string) []string {
 	return matches
 }
 
+func (c *goshAutoCompleter) printMatches(options []string) {
+	if len(options) == 0 || c.stdout == nil {
+		return
+	}
+	width := c.screenWidth()
+	if width <= 0 {
+		width = 80
+	}
+	maxLen := 0
+	for _, option := range options {
+		if size := utf8.RuneCountInString(option); size > maxLen {
+			maxLen = size
+		}
+	}
+	if maxLen == 0 {
+		maxLen = 1
+	}
+	colWidth := maxLen + 2
+	if colWidth > width {
+		colWidth = maxLen
+	}
+	cols := 1
+	if colWidth > 0 {
+		cols = width / colWidth
+	}
+	if cols < 1 {
+		cols = 1
+	}
+	rows := (len(options) + cols - 1) / cols
+	fmt.Fprint(c.stdout, "\r\n")
+	for r := 0; r < rows; r++ {
+		printed := false
+		for cidx := 0; cidx < cols; cidx++ {
+			idx := cidx*rows + r
+			if idx >= len(options) {
+				break
+			}
+			entry := options[idx]
+			printed = true
+			fmt.Fprint(c.stdout, entry)
+			nextIdx := (cidx+1)*rows + r
+			if cidx == cols-1 || nextIdx >= len(options) {
+				continue
+			}
+			pad := colWidth - utf8.RuneCountInString(entry)
+			if pad < 1 {
+				pad = 1
+			}
+			fmt.Fprint(c.stdout, strings.Repeat(" ", pad))
+		}
+		if printed {
+			fmt.Fprint(c.stdout, "\r\n")
+		}
+	}
+	c.printPromptPrefix()
+	if rl := c.readline(); rl != nil {
+		rl.Operation.Refresh()
+	}
+}
+
+func (c *goshAutoCompleter) readline() *readline.Instance {
+	c.rlMu.Lock()
+	defer c.rlMu.Unlock()
+	return c.rl
+}
+
+func (c *goshAutoCompleter) printPromptPrefix() {
+	if c.promptPrinter == nil || c.stdout == nil {
+		return
+	}
+	if prefix := c.promptPrinter.Prefix(); prefix != "" {
+		fmt.Fprint(c.stdout, prefix)
+	}
+}
+
+func (c *goshAutoCompleter) screenWidth() int {
+	if rl := c.readline(); rl != nil {
+		if rl.Config != nil && rl.Config.FuncGetWidth != nil {
+			if width := rl.Config.FuncGetWidth(); width > 0 {
+				return width
+			}
+		}
+	}
+	if width := readline.GetScreenWidth(); width > 0 {
+		return width
+	}
+	return 80
+}
+
 func (c *goshAutoCompleter) shellVar(name string) string {
 	script := fmt.Sprintf("printf %%s \"${%s-}\"", name)
 	val, err := goshRunSubshell(c.ctx, c.runner, c.stdin, c.stderr, script)
@@ -1172,7 +1283,7 @@ func (c *goshAutoCompleter) functionStamp() string {
 	return strings.Join(names, "\x00")
 }
 
-func splitPathPrefix(prefix string) (string, string) {
+func goshSplitPathPrefix(prefix string) (string, string) {
 	idx := strings.LastIndexAny(prefix, "/\\")
 	if idx < 0 {
 		return "", prefix
@@ -1180,7 +1291,7 @@ func splitPathPrefix(prefix string) (string, string) {
 	return prefix[:idx+1], prefix[idx+1:]
 }
 
-func isCompletionBreak(r rune) bool {
+func goshIsCompletionBreak(r rune) bool {
 	if unicode.IsSpace(r) {
 		return true
 	}
@@ -1191,7 +1302,7 @@ func isCompletionBreak(r rune) bool {
 	return false
 }
 
-func isCommandSeparator(r rune) bool {
+func goshIsCommandSeparator(r rune) bool {
 	switch r {
 	case '|', '&', ';', '(', ')', '{', '}', '!':
 		return true
@@ -1212,7 +1323,7 @@ func goshKeywordStartsCommand(word string) bool {
 	return false
 }
 
-func expandTilde(path, home string) (string, bool) {
+func goshExpandTilde(path, home string) (string, bool) {
 	if !strings.HasPrefix(path, "~") {
 		return path, true
 	}
@@ -1230,6 +1341,34 @@ func expandTilde(path, home string) (string, bool) {
 		return filepath.Join(home, path[2:]), true
 	}
 	return "", false
+}
+
+func goshSharedPrefix(a, b string) string {
+	ar := []rune(a)
+	br := []rune(b)
+	limit := len(ar)
+	if len(br) < limit {
+		limit = len(br)
+	}
+	i := 0
+	for i < limit && ar[i] == br[i] {
+		i++
+	}
+	return string(ar[:i])
+}
+
+func goshLongestCommonPrefix(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	prefix := values[0]
+	for _, val := range values[1:] {
+		prefix = goshSharedPrefix(prefix, val)
+		if prefix == "" {
+			break
+		}
+	}
+	return prefix
 }
 
 var goshBuiltinCandidates = []string{
