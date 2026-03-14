@@ -17,6 +17,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"unicode"
 
 	"github.com/chzyer/readline"
 	"mvdan.cc/sh/v3/interp"
@@ -90,6 +91,7 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 	}
 
 	boundStdin := &goshKeyBindingInput{src: stdin, mgr: bindings}
+	completer := newGoshAutoCompleter(ctx, runner, stdin, stderr)
 	rl, err := readline.NewEx(&readline.Config{
 		Prompt:          currentPrompt.prompt,
 		HistoryFile:     histFile,
@@ -99,6 +101,7 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 		Stdin:           readline.NewCancelableStdin(boundStdin),
 		Stdout:          cmp.Or(stdout.(*os.File), os.Stdout),
 		Stderr:          cmp.Or(stderr.(*os.File), os.Stderr),
+		AutoComplete:    completer,
 		FuncGetWidth: func() int {
 			if w := readline.GetScreenWidth(); w > 0 {
 				return w
@@ -655,14 +658,18 @@ func (p *goshPromptState) runArithmetic(expr string) string {
 }
 
 func (p *goshPromptState) runScript(script string) (string, error) {
+	return goshRunSubshell(p.ctx, p.runner, p.stdin, p.stderr, script)
+}
+
+func goshRunSubshell(ctx context.Context, runner *interp.Runner, stdin io.Reader, stderr io.Writer, script string) (string, error) {
 	prog, err := syntax.NewParser().Parse(strings.NewReader(script), "")
 	if err != nil {
 		return "", err
 	}
-	sub := p.runner.Subshell()
+	sub := runner.Subshell()
 	var buf bytes.Buffer
-	interp.StdIO(p.stdin, &buf, p.stderr)(sub)
-	if err := sub.Run(p.ctx, prog); err != nil {
+	interp.StdIO(stdin, &buf, stderr)(sub)
+	if err := sub.Run(ctx, prog); err != nil {
 		return "", err
 	}
 	return strings.TrimRight(buf.String(), "\n"), nil
@@ -913,4 +920,414 @@ func (r *goshKeyBindingInput) processBuffer() {
 		r.out = append(r.out, r.buf[0])
 		r.buf = r.buf[1:]
 	}
+}
+
+type goshAutoCompleter struct {
+	ctx    context.Context
+	runner *interp.Runner
+	stdin  io.Reader
+	stderr io.Writer
+
+	mu              sync.Mutex
+	cachedPath      string
+	cachedFuncStamp string
+	cachedHome      string
+	cachedCommands  []string
+}
+
+func newGoshAutoCompleter(ctx context.Context, runner *interp.Runner, stdin io.Reader, stderr io.Writer) *goshAutoCompleter {
+	return &goshAutoCompleter{ctx: ctx, runner: runner, stdin: stdin, stderr: stderr}
+}
+
+func (c *goshAutoCompleter) Do(line []rune, pos int) ([][]rune, int) {
+	ctx := c.completionContext(line, pos)
+	var options []string
+	if ctx.isCommand && !strings.ContainsAny(ctx.prefix, "/\\") {
+		options = c.commandCandidates(ctx.prefix)
+	} else {
+		options = c.pathCandidates(ctx.prefix)
+	}
+	if len(options) == 0 {
+		return nil, 0
+	}
+	results := make([][]rune, 0, len(options))
+	for _, option := range options {
+		if !strings.HasPrefix(option, ctx.prefix) {
+			continue
+		}
+		results = append(results, []rune(option[len(ctx.prefix):]))
+	}
+	if len(results) == 0 {
+		return nil, 0
+	}
+	return results, ctx.prefixLen
+}
+
+type goshCompletionContext struct {
+	prefix    string
+	prefixLen int
+	isCommand bool
+}
+
+func (c *goshAutoCompleter) completionContext(line []rune, pos int) goshCompletionContext {
+	if pos < 0 {
+		pos = 0
+	}
+	if pos > len(line) {
+		pos = len(line)
+	}
+	start := pos
+	for start > 0 {
+		r := line[start-1]
+		if isCompletionBreak(r) {
+			break
+		}
+		start--
+	}
+	prefixRunes := line[start:pos]
+	isCommand := c.isCommandPosition(line, start)
+	return goshCompletionContext{
+		prefix:    string(prefixRunes),
+		prefixLen: len(prefixRunes),
+		isCommand: isCommand,
+	}
+}
+
+func (c *goshAutoCompleter) isCommandPosition(line []rune, start int) bool {
+	idx := start - 1
+	for idx >= 0 {
+		r := line[idx]
+		if unicode.IsSpace(r) {
+			idx--
+			continue
+		}
+		if isCommandSeparator(r) {
+			return true
+		}
+		end := idx + 1
+		for idx >= 0 && !isCompletionBreak(line[idx]) {
+			idx--
+		}
+		word := string(line[idx+1 : end])
+		return goshKeywordStartsCommand(word)
+	}
+	return true
+}
+
+func (c *goshAutoCompleter) commandCandidates(prefix string) []string {
+	path := c.shellVar("PATH")
+	if path == "" {
+		path = os.Getenv("PATH")
+	}
+	funcStamp := c.functionStamp()
+	home := c.userHome()
+	commands := c.commandIndex(path, funcStamp, home)
+	if len(commands) == 0 {
+		return nil
+	}
+	matches := make([]string, 0, len(commands))
+	for _, name := range commands {
+		if strings.HasPrefix(name, prefix) {
+			matches = append(matches, name)
+		}
+	}
+	return matches
+}
+
+func (c *goshAutoCompleter) commandIndex(path, funcStamp, home string) []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if path == c.cachedPath && funcStamp == c.cachedFuncStamp && home == c.cachedHome && len(c.cachedCommands) > 0 {
+		return c.cachedCommands
+	}
+	cmds := c.buildCommandIndexLocked(path, home)
+	c.cachedPath = path
+	c.cachedFuncStamp = funcStamp
+	c.cachedHome = home
+	c.cachedCommands = cmds
+	return cmds
+}
+
+func (c *goshAutoCompleter) buildCommandIndexLocked(path, home string) []string {
+	seen := make(map[string]struct{})
+	add := func(name string) {
+		if name == "" {
+			return
+		}
+		if _, ok := seen[name]; ok {
+			return
+		}
+		seen[name] = struct{}{}
+	}
+	for _, name := range goshBuiltinCandidates {
+		add(name)
+	}
+	for name := range c.runner.Funcs {
+		add(name)
+	}
+	for _, keyword := range goshKeywordCandidates {
+		add(keyword)
+	}
+	if path != "" {
+		parts := strings.Split(path, string(os.PathListSeparator))
+		for _, dir := range parts {
+			if dir == "" {
+				dir = "."
+			}
+			if expanded, ok := expandTilde(dir, home); ok {
+				dir = expanded
+			}
+			if !filepath.IsAbs(dir) {
+				base := c.runner.Dir
+				if base == "" {
+					if wd, err := os.Getwd(); err == nil {
+						base = wd
+					}
+				}
+				dir = filepath.Join(base, dir)
+			}
+			entries, err := os.ReadDir(dir)
+			if err != nil {
+				continue
+			}
+			for _, entry := range entries {
+				add(entry.Name())
+			}
+		}
+	}
+	cmds := make([]string, 0, len(seen))
+	for name := range seen {
+		cmds = append(cmds, name)
+	}
+	slices.Sort(cmds)
+	return cmds
+}
+
+func (c *goshAutoCompleter) pathCandidates(prefix string) []string {
+	dirPart, base := splitPathPrefix(prefix)
+	search := dirPart
+	if search == "" {
+		search = "."
+	}
+	home := c.userHome()
+	if expanded, ok := expandTilde(search, home); ok {
+		search = expanded
+	}
+	clean := filepath.Clean(search)
+	if !filepath.IsAbs(clean) {
+		cwd := c.runner.Dir
+		if cwd == "" {
+			if wd, err := os.Getwd(); err == nil {
+				cwd = wd
+			}
+		}
+		clean = filepath.Join(cwd, clean)
+	}
+	entries, err := os.ReadDir(clean)
+	if err != nil {
+		return nil
+	}
+	matches := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		name := entry.Name()
+		if !strings.HasPrefix(name, base) {
+			continue
+		}
+		candidate := dirPart + name
+		if entry.IsDir() {
+			candidate += string(os.PathSeparator)
+		}
+		matches = append(matches, candidate)
+	}
+	slices.Sort(matches)
+	return matches
+}
+
+func (c *goshAutoCompleter) shellVar(name string) string {
+	script := fmt.Sprintf("printf %%s \"${%s-}\"", name)
+	val, err := goshRunSubshell(c.ctx, c.runner, c.stdin, c.stderr, script)
+	if err == nil && val != "" {
+		return val
+	}
+	return os.Getenv(name)
+}
+
+func (c *goshAutoCompleter) userHome() string {
+	if home := c.shellVar("HOME"); home != "" {
+		return home
+	}
+	home, _ := os.UserHomeDir()
+	return home
+}
+
+func (c *goshAutoCompleter) functionStamp() string {
+	if len(c.runner.Funcs) == 0 {
+		return ""
+	}
+	names := make([]string, 0, len(c.runner.Funcs))
+	for name := range c.runner.Funcs {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	return strings.Join(names, "\x00")
+}
+
+func splitPathPrefix(prefix string) (string, string) {
+	idx := strings.LastIndexAny(prefix, "/\\")
+	if idx < 0 {
+		return "", prefix
+	}
+	return prefix[:idx+1], prefix[idx+1:]
+}
+
+func isCompletionBreak(r rune) bool {
+	if unicode.IsSpace(r) {
+		return true
+	}
+	switch r {
+	case ';', '|', '&', '(', ')', '{', '}', '!':
+		return true
+	}
+	return false
+}
+
+func isCommandSeparator(r rune) bool {
+	switch r {
+	case '|', '&', ';', '(', ')', '{', '}', '!':
+		return true
+	}
+	return false
+}
+
+func goshKeywordStartsCommand(word string) bool {
+	word = strings.TrimSpace(word)
+	if word == "" {
+		return false
+	}
+	for _, kw := range goshCommandKeywords {
+		if word == kw {
+			return true
+		}
+	}
+	return false
+}
+
+func expandTilde(path, home string) (string, bool) {
+	if !strings.HasPrefix(path, "~") {
+		return path, true
+	}
+	if home == "" {
+		return "", false
+	}
+	if len(path) == 1 {
+		return home, true
+	}
+	next := rune(path[1])
+	if next == '/' || next == '\\' {
+		if len(path) == 2 {
+			return home, true
+		}
+		return filepath.Join(home, path[2:]), true
+	}
+	return "", false
+}
+
+var goshBuiltinCandidates = []string{
+	"alias",
+	"bg",
+	"bind",
+	"break",
+	"builtin",
+	"caller",
+	"cd",
+	"command",
+	"compgen",
+	"complete",
+	"compopt",
+	"continue",
+	"declare",
+	"dirs",
+	"disown",
+	"echo",
+	"enable",
+	"eval",
+	"exec",
+	"exit",
+	"export",
+	"false",
+	"fc",
+	"fg",
+	"getopts",
+	"hash",
+	"help",
+	"history",
+	"jobs",
+	"kill",
+	"let",
+	"local",
+	"logout",
+	"mapfile",
+	"newgrp",
+	"popd",
+	"printf",
+	"pushd",
+	"pwd",
+	"read",
+	"readarray",
+	"readonly",
+	"return",
+	"set",
+	"shift",
+	"shopt",
+	"source",
+	"suspend",
+	"test",
+	"times",
+	"trap",
+	"true",
+	"type",
+	"typeset",
+	"ulimit",
+	"umask",
+	"unalias",
+	"unset",
+	"wait",
+	":",
+	".",
+	"[",
+}
+
+var goshKeywordCandidates = []string{
+	"case",
+	"coproc",
+	"do",
+	"done",
+	"elif",
+	"else",
+	"esac",
+	"fi",
+	"for",
+	"function",
+	"if",
+	"in",
+	"select",
+	"then",
+	"time",
+	"until",
+	"while",
+}
+
+var goshCommandKeywords = []string{
+	"if",
+	"then",
+	"else",
+	"elif",
+	"do",
+	"done",
+	"while",
+	"until",
+	"time",
+	"coproc",
+	"fi",
+	"esac",
 }
