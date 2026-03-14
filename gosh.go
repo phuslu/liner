@@ -981,8 +981,12 @@ func (c *goshAutoCompleter) Do(line []rune, pos int) ([][]rune, int) {
 	if len(options) == 0 {
 		return nil, 0
 	}
+	escaped := make([]string, len(options))
+	for i, option := range options {
+		escaped[i] = goshEscapeCompletion(option)
+	}
 	prefixLen := utf8.RuneCountInString(ctx.prefix)
-	common := goshLongestCommonPrefix(options)
+	common := goshLongestCommonPrefix(escaped)
 	commonRunes := []rune(common)
 	if len(commonRunes) > prefixLen {
 		addition := append([]rune(nil), commonRunes[prefixLen:]...)
@@ -1264,7 +1268,7 @@ func (c *goshAutoCompleter) screenWidth() int {
 func goshCompletionDisplayName(opt string) string {
 	trimmed := strings.TrimRight(opt, "/\\")
 	if trimmed == "" {
-		return opt
+		return goshEscapeCompletion(opt)
 	}
 	idx := strings.LastIndexAny(trimmed, "/\\")
 	base := trimmed
@@ -1274,7 +1278,22 @@ func goshCompletionDisplayName(opt string) string {
 	if strings.HasSuffix(opt, "/") || strings.HasSuffix(opt, "\\") {
 		base += "/"
 	}
-	return base
+	return goshEscapeCompletion(base)
+}
+
+func goshEscapeCompletion(val string) string {
+	if val == "" {
+		return ""
+	}
+	var b strings.Builder
+	for _, r := range val {
+		switch r {
+		case ' ', '\t', '\n', '\\', '"', '\'', '`', '$', '&', '|', ';', '<', '>', '(', ')', '{', '}', '[', ']', '!', '?', '*', '~', '^', '#', '%', '=', ':', ',', '+':
+			b.WriteByte('\\')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 func (c *goshAutoCompleter) shellVar(name string) string {
