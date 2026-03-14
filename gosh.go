@@ -87,9 +87,9 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 		return fmt.Errorf("gosh: cannot support -c option: %q", os.Args)
 	}
 
-	histFile := ""
-	if home, err := os.UserHomeDir(); err == nil {
-		histFile = home + "/.ash_history"
+	histFile := cmp.Or(os.Getenv("HISTFILE"), os.ExpandEnv("$HOME/.ash_history"))
+	if histFile == os.DevNull || histFile == "/dev/null" {
+		histFile = ""
 	}
 
 	boundStdin := &goshKeyBindingInput{src: stdin, mgr: bindings}
