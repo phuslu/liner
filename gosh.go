@@ -1179,8 +1179,10 @@ func (c *goshAutoCompleter) printMatches(options []string) {
 		width = 80
 	}
 	maxLen := 0
-	for _, option := range options {
-		if size := utf8.RuneCountInString(option); size > maxLen {
+	display := make([]string, len(options))
+	for i, option := range options {
+		display[i] = goshCompletionDisplayName(option)
+		if size := utf8.RuneCountInString(display[i]); size > maxLen {
 			maxLen = size
 		}
 	}
@@ -1207,7 +1209,7 @@ func (c *goshAutoCompleter) printMatches(options []string) {
 			if idx >= len(options) {
 				break
 			}
-			entry := options[idx]
+			entry := display[idx]
 			printed = true
 			fmt.Fprint(c.stdout, entry)
 			nextIdx := (cidx+1)*rows + r
@@ -1257,6 +1259,22 @@ func (c *goshAutoCompleter) screenWidth() int {
 		return width
 	}
 	return 80
+}
+
+func goshCompletionDisplayName(opt string) string {
+	trimmed := strings.TrimRight(opt, "/\\")
+	if trimmed == "" {
+		return opt
+	}
+	idx := strings.LastIndexAny(trimmed, "/\\")
+	base := trimmed
+	if idx >= 0 {
+		base = trimmed[idx+1:]
+	}
+	if strings.HasSuffix(opt, "/") || strings.HasSuffix(opt, "\\") {
+		base += "/"
+	}
+	return base
 }
 
 func (c *goshAutoCompleter) shellVar(name string) string {
