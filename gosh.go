@@ -135,11 +135,6 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 			return true
 		}
 
-		// Restore the main prompt, updating it in case the effective UID
-		// changed (e.g. via su).
-		setPrompt(goshPromptString(ctx, runner, stdin, stderr, "PS1", goshDefaultPrompt(), promptSeq))
-		promptSeq++
-
 		for _, stmt := range stmts {
 			if err := runner.Run(ctx, stmt); err != nil {
 				fmt.Fprintln(rl.Stdout(), err.Error())
@@ -148,6 +143,11 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 				return false
 			}
 		}
+
+		// Restore the main prompt, updating it in case the effective UID
+		// changed (e.g. via su).
+		setPrompt(goshPromptString(ctx, runner, stdin, stderr, "PS1", goshDefaultPrompt(), promptSeq))
+		promptSeq++
 		flushPrefix()
 		return true
 	})
