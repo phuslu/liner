@@ -91,8 +91,12 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 		return fmt.Errorf("gosh: cannot support -c option: %q", os.Args)
 	}
 
-	histFile := cmp.Or(os.Getenv("HISTFILE"), os.ExpandEnv("$HOME/.ash_history"))
-	if histFile == os.DevNull || histFile == "/dev/null" {
+	// export HISTFILE=""
+	histFile, ok := os.LookupEnv("HISTFILE")
+	switch {
+	case !ok:
+		histFile = os.ExpandEnv("$HOME/.ash_history")
+	case histFile == os.DevNull || histFile == "/dev/null":
 		histFile = ""
 	}
 
