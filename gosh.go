@@ -30,7 +30,11 @@ import (
 )
 
 func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.Writer) error {
-	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	signals := []os.Signal{syscall.SIGTERM}
+	if !isatty {
+		signals = append(signals, os.Interrupt)
+	}
+	ctx, cancel := signal.NotifyContext(ctx, signals...)
 	defer cancel()
 
 	SetProcessName(os.Args[0])
