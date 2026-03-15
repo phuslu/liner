@@ -1096,8 +1096,14 @@ func (c *goshAutoCompleter) Do(line []rune, pos int) ([][]rune, int) {
 	prefixLen := utf8.RuneCountInString(ctx.prefix)
 	common := goshLongestCommonPrefix(escaped)
 	commonRunes := []rune(common)
+	addition := []rune{}
 	if len(commonRunes) > prefixLen {
-		addition := append([]rune(nil), commonRunes[prefixLen:]...)
+		addition = append(addition, commonRunes[prefixLen:]...)
+	}
+	if len(options) == 1 {
+		addition = append(addition, ' ')
+	}
+	if len(addition) > 0 {
 		return [][]rune{addition}, prefixLen
 	}
 	if len(options) == 1 {
