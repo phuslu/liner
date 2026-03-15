@@ -1018,6 +1018,10 @@ func main() {
 			h.DnsResolver = must(dnsResolverPool.Get(tunnel.Resolver, 600*time.Second))
 		}
 
+		if err = h.Load(); err != nil {
+			log.Fatal().Err(err).Msg("tunnel handler load error")
+		}
+
 		go h.Serve(context.Background())
 	}
 

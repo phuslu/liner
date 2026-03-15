@@ -15,6 +15,7 @@ import (
 	"github.com/libp2p/go-yamux/v5"
 	"github.com/phuslu/log"
 	"github.com/puzpuzpuz/xsync/v4"
+	"github.com/quic-go/quic-go/http3"
 )
 
 var TunnelUserAgent = "Liner/" + version + " (" + runtime.GOOS + "; " + runtime.GOARCH + "; " + runtime.Version() + ") " + "yamux/v5"
@@ -25,12 +26,17 @@ type TunnelHandler struct {
 	DnsResolver     *DnsResolver
 	LocalDialer     Dialer
 	Dialers         map[string]string
+
+	transport3 *xsync.Map[string, *http3.Transport] // key: dialer name
 }
 
 func (h *TunnelHandler) Load() error {
 	if len(h.Config.RemoteListen) != 1 {
 		return fmt.Errorf("invalid tunnel remote listen: %v", h.Config.RemoteListen)
 	}
+
+	h.transport3 = xsync.NewMap[string, *http3.Transport]()
+
 	return nil
 }
 

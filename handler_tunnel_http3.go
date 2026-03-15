@@ -35,36 +35,38 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialer string) (net.Listen
 		return nil, fmt.Errorf("no user info in dialer: %s", dialer)
 	}
 
-	transport := &http3.Transport{
-		DisableCompression: false,
-		EnableDatagrams:    true,
-		Dial: func(ctx context.Context, addr string, tlsConf *tls.Config, conf *quic.Config) (*quic.Conn, error) {
-			ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-			defer cancel()
-			conn, err := quic.DialAddrEarly(ctx,
-				net.JoinHostPort(cmp.Or(u.Query().Get("resolve"), u.Hostname()), cmp.Or(u.Port(), "443")),
-				&tls.Config{
-					NextProtos:         []string{"h3"},
-					InsecureSkipVerify: u.Query().Get("insecure") == "true",
-					ServerName:         u.Hostname(),
-					ClientSessionCache: tls.NewLRUClientSessionCache(1024),
-				},
-				&quic.Config{
-					DisablePathMTUDiscovery:    false,
-					EnableDatagrams:            true,
-					MaxIdleTimeout:             45 * time.Second,
-					MaxIncomingUniStreams:      200,
-					MaxIncomingStreams:         200,
-					MaxStreamReceiveWindow:     6 * 1024 * 1024,
-					MaxConnectionReceiveWindow: 100 * 1024 * 1024,
-				},
-			)
-			if err != nil {
-				return nil, err
-			}
-			return conn, nil
-		},
-	}
+	transport, _ := h.transport3.LoadOrCompute(dialer, func() (*http3.Transport, bool) {
+		return &http3.Transport{
+			DisableCompression: false,
+			EnableDatagrams:    true,
+			Dial: func(ctx context.Context, addr string, tlsConf *tls.Config, conf *quic.Config) (*quic.Conn, error) {
+				ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+				defer cancel()
+				conn, err := quic.DialAddrEarly(ctx,
+					net.JoinHostPort(cmp.Or(u.Query().Get("resolve"), u.Hostname()), cmp.Or(u.Port(), "443")),
+					&tls.Config{
+						NextProtos:         []string{"h3"},
+						InsecureSkipVerify: u.Query().Get("insecure") == "true",
+						ServerName:         u.Hostname(),
+						ClientSessionCache: tls.NewLRUClientSessionCache(1024),
+					},
+					&quic.Config{
+						DisablePathMTUDiscovery:    false,
+						EnableDatagrams:            true,
+						MaxIdleTimeout:             45 * time.Second,
+						MaxIncomingUniStreams:      200,
+						MaxIncomingStreams:         200,
+						MaxStreamReceiveWindow:     6 * 1024 * 1024,
+						MaxConnectionReceiveWindow: 100 * 1024 * 1024,
+					},
+				)
+				if err != nil {
+					return nil, err
+				}
+				return conn, nil
+			},
+		}, false
+	})
 
 	targetHost, targetPort, err := net.SplitHostPort(h.Config.RemoteListen[0])
 	if err != nil {
