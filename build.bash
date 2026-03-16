@@ -120,7 +120,7 @@ function liner::python() {
 	export PATH=${GOPATH:-~/go}/bin:${GOROOT}/bin:$PATH
 	export REVSION=$(git rev-list --count HEAD)
 
-	mv liner_py-1.0.1984.dist-info liner_py-1.0.${REVSION}.dist-info 
+	mv liner_py-1.0.1984.dist-info liner_py-1.0.${REVSION}.dist-info
 
 	case $(uname) in
 		Darwin )
@@ -135,7 +135,10 @@ function liner::python() {
 			;;
 	esac
 
-	#go install -v mvdan.cc/garble@latest
+	if test "${GITHUB_ACTIONS}" == "true"; then
+		go install -v mvdan.cc/garble@master
+	fi
+
 	if command -v garble; then
 		export GOGARBLE=liner
 		GO="garble -literals -tiny -seed=${GARBLE_SEED:-random}"
