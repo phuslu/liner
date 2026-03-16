@@ -124,8 +124,8 @@ function liner::python() {
 
 	case $(uname) in
 		Darwin )
-			export CGO_CFLAGS="-I/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Headers/"
-			export CGO_LDFLAGS="-L/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/ -lpython3.9"
+			export CGO_CFLAGS="$(python3-config --includes)"
+			export CGO_LDFLAGS="$(python3-config --ldflags) -undefined dynamic_lookup"
 			export PLATFORM_TAG="macosx_11_0_$(uname -m)"
 			;;
 		Linux )
