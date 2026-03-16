@@ -1,6 +1,8 @@
 package main
 
 /*
+#define Py_LIMITED_API 0x03090000
+
 #include <Python.h>
 
 extern PyObject* liner();

@@ -8,6 +8,7 @@ import (
 )
 
 /*
+#define Py_LIMITED_API 0x03090000
 #include <Python.h>
 */
 import "C"
