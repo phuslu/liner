@@ -1161,7 +1161,7 @@ func (c *goshAutoCompleter) Do(line []rune, pos int) ([][]rune, int) {
 	if len(commonRunes) > prefixLen {
 		addition = append(addition, commonRunes[prefixLen:]...)
 	}
-	if len(options) == 1 {
+	if len(options) == 1 && !strings.HasSuffix(options[0], string(os.PathSeparator)) {
 		addition = append(addition, ' ')
 	}
 	if len(addition) > 0 {
