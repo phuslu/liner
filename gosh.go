@@ -51,11 +51,15 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 	}
 
 	parser := syntax.NewParser()
+	history := &goshHistory{limit: goshResolveHistoryLimit()}
 	bindings := &goshKeyBindingManager{entries: make(map[string]*goKeyBindingEntry)}
 	runner, err := interp.New(
 		interp.Interactive(true),
 		interp.StdIO(stdin, stdout, stderr),
-		interp.ExecHandlers(goshBindExecMiddleware(bindings)),
+		interp.ExecHandlers(
+			goshHistoryExecMiddleware(history),
+			goshBindExecMiddleware(bindings),
+		),
 	)
 	if err != nil {
 		return err
@@ -112,7 +116,7 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 	rl, err := readline.NewEx(&readline.Config{
 		Prompt:          currentPrompt.prompt,
 		HistoryFile:     histFile,
-		HistoryLimit:    1000,
+		HistoryLimit:    history.limit,
 		InterruptPrompt: "^C",
 		EOFPrompt:       "exit",
 		Stdin:           readline.NewCancelableStdin(boundStdin),
@@ -149,7 +153,7 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 	// io.Reader. Each call to Read invokes Readline() to fetch one line.
 	// Ctrl-C (ErrInterrupt) injects a newline to abandon the current
 	// incomplete statement. Ctrl-D / EOF returns io.EOF to end the session.
-	rdr := &goshReader{rl: rl}
+	rdr := &goshReader{rl: rl, history: history}
 
 	return parser.Interactive(rdr, func(stmts []*syntax.Stmt) bool {
 		// parser.Incomplete() returns true when the parser has consumed a
@@ -187,8 +191,9 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 // goshReader adapts *readline.Instance to the io.Reader interface expected by
 // parser.Interactive. The parser calls Read whenever it needs more input.
 type goshReader struct {
-	rl  *readline.Instance
-	buf []byte // leftover bytes from the previous Readline call
+	rl      *readline.Instance
+	buf     []byte // leftover bytes from the previous Readline call
+	history *goshHistory
 }
 
 func (r *goshReader) Read(p []byte) (int, error) {
@@ -211,12 +216,52 @@ func (r *goshReader) Read(p []byte) (int, error) {
 		return 0, io.EOF
 	}
 
+	if r.history != nil {
+		r.history.Add(line)
+	}
 	data := []byte(line + "\n")
 	n := copy(p, data)
 	if n < len(data) {
 		r.buf = data[n:] // stash the remainder for the next Read call
 	}
 	return n, nil
+}
+
+type goshHistory struct {
+	limit   int
+	mu      sync.Mutex
+	entries []string
+}
+
+func goshResolveHistoryLimit() int {
+	val, ok := os.LookupEnv("HISTSIZE")
+	if ok {
+		if n, err := strconv.Atoi(strings.TrimSpace(val)); err == nil && n > 0 {
+			return n
+		}
+	}
+	return 1000
+}
+
+func (h *goshHistory) Add(line string) {
+	line = strings.TrimRight(line, "\r\n")
+	if strings.TrimSpace(line) == "" {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.entries = append(h.entries, line)
+	if h.limit > 0 && len(h.entries) > h.limit {
+		h.entries = h.entries[len(h.entries)-h.limit:]
+	}
+}
+
+func (h *goshHistory) Entries() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	out := make([]string, len(h.entries))
+	copy(out, h.entries)
+	return out
 }
 
 func goshDefaultPrompt() string {
@@ -715,6 +760,22 @@ func (p *goshPromptState) escapeDouble(s string) string {
 	s = strings.ReplaceAll(s, "\\", "\\\\")
 	s = strings.ReplaceAll(s, "\"", "\\\"")
 	return s
+}
+
+func goshHistoryExecMiddleware(history *goshHistory) func(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
+	return func(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
+		return func(ctx context.Context, args []string) error {
+			if len(args) > 0 && args[0] == "history" && history != nil {
+				hc := interp.HandlerCtx(ctx)
+				entries := history.Entries()
+				for idx, entry := range entries {
+					fmt.Fprintf(hc.Stdout, "%5d  %s\n", idx+1, entry)
+				}
+				return nil
+			}
+			return next(ctx, args)
+		}
+	}
 }
 
 func goshInstallShellOptionVariable(runner *interp.Runner, interactive, readFromStdin bool) {
