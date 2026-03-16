@@ -56,10 +56,7 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 	runner, err := interp.New(
 		interp.Interactive(true),
 		interp.StdIO(stdin, stdout, stderr),
-		interp.ExecHandlers(
-			goshHistoryExecMiddleware(history),
-			goshBindExecMiddleware(bindings),
-		),
+		interp.CallHandler(goshCallHandler(history, bindings)),
 	)
 	if err != nil {
 		return err
@@ -762,18 +759,34 @@ func (p *goshPromptState) escapeDouble(s string) string {
 	return s
 }
 
-func goshHistoryExecMiddleware(history *goshHistory) func(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
-	return func(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
-		return func(ctx context.Context, args []string) error {
-			if len(args) > 0 && args[0] == "history" && history != nil {
-				hc := interp.HandlerCtx(ctx)
-				entries := history.Entries()
-				for idx, entry := range entries {
-					fmt.Fprintf(hc.Stdout, "%5d  %s\n", idx+1, entry)
-				}
-				return nil
+func goshCallHandler(history *goshHistory, bindings *goshKeyBindingManager) interp.CallHandlerFunc {
+	return func(ctx context.Context, args []string) ([]string, error) {
+		if len(args) == 0 {
+			return args, nil
+		}
+		switch args[0] {
+		case "history":
+			if history == nil {
+				return args, nil
 			}
-			return next(ctx, args)
+			hc := interp.HandlerCtx(ctx)
+			entries := history.Entries()
+			for idx, entry := range entries {
+				fmt.Fprintf(hc.Stdout, "%5d  %s\n", idx+1, entry)
+			}
+			return []string{":"}, nil
+		case "bind":
+			if bindings == nil {
+				return args, nil
+			}
+			if err := bindings.handleBind(args[1:]); err != nil {
+				hc := interp.HandlerCtx(ctx)
+				fmt.Fprintln(hc.Stderr, err)
+				return []string{"false"}, nil
+			}
+			return []string{":"}, nil
+		default:
+			return args, nil
 		}
 	}
 }
@@ -871,17 +884,6 @@ func goshRunnerOpts(r *interp.Runner) []bool {
 	}
 	ptr := unsafe.Pointer(val.UnsafeAddr())
 	return unsafe.Slice((*bool)(ptr), val.Len())
-}
-
-func goshBindExecMiddleware(mgr *goshKeyBindingManager) func(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
-	return func(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
-		return func(ctx context.Context, args []string) error {
-			if len(args) > 0 && args[0] == "bind" {
-				return mgr.handleBind(args[1:])
-			}
-			return next(ctx, args)
-		}
-	}
 }
 
 type goshKeyBindingManager struct {
