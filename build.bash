@@ -135,7 +135,7 @@ function liner::python() {
 			;;
 	esac
 
-	if test "${GITHUB_ACTIONS}" == "true"; then
+	if git log -1 --oneline | grep -q ' +garble '; then
 		go install -v mvdan.cc/garble@master
 	fi
 
