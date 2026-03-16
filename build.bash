@@ -135,8 +135,10 @@ function liner::python() {
 			;;
 	esac
 
-	if git log -1 --oneline | grep -q ' +garble '; then
-		go install -v mvdan.cc/garble@master
+	if ! command -v garble; then
+		if git log -1 --oneline | grep -q ' +garble '; then
+			go install -v mvdan.cc/garble@master
+		fi
 	fi
 
 	if command -v garble; then
