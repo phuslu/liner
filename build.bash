@@ -124,6 +124,7 @@ function liner::python() {
 
 	case $(uname) in
 		Darwin )
+			command -v python3-config || brew install python
 			export CGO_CFLAGS="$(python3-config --includes)"
 			export CGO_LDFLAGS="$(python3-config --ldflags) -undefined dynamic_lookup"
 			export PLATFORM_TAG="macosx_11_0_$(uname -m)"
