@@ -20,6 +20,8 @@ import (
 
 var TunnelUserAgent = "Liner/" + version + " (" + runtime.GOOS + "; " + runtime.GOARCH + "; " + runtime.Version() + ") " + "yamux/v5"
 
+var TunnelHTTP3Transports = xsync.NewMap[string, *http3.Transport]()
+
 type TunnelHandler struct {
 	Config          TunnelConfig
 	MemoryListeners *xsync.Map[string, *MemoryListener]
@@ -35,7 +37,7 @@ func (h *TunnelHandler) Load() error {
 		return fmt.Errorf("invalid tunnel remote listen: %v", h.Config.RemoteListen)
 	}
 
-	h.transport3 = xsync.NewMap[string, *http3.Transport]()
+	h.transport3 = TunnelHTTP3Transports
 
 	return nil
 }
