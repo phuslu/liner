@@ -2,13 +2,8 @@
 
 function liner::setup() {
 	export DEBIAN_FRONTEND=noninteractive
-	if test -f /etc/alpine-release; then
-		apk update
-		apk add git curl jq unzip zip xz github-cli patch make build-base parallel upx
-	else
-		apt update -y
-		apt install -yq git curl jq unzip zip xz-utils gh build-essential parallel upx
-	fi
+	apt update -y
+	apt install -yq git curl jq unzip zip xz-utils gh build-essential parallel upx
 
 	git config --global --add safe.directory '*'
 
@@ -130,6 +125,7 @@ function liner::python() {
 			export PLATFORM_TAG="macosx_11_0_$(uname -m)"
 			;;
 		Linux )
+			command -v python3-config || env DEBIAN_FRONTEND=noninteractive apt install -y python3-dev
 			export CGO_CFLAGS="$(python3-config --includes)"
 			export CGO_LDFLAGS="$(python3-config --ldflags)"
 			export PLATFORM_TAG="manylinux_2_34_$(uname -m)"
