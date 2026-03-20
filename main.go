@@ -39,6 +39,7 @@ import (
 	"github.com/robfig/cron/v3"
 	"github.com/smallnest/ringbuffer"
 	"go4.org/netipx"
+	"golang.org/x/net/http2"
 )
 
 var (
@@ -675,12 +676,6 @@ func main() {
 				}
 				h.ServeHTTP(w, r)
 			}),
-			HTTP2: &http.HTTP2Config{
-				MaxConcurrentStreams:          100,
-				MaxReceiveBufferPerStream:     1024 * 1024,
-				MaxReceiveBufferPerConnection: 100 * 1024 * 1024, // 100 MB, https: //github.com/golang/go/issues/54330#issuecomment-1213576274
-				MaxReadFrameSize:              1024 * 1024,       // 1MB read frame, https://github.com/golang/go/issues/47840
-			},
 			TLSConfig: &tls.Config{
 				GetConfigForClient: tlsConfigurator.GetConfigForClient,
 			},
@@ -699,6 +694,13 @@ func main() {
 				return logger.Std("", 0)
 			}(),
 		}
+
+		http2.ConfigureServer(server, &http2.Server{
+			MaxConcurrentStreams:         100,
+			MaxUploadBufferPerStream:     1024 * 1024,
+			MaxUploadBufferPerConnection: 100 * 1024 * 1024, // 100 MB, https: //github.com/golang/go/issues/54330#issuecomment-1213576274
+			MaxReadFrameSize:             1024 * 1024,       // 1MB read frame, https://github.com/golang/go/issues/47840
+		})
 
 		go server.Serve(TCPListener{
 			TCPListener:     ln.(*net.TCPListener),
