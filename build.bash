@@ -34,10 +34,6 @@ function liner::build() {
 	go env
 
 	go mod download -x
-	# http2 patch
-	golang_org_x_net="${GOPATH}/pkg/mod/$(go list -m golang.org/x/net | tr ' ' @)"
-	chmod -R +w ${golang_org_x_net}
-	patch -p1 -d ${golang_org_x_net} <http2date.patch
 	# http3 patch
 	github_com_quic_go="${GOPATH}/pkg/mod/$(go list -m github.com/quic-go/quic-go | tr ' ' @)"
 	chmod -R +w ${github_com_quic_go}
