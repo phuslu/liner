@@ -12,15 +12,15 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-func (h *TunnelHandler) sshtunnel(ctx context.Context, dialer string) (net.Listener, error) {
-	log.Info().Str("dialer", dialer).Msg("connecting tunnel host")
+func (h *TunnelHandler) sshtunnel(ctx context.Context, dialerName, dialerURL string) (net.Listener, error) {
+	log.Info().Str("dialer_name", dialerName).Msg("connecting tunnel host")
 
-	u, err := url.Parse(dialer)
+	u, err := url.Parse(dialerURL)
 	if err != nil {
 		return nil, err
 	}
 	if u.User == nil {
-		return nil, fmt.Errorf("no user info in dialer: %s", dialer)
+		return nil, fmt.Errorf("no user info in dialer %s: %s", dialerName, dialerURL)
 	}
 
 	if IsMemoryAddress(h.Config.RemoteListen[0]) {

@@ -24,18 +24,18 @@ import (
 	"github.com/smallnest/ringbuffer"
 )
 
-func (h *TunnelHandler) h3tunnel(ctx context.Context, dialer string) (net.Listener, error) {
-	log.Info().Str("dialer", dialer).Msg("connecting tunnel host")
+func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL string) (net.Listener, error) {
+	log.Info().Str("dialer_name", dialerName).Msg("connecting tunnel host")
 
-	u, err := url.Parse(dialer)
+	u, err := url.Parse(dialerURL)
 	if err != nil {
 		return nil, err
 	}
 	if u.User == nil {
-		return nil, fmt.Errorf("no user info in dialer: %s", dialer)
+		return nil, fmt.Errorf("no user info in dialer %s: %s", dialerName, dialerURL)
 	}
 
-	transport, _ := h.transport3.LoadOrCompute(dialer, func() (*http3.Transport, bool) {
+	transport, _ := h.transport3.LoadOrCompute(dialerName, func() (*http3.Transport, bool) {
 		return &http3.Transport{
 			DisableCompression: false,
 			EnableDatagrams:    true,
@@ -122,7 +122,7 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialer string) (net.Listen
 	if err != nil {
 		if errmsg := err.Error(); strings.Contains(errmsg, "timeout: ") || strings.Contains(errmsg, "context deadline exceeded") || strings.Contains(errmsg, "context canceled") {
 			log.Warn().Err(err).Msg("close underlying http3 connection")
-			h.transport3.Delete(dialer)
+			h.transport3.Delete(dialerName)
 			transport.Close()
 		}
 		return nil, err

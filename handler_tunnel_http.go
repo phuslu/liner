@@ -19,18 +19,18 @@ import (
 	"github.com/phuslu/log"
 )
 
-func (h *TunnelHandler) h1tunnel(ctx context.Context, dialer string) (net.Listener, error) {
-	log.Info().Str("dialer", dialer).Msg("connecting tunnel host")
+func (h *TunnelHandler) h1tunnel(ctx context.Context, dialerName, dialerURL string) (net.Listener, error) {
+	log.Info().Str("dialer_name", dialerName).Msg("connecting tunnel host")
 
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(cmp.Or(h.Config.DialTimeout, 10))*time.Second)
 	defer cancel()
 
-	u, err := url.Parse(dialer)
+	u, err := url.Parse(dialerURL)
 	if err != nil {
 		return nil, err
 	}
 	if u.User == nil {
-		return nil, fmt.Errorf("no user info in dialer: %s", dialer)
+		return nil, fmt.Errorf("no user info in dialer %s: %s", dialerName, dialerURL)
 	}
 
 	host, port, ech := u.Hostname(), u.Port(), []byte{}
@@ -75,7 +75,7 @@ func (h *TunnelHandler) h1tunnel(ctx context.Context, dialer string) (net.Listen
 
 	hostport := net.JoinHostPort(host, port)
 
-	log.Info().Str("dialer", dialer).Str("hostport", hostport).Msg("connecting tunnel hostport")
+	log.Info().Str("dialer_name", dialerName).Str("hostport", hostport).Msg("connecting tunnel hostport")
 	conn, err := h.LocalDialer.DialContext(ctx, "tcp", hostport)
 	if err != nil {
 		log.Error().Err(err).Str("tunnel_host", hostport).Msg("connect tunnel host error")
