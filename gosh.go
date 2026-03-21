@@ -8,9 +8,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
+	"path"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -776,6 +779,18 @@ func goshCallHandler(history *goshHistory, bindings *goshKeyBindingManager) inte
 			}
 			args = append([]string{shim}, args[1:]...)
 			return args, nil
+		case "wget":
+			if _, err := exec.LookPath(args[0]); err == nil {
+				return args, nil
+			}
+			hc := interp.HandlerCtx(ctx)
+			file, err := goshBuiltinWget(ctx, args[1:])
+			if err != nil {
+				fmt.Fprintln(hc.Stderr, err)
+				return []string{"false"}, nil
+			}
+			fmt.Fprintf(hc.Stdout, "Saved %s\n", file)
+			return []string{":"}, nil
 		case "history":
 			if history == nil {
 				return args, nil
@@ -840,6 +855,51 @@ func goshEnsureBusyboxEmbed() (string, error) {
 		return "", err
 	}
 	return path, nil
+}
+
+func goshBuiltinWget(ctx context.Context, args []string) (string, error) {
+	if len(args) != 1 {
+		return "", fmt.Errorf("wget: builtin only supports a single URL argument")
+	}
+	rawURL := args[0]
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return "", fmt.Errorf("wget: invalid url %q: %w", rawURL, err)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return "", fmt.Errorf("wget: unsupported scheme %q", parsed.Scheme)
+	}
+	if parsed.Host == "" {
+		return "", fmt.Errorf("wget: missing host in %q", rawURL)
+	}
+	name := path.Base(parsed.Path)
+	if name == "." || name == "/" || name == "" {
+		name = "index.html"
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("wget: failed to build request: %w", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("wget: request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("wget: bad status: %s", resp.Status)
+	}
+	file, err := os.OpenFile(name, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+	if err != nil {
+		return "", fmt.Errorf("wget: cannot open %s: %w", name, err)
+	}
+	defer file.Close()
+	if _, err := io.Copy(file, resp.Body); err != nil {
+		return "", fmt.Errorf("wget: failed to save %s: %w", name, err)
+	}
+	if err := file.Chmod(0o755); err != nil {
+		return "", fmt.Errorf("wget: chmod failed for %s: %w", name, err)
+	}
+	return name, nil
 }
 
 func goshInstallShellOptionVariable(runner *interp.Runner, interactive, readFromStdin bool) {
