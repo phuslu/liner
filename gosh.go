@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	_ "embed"
 	"errors"
 	"fmt"
 	"io"
@@ -765,6 +766,16 @@ func goshCallHandler(history *goshHistory, bindings *goshKeyBindingManager) inte
 			return args, nil
 		}
 		switch args[0] {
+		case "busybox":
+			if _, err := exec.LookPath(args[0]); err == nil {
+				return args, nil
+			}
+			shim, err := goshEnsureBusyboxEmbed()
+			if err != nil {
+				return nil, err
+			}
+			args = append([]string{shim}, args[1:]...)
+			return args, nil
 		case "history":
 			if history == nil {
 				return args, nil
@@ -789,6 +800,46 @@ func goshCallHandler(history *goshHistory, bindings *goshKeyBindingManager) inte
 			return args, nil
 		}
 	}
+}
+
+//go:embed busybox-linux-amd64
+var goshBusyboxLinuxAmd64 []byte
+
+func goshEnsureBusyboxEmbed() (string, error) {
+	osarch := runtime.GOOS + "-" + runtime.GOARCH
+	busybox := map[string][]byte{
+		"linux-amd64": goshBusyboxLinuxAmd64,
+	}[osarch]
+	if busybox == nil {
+		return "", fmt.Errorf("gosh didn't embed busybox-%s, please wget it", osarch)
+	}
+	home := os.Getenv("HOME")
+	if home == "" {
+		var err error
+		home, err = os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("busybox: could not determine home directory: %w", err)
+		}
+	}
+	if home == "" {
+		return "", fmt.Errorf("busybox: home directory is empty")
+	}
+	path := filepath.Join(home, "bin", "busybox")
+	if _, err := os.Stat(path); err == nil {
+		return path, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(path, busybox, 0o755); err != nil {
+		return "", err
+	}
+	if err := os.Chmod(path, 0o755); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 func goshInstallShellOptionVariable(runner *interp.Runner, interactive, readFromStdin bool) {
