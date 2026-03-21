@@ -122,6 +122,7 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialer string) (net.Listen
 	if err != nil {
 		if errmsg := err.Error(); strings.Contains(errmsg, "timeout: ") || strings.Contains(errmsg, "context deadline exceeded") || strings.Contains(errmsg, "context canceled") {
 			log.Warn().Err(err).Msg("close underlying http3 connection")
+			h.transport3.Delete(dialer)
 			transport.Close()
 		}
 		return nil, err
