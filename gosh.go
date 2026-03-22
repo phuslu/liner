@@ -43,6 +43,10 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 
 	SetProcessName(os.Args[0])
 
+	if isatty {
+		EnableVirtualTerminalSequences()
+	}
+
 	if exe, err := exec.LookPath("bash"); err == nil {
 		os.Setenv("SHELL", exe)
 	} else {

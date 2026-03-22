@@ -3,11 +3,14 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"net"
 	"net/netip"
 	"syscall"
+
+	"golang.org/x/sys/windows"
 )
 
 type ListenConfig struct {
@@ -77,4 +80,27 @@ func ReadHTTPHeader(conn *net.TCPConn) ([]byte, *net.TCPConn, error) {
 
 func AppendSetSidToSysProcAttr(old *syscall.SysProcAttr, uid, gid int) *syscall.SysProcAttr {
 	return old
+}
+
+func EnableVirtualTerminalSequences() error {
+	enable := func(stdHandle uint32, mask uint32) error {
+		handle, err := windows.GetStdHandle(stdHandle)
+		if err != nil || handle == windows.InvalidHandle {
+			return err
+		}
+		var mode uint32
+		if err := windows.GetConsoleMode(handle, &mode); err != nil {
+			return err
+		}
+		if mode&mask == mask {
+			return err
+		}
+		return windows.SetConsoleMode(handle, mode|mask)
+	}
+
+	return cmp.Or(
+		enable(windows.STD_OUTPUT_HANDLE, windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING),
+		enable(windows.STD_ERROR_HANDLE, windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING),
+		enable(windows.STD_INPUT_HANDLE, windows.ENABLE_VIRTUAL_TERMINAL_INPUT),
+	)
 }

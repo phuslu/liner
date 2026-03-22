@@ -200,3 +200,7 @@ func ReadHTTPHeader(conn *net.TCPConn) ([]byte, *net.TCPConn, error) {
 func AppendSetSidToSysProcAttr(old *syscall.SysProcAttr, uid, gid int) *syscall.SysProcAttr {
 	return old
 }
+
+func EnableVirtualTerminalSequences() error {
+	return nil
+}

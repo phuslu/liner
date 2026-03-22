@@ -401,3 +401,7 @@ func getcap() (caps linuxcapability, err error) {
 
 	return caps, nil
 }
+
+func EnableVirtualTerminalSequences() error {
+	return nil
+}
