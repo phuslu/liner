@@ -784,7 +784,7 @@ func goshCallHandler(history *goshHistory, bindings *goshKeyBindingManager) inte
 				return args, nil
 			}
 			hc := interp.HandlerCtx(ctx)
-			file, err := goshBuiltinWget(ctx, args[1:])
+			file, err := goshBuiltinWget(ctx, args[1:], hc.Stdout)
 			if err != nil {
 				fmt.Fprintln(hc.Stderr, err)
 				return []string{"false"}, nil
@@ -857,7 +857,7 @@ func goshEnsureBusyboxEmbed() (string, error) {
 	return path, nil
 }
 
-func goshBuiltinWget(ctx context.Context, args []string) (string, error) {
+func goshBuiltinWget(ctx context.Context, args []string, out io.Writer) (string, error) {
 	if len(args) != 1 {
 		return "", fmt.Errorf("wget: builtin only supports a single URL argument")
 	}
@@ -893,13 +893,80 @@ func goshBuiltinWget(ctx context.Context, args []string) (string, error) {
 		return "", fmt.Errorf("wget: cannot open %s: %w", name, err)
 	}
 	defer file.Close()
-	if _, err := io.Copy(file, resp.Body); err != nil {
+	progress := &goshWgetProgress{out: out, size: resp.ContentLength}
+	defer progress.Done()
+	reader := io.TeeReader(resp.Body, progress)
+	if _, err := io.Copy(file, reader); err != nil {
 		return "", fmt.Errorf("wget: failed to save %s: %w", name, err)
 	}
 	if err := file.Chmod(0o755); err != nil {
 		return "", fmt.Errorf("wget: chmod failed for %s: %w", name, err)
 	}
 	return name, nil
+}
+
+type goshWgetProgress struct {
+	out   io.Writer
+	size  int64
+	total int64
+	last  time.Time
+	done  bool
+}
+
+func (p *goshWgetProgress) Write(b []byte) (int, error) {
+	if p == nil || p.out == nil {
+		return len(b), nil
+	}
+	p.total += int64(len(b))
+	p.print(false)
+	return len(b), nil
+}
+
+func (p *goshWgetProgress) print(force bool) {
+	if p == nil || p.out == nil {
+		return
+	}
+	if !force && time.Since(p.last) < 200*time.Millisecond {
+		return
+	}
+	p.last = time.Now()
+	if p.size > 0 {
+		percent := p.total * 100 / p.size
+		fmt.Fprintf(p.out, "\r%3d%% %s/%s", percent, p.formatSize(p.total), p.formatSize(p.size))
+	} else {
+		fmt.Fprintf(p.out, "\r%s", p.formatSize(p.total))
+	}
+}
+
+func (p *goshWgetProgress) Done() {
+	if p == nil || p.out == nil || p.done {
+		return
+	}
+	p.print(true)
+	fmt.Fprint(p.out, "\n")
+	p.done = true
+}
+
+func (p *goshWgetProgress) formatSize(v int64) string {
+	if v < 1024 {
+		return fmt.Sprintf("%dB", v)
+	}
+	type unit struct {
+		name  string
+		value float64
+	}
+	units := []unit{
+		{"K", 1024},
+		{"M", 1024 * 1024},
+		{"G", 1024 * 1024 * 1024},
+	}
+	val := float64(v)
+	for i := len(units) - 1; i >= 0; i-- {
+		if val >= units[i].value {
+			return fmt.Sprintf("%.1f%s", val/units[i].value, units[i].name)
+		}
+	}
+	return fmt.Sprintf("%.1fK", val/1024)
 }
 
 func goshInstallShellOptionVariable(runner *interp.Runner, interactive, readFromStdin bool) {
