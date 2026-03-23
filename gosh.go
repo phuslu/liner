@@ -34,8 +34,14 @@ import (
 )
 
 func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.Writer) error {
+	command, err := goshParseCommand(os.Args)
+	if err != nil {
+		return err
+	}
+	interactive := isatty && command == nil
+
 	signals := []os.Signal{syscall.SIGTERM}
-	if !isatty {
+	if !interactive {
 		signals = append(signals, os.Interrupt)
 	}
 	ctx, cancel := signal.NotifyContext(ctx, signals...)
@@ -69,7 +75,7 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 	if err != nil {
 		return err
 	}
-	goshInstallShellOptionVariable(runner, isatty, stdin != nil)
+	goshInstallShellOptionVariable(runner, interactive, stdin != nil)
 
 	// source the init files.
 	if file, err := os.Open(cmp.Or(os.Getenv("GOSH_ENV"), os.ExpandEnv("$HOME/.profile"))); err == nil {
@@ -89,19 +95,32 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 	currentPrompt := goshPromptString(ctx, runner, stdin, stderr, "PS1", defaultPrompt, promptSeq)
 	promptSeq++
 
+	if command != nil {
+		script := command.script
+		if !strings.HasSuffix(script, "\n") {
+			script += "\n"
+		}
+		prog, err := parser.Parse(strings.NewReader(script), command.argv0)
+		if err != nil {
+			return err
+		}
+		runner.Reset()
+		if len(command.params) != 0 {
+			runner.Params = append([]string(nil), command.params...)
+		} else {
+			runner.Params = nil
+		}
+		return runner.Run(ctx, prog)
+	}
+
 	// Non-interactive: parse stdin as a script and run it directly.
-	if !isatty {
+	if !interactive {
 		prog, err := parser.Parse(stdin, "")
 		if err != nil {
 			return err
 		}
 		runner.Reset()
 		return runner.Run(ctx, prog)
-	}
-
-	// bash -c "xxxx"
-	if slices.Contains(os.Args, "-c") {
-		return fmt.Errorf("gosh: cannot support -c option: %q", os.Args)
 	}
 
 	// export HISTFILE=""
@@ -191,6 +210,40 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 		flushPrefix()
 		return true
 	})
+}
+
+type goshCommandSpec struct {
+	script string
+	argv0  string
+	params []string
+}
+
+func goshParseCommand(args []string) (*goshCommandSpec, error) {
+	var spec *goshCommandSpec
+	for i := 1; i < len(args); i++ {
+		if args[i] != "-c" {
+			continue
+		}
+		if spec != nil {
+			return nil, fmt.Errorf("gosh: multiple -c options are not supported")
+		}
+		if i+1 >= len(args) {
+			return nil, fmt.Errorf("gosh: -c requires a command string")
+		}
+		spec = &goshCommandSpec{script: strings.Clone(args[i+1])}
+		if i+2 < len(args) {
+			spec.argv0 = strings.Clone(args[i+2])
+			if i+3 < len(args) {
+				rest := args[i+3:]
+				spec.params = make([]string, len(rest))
+				for j, val := range rest {
+					spec.params[j] = strings.Clone(val)
+				}
+			}
+		}
+		break
+	}
+	return spec, nil
 }
 
 // goshReader adapts *readline.Instance to the io.Reader interface expected by
