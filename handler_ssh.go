@@ -52,11 +52,11 @@ func (h *SshHandler) Load() error {
 	}
 
 	var sshSigner ssh.Signer
-	if h.Config.HostKey != "" {
-		key, err := os.ReadFile(h.Config.HostKey)
+	if hostKey := os.ExpandEnv(h.Config.HostKey); hostKey != "" {
+		key, err := os.ReadFile(hostKey)
 		if err != nil {
 			if !os.IsNotExist(err) {
-				return fmt.Errorf("failed to load private key (%s): %w", h.Config.HostKey, err)
+				return fmt.Errorf("failed to load private key (%s): %w", hostKey, err)
 			}
 			_, priv, err := ed25519.GenerateKey(rand.Reader)
 			if err != nil {
@@ -67,7 +67,7 @@ func (h *SshHandler) Load() error {
 				return fmt.Errorf("failed to marshal ed25519 key: %w", err)
 			}
 			key = pem.EncodeToMemory(data)
-			err = os.WriteFile(h.Config.HostKey, key, 0600)
+			err = os.WriteFile(hostKey, key, 0600)
 			if err != nil {
 				return fmt.Errorf("failed to write ed25519 key: %w", err)
 			}
