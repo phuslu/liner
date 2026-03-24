@@ -82,7 +82,26 @@ func KillPid(pid int, sig syscall.Signal) error {
 }
 
 func RedirectOutputToFile(filename string) error {
-	return errors.ErrUnsupported
+	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+
+	h := windows.Handle(file.Fd())
+
+	if err := windows.SetStdHandle(windows.STD_OUTPUT_HANDLE, h); err != nil {
+		return err
+	}
+
+	if err := windows.SetStdHandle(windows.STD_ERROR_HANDLE, h); err != nil {
+		return err
+	}
+
+	// sync to Go runtime
+	os.Stdout = file
+	os.Stderr = file
+
+	return nil
 }
 
 func ReadHTTPHeader(conn *net.TCPConn) ([]byte, *net.TCPConn, error) {
