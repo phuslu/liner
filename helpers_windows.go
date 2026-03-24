@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net"
 	"net/netip"
+	"os"
 	"syscall"
 
 	"golang.org/x/sys/windows"
@@ -67,7 +68,14 @@ func SetProcessName(name string) error {
 }
 
 func KillPid(pid int, sig syscall.Signal) error {
-	return errors.ErrUnsupported
+	if sig != syscall.SIGTERM {
+		return errors.ErrUnsupported
+	}
+	p, err := os.FindProcess(pid)
+	if err != nil {
+		return err
+	}
+	return p.Kill()
 }
 
 func RedirectOutputToFile(filename string) error {
