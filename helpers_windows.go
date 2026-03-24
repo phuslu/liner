@@ -6,6 +6,7 @@ import (
 	"cmp"
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/netip"
 	"os"
@@ -15,6 +16,8 @@ import (
 
 	"golang.org/x/sys/windows"
 )
+
+var _ = fmt.Printf
 
 type ListenConfig struct {
 	ReusePort   bool
@@ -47,37 +50,40 @@ func (dc DailerController) Control(network, address string, c syscall.RawConn) e
 // Windows. Only commonly used counters are exposed so templates can inspect
 // basic congestion and RTT data similar to other platforms.
 type TCPInfo struct {
-	State            uint32
-	Mss              uint32
-	ConnectionTimeMs uint64
-	BytesInFlight    uint64
-	Cwnd             uint32
-	SndWnd           uint32
-	RcvWnd           uint32
-	RttUs            uint32
-	MinRttUs         uint32
-	BytesOut         uint32
-	BytesIn          uint32
-	BytesReordered   uint32
-	BytesRetrans     uint32
-	FastRetrans      uint32
-	DupAcksIn        uint32
-	TimeoutEpisodes  uint32
-	SynRetransCount  uint8
-	Flags            uint8
-	_                uint16
+	State             uint32  // TCPSTATE (通常是 enum -> ULONG)
+	Mss               uint32  // ULONG
+	ConnectionTimeMs  uint64  // ULONG64
+	TimestampsEnabled uint8   // BOOLEAN (UCHAR)
+	_                 [3]byte // padding 对齐到 4 字节
+
+	RttUs         uint32 // ULONG
+	MinRttUs      uint32 // ULONG
+	BytesInFlight uint32 // ULONG
+	Cwnd          uint32 // ULONG
+	SndWnd        uint32 // ULONG
+	RcvWnd        uint32 // ULONG
+	RcvBuf        uint32 // ULONG
+
+	BytesOut uint64 // ULONG64
+	BytesIn  uint64 // ULONG64
+
+	BytesReordered  uint32 // ULONG
+	BytesRetrans    uint32 // ULONG
+	FastRetrans     uint32 // ULONG
+	DupAcksIn       uint32 // ULONG
+	TimeoutEpisodes uint32 // ULONG
+
+	SynRetrans uint8   // UCHAR
+	_          [3]byte // padding (结构体对齐)
 }
 
 func (ops ConnOps) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
-	if ops.tc == nil {
+	if ops.tc == nil || ops.tc.RemoteAddr() == nil {
 		return
 	}
+	// fmt.Printf("%v\n", ops.tc.RemoteAddr())
 
-	const (
-		// _WSAIOW(IOC_VENDOR, 39)
-		sioTcpInfo       uint32 = 0x98000027
-		tcpInfoVersionV0 uint32 = 0
-	)
+	const SIO_TCP_INFO uint32 = 0xD8000039
 
 	var c syscall.RawConn
 	c, err = ops.tc.SyscallConn()
@@ -86,11 +92,11 @@ func (ops ConnOps) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
 	}
 	err = c.Control(func(fd uintptr) {
 		var info TCPInfo
-		version := tcpInfoVersionV0
+		var version uint32 = 0 // TCP_INFO_v0
 		var bytesReturned uint32
 		errno := windows.WSAIoctl(
 			windows.Handle(fd),
-			sioTcpInfo,
+			SIO_TCP_INFO,
 			(*byte)(unsafe.Pointer(&version)),
 			uint32(unsafe.Sizeof(version)),
 			(*byte)(unsafe.Pointer(&info)),
@@ -99,6 +105,8 @@ func (ops ConnOps) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
 			nil,
 			0,
 		)
+		// fmt.Printf("%+v\n", errno)
+		// fmt.Printf("%+v\n", info)
 		if errno != nil {
 			err = os.NewSyscallError("WSAIoctl SIO_TCP_INFO", errno)
 			return
