@@ -71,10 +71,6 @@ func RedirectOutputToFile(filename string) error {
 	return errors.ErrUnsupported
 }
 
-func ReadHTTPHeader(conn *net.TCPConn) ([]byte, *net.TCPConn, error) {
-	return nil, conn, errors.ErrUnsupported
-}
-
 func AppendSetSidToSysProcAttr(old *syscall.SysProcAttr, uid, gid int) *syscall.SysProcAttr {
 	return old
 }

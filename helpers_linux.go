@@ -3,12 +3,10 @@
 package main
 
 import (
-	"bytes"
 	"cmp"
 	"context"
 	"encoding/binary"
 	"errors"
-	"io"
 	"net"
 	"net/netip"
 	"os"
@@ -314,37 +312,6 @@ func SetProcessName(name string) error {
 	err := os.WriteFile("/proc/"+strconv.Itoa(os.Getpid())+"/comm", []byte(name), 0644)
 
 	return err
-}
-
-func ReadHTTPHeader(tc *net.TCPConn) ([]byte, *net.TCPConn, error) {
-	f, err := tc.File()
-	if err != nil {
-		return nil, tc, err
-	}
-
-	b := make([]byte, os.Getpagesize())
-	n, _, err := syscall.Recvfrom(int(f.Fd()), b, syscall.MSG_PEEK)
-	if err != nil {
-		return nil, tc, err
-	}
-
-	if n == 0 {
-		return nil, tc, io.EOF
-	}
-
-	if b[0] < 'A' || b[0] > 'Z' {
-		return nil, tc, io.EOF
-	}
-
-	n = bytes.Index(b, []byte{'\r', '\n', '\r', '\n'})
-	if n < 0 {
-		return nil, tc, io.EOF
-	}
-
-	b = b[:n+4]
-	n, err = tc.Read(b)
-
-	return b, tc, err
 }
 
 func AppendSetSidToSysProcAttr(old *syscall.SysProcAttr, uid, gid int) *syscall.SysProcAttr {
