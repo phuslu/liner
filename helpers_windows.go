@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"os"
 	"syscall"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
@@ -41,10 +42,69 @@ func (dc DailerController) Control(network, address string, c syscall.RawConn) e
 	return nil
 }
 
-type TCPInfo struct{}
+// TCPInfo mirrors the TCP_INFO_v0 structure that SIO_TCP_INFO returns on
+// Windows. Only commonly used counters are exposed so templates can inspect
+// basic congestion and RTT data similar to other platforms.
+type TCPInfo struct {
+	State            uint32
+	Mss              uint32
+	ConnectionTimeMs uint64
+	BytesInFlight    uint64
+	Cwnd             uint32
+	SndWnd           uint32
+	RcvWnd           uint32
+	RttUs            uint32
+	MinRttUs         uint32
+	BytesOut         uint32
+	BytesIn          uint32
+	BytesReordered   uint32
+	BytesRetrans     uint32
+	FastRetrans      uint32
+	DupAcksIn        uint32
+	TimeoutEpisodes  uint32
+	SynRetransCount  uint8
+	Flags            uint8
+	_                uint16
+}
 
-func (ops ConnOps) GetTcpInfo() (*TCPInfo, error) {
-	return nil, errors.ErrUnsupported
+func (ops ConnOps) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
+	if ops.tc == nil {
+		return
+	}
+
+	const (
+		// _WSAIOW(IOC_VENDOR, 39)
+		sioTcpInfo       uint32 = 0x98000027
+		tcpInfoVersionV0 uint32 = 0
+	)
+
+	var c syscall.RawConn
+	c, err = ops.tc.SyscallConn()
+	if err != nil {
+		return
+	}
+	err = c.Control(func(fd uintptr) {
+		var info TCPInfo
+		version := tcpInfoVersionV0
+		var bytesReturned uint32
+		errno := windows.WSAIoctl(
+			windows.Handle(fd),
+			sioTcpInfo,
+			(*byte)(unsafe.Pointer(&version)),
+			uint32(unsafe.Sizeof(version)),
+			(*byte)(unsafe.Pointer(&info)),
+			uint32(unsafe.Sizeof(info)),
+			&bytesReturned,
+			nil,
+			0,
+		)
+		if errno != nil {
+			err = os.NewSyscallError("WSAIoctl SIO_TCP_INFO", errno)
+			return
+		}
+		tcpinfo = &info
+	})
+	return
 }
 
 func (ops ConnOps) GetOriginalDST() (addrport netip.AddrPort, err error) {
