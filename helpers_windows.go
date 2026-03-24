@@ -109,7 +109,14 @@ func ReadHTTPHeader(conn *net.TCPConn) ([]byte, *net.TCPConn, error) {
 }
 
 func AppendSetSidToSysProcAttr(old *syscall.SysProcAttr, uid, gid int) *syscall.SysProcAttr {
-	return old
+	if old == nil {
+		old = &syscall.SysProcAttr{}
+	}
+
+	spa := *old
+	spa.CreationFlags |= syscall.CREATE_NEW_PROCESS_GROUP
+
+	return &spa
 }
 
 func EnableVirtualTerminalSequences() error {
