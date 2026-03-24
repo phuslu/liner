@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"strings"
 	"syscall"
 	"unsafe"
 
@@ -111,8 +112,42 @@ func (ops ConnOps) GetOriginalDST() (addrport netip.AddrPort, err error) {
 	return netip.AddrPort{}, errors.ErrUnsupported
 }
 
-func (ops ConnOps) SetTcpCongestion(name string, values ...any) error {
-	return errors.ErrUnsupported
+func (ops ConnOps) SetTcpCongestion(name string, values ...any) (err error) {
+	if ops.tc == nil {
+		return errors.ErrUnsupported
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return errors.New("empty congestion algorithm")
+	}
+	alg, err := windows.UTF16FromString(name)
+	if err != nil {
+		return err
+	}
+	var c syscall.RawConn
+	c, err = ops.tc.SyscallConn()
+	if err != nil {
+		return err
+	}
+	err = c.Control(func(fd uintptr) {
+		sz := int32(len(alg) * int(unsafe.Sizeof(alg[0])))
+		if sz == 0 {
+			err = errors.New("invalid congestion algorithm buffer")
+			return
+		}
+		b := (*byte)(unsafe.Pointer(&alg[0]))
+		err = windows.Setsockopt(
+			windows.Handle(fd),
+			int32(syscall.IPPROTO_TCP),
+			int32(windows.TCP_CONGESTION_ALGORITHM),
+			b,
+			sz,
+		)
+		if err != nil {
+			err = os.NewSyscallError("setsockopt IPPROTO_TCP TCP_CONGESTION_ALGORITHM "+name, err)
+		}
+	})
+	return
 }
 
 func (ops ConnOps) SetTcpMaxPacingRate(rate int) error {
