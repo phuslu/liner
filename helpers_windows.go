@@ -17,7 +17,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-var _ = fmt.Printf
+var _ = fmt.Printf // for debugging log
 
 type ListenConfig struct {
 	ReusePort   bool
@@ -81,9 +81,8 @@ func (ops ConnOps) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
 	if ops.tc == nil || ops.tc.RemoteAddr() == nil {
 		return
 	}
-	// fmt.Printf("%v\n", ops.tc.RemoteAddr())
 
-	const SIO_TCP_INFO uint32 = 0xD8000039
+	const SIO_TCP_INFO uint32 = windows.IOC_INOUT | windows.IOC_VENDOR | 39
 
 	var c syscall.RawConn
 	c, err = ops.tc.SyscallConn()
@@ -105,8 +104,6 @@ func (ops ConnOps) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
 			nil,
 			0,
 		)
-		// fmt.Printf("%+v\n", errno)
-		// fmt.Printf("%+v\n", info)
 		if errno != nil {
 			err = os.NewSyscallError("WSAIoctl SIO_TCP_INFO", errno)
 			return
