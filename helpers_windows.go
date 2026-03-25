@@ -42,7 +42,144 @@ type DailerController struct {
 	Interface string
 }
 
-func (dc DailerController) Control(network, address string, c syscall.RawConn) error {
+func (dc DailerController) Control(network, address string, c syscall.RawConn) (err error) {
+	if dc.Interface == "" {
+		return nil
+	}
+
+	if ip, _ := netip.ParseAddr(dc.Interface); ip.IsValid() {
+		var controlErr error
+		if err = c.Control(func(fd uintptr) {
+			controlErr = dc.bindHandleToIP(windows.Handle(fd), ip)
+		}); err != nil {
+			return err
+		}
+		return controlErr
+	}
+
+	var controlErr error
+	if err = c.Control(func(fd uintptr) {
+		controlErr = dc.bindHandleToInterface(windows.Handle(fd), network, address)
+	}); err != nil {
+		return err
+	}
+	return controlErr
+}
+
+func (dc DailerController) bindHandleToIP(handle windows.Handle, ip netip.Addr) error {
+	if !ip.IsValid() {
+		return errors.New("invalid ip address")
+	}
+	var sa windows.Sockaddr
+	switch {
+	case ip.Is4() || ip.Is4In6():
+		v4 := ip
+		if v4.Is4In6() {
+			v4 = v4.Unmap()
+		}
+		addr := v4.As4()
+		sa = &windows.SockaddrInet4{Addr: addr}
+	case ip.Is6():
+		addr := ip.As16()
+		sa6 := &windows.SockaddrInet6{}
+		sa6.Addr = addr
+		sa = sa6
+	default:
+		return errors.New("unsupported ip address family")
+	}
+	if err := windows.Bind(handle, sa); err != nil {
+		return os.NewSyscallError("bind", err)
+	}
+	return nil
+}
+
+func (dc DailerController) bindHandleToInterface(handle windows.Handle, network, address string) error {
+	name := strings.TrimSpace(dc.Interface)
+	if name == "" {
+		return errors.New("empty interface name")
+	}
+	size := uint32(15 * 1024)
+	var ipv4Idx, ipv6Idx uint32
+	for {
+		buf := make([]byte, size)
+		adapter := (*windows.IpAdapterAddresses)(unsafe.Pointer(&buf[0]))
+		err := windows.GetAdaptersAddresses(syscall.AF_UNSPEC, windows.GAA_FLAG_INCLUDE_PREFIX, 0, adapter, &size)
+		if err == nil {
+			for aa := adapter; aa != nil; aa = aa.Next {
+				friendly := windows.UTF16PtrToString(aa.FriendlyName)
+				adapterName := windows.BytePtrToString(aa.AdapterName)
+				if strings.EqualFold(name, friendly) || strings.EqualFold(name, adapterName) {
+					ipv4Idx = aa.IfIndex
+					ipv6Idx = aa.Ipv6IfIndex
+					if ipv4Idx == 0 {
+						ipv4Idx = ipv6Idx
+					}
+					if ipv6Idx == 0 {
+						ipv6Idx = ipv4Idx
+					}
+					if ipv4Idx == 0 && ipv6Idx == 0 {
+						return fmt.Errorf("interface %s has no usable index", dc.Interface)
+					}
+					goto indicesReady
+				}
+			}
+			return fmt.Errorf("network interface not found: %s", dc.Interface)
+		}
+		if err != syscall.ERROR_BUFFER_OVERFLOW {
+			return os.NewSyscallError("GetAdaptersAddresses", err)
+		}
+	}
+
+indicesReady:
+	family := byte(0)
+	switch strings.ToLower(network) {
+	case "tcp4", "udp4":
+		family = 4
+	case "tcp6", "udp6":
+		family = 6
+	default:
+		host, _, err := net.SplitHostPort(address)
+		if err == nil {
+			if addr, perr := netip.ParseAddr(host); perr == nil {
+				if addr.Is6() && !addr.Is4In6() {
+					family = 6
+				} else {
+					family = 4
+				}
+			}
+		}
+	}
+
+	const (
+		IP_UNICAST_IF   = 31
+		IPV6_UNICAST_IF = 31
+	)
+
+	setIPv4 := family != 6 && ipv4Idx != 0
+	setIPv6 := family != 4 && ipv6Idx != 0
+	if setIPv4 {
+		if err := windows.SetsockoptInt(handle, int(syscall.IPPROTO_IP), IP_UNICAST_IF, int(ipv4Idx)); err != nil {
+			switch err {
+			case windows.WSAEINVAL, windows.WSAENOPROTOOPT, windows.WSAEFAULT:
+				// ignored; OS doesn't support the option for this socket
+			default:
+				return os.NewSyscallError("setsockopt IP_UNICAST_IF", err)
+			}
+		}
+	}
+	if setIPv6 {
+		if err := windows.SetsockoptInt(handle, int(windows.IPPROTO_IPV6), IPV6_UNICAST_IF, int(ipv6Idx)); err != nil {
+			switch err {
+			case windows.WSAEINVAL, windows.WSAENOPROTOOPT, windows.WSAEFAULT:
+				// ignored; OS doesn't support the option for this socket
+			default:
+				return os.NewSyscallError("setsockopt IPV6_UNICAST_IF", err)
+			}
+		}
+	}
+	if !setIPv4 && !setIPv6 {
+		return errors.New("no interface index available for requested family")
+	}
 	return nil
 }
 
