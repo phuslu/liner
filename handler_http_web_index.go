@@ -1,6 +1,8 @@
 package main
 
 import (
+	"archive/zip"
+	"bytes"
 	"cmp"
 	"compress/gzip"
 	"crypto/tls"
@@ -34,6 +36,11 @@ type HTTPWebIndexHandler struct {
 	headers  *template.Template
 	body     *template.Template
 	markdown *template.Template
+
+	cdnjs struct {
+		prefix  string
+		handler http.Handler
+	}
 }
 
 func (h *HTTPWebIndexHandler) Load() (err error) {
@@ -51,7 +58,17 @@ func (h *HTTPWebIndexHandler) Load() (err error) {
 		return
 	}
 
-	h.markdown, err = template.New("markdown").Funcs(h.Functions).Parse(markdownTemplate)
+	zipreader, err := zip.NewReader(bytes.NewReader(cdnjsZip), int64(len(cdnjsZip)))
+	if err != nil {
+		return err
+	}
+	h.cdnjs.prefix = strings.TrimSuffix(h.Location, "/") + "/.cdnjs/"
+	h.cdnjs.handler = http.StripPrefix(strings.TrimSuffix(h.cdnjs.prefix, "/"), http.FileServer(http.FS(zipreader)))
+
+	h.markdown, err = template.New("markdown").Funcs(h.Functions).Parse(strings.NewReplacer(
+		"https://cdnjs.cloudflare.com/", h.cdnjs.prefix+"cdnjs.cloudflare.com/",
+		"https://cdn.jsdelivr.net/", h.cdnjs.prefix+"cdn.jsdelivr.net/",
+	).Replace(markdownHTML))
 	if err != nil {
 		return
 	}
@@ -63,6 +80,11 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	ri := req.Context().Value(HTTPRequestInfoContextKey).(*HTTPRequestInfo)
 
 	log.Debug().Context(ri.LogContext).Object("headers", HTTPHeaderMarshalLogObject(req.Header)).Msg("web index request")
+
+	if strings.HasPrefix(req.RequestURI, h.cdnjs.prefix) {
+		h.cdnjs.handler.ServeHTTP(rw, req)
+		return
+	}
 
 	if h.Root == "" && h.Headers == "" && h.Body == "" && h.File == "" {
 		http.NotFound(rw, req)
@@ -465,5 +487,3 @@ var autoindexTemplate = `
 
 //go:embed markdown.html
 var markdownHTML string
-
-var markdownTemplate = markdownHTML
