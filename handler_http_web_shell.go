@@ -46,13 +46,18 @@ func (h *HTTPWebShellHandler) Load() error {
 		h.userchecker = &AuthUserLoadChecker{loader}
 	}
 
-	zipreader, err := zip.NewReader(bytes.NewReader(jsdelivrZip), int64(len(jsdelivrZip)))
+	zipreader, err := zip.NewReader(bytes.NewReader(cdnjsZip), int64(len(cdnjsZip)))
 	if err != nil {
 		return err
 	}
 	h.fileserver = http.StripPrefix(strings.TrimSuffix(h.Location, "/"), http.FileServer(http.FS(zipreader)))
 
-	h.webshell, err = template.New(webshellHtml).Funcs(h.Functions).Parse(webshellHtml)
+	html := strings.NewReplacer(
+		"https://cdnjs.cloudflare.com/", "cdnjs.cloudflare.com/",
+		"https://cdn.jsdelivr.net/", "cdn.jsdelivr.net/",
+	).Replace(webshellHtml)
+
+	h.webshell, err = template.New(html).Funcs(h.Functions).Parse(html)
 	if err != nil {
 		return err
 	}
@@ -208,5 +213,5 @@ func (h *HTTPWebShellHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 //go:embed webshell.html
 var webshellHtml string
 
-//go:embed jsdelivr.zip
-var jsdelivrZip []byte
+//go:embed cdnjs.zip
+var cdnjsZip []byte
