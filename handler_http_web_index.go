@@ -53,17 +53,20 @@ func (h *HTTPWebIndexHandler) Load() (err error) {
 		return
 	}
 
-	h.body, err = template.New(h.Body).Funcs(h.Functions).Parse(h.Body)
-	if err != nil {
-		return
-	}
-
 	zipreader, err := zip.NewReader(bytes.NewReader(cdnjsZip), int64(len(cdnjsZip)))
 	if err != nil {
 		return err
 	}
 	h.cdnjs.prefix = strings.TrimSuffix(h.Location, "/") + "/.cdnjs/"
 	h.cdnjs.handler = http.StripPrefix(strings.TrimSuffix(h.cdnjs.prefix, "/"), http.FileServer(http.FS(zipreader)))
+
+	h.body, err = template.New("autoindex").Funcs(h.Functions).Parse(strings.NewReplacer(
+		"https://cdnjs.cloudflare.com/", h.cdnjs.prefix+"cdnjs.cloudflare.com/",
+		"https://cdn.jsdelivr.net/", h.cdnjs.prefix+"cdn.jsdelivr.net/",
+	).Replace(h.Body))
+	if err != nil {
+		return
+	}
 
 	h.markdown, err = template.New("markdown").Funcs(h.Functions).Parse(strings.NewReplacer(
 		"https://cdnjs.cloudflare.com/", h.cdnjs.prefix+"cdnjs.cloudflare.com/",
