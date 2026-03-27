@@ -181,12 +181,15 @@ func (h *HTTPWebHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 var _ HTTPHandler = (*HTTPWebMiddlewareCDNJS)(nil)
 
+var HTTPCDNJSReplacerContextKey any = &HTTPContextKey{"http-cdnjs-replacer"}
+
 type HTTPWebMiddlewareCDNJS struct {
 	Location string
 	Handler  HTTPHandler
 
-	prefix  string
-	handler http.Handler
+	prefix   string
+	handler  http.Handler
+	replacer *strings.Replacer
 }
 
 func (m *HTTPWebMiddlewareCDNJS) Load(ctx context.Context) error {
@@ -197,8 +200,12 @@ func (m *HTTPWebMiddlewareCDNJS) Load(ctx context.Context) error {
 
 	m.prefix = strings.TrimSuffix(m.Location, "/") + "/.cdnjs/"
 	m.handler = http.StripPrefix(strings.TrimSuffix(m.prefix, "/"), http.FileServer(http.FS(zipreader)))
+	m.replacer = strings.NewReplacer(
+		"https://cdnjs.cloudflare.com/", m.prefix+"cdnjs.cloudflare.com/",
+		"https://cdn.jsdelivr.net/", m.prefix+"cdn.jsdelivr.net/",
+	)
 
-	return m.Handler.Load(ctx)
+	return m.Handler.Load(context.WithValue(ctx, HTTPCDNJSReplacerContextKey, m.replacer))
 }
 
 func (m *HTTPWebMiddlewareCDNJS) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
