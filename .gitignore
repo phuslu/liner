@@ -18,3 +18,8 @@ build/
 dist/
 lego/
 pki/
+CLAUDE*.md
+.claude
+.tokeignore
+/logs
+.idea
