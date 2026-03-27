@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	_ "embed"
 	"expvar"
 	"net"
 	"net/http"
@@ -197,6 +198,9 @@ type HTTPWebMiddlewareCDNJS struct {
 	handler  http.Handler
 	replacer *strings.Replacer
 }
+
+//go:embed cdnjs.zip
+var cdnjsZip []byte
 
 func (m *HTTPWebMiddlewareCDNJS) Load(ctx context.Context) error {
 	zipreader, err := zip.NewReader(bytes.NewReader(cdnjsZip), int64(len(cdnjsZip)))

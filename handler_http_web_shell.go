@@ -207,6 +207,3 @@ func (h *HTTPWebShellHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 
 //go:embed webshell.html
 var webshellHtml string
-
-//go:embed cdnjs.zip
-var cdnjsZip []byte
