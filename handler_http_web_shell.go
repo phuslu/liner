@@ -31,8 +31,12 @@ type HTTPWebShellHandler struct {
 	Template  map[string]string
 
 	userchecker AuthUserChecker
-	fileserver  http.Handler
 	webshell    *template.Template
+
+	cdnjs struct {
+		prefix  string
+		handler http.Handler
+	}
 }
 
 func (h *HTTPWebShellHandler) Load() error {
@@ -50,14 +54,13 @@ func (h *HTTPWebShellHandler) Load() error {
 	if err != nil {
 		return err
 	}
-	h.fileserver = http.StripPrefix(strings.TrimSuffix(h.Location, "/"), http.FileServer(http.FS(zipreader)))
+	h.cdnjs.prefix = strings.TrimSuffix(h.Location, "/") + "/.cdnjs/"
+	h.cdnjs.handler = http.StripPrefix(strings.TrimSuffix(h.cdnjs.prefix, "/"), http.FileServer(http.FS(zipreader)))
 
-	html := strings.NewReplacer(
-		"https://cdnjs.cloudflare.com/", "cdnjs.cloudflare.com/",
-		"https://cdn.jsdelivr.net/", "cdn.jsdelivr.net/",
-	).Replace(webshellHtml)
-
-	h.webshell, err = template.New(html).Funcs(h.Functions).Parse(html)
+	h.webshell, err = template.New("webshell").Funcs(h.Functions).Parse(strings.NewReplacer(
+		"https://cdnjs.cloudflare.com/", h.cdnjs.prefix+"cdnjs.cloudflare.com/",
+		"https://cdn.jsdelivr.net/", h.cdnjs.prefix+"cdn.jsdelivr.net/",
+	).Replace(webshellHtml))
 	if err != nil {
 		return err
 	}
@@ -68,6 +71,11 @@ func (h *HTTPWebShellHandler) Load() error {
 func (h *HTTPWebShellHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	ri := req.Context().Value(HTTPRequestInfoContextKey).(*HTTPRequestInfo)
 	log.Info().Context(ri.LogContext).Any("headers", req.Header).Msg("web shell request")
+
+	if strings.HasPrefix(req.RequestURI, h.cdnjs.prefix) {
+		h.cdnjs.handler.ServeHTTP(rw, req)
+		return
+	}
 
 	if h.userchecker != nil {
 		err := h.userchecker.CheckAuthUser(req.Context(), &ri.AuthUserInfo)
@@ -120,7 +128,7 @@ func (h *HTTPWebShellHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		rw.Write(b.Bytes())
 		return
 	default:
-		h.fileserver.ServeHTTP(rw, req)
+		http.NotFound(rw, req)
 		return
 	}
 
