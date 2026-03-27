@@ -20,7 +20,7 @@ import (
 
 type HTTPHandler interface {
 	http.Handler
-	Load() error
+	Load(context.Context) error
 }
 
 type HTTPServerHandler struct {
@@ -75,7 +75,7 @@ const (
 	HTTPTunnelReverseTCPPathPrefix = "/.well-known/reverse/tcp/"
 )
 
-func (h *HTTPServerHandler) Load() error {
+func (h *HTTPServerHandler) Load(_ context.Context) error {
 	return nil
 }
 

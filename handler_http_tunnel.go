@@ -33,10 +33,10 @@ type HTTPTunnelHandler struct {
 	listens       *netipx.IPSet
 }
 
-func (h *HTTPTunnelHandler) Load() error {
+func (h *HTTPTunnelHandler) Load(ctx context.Context) error {
 	if table := h.Config.Tunnel.AuthTable; table != "" {
 		loader := NewAuthUserLoaderFromTable(table)
-		records, err := loader.LoadAuthUsers(context.Background())
+		records, err := loader.LoadAuthUsers(ctx)
 		if err != nil {
 			log.Fatal().Err(err).Strs("server_name", h.Config.ServerName).Str("auth_table", table).Msg("load auth_table failed")
 		}

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"cmp"
 	"compress/gzip"
+	"context"
 	"crypto/tls"
 	_ "embed"
 	"fmt"
@@ -43,7 +44,7 @@ type HTTPWebIndexHandler struct {
 	}
 }
 
-func (h *HTTPWebIndexHandler) Load() (err error) {
+func (h *HTTPWebIndexHandler) Load(_ context.Context) (err error) {
 	if h.Body == "" && h.Root != "" {
 		h.Body = autoindexTemplate
 	}

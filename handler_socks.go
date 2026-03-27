@@ -42,7 +42,7 @@ type SocksHandler struct {
 	userchecker AuthUserChecker
 }
 
-func (h *SocksHandler) Load() error {
+func (h *SocksHandler) Load(ctx context.Context) error {
 	var err error
 
 	h.Config.Forward.Policy = strings.TrimSpace(h.Config.Forward.Policy)
@@ -61,7 +61,7 @@ func (h *SocksHandler) Load() error {
 
 	if table := h.Config.Forward.AuthTable; table != "" {
 		loader := NewAuthUserLoaderFromTable(table)
-		records, err := loader.LoadAuthUsers(context.Background())
+		records, err := loader.LoadAuthUsers(ctx)
 		if err != nil {
 			log.Fatal().Err(err).Strs("socks_listens", h.Config.Listen).Str("auth_table", table).Msg("load auth_table failed")
 		}

@@ -21,10 +21,10 @@ type HTTPWebLogtailHandler struct {
 	clients     *xsync.Map[*http.Request, http.ResponseWriter]
 }
 
-func (h *HTTPWebLogtailHandler) Load() error {
+func (h *HTTPWebLogtailHandler) Load(ctx context.Context) error {
 	if table := h.AuthTable; table != "" {
 		loader := NewAuthUserLoaderFromTable(table)
-		records, err := loader.LoadAuthUsers(context.Background())
+		records, err := loader.LoadAuthUsers(ctx)
 		if err != nil {
 			log.Fatal().Err(err).Str("auth_table", table).Msg("load auth_table failed")
 		}

@@ -19,7 +19,7 @@ type HTTPWebDavHandler struct {
 	dav         *webdav.Handler
 }
 
-func (h *HTTPWebDavHandler) Load() (err error) {
+func (h *HTTPWebDavHandler) Load(ctx context.Context) (err error) {
 	root := h.Root
 	if root == "" {
 		root = "/"
@@ -27,7 +27,7 @@ func (h *HTTPWebDavHandler) Load() (err error) {
 
 	if table := h.AuthTable; table != "" {
 		loader := NewAuthUserLoaderFromTable(table)
-		records, err := loader.LoadAuthUsers(context.Background())
+		records, err := loader.LoadAuthUsers(ctx)
 		if err != nil {
 			log.Fatal().Err(err).Str("webdav_root", root).Str("auth_table", table).Msg("load auth_table failed")
 		}

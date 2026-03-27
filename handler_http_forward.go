@@ -43,7 +43,7 @@ type HTTPForwardHandler struct {
 	userchecker   AuthUserChecker
 }
 
-func (h *HTTPForwardHandler) Load() error {
+func (h *HTTPForwardHandler) Load(ctx context.Context) error {
 	var err error
 
 	h.Config.Forward.Policy = strings.TrimSpace(h.Config.Forward.Policy)
@@ -83,7 +83,7 @@ func (h *HTTPForwardHandler) Load() error {
 
 	if table := h.Config.Forward.AuthTable; table != "" {
 		loader := NewAuthUserLoaderFromTable(table)
-		records, err := loader.LoadAuthUsers(context.Background())
+		records, err := loader.LoadAuthUsers(ctx)
 		if err != nil {
 			log.Fatal().Err(err).Strs("server_name", h.Config.ServerName).Str("auth_table", table).Msg("load auth_table failed")
 		}

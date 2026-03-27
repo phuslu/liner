@@ -46,7 +46,7 @@ type SshHandler struct {
 	closed      atomic.Bool
 }
 
-func (h *SshHandler) Load() error {
+func (h *SshHandler) Load(ctx context.Context) error {
 	if len(h.Config.Listen) != 1 {
 		return fmt.Errorf("invalid ssh listen: %v", h.Config.Listen)
 	}
@@ -183,7 +183,7 @@ func (h *SshHandler) Load() error {
 	if h.Config.AuthTable != "" {
 		if table := os.ExpandEnv(h.Config.AuthTable); table != "" {
 			loader := NewAuthUserLoaderFromTable(table)
-			records, err := loader.LoadAuthUsers(context.Background())
+			records, err := loader.LoadAuthUsers(ctx)
 			if err != nil {
 				h.Logger.Fatal().Err(err).Strs("ssh_listens", h.Config.Listen).Str("auth_table", table).Msg("load auth_table failed")
 			}
@@ -196,7 +196,7 @@ func (h *SshHandler) Load() error {
 				Username: c.User(),
 				Password: string(pass),
 			}
-			err := h.userchecker.CheckAuthUser(context.Background(), &user)
+			err := h.userchecker.CheckAuthUser(ctx, &user)
 			if allow := user.Attrs["allow_ssh"]; allow != "" {
 				switch allow {
 				case "0":

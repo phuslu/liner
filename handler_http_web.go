@@ -3,6 +3,7 @@ package main
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"expvar"
 	"net"
 	"net/http"
@@ -30,7 +31,7 @@ type HTTPWebHandler struct {
 	mux *http.ServeMux
 }
 
-func (h *HTTPWebHandler) Load() error {
+func (h *HTTPWebHandler) Load(ctx context.Context) error {
 	type router struct {
 		location string
 		handler  HTTPHandler
@@ -108,7 +109,7 @@ func (h *HTTPWebHandler) Load() error {
 	var root HTTPHandler
 	h.mux = http.NewServeMux()
 	for _, x := range routers {
-		err := x.handler.Load()
+		err := x.handler.Load(ctx)
 		if err != nil {
 			log.Fatal().Err(err).Str("web_location", x.location).Msgf("%T.Load() return error: %+v", x.handler, err)
 		}
@@ -188,7 +189,7 @@ type HTTPWebMiddlewareCDNJS struct {
 	handler http.Handler
 }
 
-func (m *HTTPWebMiddlewareCDNJS) Load() error {
+func (m *HTTPWebMiddlewareCDNJS) Load(ctx context.Context) error {
 	zipreader, err := zip.NewReader(bytes.NewReader(cdnjsZip), int64(len(cdnjsZip)))
 	if err != nil {
 		return err
@@ -197,7 +198,7 @@ func (m *HTTPWebMiddlewareCDNJS) Load() error {
 	m.prefix = strings.TrimSuffix(m.Location, "/") + "/.cdnjs/"
 	m.handler = http.StripPrefix(strings.TrimSuffix(m.prefix, "/"), http.FileServer(http.FS(zipreader)))
 
-	return m.Handler.Load()
+	return m.Handler.Load(ctx)
 }
 
 func (m *HTTPWebMiddlewareCDNJS) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
@@ -217,8 +218,8 @@ type HTTPWebMiddlewareForwardAuth struct {
 	Handler     HTTPHandler
 }
 
-func (m *HTTPWebMiddlewareForwardAuth) Load() error {
-	return m.Handler.Load()
+func (m *HTTPWebMiddlewareForwardAuth) Load(ctx context.Context) error {
+	return m.Handler.Load(ctx)
 }
 
 func (m *HTTPWebMiddlewareForwardAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {

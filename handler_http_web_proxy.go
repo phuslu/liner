@@ -44,12 +44,12 @@ type HTTPWebProxyHandler struct {
 	headers    *template.Template
 }
 
-func (h *HTTPWebProxyHandler) Load() error {
+func (h *HTTPWebProxyHandler) Load(ctx context.Context) error {
 	var err error
 
 	if table := h.AuthTable; table != "" {
 		loader := NewAuthUserLoaderFromTable(table)
-		records, err := loader.LoadAuthUsers(context.Background())
+		records, err := loader.LoadAuthUsers(ctx)
 		if err != nil {
 			log.Fatal().Err(err).Str("proxy_pass", h.Pass).Str("auth_table", table).Msg("load auth_table failed")
 		}

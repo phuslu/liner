@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -27,7 +28,7 @@ type HTTPWebDohHandler struct {
 	policy *template.Template
 }
 
-func (h *HTTPWebDohHandler) Load() error {
+func (h *HTTPWebDohHandler) Load(_ context.Context) error {
 	resolver, err := h.DnsResolverPool.Get(h.ProxyPass, 600*time.Second)
 	if err != nil {
 		return fmt.Errorf("invaild doh proxy_pass: %#v: %w", h.ProxyPass, err)

@@ -571,7 +571,7 @@ func main() {
 			handler.WebHandler,
 			handler,
 		} {
-			err = h.Load()
+			err = h.Load(context.Background())
 			if err != nil {
 				log.Fatal().Err(err).Strs("server_name", server.ServerName).Msgf("%T.Load() return error: %+v", h, err)
 			}
@@ -797,7 +797,7 @@ func main() {
 			handler.WebHandler,
 			handler,
 		} {
-			err = h.Load()
+			err = h.Load(context.Background())
 			if err != nil {
 				log.Fatal().Err(err).Strs("server_name", httpConfig.ServerName).Msgf("%T.Load() return error: %+v", h, err)
 			}
@@ -869,7 +869,7 @@ func main() {
 				Functions:   functions.FuncMap(),
 			}
 
-			if err = h.Load(); err != nil {
+			if err = h.Load(context.Background()); err != nil {
 				log.Fatal().Err(err).Str("address", addr).Msg("socks handler load error")
 			}
 
@@ -996,7 +996,7 @@ func main() {
 				log.Info().Str("version", version).NetAddr("address", ln.Addr()).Msg("liner listen and serve ssh")
 			}
 
-			if err = h.Load(); err != nil {
+			if err = h.Load(context.Background()); err != nil {
 				log.Fatal().Err(err).Str("address", addr).Msg("ssh handler load error")
 			}
 
