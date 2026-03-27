@@ -1,7 +1,6 @@
 package main
 
 import (
-	"archive/zip"
 	"bytes"
 	"cmp"
 	"context"
@@ -32,14 +31,10 @@ type HTTPWebShellHandler struct {
 
 	userchecker AuthUserChecker
 	webshell    *template.Template
-
-	cdnjs struct {
-		prefix  string
-		handler http.Handler
-	}
 }
 
 func (h *HTTPWebShellHandler) Load(ctx context.Context) error {
+
 	if table := h.AuthTable; table != "" {
 		loader := NewAuthUserLoaderFromTable(table)
 		records, err := loader.LoadAuthUsers(ctx)
@@ -50,17 +45,14 @@ func (h *HTTPWebShellHandler) Load(ctx context.Context) error {
 		h.userchecker = &AuthUserLoadChecker{loader}
 	}
 
-	zipreader, err := zip.NewReader(bytes.NewReader(cdnjsZip), int64(len(cdnjsZip)))
-	if err != nil {
-		return err
+	webshell := webshellHtml
+	if replacer, _ := ctx.Value(HTTPCDNJSReplacerContextKey).(*strings.Replacer); replacer != nil {
+		webshell = replacer.Replace(webshell)
 	}
-	h.cdnjs.prefix = strings.TrimSuffix(h.Location, "/") + "/.cdnjs/"
-	h.cdnjs.handler = http.StripPrefix(strings.TrimSuffix(h.cdnjs.prefix, "/"), http.FileServer(http.FS(zipreader)))
 
-	h.webshell, err = template.New("webshell").Funcs(h.Functions).Parse(strings.NewReplacer(
-		"https://cdnjs.cloudflare.com/", h.cdnjs.prefix+"cdnjs.cloudflare.com/",
-		"https://cdn.jsdelivr.net/", h.cdnjs.prefix+"cdn.jsdelivr.net/",
-	).Replace(webshellHtml))
+	var err error
+
+	h.webshell, err = template.New("webshell").Funcs(h.Functions).Parse(webshell)
 	if err != nil {
 		return err
 	}
@@ -71,11 +63,6 @@ func (h *HTTPWebShellHandler) Load(ctx context.Context) error {
 func (h *HTTPWebShellHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	ri := req.Context().Value(HTTPRequestInfoContextKey).(*HTTPRequestInfo)
 	log.Info().Context(ri.LogContext).Any("headers", req.Header).Msg("web shell request")
-
-	if strings.HasPrefix(req.RequestURI, h.cdnjs.prefix) {
-		h.cdnjs.handler.ServeHTTP(rw, req)
-		return
-	}
 
 	if h.userchecker != nil {
 		err := h.userchecker.CheckAuthUser(req.Context(), &ri.AuthUserInfo)

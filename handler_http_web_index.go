@@ -1,8 +1,6 @@
 package main
 
 import (
-	"archive/zip"
-	"bytes"
 	"cmp"
 	"compress/gzip"
 	"context"
@@ -37,16 +35,16 @@ type HTTPWebIndexHandler struct {
 	headers  *template.Template
 	body     *template.Template
 	markdown *template.Template
-
-	cdnjs struct {
-		prefix  string
-		handler http.Handler
-	}
 }
 
-func (h *HTTPWebIndexHandler) Load(_ context.Context) (err error) {
+func (h *HTTPWebIndexHandler) Load(ctx context.Context) (err error) {
+	replacer, _ := ctx.Value(HTTPCDNJSReplacerContextKey).(*strings.Replacer)
+
 	if h.Body == "" && h.Root != "" {
 		h.Body = autoindexTemplate
+		if replacer != nil {
+			h.Body = replacer.Replace(h.Body)
+		}
 	}
 
 	h.headers, err = template.New(h.Headers).Funcs(h.Functions).Parse(h.Headers)
@@ -54,25 +52,16 @@ func (h *HTTPWebIndexHandler) Load(_ context.Context) (err error) {
 		return
 	}
 
-	zipreader, err := zip.NewReader(bytes.NewReader(cdnjsZip), int64(len(cdnjsZip)))
-	if err != nil {
-		return err
-	}
-	h.cdnjs.prefix = strings.TrimSuffix(h.Location, "/") + "/.cdnjs/"
-	h.cdnjs.handler = http.StripPrefix(strings.TrimSuffix(h.cdnjs.prefix, "/"), http.FileServer(http.FS(zipreader)))
-
-	h.body, err = template.New("autoindex").Funcs(h.Functions).Parse(strings.NewReplacer(
-		"https://cdnjs.cloudflare.com/", h.cdnjs.prefix+"cdnjs.cloudflare.com/",
-		"https://cdn.jsdelivr.net/", h.cdnjs.prefix+"cdn.jsdelivr.net/",
-	).Replace(h.Body))
+	h.body, err = template.New("autoindex").Funcs(h.Functions).Parse(h.Body)
 	if err != nil {
 		return
 	}
 
-	h.markdown, err = template.New("markdown").Funcs(h.Functions).Parse(strings.NewReplacer(
-		"https://cdnjs.cloudflare.com/", h.cdnjs.prefix+"cdnjs.cloudflare.com/",
-		"https://cdn.jsdelivr.net/", h.cdnjs.prefix+"cdn.jsdelivr.net/",
-	).Replace(markdownHTML))
+	markdown := markdownHTML
+	if replacer != nil {
+		markdown = replacer.Replace(markdown)
+	}
+	h.markdown, err = template.New("markdown").Funcs(h.Functions).Parse(markdown)
 	if err != nil {
 		return
 	}
@@ -84,11 +73,6 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	ri := req.Context().Value(HTTPRequestInfoContextKey).(*HTTPRequestInfo)
 
 	log.Debug().Context(ri.LogContext).Object("headers", HTTPHeaderMarshalLogObject(req.Header)).Msg("web index request")
-
-	if strings.HasPrefix(req.RequestURI, h.cdnjs.prefix) {
-		h.cdnjs.handler.ServeHTTP(rw, req)
-		return
-	}
 
 	if h.Root == "" && h.Headers == "" && h.Body == "" && h.File == "" {
 		http.NotFound(rw, req)
