@@ -1,6 +1,8 @@
 package main
 
 import (
+	"archive/zip"
+	"bytes"
 	"expvar"
 	"net"
 	"net/http"
@@ -174,6 +176,37 @@ func (h *HTTPWebHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		}
 	}
 	h.mux.ServeHTTP(rw, req)
+}
+
+var _ HTTPHandler = (*HTTPWebMiddlewareCDNJS)(nil)
+
+type HTTPWebMiddlewareCDNJS struct {
+	Location string
+	Handler  HTTPHandler
+
+	prefix  string
+	handler http.Handler
+}
+
+func (m *HTTPWebMiddlewareCDNJS) Load() error {
+	zipreader, err := zip.NewReader(bytes.NewReader(cdnjsZip), int64(len(cdnjsZip)))
+	if err != nil {
+		return err
+	}
+
+	m.prefix = strings.TrimSuffix(m.Location, "/") + "/.cdnjs/"
+	m.handler = http.StripPrefix(strings.TrimSuffix(m.prefix, "/"), http.FileServer(http.FS(zipreader)))
+
+	return m.Handler.Load()
+}
+
+func (m *HTTPWebMiddlewareCDNJS) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	// ri := req.Context().Value(HTTPRequestInfoContextKey).(*HTTPRequestInfo)
+	if strings.HasPrefix(req.RequestURI, m.prefix) {
+		m.handler.ServeHTTP(rw, req)
+		return
+	}
+	m.Handler.ServeHTTP(rw, req)
 }
 
 var _ HTTPHandler = (*HTTPWebMiddlewareForwardAuth)(nil)
