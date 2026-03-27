@@ -40,8 +40,8 @@ type HTTPWebProxyHandler struct {
 		URL      *url.URL
 		Template *template.Template
 	}
-	h3transport *http3.Transport
-	headers     *template.Template
+	transport3 *http3.Transport
+	headers    *template.Template
 }
 
 func (h *HTTPWebProxyHandler) Load() error {
@@ -71,7 +71,7 @@ func (h *HTTPWebProxyHandler) Load() error {
 		}
 	}
 
-	h.h3transport = &http3.Transport{
+	h.transport3 = &http3.Transport{
 		DisableCompression: false,
 		EnableDatagrams:    true,
 	}
@@ -258,7 +258,7 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	var tr http.RoundTripper
 	switch proxypass.Scheme {
 	case "http3":
-		tr = h.h3transport
+		tr = h.transport3
 		req.URL.Scheme = "https"
 		req.URL.Host = proxypass.Host
 		req.Host = proxypass.Host
