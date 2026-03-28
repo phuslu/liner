@@ -6,7 +6,6 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -23,28 +22,14 @@ import (
 type HTTPWebShellHandler struct {
 	Location  string
 	Functions template.FuncMap
-	AuthBasic string
-	AuthTable string
 	Command   string
 	Home      string
 	Template  map[string]string
 
-	userchecker AuthUserChecker
-	webshell    *template.Template
+	webshell *template.Template
 }
 
 func (h *HTTPWebShellHandler) Load(ctx context.Context) error {
-
-	if table := h.AuthTable; table != "" {
-		loader := NewAuthUserLoaderFromTable(table)
-		records, err := loader.LoadAuthUsers(ctx)
-		if err != nil {
-			log.Fatal().Err(err).Str("auth_table", table).Msg("load auth_table failed")
-		}
-		log.Info().Str("auth_table", table).Int("auth_table_size", len(records)).Msg("load auth_table ok")
-		h.userchecker = &AuthUserLoadChecker{loader}
-	}
-
 	webshell := webshellHtml
 	if replacer, _ := ctx.Value(HTTPCDNJSReplacerContextKey).(*strings.Replacer); replacer != nil {
 		webshell = replacer.Replace(webshell)
@@ -63,22 +48,6 @@ func (h *HTTPWebShellHandler) Load(ctx context.Context) error {
 func (h *HTTPWebShellHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	ri := req.Context().Value(HTTPRequestInfoContextKey).(*HTTPRequestInfo)
 	log.Info().Context(ri.LogContext).Any("headers", req.Header).Msg("web shell request")
-
-	if h.userchecker != nil {
-		err := h.userchecker.CheckAuthUser(req.Context(), &ri.AuthUserInfo)
-		if err == nil {
-			if allow := ri.AuthUserInfo.Attrs["allow_webshell"]; allow != "1" {
-				err = fmt.Errorf("webshell is not allow for user: %#v", ri.AuthUserInfo.Username)
-			}
-		}
-		if err != nil {
-			log.Error().Context(ri.LogContext).Err(err).Any("user_attrs", ri.AuthUserInfo.Attrs).Msg("web shell auth error")
-			rw.Header().Set("www-authenticate", `Basic realm="`+h.AuthBasic+`"`)
-			http.Error(rw, "401 unauthorised: "+err.Error(), http.StatusUnauthorized)
-
-			return
-		}
-	}
 
 	if strings.Contains(req.RequestURI, "..") {
 		http.Error(rw, "400 Bad Request: "+req.RequestURI, http.StatusBadRequest)

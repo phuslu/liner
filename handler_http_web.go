@@ -6,6 +6,7 @@ import (
 	"context"
 	_ "embed"
 	"expvar"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -46,8 +47,12 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 		switch {
 		case web.Dav.Enabled:
 			router.handler = &HTTPWebDavHandler{
-				Root:      web.Dav.Root,
+				Root: web.Dav.Root,
+			}
+			router.handler = &HTTPWebMiddlewareAuthTable{
 				AuthTable: web.Dav.AuthTable,
+				AllowAttr: "allow_webdav",
+				Handler:   router.handler,
 			}
 		case web.Doh.Enabled:
 			router.handler = &HTTPWebDohHandler{
@@ -86,10 +91,14 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 			router.handler = &HTTPWebShellHandler{
 				Location:  web.Location,
 				Functions: h.Functions,
-				AuthTable: web.Shell.AuthTable,
 				Command:   web.Shell.Command,
 				Home:      web.Shell.Home,
 				Template:  web.Shell.Template,
+			}
+			router.handler = &HTTPWebMiddlewareAuthTable{
+				AuthTable: web.Shell.AuthTable,
+				AllowAttr: "allow_webshell",
+				Handler:   router.handler,
 			}
 			router.handler = &HTTPWebMiddlewareCDNJS{
 				Location: web.Location,
@@ -225,6 +234,47 @@ func (m *HTTPWebMiddlewareCDNJS) ServeHTTP(rw http.ResponseWriter, req *http.Req
 	if strings.HasPrefix(req.RequestURI, m.prefix) {
 		m.handler.ServeHTTP(rw, req)
 		return
+	}
+	m.Handler.ServeHTTP(rw, req)
+}
+
+var _ HTTPHandler = (*HTTPWebMiddlewareAuthTable)(nil)
+
+type HTTPWebMiddlewareAuthTable struct {
+	AuthTable string
+	AllowAttr string
+	Handler   HTTPHandler
+
+	userchecker AuthUserChecker
+}
+
+func (m *HTTPWebMiddlewareAuthTable) Load(ctx context.Context) error {
+	if m.AuthTable != "" {
+		loader := NewAuthUserLoaderFromTable(m.AuthTable)
+		_, err := loader.LoadAuthUsers(ctx)
+		if err != nil {
+			return err
+		}
+		m.userchecker = &AuthUserLoadChecker{loader}
+	}
+
+	return m.Handler.Load(ctx)
+}
+
+func (m *HTTPWebMiddlewareAuthTable) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	if m.userchecker != nil {
+		ri := req.Context().Value(HTTPRequestInfoContextKey).(*HTTPRequestInfo)
+		err := m.userchecker.CheckAuthUser(req.Context(), &ri.AuthUserInfo)
+		if err == nil && m.AllowAttr != "" {
+			if allow := ri.AuthUserInfo.Attrs[m.AllowAttr]; allow != "1" {
+				err = fmt.Errorf("%q is not true of user: %#v", m.AllowAttr, ri.AuthUserInfo.Username)
+			}
+		}
+		if err != nil {
+			rw.Header().Set("www-authenticate", `Basic realm="Login to continue"`)
+			http.Error(rw, "401 unauthorised: "+err.Error(), http.StatusUnauthorized)
+			return
+		}
 	}
 	m.Handler.ServeHTTP(rw, req)
 }
