@@ -58,17 +58,18 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 				DnsResolverPool: h.DnsResolverPool,
 			}
 		case web.Index.Root != "" || web.Index.Body != "" || web.Index.File != "":
+			router.handler = &HTTPWebIndexHandler{
+				Location:  web.Location,
+				Root:      web.Index.Root,
+				Headers:   web.Index.Headers,
+				Charset:   web.Index.Charset,
+				Body:      web.Index.Body,
+				File:      web.Index.File,
+				Functions: h.Functions,
+			}
 			router.handler = &HTTPWebMiddlewareCDNJS{
 				Location: web.Location,
-				Handler: &HTTPWebIndexHandler{
-					Location:  web.Location,
-					Root:      web.Index.Root,
-					Headers:   web.Index.Headers,
-					Charset:   web.Index.Charset,
-					Body:      web.Index.Body,
-					File:      web.Index.File,
-					Functions: h.Functions,
-				},
+				Handler:  router.handler,
 			}
 		case web.Proxy.Pass != "":
 			router.handler = &HTTPWebProxyHandler{
@@ -82,16 +83,17 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 				DumpFailure:   web.Proxy.DumpFailure,
 			}
 		case web.Shell.Enabled:
+			router.handler = &HTTPWebShellHandler{
+				Location:  web.Location,
+				Functions: h.Functions,
+				AuthTable: web.Shell.AuthTable,
+				Command:   web.Shell.Command,
+				Home:      web.Shell.Home,
+				Template:  web.Shell.Template,
+			}
 			router.handler = &HTTPWebMiddlewareCDNJS{
 				Location: web.Location,
-				Handler: &HTTPWebShellHandler{
-					Location:  web.Location,
-					Functions: h.Functions,
-					AuthTable: web.Shell.AuthTable,
-					Command:   web.Shell.Command,
-					Home:      web.Shell.Home,
-					Template:  web.Shell.Template,
-				},
+				Handler:  router.handler,
 			}
 		case web.Logtail.Enabled:
 			router.handler = &HTTPWebLogtailHandler{
