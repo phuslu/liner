@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"text/template"
@@ -586,7 +587,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		if tc, ok := conn.(*net.TCPConn); ok && req.ProtoAtLeast(2, 0) {
 			// Use wrapper to hide existing w.WriteTo from io.Copy.
 			// buffer size should align to http2.MaxReadFrameSize
-			if n := h.Config.Forward.IoCopyBuffer; n > 0 {
+			if n := cmp.Or(h.Config.Forward.IoCopyBuffer, first(strconv.Atoi(os.Getenv("HTTP2_WRITER_POOL_BUFFER_SIZE")))); n > 0 {
 				transmitBytes, err = io.CopyBuffer(w, tcpConnWithoutWriteTo{TCPConn: tc}, make([]byte, n))
 			} else {
 				transmitBytes, err = io.Copy(w, tcpConnWithoutWriteTo{TCPConn: tc})

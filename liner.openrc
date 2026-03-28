@@ -20,6 +20,8 @@ start_pre() {
 start() {
 	ebegin "Starting ${RC_SVCNAME}"
 
+	export HTTP2_WRITER_POOL_BUFFER_SIZE=65536
+	
 	cd "${appdir}"
 	supervise-daemon "${RC_SVCNAME}" --pidfile "${pidfile}" --start "${appdir}/${RC_SVCNAME%.*}" -- "${RC_SVCNAME#*.}.yaml"
 

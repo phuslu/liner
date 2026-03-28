@@ -36,7 +36,7 @@ function liner::build() {
 	go mod download -x
 	# http2 patch
 	# https://github.com/golang/go/issues/47840#issuecomment-983558795
-	sed -i -E 's/const http2bufWriterPoolBufferSize = .+/const http2bufWriterPoolBufferSize = 32 << 10/' ${GOROOT}/src/net/http/h2_bundle.go
+	sed -i -E 's/const http2bufWriterPoolBufferSize = .+/var http2bufWriterPoolBufferSize = func() int { n, _ := strconv.Atoi(os.Getenv("HTTP2_WRITER_POOL_BUFFER_SIZE")); return max(n, 32768) }()/' ${GOROOT}/src/net/http/h2_bundle.go
 	grep -m1 http2bufWriterPoolBufferSize ${GOROOT}/src/net/http/h2_bundle.go
 	# http3 patch
 	# https://github.com/quic-go/quic-go/issues/5325#issuecomment-3852795180
