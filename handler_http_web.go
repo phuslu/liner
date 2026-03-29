@@ -50,7 +50,6 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 				Root: web.Dav.Root,
 			}
 			router.handler = &HTTPWebMiddlewareAuthTable{
-				ProxyUser: false,
 				AuthTable: web.Dav.AuthTable,
 				AllowAttr: "allow_webdav",
 				Handler:   router.handler,
@@ -88,7 +87,6 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 				DumpFailure:   web.Proxy.DumpFailure,
 			}
 			router.handler = &HTTPWebMiddlewareAuthTable{
-				ProxyUser: false,
 				AuthTable: web.Proxy.AuthTable,
 				AllowAttr: "allow_proxy",
 				Handler:   router.handler,
@@ -102,7 +100,6 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 				Template:  web.Shell.Template,
 			}
 			router.handler = &HTTPWebMiddlewareAuthTable{
-				ProxyUser: false,
 				AuthTable: web.Shell.AuthTable,
 				AllowAttr: "allow_webshell",
 				Handler:   router.handler,
@@ -117,7 +114,6 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 				MemoryLogWriter: h.MemoryLogWriter,
 			}
 			router.handler = &HTTPWebMiddlewareAuthTable{
-				ProxyUser: false,
 				AuthTable: web.Logtail.AuthTable,
 				AllowAttr: "allow_logtail",
 				Handler:   router.handler,
@@ -253,7 +249,6 @@ func (m *HTTPWebMiddlewareCDNJS) ServeHTTP(rw http.ResponseWriter, req *http.Req
 var _ HTTPHandler = (*HTTPWebMiddlewareAuthTable)(nil)
 
 type HTTPWebMiddlewareAuthTable struct {
-	ProxyUser bool
 	AuthTable string
 	AllowAttr string
 	Handler   HTTPHandler
@@ -277,12 +272,7 @@ func (m *HTTPWebMiddlewareAuthTable) Load(ctx context.Context) error {
 func (m *HTTPWebMiddlewareAuthTable) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	if m.userchecker != nil {
 		ri := req.Context().Value(HTTPRequestInfoContextKey).(*HTTPRequestInfo)
-		var err error
-		if m.ProxyUser {
-			err = m.userchecker.CheckAuthUser(req.Context(), &ri.ProxyUserInfo)
-		} else {
-			err = m.userchecker.CheckAuthUser(req.Context(), &ri.AuthUserInfo)
-		}
+		err := m.userchecker.CheckAuthUser(req.Context(), &ri.AuthUserInfo)
 		if err == nil && m.AllowAttr != "" {
 			if allow := ri.AuthUserInfo.Attrs[m.AllowAttr]; allow != "1" {
 				err = fmt.Errorf("%q is not true of user: %#v", m.AllowAttr, ri.AuthUserInfo.Username)
