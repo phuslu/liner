@@ -15,6 +15,7 @@ import (
 	"text/template"
 
 	"github.com/phuslu/log"
+	"github.com/phuslu/lru"
 	"github.com/smallnest/ringbuffer"
 )
 
@@ -115,6 +116,12 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 					Handler:   router.handler,
 					AuthTable: table,
 					AllowAttr: "allow_webshell",
+				}
+			}
+			if tiny := web.Shell.TinyAuth; tiny != "" {
+				router.handler = &HTTPWebMiddlewareTinyAuth{
+					Handler:  router.handler,
+					TinyAuth: tiny,
 				}
 			}
 			router.handler = &HTTPWebMiddlewareCDNJS{
@@ -292,5 +299,38 @@ func (m *HTTPWebMiddlewareAuthTable) ServeHTTP(rw http.ResponseWriter, req *http
 			return
 		}
 	}
+	m.Handler.ServeHTTP(rw, req)
+}
+
+var _ HTTPHandler = (*HTTPWebMiddlewareTinyAuth)(nil)
+
+type HTTPWebMiddlewareTinyAuth struct {
+	Handler  HTTPHandler
+	TinyAuth string
+
+	userinfo *lru.TTLCache[string, *TinyAuthUserInfo] // key: tinyauth-session-<id>=<uuid>
+}
+
+// TinyAuthUserInfo is tinyauth user info, see https://demo.tinyauth.app/api/context/user
+type TinyAuthUserInfo struct {
+	Status      int    `json:"status"`
+	Message     string `json:"message"`
+	IsLoggedIn  bool   `json:"isLoggedIn"`
+	Username    string `json:"username"`
+	Name        string `json:"name"`
+	Email       string `json:"email"`
+	Provider    string `json:"provider"`
+	Oauth       bool   `json:"oauth"`
+	TotpPending bool   `json:"totpPending"`
+	OauthName   string `json:"oauthName"`
+}
+
+func (m *HTTPWebMiddlewareTinyAuth) Load(ctx context.Context) error {
+	m.userinfo = lru.NewTTLCache[string, *TinyAuthUserInfo](1024)
+	return m.Handler.Load(ctx)
+}
+
+func (m *HTTPWebMiddlewareTinyAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	// ri := req.Context().Value(HTTPRequestInfoContextKey).(*HTTPRequestInfo)
 	m.Handler.ServeHTTP(rw, req)
 }

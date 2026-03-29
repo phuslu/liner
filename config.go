@@ -80,6 +80,7 @@ type HTTPConfig struct {
 		Shell struct {
 			Enabled   bool              `json:"enabled" yaml:"enabled"`
 			AuthTable string            `json:"auth_table" yaml:"auth_table"`
+			TinyAuth  string            `json:"tiny_auth" yaml:"tiny_auth"`
 			Command   string            `json:"command" yaml:"command"`
 			Home      string            `json:"home" yaml:"home"`
 			Template  map[string]string `json:"template" yaml:"template"`
