@@ -28,14 +28,11 @@ type HTTPWebProxyHandler struct {
 	Transport     *http.Transport
 	Functions     template.FuncMap
 	Pass          string
-	AuthBasic     string
-	AuthTable     string
 	StripPrefix   string
 	SetHeaders    string
 	DumpFailure   bool
 
-	userchecker AuthUserChecker
-	proxypass   struct {
+	proxypass struct {
 		Code     int
 		URL      *url.URL
 		Template *template.Template
@@ -45,18 +42,6 @@ type HTTPWebProxyHandler struct {
 }
 
 func (h *HTTPWebProxyHandler) Load(ctx context.Context) error {
-	var err error
-
-	if table := h.AuthTable; table != "" {
-		loader := NewAuthUserLoaderFromTable(table)
-		records, err := loader.LoadAuthUsers(ctx)
-		if err != nil {
-			log.Fatal().Err(err).Str("proxy_pass", h.Pass).Str("auth_table", table).Msg("load auth_table failed")
-		}
-		log.Info().Str("proxy_pass", h.Pass).Str("auth_table", table).Int("auth_table_size", len(records)).Msg("load auth_table ok")
-		h.userchecker = &AuthUserLoadChecker{loader}
-	}
-
 	if code, err := strconv.Atoi(strings.TrimSpace(h.Pass)); err == nil && code > 0 {
 		h.proxypass.Code = code
 	} else if !strings.Contains(h.Pass, "{{") {
@@ -77,6 +62,7 @@ func (h *HTTPWebProxyHandler) Load(ctx context.Context) error {
 	}
 
 	if strings.Contains(h.SetHeaders, "{{") {
+		var err error
 		h.headers, err = template.New(h.SetHeaders).Funcs(h.Functions).Parse(h.SetHeaders)
 		if err != nil {
 			return err
@@ -93,22 +79,6 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	// 	RejectRequest(rw, req)
 	// 	return
 	// }
-
-	if h.userchecker != nil {
-		err := h.userchecker.CheckAuthUser(req.Context(), &ri.AuthUserInfo)
-		if err == nil {
-			if allow := ri.AuthUserInfo.Attrs["allow_proxy"]; allow != "1" {
-				err = fmt.Errorf("webdav is not allow for user: %#v", ri.AuthUserInfo.Username)
-			}
-		}
-		if err != nil {
-			log.Error().Context(ri.LogContext).Err(err).Any("user_attrs", ri.AuthUserInfo.Attrs).Msg("web proxy auth error")
-			rw.Header().Set("www-authenticate", `Basic realm="`+h.AuthBasic+`"`)
-			http.Error(rw, "401 unauthorised: "+err.Error(), http.StatusUnauthorized)
-
-			return
-		}
-	}
 
 	var proxypass *url.URL
 	switch {

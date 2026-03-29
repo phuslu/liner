@@ -83,10 +83,15 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 				Transport:     h.Transport,
 				Functions:     h.Functions,
 				Pass:          web.Proxy.Pass,
-				AuthTable:     web.Proxy.AuthTable,
 				StripPrefix:   web.Proxy.StripPrefix,
 				SetHeaders:    web.Proxy.SetHeaders,
 				DumpFailure:   web.Proxy.DumpFailure,
+			}
+			router.handler = &HTTPWebMiddlewareAuthTable{
+				ProxyUser: false,
+				AuthTable: web.Proxy.AuthTable,
+				AllowAttr: "allow_proxy",
+				Handler:   router.handler,
 			}
 		case web.Shell.Enabled:
 			router.handler = &HTTPWebShellHandler{
