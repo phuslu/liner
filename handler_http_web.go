@@ -109,8 +109,13 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 		case web.Logtail.Enabled:
 			router.handler = &HTTPWebLogtailHandler{
 				Location:        web.Location,
-				AuthTable:       web.Logtail.AuthTable,
 				MemoryLogWriter: h.MemoryLogWriter,
+			}
+			router.handler = &HTTPWebMiddlewareAuthTable{
+				ProxyUser: false,
+				AuthTable: web.Logtail.AuthTable,
+				AllowAttr: "allow_logtail",
+				Handler:   router.handler,
 			}
 		default:
 			log.Info().Str("web_location", web.Location).Msgf("web location is not enabled, skip.")

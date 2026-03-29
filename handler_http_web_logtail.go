@@ -13,25 +13,12 @@ import (
 
 type HTTPWebLogtailHandler struct {
 	Location        string
-	AuthTable       string
-	AuthBasic       string
 	MemoryLogWriter *ringbuffer.RingBuffer
 
-	userchecker AuthUserChecker
-	clients     *xsync.Map[*http.Request, http.ResponseWriter]
+	clients *xsync.Map[*http.Request, http.ResponseWriter]
 }
 
 func (h *HTTPWebLogtailHandler) Load(ctx context.Context) error {
-	if table := h.AuthTable; table != "" {
-		loader := NewAuthUserLoaderFromTable(table)
-		records, err := loader.LoadAuthUsers(ctx)
-		if err != nil {
-			log.Fatal().Err(err).Str("auth_table", table).Msg("load auth_table failed")
-		}
-		log.Info().Str("auth_table", table).Int("auth_table_size", len(records)).Msg("load auth_table ok")
-		h.userchecker = &AuthUserLoadChecker{loader}
-	}
-
 	h.clients = xsync.NewMap[*http.Request, http.ResponseWriter]()
 	go h.broadcast()
 
@@ -63,22 +50,6 @@ func (h *HTTPWebLogtailHandler) broadcast() {
 func (h *HTTPWebLogtailHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	ri := req.Context().Value(HTTPRequestInfoContextKey).(*HTTPRequestInfo)
 	log.Info().Context(ri.LogContext).Any("headers", req.Header).Msg("web logtail request")
-
-	if h.userchecker != nil {
-		err := h.userchecker.CheckAuthUser(req.Context(), &ri.AuthUserInfo)
-		if err == nil {
-			if allow := ri.AuthUserInfo.Attrs["allow_logtail"]; allow != "1" {
-				err = fmt.Errorf("logtail is not allow for user: %#v", ri.AuthUserInfo.Username)
-			}
-		}
-		if err != nil {
-			log.Error().Context(ri.LogContext).Err(err).Any("user_attrs", ri.AuthUserInfo.Attrs).Msg("web logtail auth error")
-			rw.Header().Set("www-authenticate", `Basic realm="`+h.AuthBasic+`"`)
-			http.Error(rw, "401 unauthorised: "+err.Error(), http.StatusUnauthorized)
-
-			return
-		}
-	}
 
 	_, ok := rw.(http.Flusher)
 	if !ok {
