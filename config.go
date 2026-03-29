@@ -64,11 +64,12 @@ type HTTPConfig struct {
 			CacheSize int    `json:"cache_size" yaml:"cache_size"`
 		} `json:"doh" yaml:"doh"`
 		Index struct {
-			Root    string `json:"root" yaml:"root"`
-			Headers string `json:"headers" yaml:"headers"`
-			Charset string `json:"charset" yaml:"charset"`
-			Body    string `json:"body" yaml:"body"`
-			File    string `json:"file" yaml:"file"`
+			Root      string `json:"root" yaml:"root"`
+			AuthTable string `json:"auth_table" yaml:"auth_table"`
+			Headers   string `json:"headers" yaml:"headers"`
+			Charset   string `json:"charset" yaml:"charset"`
+			Body      string `json:"body" yaml:"body"`
+			File      string `json:"file" yaml:"file"`
 		} `json:"index" yaml:"index"`
 		Proxy struct {
 			Pass        string `json:"pass" yaml:"pass"`

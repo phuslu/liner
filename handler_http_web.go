@@ -74,6 +74,13 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 				File:      web.Index.File,
 				Functions: h.Functions,
 			}
+			if table := web.Index.AuthTable; table != "" {
+				router.handler = &HTTPWebMiddlewareAuthTable{
+					AuthTable: table,
+					AllowAttr: "allow_index",
+					Handler:   router.handler,
+				}
+			}
 			router.handler = &HTTPWebMiddlewareCDNJS{
 				Location: web.Location,
 				Handler:  router.handler,
