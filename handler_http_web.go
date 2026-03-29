@@ -49,10 +49,12 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 			router.handler = &HTTPWebDavHandler{
 				Root: web.Dav.Root,
 			}
-			router.handler = &HTTPWebMiddlewareAuthTable{
-				AuthTable: web.Dav.AuthTable,
-				AllowAttr: "allow_webdav",
-				Handler:   router.handler,
+			if table := web.Dav.AuthTable; table != "" {
+				router.handler = &HTTPWebMiddlewareAuthTable{
+					AuthTable: table,
+					AllowAttr: "allow_webdav",
+					Handler:   router.handler,
+				}
 			}
 		case web.Doh.Enabled:
 			router.handler = &HTTPWebDohHandler{
@@ -86,10 +88,12 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 				SetHeaders:    web.Proxy.SetHeaders,
 				DumpFailure:   web.Proxy.DumpFailure,
 			}
-			router.handler = &HTTPWebMiddlewareAuthTable{
-				AuthTable: web.Proxy.AuthTable,
-				AllowAttr: "allow_proxy",
-				Handler:   router.handler,
+			if table := web.Proxy.AuthTable; table != "" {
+				router.handler = &HTTPWebMiddlewareAuthTable{
+					AuthTable: table,
+					AllowAttr: "allow_proxy",
+					Handler:   router.handler,
+				}
 			}
 		case web.Shell.Enabled:
 			router.handler = &HTTPWebShellHandler{
@@ -99,10 +103,12 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 				Home:      web.Shell.Home,
 				Template:  web.Shell.Template,
 			}
-			router.handler = &HTTPWebMiddlewareAuthTable{
-				AuthTable: web.Shell.AuthTable,
-				AllowAttr: "allow_webshell",
-				Handler:   router.handler,
+			if table := web.Shell.AuthTable; table != "" {
+				router.handler = &HTTPWebMiddlewareAuthTable{
+					AuthTable: table,
+					AllowAttr: "allow_webshell",
+					Handler:   router.handler,
+				}
 			}
 			router.handler = &HTTPWebMiddlewareCDNJS{
 				Location: web.Location,
@@ -113,10 +119,12 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 				Location:        web.Location,
 				MemoryLogWriter: h.MemoryLogWriter,
 			}
-			router.handler = &HTTPWebMiddlewareAuthTable{
-				AuthTable: web.Logtail.AuthTable,
-				AllowAttr: "allow_logtail",
-				Handler:   router.handler,
+			if table := web.Logtail.AuthTable; table != "" {
+				router.handler = &HTTPWebMiddlewareAuthTable{
+					AuthTable: table,
+					AllowAttr: "allow_logtail",
+					Handler:   router.handler,
+				}
 			}
 		default:
 			log.Info().Str("web_location", web.Location).Msgf("web location is not enabled, skip.")
