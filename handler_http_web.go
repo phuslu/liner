@@ -51,9 +51,9 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 			}
 			if table := web.Dav.AuthTable; table != "" {
 				router.handler = &HTTPWebMiddlewareAuthTable{
+					Handler:   router.handler,
 					AuthTable: table,
 					AllowAttr: "allow_webdav",
-					Handler:   router.handler,
 				}
 			}
 		case web.Doh.Enabled:
@@ -76,14 +76,14 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 			}
 			if table := web.Index.AuthTable; table != "" {
 				router.handler = &HTTPWebMiddlewareAuthTable{
+					Handler:   router.handler,
 					AuthTable: table,
 					AllowAttr: "allow_index",
-					Handler:   router.handler,
 				}
 			}
 			router.handler = &HTTPWebMiddlewareCDNJS{
-				Location: web.Location,
 				Handler:  router.handler,
+				Location: web.Location,
 			}
 		case web.Proxy.Pass != "":
 			router.handler = &HTTPWebProxyHandler{
@@ -97,9 +97,9 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 			}
 			if table := web.Proxy.AuthTable; table != "" {
 				router.handler = &HTTPWebMiddlewareAuthTable{
+					Handler:   router.handler,
 					AuthTable: table,
 					AllowAttr: "allow_proxy",
-					Handler:   router.handler,
 				}
 			}
 		case web.Shell.Enabled:
@@ -112,14 +112,14 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 			}
 			if table := web.Shell.AuthTable; table != "" {
 				router.handler = &HTTPWebMiddlewareAuthTable{
+					Handler:   router.handler,
 					AuthTable: table,
 					AllowAttr: "allow_webshell",
-					Handler:   router.handler,
 				}
 			}
 			router.handler = &HTTPWebMiddlewareCDNJS{
-				Location: web.Location,
 				Handler:  router.handler,
+				Location: web.Location,
 			}
 		case web.Logtail.Enabled:
 			router.handler = &HTTPWebLogtailHandler{
@@ -128,9 +128,9 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 			}
 			if table := web.Logtail.AuthTable; table != "" {
 				router.handler = &HTTPWebMiddlewareAuthTable{
+					Handler:   router.handler,
 					AuthTable: table,
 					AllowAttr: "allow_logtail",
-					Handler:   router.handler,
 				}
 			}
 		default:
@@ -218,8 +218,8 @@ var _ HTTPHandler = (*HTTPWebMiddlewareCDNJS)(nil)
 var HTTPCDNJSReplacerContextKey any = &HTTPContextKey{"http-cdnjs-replacer"}
 
 type HTTPWebMiddlewareCDNJS struct {
-	Location string
 	Handler  HTTPHandler
+	Location string
 
 	prefix   string
 	handler  http.Handler
@@ -257,9 +257,9 @@ func (m *HTTPWebMiddlewareCDNJS) ServeHTTP(rw http.ResponseWriter, req *http.Req
 var _ HTTPHandler = (*HTTPWebMiddlewareAuthTable)(nil)
 
 type HTTPWebMiddlewareAuthTable struct {
+	Handler   HTTPHandler
 	AuthTable string
 	AllowAttr string
-	Handler   HTTPHandler
 
 	userchecker AuthUserChecker
 }
