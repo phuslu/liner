@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 
+	bufferpool "github.com/libp2p/go-buffer-pool"
 	"github.com/mileusna/useragent"
 	"github.com/phuslu/log"
 	"github.com/puzpuzpuz/xsync/v4"
@@ -54,7 +55,7 @@ type HTTPRequestInfo struct {
 	AuthUserInfo    AuthUserInfo
 	GeoIPInfo       GeoIPInfo
 	LogContext      log.Context
-	PolicyBuffer    WritableBytes
+	PolicyBuffer    bufferpool.Buffer
 }
 
 type HTTPContextKey struct {

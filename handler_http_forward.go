@@ -184,7 +184,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		}
 
 		var tmp [64]byte
-		policyName = strings.TrimSpace(b2s(append(tmp[:0], ri.PolicyBuffer.B...)))
+		policyName = strings.TrimSpace(b2s(append(tmp[:0], ri.PolicyBuffer.Bytes()...)))
 		log.Debug().Context(ri.LogContext).Interface("client_hello_info", ri.ClientHelloInfo).Interface("tls_connection_state", req.TLS).Str("forward_policy_name", policyName).Msg("execute forward_policy ok")
 
 		switch policyName {
@@ -306,7 +306,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 				http.Error(rw, err.Error(), http.StatusBadGateway)
 				return
 			}
-			tcpCongestion = b2s(ri.PolicyBuffer.B)
+			tcpCongestion = b2s(ri.PolicyBuffer.Bytes())
 		} else {
 			tcpCongestion = h.Config.Forward.TcpCongestion
 		}
@@ -388,7 +388,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			http.NotFound(rw, req)
 			return
 		}
-		dialerValue = strings.TrimSpace(b2s(ri.PolicyBuffer.B))
+		dialerValue = strings.TrimSpace(string(ri.PolicyBuffer.Bytes()))
 	}
 
 	var userLog = h.Config.Forward.Log
