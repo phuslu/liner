@@ -137,13 +137,6 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 			log.Info().Str("web_location", web.Location).Msgf("web location is not enabled, skip.")
 			continue
 		}
-		if forwardAuth := strings.TrimSpace(web.ForwardAuth); forwardAuth != "" {
-			router.handler = &HTTPWebMiddlewareForwardAuth{
-				ForwardAuth: forwardAuth,
-				Functions:   h.Functions,
-				Handler:     router.handler,
-			}
-		}
 		routers = append(routers, router)
 	}
 
@@ -299,22 +292,5 @@ func (m *HTTPWebMiddlewareAuthTable) ServeHTTP(rw http.ResponseWriter, req *http
 			return
 		}
 	}
-	m.Handler.ServeHTTP(rw, req)
-}
-
-var _ HTTPHandler = (*HTTPWebMiddlewareForwardAuth)(nil)
-
-type HTTPWebMiddlewareForwardAuth struct {
-	ForwardAuth string
-	Functions   template.FuncMap
-	Handler     HTTPHandler
-}
-
-func (m *HTTPWebMiddlewareForwardAuth) Load(ctx context.Context) error {
-	return m.Handler.Load(ctx)
-}
-
-func (m *HTTPWebMiddlewareForwardAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	// ri := req.Context().Value(HTTPRequestInfoContextKey).(*HTTPRequestInfo)
 	m.Handler.ServeHTTP(rw, req)
 }

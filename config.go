@@ -50,9 +50,8 @@ type HTTPConfig struct {
 		Log              bool     `json:"log" yaml:"log"`
 	} `json:"tunnel" yaml:"tunnel"`
 	Web []struct {
-		Location    string `json:"location" yaml:"location"`
-		ForwardAuth string `json:"forward_auth" yaml:"forward_auth"`
-		Dav         struct {
+		Location string `json:"location" yaml:"location"`
+		Dav      struct {
 			Enabled   bool   `json:"enabled" yaml:"enabled"`
 			Root      string `json:"root" yaml:"root"`
 			AuthTable string `json:"auth_table" yaml:"auth_table"`
