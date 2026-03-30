@@ -12,7 +12,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/pprof"
-	"net/url"
 	"strconv"
 	"strings"
 	"text/template"
@@ -314,7 +313,6 @@ type HTTPWebMiddlewareTinyAuth struct {
 	TinyAuth  string
 	Transport *http.Transport
 
-	tinyauth *url.URL
 	userinfo *lru.TTLCache[string, *TinyAuthUserInfo] // key: tinyauth-session-<id>=<uuid>
 }
 
@@ -333,11 +331,6 @@ type TinyAuthUserInfo struct {
 }
 
 func (m *HTTPWebMiddlewareTinyAuth) Load(ctx context.Context) error {
-	var err error
-	m.tinyauth, err = url.Parse(m.TinyAuth)
-	if err != nil {
-		return fmt.Errorf("invalid tinyauth url %q: %w", m.TinyAuth, err)
-	}
 	m.userinfo = lru.NewTTLCache[string, *TinyAuthUserInfo](1024)
 	return m.Handler.Load(ctx)
 }
@@ -352,11 +345,11 @@ func (m *HTTPWebMiddlewareTinyAuth) ServeHTTP(rw http.ResponseWriter, req *http.
 		}
 	}
 	if cookie == "" {
-		http.Redirect(rw, req, fmt.Sprintf("%s//%s", m.tinyauth.Scheme, m.tinyauth.Host), http.StatusTemporaryRedirect)
+		http.Redirect(rw, req, "https://"+m.TinyAuth, http.StatusTemporaryRedirect)
 		return
 	}
 	info, err, _ := m.userinfo.GetOrLoad(req.Context(), cookie, func(ctx context.Context, cookie string) (*TinyAuthUserInfo, time.Duration, error) {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, m.TinyAuth, nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("https://%s/api/context/user", m.TinyAuth), nil)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -384,7 +377,8 @@ func (m *HTTPWebMiddlewareTinyAuth) ServeHTTP(rw http.ResponseWriter, req *http.
 		return
 	}
 	if info.Status != http.StatusOK {
-		http.Error(rw, "invaild username or password", http.StatusForbidden)
+		http.Redirect(rw, req, "https://"+m.TinyAuth, http.StatusTemporaryRedirect)
+		// http.Error(rw, "invaild username or password", http.StatusForbidden)
 		return
 	}
 	m.Handler.ServeHTTP(rw, req)
