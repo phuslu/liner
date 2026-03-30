@@ -56,6 +56,7 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 			if table := web.Dav.AuthTable; table != "" {
 				router.handler = &HTTPWebMiddlewareAuthTable{
 					Handler:   router.handler,
+					Location:  router.location,
 					AuthTable: table,
 					AllowAttr: "allow_webdav",
 				}
@@ -81,13 +82,14 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 			if table := web.Index.AuthTable; table != "" {
 				router.handler = &HTTPWebMiddlewareAuthTable{
 					Handler:   router.handler,
+					Location:  router.location,
 					AuthTable: table,
 					AllowAttr: "allow_index",
 				}
 			}
 			router.handler = &HTTPWebMiddlewareCDNJS{
 				Handler:  router.handler,
-				Location: web.Location,
+				Location: router.location,
 			}
 		case web.Proxy.Pass != "":
 			router.handler = &HTTPWebProxyHandler{
@@ -102,6 +104,7 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 			if table := web.Proxy.AuthTable; table != "" {
 				router.handler = &HTTPWebMiddlewareAuthTable{
 					Handler:   router.handler,
+					Location:  router.location,
 					AuthTable: table,
 					AllowAttr: "allow_proxy",
 				}
@@ -109,7 +112,7 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 			if tiny := web.Proxy.TinyAuth; tiny != "" {
 				router.handler = &HTTPWebMiddlewareTinyAuth{
 					Handler:   router.handler,
-					Location:  web.Location,
+					Location:  router.location,
 					TinyAuth:  tiny,
 					Transport: h.Transport,
 				}
@@ -125,6 +128,7 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 			if table := web.Shell.AuthTable; table != "" {
 				router.handler = &HTTPWebMiddlewareAuthTable{
 					Handler:   router.handler,
+					Location:  router.location,
 					AuthTable: table,
 					AllowAttr: "allow_webshell",
 				}
@@ -132,14 +136,14 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 			if tiny := web.Shell.TinyAuth; tiny != "" {
 				router.handler = &HTTPWebMiddlewareTinyAuth{
 					Handler:   router.handler,
-					Location:  web.Location,
+					Location:  router.location,
 					TinyAuth:  tiny,
 					Transport: h.Transport,
 				}
 			}
 			router.handler = &HTTPWebMiddlewareCDNJS{
 				Handler:  router.handler,
-				Location: web.Location,
+				Location: router.location,
 			}
 		case web.Logtail.Enabled:
 			router.handler = &HTTPWebLogtailHandler{
@@ -149,6 +153,7 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 			if table := web.Logtail.AuthTable; table != "" {
 				router.handler = &HTTPWebMiddlewareAuthTable{
 					Handler:   router.handler,
+					Location:  router.location,
 					AuthTable: table,
 					AllowAttr: "allow_logtail",
 				}
@@ -277,14 +282,18 @@ func (m *HTTPWebMiddlewareCDNJS) ServeHTTP(rw http.ResponseWriter, req *http.Req
 var _ HTTPHandler = (*HTTPWebMiddlewareAuthTable)(nil)
 
 type HTTPWebMiddlewareAuthTable struct {
-	Handler   HTTPHandler
+	Handler  HTTPHandler
+	Location string
+
 	AuthTable string
 	AllowAttr string
 
+	prefix      string
 	userchecker AuthUserChecker
 }
 
 func (m *HTTPWebMiddlewareAuthTable) Load(ctx context.Context) error {
+	m.prefix = strings.TrimSuffix(m.Location, "/") + "/"
 	if m.AuthTable != "" {
 		loader := NewAuthUserLoaderFromTable(m.AuthTable)
 		_, err := loader.LoadAuthUsers(ctx)
@@ -298,7 +307,7 @@ func (m *HTTPWebMiddlewareAuthTable) Load(ctx context.Context) error {
 }
 
 func (m *HTTPWebMiddlewareAuthTable) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	if m.userchecker != nil {
+	if strings.HasPrefix(req.RequestURI, m.prefix) && m.userchecker != nil {
 		ri := req.Context().Value(HTTPRequestInfoContextKey).(*HTTPRequestInfo)
 		err := m.userchecker.CheckAuthUser(req.Context(), &ri.AuthUserInfo)
 		if err == nil && m.AllowAttr != "" {
