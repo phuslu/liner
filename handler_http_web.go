@@ -367,7 +367,7 @@ func (m *HTTPWebMiddlewareTinyAuth) ServeHTTP(rw http.ResponseWriter, req *http.
 			}
 		}
 		if cookie == "" {
-			http.Redirect(rw, req, "https://"+m.TinyAuth, http.StatusTemporaryRedirect)
+			http.Redirect(rw, req, fmt.Sprintf("https://%s/login?redirect_uri=https://%s%s", m.TinyAuth, req.Host, req.RequestURI), http.StatusTemporaryRedirect)
 			return
 		}
 		info, err, _ := m.userinfo.GetOrLoad(req.Context(), cookie, func(ctx context.Context, cookie string) (*TinyAuthUserInfo, time.Duration, error) {
@@ -399,7 +399,7 @@ func (m *HTTPWebMiddlewareTinyAuth) ServeHTTP(rw http.ResponseWriter, req *http.
 			return
 		}
 		if info.Status != http.StatusOK {
-			http.Redirect(rw, req, "https://"+m.TinyAuth, http.StatusTemporaryRedirect)
+			http.Redirect(rw, req, fmt.Sprintf("https://%s/login?redirect_uri=https://%s%s", m.TinyAuth, req.Host, req.RequestURI), http.StatusTemporaryRedirect)
 			// http.Error(rw, "invaild username or password", http.StatusForbidden)
 			return
 		}
