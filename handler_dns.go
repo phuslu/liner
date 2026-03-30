@@ -16,6 +16,7 @@ import (
 
 	"github.com/phuslu/fastdns"
 	"github.com/phuslu/log"
+	"github.com/valyala/bytebufferpool"
 )
 
 type DnsHandler struct {
@@ -29,14 +30,13 @@ type DnsHandler struct {
 }
 
 type DnsRequest struct {
-	LogContext   log.Context
-	LocalAddr    netip.AddrPort
-	RemoteAddr   netip.AddrPort
-	Message      *fastdns.Message
-	PolicyBuffer WritableBytes
-	domain       []byte
-	Proto        string
-	QType        string
+	LogContext log.Context
+	LocalAddr  netip.AddrPort
+	RemoteAddr netip.AddrPort
+	Message    *fastdns.Message
+	domain     []byte
+	Proto      string
+	QType      string
 }
 
 func (req *DnsRequest) Domain() string {
@@ -47,7 +47,6 @@ var drPool = sync.Pool{
 	New: func() any {
 		r := new(DnsRequest)
 		r.Message = fastdns.AcquireMessage()
-		r.PolicyBuffer.B = make([]byte, 0, 256)
 		r.domain = make([]byte, 0, 256)
 		return r
 	},
@@ -89,7 +88,6 @@ func (h *DnsHandler) Serve(ctx context.Context, conn *net.UDPConn) {
 			addrport = netip.AddrPortFrom(addr.Unmap(), addrport.Port())
 		}
 		req.Message.Raw = req.Message.Raw[:n]
-		req.PolicyBuffer.Reset()
 		req.domain = req.domain[:0]
 		req.Proto = "dns"
 		req.QType = ""
@@ -169,13 +167,15 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, rw fastdns.ResponseWriter, re
 		req.domain = AppendToLower(req.domain[:0], b2s(req.Message.Domain))
 		req.QType = req.Message.Question.Type.String()
 
-		req.PolicyBuffer.Reset()
+		bb := bytebufferpool.Get()
+		defer bytebufferpool.Put(bb)
+		bb.Reset()
 		if obfuscated {
-			err = h.policy.Execute(&req.PolicyBuffer, map[string]any{
+			err = h.policy.Execute(bb, map[string]any{
 				"Request": req,
 			})
 		} else {
-			err = h.policy.Execute(&req.PolicyBuffer, struct {
+			err = h.policy.Execute(bb, struct {
 				Request *DnsRequest
 			}{
 				Request: req,
@@ -186,7 +186,7 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, rw fastdns.ResponseWriter, re
 			return
 		}
 
-		policyName := strings.TrimSpace(b2s(req.PolicyBuffer.B))
+		policyName := strings.TrimSpace(bb.String())
 		log.Debug().Context(req.LogContext).Str("req_domain", req.Domain()).Str("req_qtype", req.QType).Str("forward_policy_name", policyName).Msg("execute forward_policy ok")
 
 		toaddrs := func(dst []netip.Addr, ss []string) []netip.Addr {

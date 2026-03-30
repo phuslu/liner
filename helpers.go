@@ -381,25 +381,6 @@ func AppendReadFrom(dst []byte, r io.Reader) ([]byte, int64, error) {
 	}
 }
 
-var _ io.Writer = (*WritableBytes)(nil)
-
-type WritableBytes struct {
-	B []byte
-}
-
-func (w *WritableBytes) Write(b []byte) (int, error) {
-	w.B = append(w.B, b...)
-	return len(b), nil
-}
-
-func (w *WritableBytes) Reset() {
-	if cap(w.B) <= 1024 {
-		w.B = w.B[:0]
-	} else {
-		w.B = nil
-	}
-}
-
 func AESCBCBase64Decrypt(text string, ekey []byte, ikey []byte) ([]byte, error) {
 	if n := len(text) % 4; n > 0 {
 		text += string([]byte{'=', '=', '='}[:4-n])
@@ -499,6 +480,7 @@ func (c *Chacha20NetConn) Write(b []byte) (n int, err error) {
 	if c.Writer != nil {
 		bb := bytebufferpool.Get()
 		defer bytebufferpool.Put(bb)
+		bb.Reset()
 		bb.Write(b)
 		c.Writer.XORKeyStream(bb.B, bb.B)
 		n, err = c.Conn.Write(bb.B)

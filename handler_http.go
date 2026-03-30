@@ -54,7 +54,6 @@ type HTTPRequestInfo struct {
 	AuthUserInfo    AuthUserInfo
 	GeoIPInfo       GeoIPInfo
 	LogContext      log.Context
-	PolicyBuffer    WritableBytes
 }
 
 type HTTPContextKey struct {
@@ -248,8 +247,6 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		Str("remote_isp", ri.GeoIPInfo.ISP).
 		Str("remote_connection_type", ri.GeoIPInfo.ConnectionType).
 		Value()
-
-	ri.PolicyBuffer.Reset()
 
 	req = req.WithContext(context.WithValue(req.Context(), HTTPRequestInfoContextKey, ri))
 

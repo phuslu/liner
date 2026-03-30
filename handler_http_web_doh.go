@@ -15,6 +15,7 @@ import (
 
 	"github.com/phuslu/fastdns"
 	"github.com/phuslu/log"
+	"github.com/valyala/bytebufferpool"
 )
 
 type HTTPWebDohHandler struct {
@@ -87,14 +88,16 @@ func (h *HTTPWebDohHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		dr.domain = AppendToLower(dr.domain[:0], b2s(dr.Message.Domain))
 		dr.QType = dr.Message.Question.Type.String()
 
-		ri.PolicyBuffer.Reset()
+		bb := bytebufferpool.Get()
+		defer bytebufferpool.Put(bb)
+		bb.Reset()
 		if obfuscated {
-			err = h.policy.Execute(&ri.PolicyBuffer, map[string]any{
+			err = h.policy.Execute(bb, map[string]any{
 				"Request": req,
 				"Dns":     dr,
 			})
 		} else {
-			err = h.policy.Execute(&ri.PolicyBuffer, struct {
+			err = h.policy.Execute(bb, struct {
 				Request *http.Request
 				Dns     *DnsRequest
 			}{
@@ -107,7 +110,7 @@ func (h *HTTPWebDohHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 			return
 		}
 
-		policyName := strings.TrimSpace(b2s(ri.PolicyBuffer.B))
+		policyName := strings.TrimSpace(bb.String())
 
 		if code, _ := strconv.Atoi(policyName); 100 <= code && code <= 999 {
 			// msg := fmt.Sprintf("%d %s", code, http.StatusText(code))

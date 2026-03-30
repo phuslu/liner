@@ -21,6 +21,7 @@ import (
 
 	"github.com/mileusna/useragent"
 	"github.com/phuslu/log"
+	"github.com/valyala/bytebufferpool"
 	"golang.org/x/net/publicsuffix"
 )
 
@@ -147,9 +148,11 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 	policyName := h.Config.Forward.Policy
 	speedLimit := h.Config.Forward.SpeedLimit
 	if h.policy != nil {
-		ri.PolicyBuffer.Reset()
+		bb := bytebufferpool.Get()
+		defer bytebufferpool.Put(bb)
+		bb.Reset()
 		if obfuscated {
-			err = h.policy.Execute(&ri.PolicyBuffer, map[string]any{
+			err = h.policy.Execute(bb, map[string]any{
 				"Request":         req,
 				"RealIP":          ri.RealIP,
 				"ClientHelloInfo": ri.ClientHelloInfo,
@@ -159,7 +162,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 				"ServerAddr":      ri.ServerAddr,
 			})
 		} else {
-			err = h.policy.Execute(&ri.PolicyBuffer, struct {
+			err = h.policy.Execute(bb, struct {
 				Request         *http.Request
 				RealIP          netip.Addr
 				ClientHelloInfo *tls.ClientHelloInfo
@@ -183,8 +186,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			return
 		}
 
-		var tmp [64]byte
-		policyName = strings.TrimSpace(b2s(append(tmp[:0], ri.PolicyBuffer.B...)))
+		policyName = strings.TrimSpace(bb.String())
 		log.Debug().Context(ri.LogContext).Interface("client_hello_info", ri.ClientHelloInfo).Interface("tls_connection_state", req.TLS).Str("forward_policy_name", policyName).Msg("execute forward_policy ok")
 
 		switch policyName {
@@ -270,10 +272,12 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 	if ri.ClientConnOps.SupportTCP() && h.Config.Forward.TcpCongestion != "" {
 		var tcpCongestion string
 		if h.tcpcongestion != nil {
-			ri.PolicyBuffer.Reset()
+			bb := bytebufferpool.Get()
+			defer bytebufferpool.Put(bb)
+			bb.Reset()
 			var err error
 			if obfuscated {
-				err = h.tcpcongestion.Execute(&ri.PolicyBuffer, map[string]any{
+				err = h.tcpcongestion.Execute(bb, map[string]any{
 					"Request":         req,
 					"RealIP":          ri.RealIP,
 					"ClientHelloInfo": ri.ClientHelloInfo,
@@ -283,7 +287,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 					"User":            ri.ProxyUserInfo,
 				})
 			} else {
-				err = h.tcpcongestion.Execute(&ri.PolicyBuffer, struct {
+				err = h.tcpcongestion.Execute(bb, struct {
 					Request         *http.Request
 					RealIP          netip.Addr
 					ClientHelloInfo *tls.ClientHelloInfo
@@ -306,7 +310,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 				http.Error(rw, err.Error(), http.StatusBadGateway)
 				return
 			}
-			tcpCongestion = b2s(ri.PolicyBuffer.B)
+			tcpCongestion = b2s(bb.B)
 		} else {
 			tcpCongestion = h.Config.Forward.TcpCongestion
 		}
@@ -352,10 +356,12 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 
 	var dialerValue = h.Config.Forward.Dialer
 	if h.dialer != nil {
-		ri.PolicyBuffer.Reset()
+		bb := bytebufferpool.Get()
+		defer bytebufferpool.Put(bb)
+		bb.Reset()
 		var err error
 		if obfuscated {
-			err = h.dialer.Execute(&ri.PolicyBuffer, map[string]any{
+			err = h.dialer.Execute(bb, map[string]any{
 				"Request":         req,
 				"RealIP":          ri.RealIP,
 				"ClientHelloInfo": ri.ClientHelloInfo,
@@ -365,7 +371,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 				"User":            ri.ProxyUserInfo,
 			})
 		} else {
-			err = h.dialer.Execute(&ri.PolicyBuffer, struct {
+			err = h.dialer.Execute(bb, struct {
 				Request         *http.Request
 				RealIP          netip.Addr
 				ClientHelloInfo *tls.ClientHelloInfo
@@ -388,7 +394,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			http.NotFound(rw, req)
 			return
 		}
-		dialerValue = strings.TrimSpace(b2s(ri.PolicyBuffer.B))
+		dialerValue = strings.TrimSpace(bb.String())
 	}
 
 	var userLog = h.Config.Forward.Log

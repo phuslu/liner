@@ -88,9 +88,11 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	case h.proxypass.URL != nil:
 		proxypass = h.proxypass.URL
 	default:
-		ri.PolicyBuffer.Reset()
+		bb := bytebufferpool.Get()
+		defer bytebufferpool.Put(bb)
+		bb.Reset()
 		if obfuscated {
-			h.proxypass.Template.Execute(&ri.PolicyBuffer, map[string]any{
+			h.proxypass.Template.Execute(bb, map[string]any{
 				"Request":         req,
 				"RealIP":          ri.RealIP,
 				"ClientHelloInfo": ri.ClientHelloInfo,
@@ -99,7 +101,7 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 				"ServerAddr":      ri.ServerAddr,
 			})
 		} else {
-			h.proxypass.Template.Execute(&ri.PolicyBuffer, struct {
+			h.proxypass.Template.Execute(bb, struct {
 				Request         *http.Request
 				RealIP          netip.Addr
 				ClientHelloInfo *tls.ClientHelloInfo
@@ -116,7 +118,7 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 			})
 		}
 		var err error
-		proxypass, err = url.Parse(strings.TrimSpace(b2s(ri.PolicyBuffer.B)))
+		proxypass, err = url.Parse(strings.TrimSpace(bb.String()))
 		if err != nil {
 			http.Error(rw, fmt.Sprintf("bad proxypass %+v", proxypass), http.StatusServiceUnavailable)
 			return

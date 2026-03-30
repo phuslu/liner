@@ -151,11 +151,10 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 		}
 	}
 
-	bb := bytebufferpool.Get()
-	defer bytebufferpool.Put(bb)
-
 	var policyName = h.Config.Forward.Policy
 	if h.policy != nil {
+		bb := bytebufferpool.Get()
+		defer bytebufferpool.Put(bb)
 		bb.Reset()
 		var err error
 		if obfuscated {
@@ -190,6 +189,8 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 
 	var dialerValue = h.Config.Forward.Dialer
 	if h.dialer != nil {
+		bb := bytebufferpool.Get()
+		defer bytebufferpool.Put(bb)
 		bb.Reset()
 		var err error
 		if obfuscated {
