@@ -107,7 +107,7 @@ func (h *HTTPWebDohHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 			return
 		}
 
-		policyName := strings.TrimSpace(b2s(ri.PolicyBuffer.Bytes()))
+		policyName := strings.TrimSpace(b2s(ri.PolicyBuffer.B))
 
 		if code, _ := strconv.Atoi(policyName); 100 <= code && code <= 999 {
 			// msg := fmt.Sprintf("%d %s", code, http.StatusText(code))

@@ -14,7 +14,6 @@ import (
 	"text/template"
 	"time"
 
-	bufferpool "github.com/libp2p/go-buffer-pool"
 	"github.com/phuslu/fastdns"
 	"github.com/phuslu/log"
 )
@@ -34,7 +33,7 @@ type DnsRequest struct {
 	LocalAddr    netip.AddrPort
 	RemoteAddr   netip.AddrPort
 	Message      *fastdns.Message
-	PolicyBuffer bufferpool.Buffer
+	PolicyBuffer WritableBytes
 	domain       []byte
 	Proto        string
 	QType        string
@@ -48,6 +47,7 @@ var drPool = sync.Pool{
 	New: func() any {
 		r := new(DnsRequest)
 		r.Message = fastdns.AcquireMessage()
+		r.PolicyBuffer.B = make([]byte, 0, 256)
 		r.domain = make([]byte, 0, 256)
 		return r
 	},
@@ -186,7 +186,7 @@ func (h *DnsHandler) ServeDNS(ctx context.Context, rw fastdns.ResponseWriter, re
 			return
 		}
 
-		policyName := strings.TrimSpace(string(req.PolicyBuffer.Bytes()))
+		policyName := strings.TrimSpace(b2s(req.PolicyBuffer.B))
 		log.Debug().Context(req.LogContext).Str("req_domain", req.Domain()).Str("req_qtype", req.QType).Str("forward_policy_name", policyName).Msg("execute forward_policy ok")
 
 		toaddrs := func(dst []netip.Addr, ss []string) []netip.Addr {

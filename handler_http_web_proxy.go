@@ -116,7 +116,7 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 			})
 		}
 		var err error
-		proxypass, err = url.Parse(strings.TrimSpace(b2s(ri.PolicyBuffer.Bytes())))
+		proxypass, err = url.Parse(strings.TrimSpace(b2s(ri.PolicyBuffer.B)))
 		if err != nil {
 			http.Error(rw, fmt.Sprintf("bad proxypass %+v", proxypass), http.StatusServiceUnavailable)
 			return
