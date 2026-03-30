@@ -106,6 +106,13 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 					AllowAttr: "allow_proxy",
 				}
 			}
+			if tiny := web.Proxy.TinyAuth; tiny != "" {
+				router.handler = &HTTPWebMiddlewareTinyAuth{
+					Handler:   router.handler,
+					TinyAuth:  tiny,
+					Transport: h.Transport,
+				}
+			}
 		case web.Shell.Enabled:
 			router.handler = &HTTPWebShellHandler{
 				Location:  web.Location,

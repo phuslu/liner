@@ -73,6 +73,7 @@ type HTTPConfig struct {
 		Proxy struct {
 			Pass        string `json:"pass" yaml:"pass"`
 			AuthTable   string `json:"auth_table" yaml:"auth_table"`
+			TinyAuth    string `json:"tiny_auth" yaml:"tiny_auth"`
 			StripPrefix string `json:"strip_prefix" yaml:"strip_prefix"`
 			SetHeaders  string `json:"set_headers" yaml:"set_headers"`
 			DumpFailure bool   `json:"dump_failure" yaml:"dump_failure"`
