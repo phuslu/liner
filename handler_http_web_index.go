@@ -58,9 +58,9 @@ func (h *HTTPWebIndexHandler) Load(ctx context.Context) (err error) {
 	}
 
 	markdown := markdownHTML
-	if replacer != nil {
-		markdown = replacer.Replace(markdown)
-	}
+	// if replacer != nil {
+	// 	markdown = replacer.Replace(markdown)
+	// }
 	h.markdown, err = template.New("markdown").Funcs(h.Functions).Parse(markdown)
 	if err != nil {
 		return
