@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/pprof"
+	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -257,7 +258,14 @@ type HTTPWebMiddlewareCDNJS struct {
 var cdnjsZip []byte
 
 func (m *HTTPWebMiddlewareCDNJS) Load(ctx context.Context) error {
-	zipreader, err := zip.NewReader(bytes.NewReader(cdnjsZip), int64(len(cdnjsZip)))
+	var cdnjsData []byte
+	if data, err := os.ReadFile("cdnjs.zip"); err == nil {
+		cdnjsData = data
+	} else {
+		cdnjsData = cdnjsZip
+	}
+
+	zipreader, err := zip.NewReader(bytes.NewReader(cdnjsData), int64(len(cdnjsData)))
 	if err != nil {
 		return err
 	}
