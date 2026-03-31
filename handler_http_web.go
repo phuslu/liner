@@ -3,6 +3,7 @@ package main
 import (
 	"archive/zip"
 	"bytes"
+	"cmp"
 	"context"
 	_ "embed"
 	"encoding/json"
@@ -12,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/pprof"
+	"path"
 	"strconv"
 	"strings"
 	"text/template"
@@ -246,9 +248,9 @@ type HTTPWebMiddlewareCDNJS struct {
 	Handler  HTTPHandler
 	Location string
 
-	prefix   string
-	handler  http.Handler
-	replacer *strings.Replacer
+	prefix     string
+	filesystem http.FileSystem
+	replacer   *strings.Replacer
 }
 
 //go:embed cdnjs.zip
@@ -261,7 +263,7 @@ func (m *HTTPWebMiddlewareCDNJS) Load(ctx context.Context) error {
 	}
 
 	m.prefix = strings.TrimSuffix(m.Location, "/") + "/.cdnjs/"
-	m.handler = http.StripPrefix(strings.TrimSuffix(m.prefix, "/"), http.FileServer(http.FS(zipreader)))
+	m.filesystem = http.FS(zipreader)
 	m.replacer = strings.NewReplacer(
 		"https://cdnjs.cloudflare.com/", m.prefix+"cdnjs.cloudflare.com/",
 		"https://cdn.jsdelivr.net/", m.prefix+"cdn.jsdelivr.net/",
@@ -273,7 +275,21 @@ func (m *HTTPWebMiddlewareCDNJS) Load(ctx context.Context) error {
 func (m *HTTPWebMiddlewareCDNJS) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	// ri := req.Context().Value(HTTPRequestInfoContextKey).(*HTTPRequestInfo)
 	if strings.HasPrefix(req.RequestURI, m.prefix) {
-		m.handler.ServeHTTP(rw, req)
+		name := req.RequestURI[len(m.prefix):]
+		file, err := m.filesystem.Open(name)
+		if err != nil {
+			http.Redirect(rw, req, "https://"+name, http.StatusTemporaryRedirect)
+			return
+		}
+		defer file.Close()
+		rw.Header().Set("cache-control", "public, max-age=30672000")
+		rw.Header().Set("access-control-allow-origin", "*")
+		if fi, err := file.Stat(); err == nil {
+			rw.Header().Set("last-modified", fi.ModTime().Format(time.RFC1123))
+			rw.Header().Set("content-length", strconv.FormatInt(fi.Size(), 10))
+		}
+		rw.Header().Set("content-type", cmp.Or(GetMimeTypeByExtension(path.Ext(name)), "text/plain; charset=utf-8"))
+		io.Copy(rw, file)
 		return
 	}
 	m.Handler.ServeHTTP(rw, req)
