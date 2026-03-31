@@ -288,7 +288,7 @@ func (m *HTTPWebMiddlewareCDNJS) ServeHTTP(rw http.ResponseWriter, req *http.Req
 		name := req.RequestURI[len(m.prefix):]
 		file, err := m.filesystem.Open(name)
 		if err != nil {
-			http.Redirect(rw, req, "https://"+name, http.StatusTemporaryRedirect)
+			http.Redirect(rw, req, "https://"+name, http.StatusFound)
 			return
 		}
 		defer file.Close()
