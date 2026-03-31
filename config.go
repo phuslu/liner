@@ -65,6 +65,7 @@ type HTTPConfig struct {
 		Index struct {
 			Root      string `json:"root" yaml:"root"`
 			AuthTable string `json:"auth_table" yaml:"auth_table"`
+			CdnjsZip  string `json:"cdnjs_zip" yaml:"cdnjs_zip"`
 			Headers   string `json:"headers" yaml:"headers"`
 			Charset   string `json:"charset" yaml:"charset"`
 			Body      string `json:"body" yaml:"body"`

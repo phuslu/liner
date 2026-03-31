@@ -90,9 +90,11 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 					AllowAttr: "allow_index",
 				}
 			}
-			router.handler = &HTTPWebMiddlewareCDNJS{
-				Handler:  router.handler,
-				Location: router.location,
+			if cdnjs := web.Index.CdnjsZip; cdnjs != "" {
+				router.handler = &HTTPWebMiddlewareCDNJS{
+					Handler:  router.handler,
+					Location: router.location,
+				}
 			}
 		case web.Proxy.Pass != "":
 			router.handler = &HTTPWebProxyHandler{
