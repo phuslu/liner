@@ -22,6 +22,7 @@ import (
 
 	"github.com/phuslu/log"
 	"github.com/phuslu/lru"
+	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/smallnest/ringbuffer"
 )
 
@@ -94,6 +95,7 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 				router.handler = &HTTPWebMiddlewareCDNJS{
 					Handler:  router.handler,
 					Location: router.location,
+					CdnjsZip: cdnjs,
 				}
 			}
 		case web.Proxy.Pass != "":
@@ -149,6 +151,7 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 			router.handler = &HTTPWebMiddlewareCDNJS{
 				Handler:  router.handler,
 				Location: router.location,
+				CdnjsZip: "",
 			}
 		case web.Logtail.Enabled:
 			router.handler = &HTTPWebLogtailHandler{
@@ -246,13 +249,16 @@ func (h *HTTPWebHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 var _ HTTPHandler = (*HTTPWebMiddlewareCDNJS)(nil)
 
 var HTTPCDNJSReplacerContextKey any = &HTTPContextKey{"http-cdnjs-replacer"}
+var HTTPCDNJSFilesytems = xsync.NewMap[string, http.FileSystem]()
 
 type HTTPWebMiddlewareCDNJS struct {
 	Handler  HTTPHandler
 	Location string
 
-	prefix     string
+	CdnjsZip string
+
 	filesystem http.FileSystem
+	prefix     string
 	replacer   *strings.Replacer
 }
 
@@ -260,20 +266,19 @@ type HTTPWebMiddlewareCDNJS struct {
 var cdnjsZip []byte
 
 func (m *HTTPWebMiddlewareCDNJS) Load(ctx context.Context) error {
-	var cdnjsData []byte
-	if data, err := os.ReadFile("cdnjs.zip"); err == nil {
-		cdnjsData = data
-	} else {
-		cdnjsData = cdnjsZip
-	}
-
-	zipreader, err := zip.NewReader(bytes.NewReader(cdnjsData), int64(len(cdnjsData)))
-	if err != nil {
-		return err
-	}
+	m.filesystem, _ = HTTPCDNJSFilesytems.LoadOrCompute(m.CdnjsZip, func() (http.FileSystem, bool) {
+		if m.CdnjsZip != "" {
+			if data, err := os.ReadFile(m.CdnjsZip); err == nil {
+				if zipreader, err := zip.NewReader(bytes.NewReader(data), int64(len(data))); err == nil {
+					return http.FS(zipreader), false
+				}
+			}
+		}
+		zipreader, _ := zip.NewReader(bytes.NewReader(cdnjsZip), int64(len(cdnjsZip)))
+		return http.FS(zipreader), false
+	})
 
 	m.prefix = strings.TrimSuffix(m.Location, "/") + "/.cdnjs/"
-	m.filesystem = http.FS(zipreader)
 	m.replacer = strings.NewReplacer(
 		"https://cdnjs.cloudflare.com/", m.prefix+"cdnjs.cloudflare.com/",
 		"https://cdn.jsdelivr.net/", m.prefix+"cdn.jsdelivr.net/",
