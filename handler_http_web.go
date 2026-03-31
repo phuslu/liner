@@ -343,8 +343,9 @@ func (m *HTTPWebMiddlewareAuthTable) ServeHTTP(rw http.ResponseWriter, req *http
 var _ HTTPHandler = (*HTTPWebMiddlewareTinyAuth)(nil)
 
 type HTTPWebMiddlewareTinyAuth struct {
-	Handler   HTTPHandler
-	Location  string
+	Handler  HTTPHandler
+	Location string
+
 	TinyAuth  string
 	Transport *http.Transport
 
