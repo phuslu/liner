@@ -5,9 +5,11 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/netip"
 	"os"
+	"strconv"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -46,7 +48,123 @@ type DailerController struct {
 }
 
 func (dc DailerController) Control(network, addr string, c syscall.RawConn) (err error) {
-	return errors.ErrUnsupported
+	if dc.Interface == "" {
+		return nil
+	}
+
+	text := strings.TrimSpace(dc.Interface)
+	if ip, parseErr := netip.ParseAddr(text); parseErr == nil && ip.IsValid() {
+		var bindErr error
+		if err = c.Control(func(fd uintptr) {
+			var sa syscall.Sockaddr
+			switch {
+			case ip.Is4():
+				addr := ip.As4()
+				sa = &syscall.SockaddrInet4{Addr: addr}
+			case ip.Is4In6():
+				addr := ip.Unmap().As4()
+				sa = &syscall.SockaddrInet4{Addr: addr}
+			case ip.Is6():
+				addr := ip.As16()
+				sa6 := &syscall.SockaddrInet6{}
+				copy(sa6.Addr[:], addr[:])
+				sa = sa6
+			default:
+				bindErr = errors.New("invalid ip address")
+				return
+			}
+			if err := syscall.Bind(int(fd), sa); err != nil {
+				bindErr = os.NewSyscallError("bind", err)
+			}
+		}); err != nil {
+			return err
+		}
+		return bindErr
+	}
+
+	ifi, err := net.InterfaceByName(text)
+	if err != nil {
+		if idx, convErr := strconv.Atoi(text); convErr == nil && idx > 0 {
+			ifi, err = net.InterfaceByIndex(idx)
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("network interface not found: %s", text)
+	}
+	if ifi.Index <= 0 {
+		return fmt.Errorf("invalid interface index for %s", text)
+	}
+
+	var controlErr error
+	if err = c.Control(func(fd uintptr) {
+		family := 0
+		host := addr
+		if h, _, splitErr := net.SplitHostPort(addr); splitErr == nil {
+			host = h
+		}
+		if ipAddr, parseErr := netip.ParseAddr(host); parseErr == nil && ipAddr.IsValid() {
+			if ipAddr.Is6() && !ipAddr.Is4In6() {
+				family = 6
+			} else {
+				family = 4
+			}
+		} else {
+			switch strings.ToLower(network) {
+			case "tcp4", "udp4", "ip4":
+				family = 4
+			case "tcp6", "udp6", "ip6":
+				family = 6
+			}
+		}
+
+		switch family {
+		case 4:
+			if soErr := syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IP, syscall.IP_BOUND_IF, ifi.Index); soErr != nil {
+				controlErr = os.NewSyscallError("setsockopt IP_BOUND_IF", soErr)
+			}
+		case 6:
+			if soErr := syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IPV6, syscall.IPV6_BOUND_IF, ifi.Index); soErr != nil {
+				controlErr = os.NewSyscallError("setsockopt IPV6_BOUND_IF", soErr)
+			}
+		default:
+			if soErr := syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IP, syscall.IP_BOUND_IF, ifi.Index); soErr == nil {
+				controlErr = nil
+				return
+			} else {
+				ignore := false
+				if errno, ok := soErr.(syscall.Errno); ok {
+					switch errno {
+					case syscall.EAFNOSUPPORT, syscall.EPROTONOSUPPORT, syscall.ENOPROTOOPT, syscall.EOPNOTSUPP, syscall.ENOTSUP:
+						ignore = true
+					}
+				}
+				if !ignore {
+					controlErr = os.NewSyscallError("setsockopt IP_BOUND_IF", soErr)
+					return
+				}
+			}
+			if soErr := syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IPV6, syscall.IPV6_BOUND_IF, ifi.Index); soErr == nil {
+				controlErr = nil
+				return
+			} else {
+				ignore := false
+				if errno, ok := soErr.(syscall.Errno); ok {
+					switch errno {
+					case syscall.EAFNOSUPPORT, syscall.EPROTONOSUPPORT, syscall.ENOPROTOOPT, syscall.EOPNOTSUPP, syscall.ENOTSUP:
+						ignore = true
+					}
+				}
+				if !ignore {
+					controlErr = os.NewSyscallError("setsockopt IPV6_BOUND_IF", soErr)
+					return
+				}
+				controlErr = errors.New("failed to bind socket to interface")
+			}
+		}
+	}); err != nil {
+		return err
+	}
+	return controlErr
 }
 
 // TCPInfo mirrors the tcp_connection_info struct from macOS <netinet/tcp.h>.
