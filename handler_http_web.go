@@ -257,8 +257,8 @@ type HTTPWebMiddlewareCDNJS struct {
 
 	CdnjsZip string
 
-	filesystem http.FileSystem
 	prefix     string
+	filesystem http.FileSystem
 	replacer   *strings.Replacer
 }
 
@@ -266,6 +266,8 @@ type HTTPWebMiddlewareCDNJS struct {
 var cdnjsZip []byte
 
 func (m *HTTPWebMiddlewareCDNJS) Load(ctx context.Context) error {
+	m.prefix = strings.TrimSuffix(m.Location, "/") + "/.cdnjs/"
+
 	m.filesystem, _ = HTTPCDNJSFilesytems.LoadOrCompute(m.CdnjsZip, func() (http.FileSystem, bool) {
 		if m.CdnjsZip != "" {
 			if data, err := os.ReadFile(m.CdnjsZip); err == nil {
@@ -278,11 +280,17 @@ func (m *HTTPWebMiddlewareCDNJS) Load(ctx context.Context) error {
 		return http.FS(zipreader), false
 	})
 
-	m.prefix = strings.TrimSuffix(m.Location, "/") + "/.cdnjs/"
-	m.replacer = strings.NewReplacer(
-		"https://cdnjs.cloudflare.com/", m.prefix+"cdnjs.cloudflare.com/",
-		"https://cdn.jsdelivr.net/", m.prefix+"cdn.jsdelivr.net/",
-	)
+	replaces := make([]string, 0)
+	if root, err := m.filesystem.Open("/"); err == nil {
+		if infos, err := root.Readdir(-1); err == nil {
+			for _, info := range infos {
+				if info.IsDir() {
+					replaces = append(replaces, "https://"+info.Name()+"/", m.prefix+info.Name()+"/")
+				}
+			}
+		}
+	}
+	m.replacer = strings.NewReplacer(replaces...)
 
 	return m.Handler.Load(context.WithValue(ctx, HTTPCDNJSReplacerContextKey, m.replacer))
 }
