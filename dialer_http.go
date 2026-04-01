@@ -55,7 +55,7 @@ func (d *HTTPDialer) init() error {
 	d.tlsConfig = &tls.Config{
 		InsecureSkipVerify: d.Insecure,
 		ServerName:         d.Host,
-		ClientSessionCache: tls.NewLRUClientSessionCache(1024),
+		ClientSessionCache: tls.NewLRUClientSessionCache(2048),
 	}
 	if d.CACert != "" && d.ClientKey != "" && d.ClientCert != "" {
 		caData, err := os.ReadFile(d.CACert)

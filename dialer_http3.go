@@ -62,7 +62,7 @@ func (d *HTTP3Dialer) init() {
 					NextProtos:         []string{"h3"},
 					InsecureSkipVerify: d.Insecure,
 					ServerName:         d.Host,
-					ClientSessionCache: tls.NewLRUClientSessionCache(1024),
+					ClientSessionCache: tls.NewLRUClientSessionCache(2048),
 				},
 				&quic.Config{
 					DisablePathMTUDiscovery:    false,

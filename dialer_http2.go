@@ -71,7 +71,7 @@ func (d *HTTP2Dialer) DialContext(ctx context.Context, network, addr string) (ne
 					NextProtos:         []string{"h2"},
 					InsecureSkipVerify: d.Insecure,
 					ServerName:         d.Host,
-					ClientSessionCache: utls.NewLRUClientSessionCache(1024),
+					ClientSessionCache: utls.NewLRUClientSessionCache(2048),
 				}
 				if d.CACert != "" && d.ClientKey != "" && d.ClientCert != "" {
 					caData, err := os.ReadFile(d.CACert)
