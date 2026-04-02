@@ -1348,8 +1348,15 @@ func (c *goshAutoCompleter) Do(line []rune, pos int) ([][]rune, int) {
 	if len(commonRunes) > prefixLen {
 		addition = append(addition, commonRunes[prefixLen:]...)
 	}
-	if len(options) == 1 && !strings.HasSuffix(options[0], string(os.PathSeparator)) {
-		addition = append(addition, ' ')
+	if len(options) == 1 {
+		hasTrailingSep := goshHasTrailingPathSeparator(options[0])
+		if c.completionOptionIsDir(ctx, options[0]) {
+			if !hasTrailingSep {
+				addition = append(addition, rune(os.PathSeparator))
+			}
+		} else if !hasTrailingSep {
+			addition = append(addition, ' ')
+		}
 	}
 	if len(addition) > 0 {
 		return [][]rune{addition}, prefixLen
@@ -1649,6 +1656,35 @@ func (c *goshAutoCompleter) pathCandidates(prefix string, dirsOnly bool) []strin
 	return matches
 }
 
+func (c *goshAutoCompleter) completionOptionIsDir(ctx goshCompletionContext, option string) bool {
+	if option == "" {
+		return false
+	}
+	if goshHasTrailingPathSeparator(option) {
+		return true
+	}
+	if ctx.isCommand && !strings.ContainsAny(ctx.prefix, "/\\") {
+		return false
+	}
+	resolved := option
+	if expanded, ok := goshExpandTilde(resolved, c.userHome()); ok {
+		resolved = expanded
+	}
+	if !filepath.IsAbs(resolved) {
+		base := c.runner.Dir
+		if base == "" {
+			if wd, err := os.Getwd(); err == nil {
+				base = wd
+			}
+		}
+		resolved = filepath.Join(base, resolved)
+	}
+	if info, err := os.Stat(resolved); err == nil {
+		return info.IsDir()
+	}
+	return false
+}
+
 func (c *goshAutoCompleter) printMatches(options []string) {
 	if len(options) == 0 || c.stdout == nil {
 		return
@@ -1806,6 +1842,13 @@ func goshSplitPathPrefix(prefix string) (string, string) {
 		return "", prefix
 	}
 	return prefix[:idx+1], prefix[idx+1:]
+}
+
+func goshHasTrailingPathSeparator(val string) bool {
+	if val == "" {
+		return false
+	}
+	return strings.HasSuffix(val, "/") || strings.HasSuffix(val, "\\")
 }
 
 func goshIsCompletionBreak(r rune) bool {
