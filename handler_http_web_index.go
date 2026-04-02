@@ -47,12 +47,12 @@ func (h *HTTPWebIndexHandler) Load(ctx context.Context) (err error) {
 		}
 	}
 
-	h.headers, err = template.New(h.Headers).Funcs(h.Functions).Parse(h.Headers)
+	h.headers, err = template.New("http_web_index_headers").Funcs(h.Functions).Parse(h.Headers)
 	if err != nil {
 		return
 	}
 
-	h.body, err = template.New("autoindex").Funcs(h.Functions).Parse(h.Body)
+	h.body, err = template.New("http_web_index_body").Funcs(h.Functions).Parse(h.Body)
 	if err != nil {
 		return
 	}
@@ -61,7 +61,7 @@ func (h *HTTPWebIndexHandler) Load(ctx context.Context) (err error) {
 	// if replacer != nil {
 	// 	markdown = replacer.Replace(markdown)
 	// }
-	h.markdown, err = template.New("markdown").Funcs(h.Functions).Parse(markdown)
+	h.markdown, err = template.New("http_web_index_markdown").Funcs(h.Functions).Parse(markdown)
 	if err != nil {
 		return
 	}
@@ -119,7 +119,7 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 				return
 			}
 
-			tmpl, err = template.New(h.File).Funcs(h.Functions).Parse(string(data))
+			tmpl, err = template.New("http_web_index_file").Funcs(h.Functions).Parse(string(data))
 			if err != nil {
 				log.Error().Context(ri.LogContext).Err(err).Str("index_file", h.File).Msg("parse index file error")
 				http.Error(rw, err.Error(), http.StatusInternalServerError)

@@ -61,7 +61,7 @@ func (h *DnsHandler) Load() error {
 	h.dialer = resolver.Client.Dialer
 
 	if s := h.Config.Policy; s != "" && s != "proxy_pass" {
-		h.policy, err = template.New(s).Funcs(h.Functions).Parse(s)
+		h.policy, err = template.New("dns_policy").Funcs(h.Functions).Parse(s)
 		if err != nil {
 			return fmt.Errorf("invaild dns policy: %#v: %w", s, err)
 		}

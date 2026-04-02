@@ -47,14 +47,14 @@ func (h *SocksHandler) Load(ctx context.Context) error {
 
 	h.Config.Forward.Policy = strings.TrimSpace(h.Config.Forward.Policy)
 	if s := h.Config.Forward.Policy; strings.Contains(s, "{{") {
-		if h.policy, err = template.New(s).Funcs(h.Functions).Parse(s); err != nil {
+		if h.policy, err = template.New("socks_policy").Funcs(h.Functions).Parse(s); err != nil {
 			return err
 		}
 	}
 
 	h.Config.Forward.Dialer = strings.TrimSpace(h.Config.Forward.Dialer)
 	if s := h.Config.Forward.Dialer; strings.Contains(s, "{{") {
-		if h.dialer, err = template.New(s).Funcs(h.Functions).Parse(s); err != nil {
+		if h.dialer, err = template.New("socks_dialer").Funcs(h.Functions).Parse(s); err != nil {
 			return err
 		}
 	}

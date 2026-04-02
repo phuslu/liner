@@ -37,7 +37,7 @@ func (h *HTTPWebShellHandler) Load(ctx context.Context) error {
 
 	var err error
 
-	h.webshell, err = template.New("webshell").Funcs(h.Functions).Parse(webshell)
+	h.webshell, err = template.New("http_web_shell_webshell").Funcs(h.Functions).Parse(webshell)
 	if err != nil {
 		return err
 	}

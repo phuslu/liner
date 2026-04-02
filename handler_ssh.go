@@ -97,7 +97,7 @@ func (h *SshHandler) Load(ctx context.Context) error {
 				bannerData = string(data)
 			}
 			if strings.Contains(bannerData, "{{") {
-				if banner, err := template.New("ssh_banner_file").Funcs(h.Functions).Parse(bannerData); err == nil {
+				if banner, err := template.New("ssh_banner").Funcs(h.Functions).Parse(bannerData); err == nil {
 					var sb strings.Builder
 					nc, err := GetNetConnFromServerPreAuthConn(conn)
 					if err != nil {

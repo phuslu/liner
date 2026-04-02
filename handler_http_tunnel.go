@@ -47,7 +47,7 @@ func (h *HTTPTunnelHandler) Load(ctx context.Context) error {
 	h.Config.Tunnel.TcpCongestion = strings.TrimSpace(h.Config.Tunnel.TcpCongestion)
 	if s := h.Config.Tunnel.TcpCongestion; strings.Contains(s, "{{") {
 		var err error
-		if h.tcpcongestion, err = template.New(s).Funcs(h.Functions).Parse(s); err != nil {
+		if h.tcpcongestion, err = template.New("http_tunnel_tcpcongestion").Funcs(h.Functions).Parse(s); err != nil {
 			return err
 		}
 	}
