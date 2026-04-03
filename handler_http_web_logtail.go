@@ -20,31 +20,29 @@ type HTTPWebLogtailHandler struct {
 
 func (h *HTTPWebLogtailHandler) Load(ctx context.Context) error {
 	h.clients = xsync.NewMap[*http.Request, http.ResponseWriter]()
-	go h.broadcast()
+	go func() {
+		buf := make([]byte, 4096)
+		for {
+			n, err := h.MemoryLogWriter.Read(buf)
+			if n == 0 {
+				time.Sleep(50 * time.Millisecond)
+				continue
+			}
+			if err != nil {
+				log.Error().Err(err).Msg("logtail read ringbuffer error")
+				return
+			}
+			buf = buf[:n]
+			h.clients.Range(func(req *http.Request, rw http.ResponseWriter) bool {
+				// level := log.ParseLevel(cmp.Or(req.URL.Query().Get("level"), "info"))
+				fmt.Fprint(rw, string(buf))
+				http.NewResponseController(rw).Flush()
+				return true
+			})
+		}
+	}()
 
 	return nil
-}
-
-func (h *HTTPWebLogtailHandler) broadcast() {
-	buf := make([]byte, 4096)
-	for {
-		n, err := h.MemoryLogWriter.Read(buf)
-		if n == 0 {
-			time.Sleep(50 * time.Millisecond)
-			continue
-		}
-		if err != nil {
-			log.Error().Err(err).Msg("logtail read ringbuffer error")
-			return
-		}
-		buf = buf[:n]
-		h.clients.Range(func(req *http.Request, rw http.ResponseWriter) bool {
-			// level := log.ParseLevel(cmp.Or(req.URL.Query().Get("level"), "info"))
-			fmt.Fprint(rw, string(buf))
-			http.NewResponseController(rw).Flush()
-			return true
-		})
-	}
 }
 
 func (h *HTTPWebLogtailHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
