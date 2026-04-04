@@ -137,6 +137,9 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 	rlStdout := cmp.Or(stdout.(*os.File), os.Stdout)
 	rlStderr := cmp.Or(stderr.(*os.File), os.Stderr)
 	completer := &goshAutoCompleter{ctx: ctx, runner: runner, stdin: stdin, stderr: stderr, stdout: rlStdout, promptPrinter: promptPrinter}
+	historySearch := &goshHistorySearch{history: history, searchIndex: -1}
+	bindings.registerActionHandler(goshKeyActionHistorySearchBackward, historySearch.Search)
+	bindings.registerActionHandler(goshKeyActionHistorySearchForward, historySearch.Search)
 	rl, err := readline.NewEx(&readline.Config{
 		Prompt:          currentPrompt.prompt,
 		HistoryFile:     histFile,
@@ -147,6 +150,7 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 		Stdout:          rlStdout,
 		Stderr:          rlStderr,
 		AutoComplete:    completer,
+		Listener:        historySearch,
 		FuncGetWidth: func() int {
 			if w := readline.GetScreenWidth(); w > 0 {
 				return w
@@ -158,6 +162,7 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 		return err
 	}
 	completer.attach(rl)
+	historySearch.Attach(rl)
 	defer rl.Close()
 	promptPrinter.Print(rl.Stdout(), currentPrompt.prefix)
 	nextPrefix := ""
@@ -1074,12 +1079,18 @@ func goshRunnerOpts(r *interp.Runner) []bool {
 type goshKeyBindingManager struct {
 	mu      sync.RWMutex
 	entries map[string]*goKeyBindingEntry
+	actions map[rune]func(rune) bool
 }
 
 type goKeyBindingEntry struct {
 	seq    []byte
 	action rune
 }
+
+const (
+	goshKeyActionHistorySearchBackward = 0x90
+	goshKeyActionHistorySearchForward  = 0x91
+)
 
 func (m *goshKeyBindingManager) handleBind(args []string) error {
 	keySpec, actionSpec, err := goshParseBindArgs(args)
@@ -1107,6 +1118,31 @@ func (m *goshKeyBindingManager) store(seq []byte, action rune) {
 	key := string(seq)
 	entry := &goKeyBindingEntry{seq: append([]byte(nil), seq...), action: action}
 	m.entries[key] = entry
+}
+
+func (m *goshKeyBindingManager) registerActionHandler(action rune, handler func(rune) bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if handler == nil {
+		if m.actions != nil {
+			delete(m.actions, action)
+		}
+		return
+	}
+	if m.actions == nil {
+		m.actions = make(map[rune]func(rune) bool)
+	}
+	m.actions[action] = handler
+}
+
+func (m *goshKeyBindingManager) invokeAction(action rune) bool {
+	m.mu.RLock()
+	handler := m.actions[action]
+	m.mu.RUnlock()
+	if handler == nil {
+		return false
+	}
+	return handler(action)
 }
 
 func (m *goshKeyBindingManager) match(buf []byte) (rune, int, bool) {
@@ -1234,6 +1270,10 @@ func goshLookupBindAction(action string) (rune, bool) {
 		return readline.CharPrev, true
 	case "next-screen":
 		return readline.CharNext, true
+	case "history-search-backward":
+		return goshKeyActionHistorySearchBackward, true
+	case "history-search-forward":
+		return goshKeyActionHistorySearchForward, true
 	default:
 		return 0, false
 	}
@@ -1289,6 +1329,10 @@ func (r *goshKeyBindingInput) processBuffer() {
 	for len(r.buf) > 0 {
 		action, size, needMore := r.mgr.match(r.buf)
 		if size > 0 {
+			if r.mgr.invokeAction(action) {
+				r.buf = r.buf[size:]
+				continue
+			}
 			r.out = append(r.out, byte(action))
 			r.buf = r.buf[size:]
 			continue
@@ -1298,6 +1342,137 @@ func (r *goshKeyBindingInput) processBuffer() {
 		}
 		r.out = append(r.out, r.buf[0])
 		r.buf = r.buf[1:]
+	}
+}
+
+type goshHistorySearch struct {
+	history *goshHistory
+	rl      *readline.Instance
+
+	mu           sync.Mutex
+	line         []rune
+	pos          int
+	searchActive bool
+	searchPrefix string
+	searchIndex  int
+	historySize  int
+	updating     bool
+}
+
+func (h *goshHistorySearch) Attach(rl *readline.Instance) {
+	h.mu.Lock()
+	h.rl = rl
+	h.mu.Unlock()
+}
+
+func (h *goshHistorySearch) Search(action rune) bool {
+	if h.applySearch(action) {
+		return true
+	}
+	h.emitBell()
+	return true
+}
+
+func (h *goshHistorySearch) OnChange(line []rune, pos int, _ rune) (newLine []rune, newPos int, ok bool) {
+	h.mu.Lock()
+	h.line = append(h.line[:0], line...)
+	if pos < 0 {
+		pos = 0
+	} else if pos > len(line) {
+		pos = len(line)
+	}
+	h.pos = pos
+	if !h.updating {
+		h.resetSearchLocked()
+	}
+	h.updating = false
+	h.mu.Unlock()
+	return nil, 0, false
+}
+
+func (h *goshHistorySearch) resetSearch() {
+	h.mu.Lock()
+	h.resetSearchLocked()
+	h.mu.Unlock()
+}
+
+func (h *goshHistorySearch) resetSearchLocked() {
+	h.searchActive = false
+	h.searchPrefix = ""
+	h.historySize = 0
+	h.searchIndex = -1
+}
+
+func (h *goshHistorySearch) applySearch(action rune) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.history == nil || h.rl == nil {
+		return false
+	}
+	entries := h.history.Entries()
+	if !h.searchActive || len(entries) != h.historySize {
+		h.searchPrefix = h.currentPrefixLocked()
+		h.searchActive = true
+		h.historySize = len(entries)
+		if action == goshKeyActionHistorySearchBackward {
+			h.searchIndex = len(entries)
+		} else {
+			h.searchIndex = -1
+		}
+	}
+	if len(entries) == 0 {
+		return false
+	}
+	start := h.searchIndex
+	var candidate string
+	if action == goshKeyActionHistorySearchBackward {
+		for idx := start - 1; idx >= 0; idx-- {
+			if strings.HasPrefix(entries[idx], h.searchPrefix) {
+				candidate = entries[idx]
+				h.searchIndex = idx
+				break
+			}
+		}
+	} else {
+		for idx := start + 1; idx < len(entries); idx++ {
+			if strings.HasPrefix(entries[idx], h.searchPrefix) {
+				candidate = entries[idx]
+				h.searchIndex = idx
+				break
+			}
+		}
+	}
+	if candidate == "" {
+		return false
+	}
+	h.updating = true
+	h.rl.Operation.SetBuffer(candidate)
+	runes := []rune(candidate)
+	h.line = append(h.line[:0], runes...)
+	h.pos = len(runes)
+	return true
+}
+
+func (h *goshHistorySearch) currentPrefixLocked() string {
+	line := h.line
+	pos := h.pos
+	if pos < 0 {
+		pos = 0
+	} else if pos > len(line) {
+		pos = len(line)
+	}
+	return string(line[:pos])
+}
+
+func (h *goshHistorySearch) emitBell() {
+	h.mu.Lock()
+	rl := h.rl
+	h.mu.Unlock()
+	if rl == nil {
+		return
+	}
+	if w := rl.Stdout(); w != nil {
+		_, _ = w.Write([]byte{0x07})
 	}
 }
 

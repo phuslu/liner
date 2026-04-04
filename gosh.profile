@@ -11,6 +11,8 @@ if [[ $- == *i* ]]; then
     bind "\e[H": beginning-of-line
     bind "\eOF": end-of-line
     bind "\eOH": beginning-of-line
+    bind "\e[B": history-search-forward
+    bind "\e[A": history-search-backward
 fi
 
 export LC_ALL=en_US.UTF-8
