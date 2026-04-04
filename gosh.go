@@ -78,7 +78,7 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 	goshInstallShellOptionVariable(runner, interactive, stdin != nil)
 
 	// source the init files.
-	if file, err := os.Open(cmp.Or(os.Getenv("GOSH_ENV"), os.ExpandEnv("$HOME/.profile"))); err == nil {
+	if file, err := os.Open(os.ExpandEnv(cmp.Or(os.Getenv("GOSH_ENV"), "$HOME/.profile"))); err == nil {
 		prog, err := parser.Parse(file, file.Name())
 		if err != nil {
 			fmt.Fprintln(stderr, "failed to parse", file.Name(), ":", err)
