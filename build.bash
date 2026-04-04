@@ -3,7 +3,7 @@
 function liner::setup() {
 	export DEBIAN_FRONTEND=noninteractive
 	apt update -y
-	apt install -yq git curl jq unzip zip xz-utils gh build-essential parallel upx
+	apt install -yq git curl jq unzip zip xz-utils gh build-essential mingw-w64 parallel upx
 
 	git config --global --add safe.directory '*'
 
@@ -171,6 +171,54 @@ function liner::python() {
 	' sh {} + | tee liner_py-1.0.${REVSION}.dist-info/RECORD
 
 	zip -r liner_py-1.0.${REVSION}-cp32-abi3-${PLATFORM_TAG}.whl liner liner_py-1.0.${REVSION}.*
+
+	popd
+}
+
+function liner::python::windows() {
+	rm -rf python && unzip python.zip -d python && pushd python
+
+	export CGO_ENABLED=1
+	export GOROOT=${GOROOT:-/tmp/go}
+	export GOPATH=${GOPATH:-/tmp/gopath}
+	export GOOS=windows
+	export GOARCH=amd64
+	export CC=x86_64-w64-mingw32-gcc
+	export CGO_LDFLAGS="-static -static-libgcc -static-libstdc++"
+	export PATH=${GOPATH:-~/go}/bin:${GOROOT}/bin:$PATH
+	export REVSION=$(git rev-list --count HEAD)
+
+	mv liner_py-1.0.1984.dist-info liner_py-1.0.${REVSION}.dist-info
+
+	if command -v garble; then
+		export GOGARBLE=liner
+		GO="garble -literals -tiny -seed=${GARBLE_SEED:-random}"
+	else
+		GO=go
+	fi
+
+	$GO build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION} -X main.garble=${GOGARBLE}" -buildmode=c-shared -o liner.dll ..
+	mv liner.dll liner/liner.dll
+	cat <<EOF | tee liner/liner.py
+import os, ctypes
+__dll = ctypes.CDLL(os.path.join(os.path.dirname(__file__), 'liner.dll'))
+liner = __dll.liner
+linex = __dll.linex
+EOF
+
+	sed -i "s/^Version: .*/Version: 1.0.${REVSION}/" liner_py-1.0.${REVSION}.dist-info/METADATA
+	sed -i "s/Tag: cp32-abi3-.*/Tag: cp32-abi3-win_amd64/" liner_py-1.0.${REVSION}.dist-info/WHEEL
+
+	find liner liner_py-1.0.${REVSION}.* -type f ! -name 'RECORD' -exec sh -c '
+		for f; do
+		  size=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f")
+		  hash=$(openssl dgst -sha256 -binary "$f" | openssl base64 | tr -d "\n=")
+		  echo "${f#./},sha256=$hash,$size"
+		done
+		echo liner_py-1.0.${REVSION}.dist-info/RECORD,,
+	' sh {} + | tee liner_py-1.0.${REVSION}.dist-info/RECORD
+
+	zip -r liner_py-1.0.${REVSION}-cp32-abi3-win_amd64.whl liner liner_py-1.0.${REVSION}.*
 
 	popd
 }

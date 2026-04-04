@@ -40,3 +40,15 @@ jobs:
   #     - run: bash ./build.bash release
   #       env:
   #         GITHUB_TOKEN: ${{ secrets.GOTIP_TOKEN }}
+  win_amd64:
+    name: win_amd64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - run: sudo ./build.bash setup
+      - run: sudo ./build.bash python::windows
+      - run: sudo -E ./build.bash release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GOTIP_TOKEN }}
+          TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
+          TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
