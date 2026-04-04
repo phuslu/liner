@@ -153,11 +153,11 @@ function liner::python() {
 	case $(uname) in
 		Darwin )
 			perl -pi -e "s/^Version: .*/Version: 1.0.${REVSION}/" liner_py-1.0.${REVSION}.dist-info/METADATA
-			perl -pi -e "s/Tag: cp39-abi3-.*/Tag: cp39-abi3-macosx_11_0_$(uname -m)/" liner_py-1.0.${REVSION}.dist-info/WHEEL
+			perl -pi -e "s/Tag: cp32-abi3-.*/Tag: cp32-abi3-macosx_11_0_$(uname -m)/" liner_py-1.0.${REVSION}.dist-info/WHEEL
 			;;
 		Linux )
 			sed -i "s/^Version: .*/Version: 1.0.${REVSION}/" liner_py-1.0.${REVSION}.dist-info/METADATA
-			sed -i "s/Tag: cp39-abi3-.*/Tag: cp39-abi3-linux_$(uname -m)/" liner_py-1.0.${REVSION}.dist-info/WHEEL
+			sed -i "s/Tag: cp32-abi3-.*/Tag: cp32-abi3-linux_$(uname -m)/" liner_py-1.0.${REVSION}.dist-info/WHEEL
 			;;
 	esac
 
@@ -170,7 +170,7 @@ function liner::python() {
 		echo liner_py-1.0.${REVSION}.dist-info/RECORD,,
 	' sh {} + | tee liner_py-1.0.${REVSION}.dist-info/RECORD
 
-	zip -r liner_py-1.0.${REVSION}-cp39-abi3-${PLATFORM_TAG}.whl liner liner_py-1.0.${REVSION}.*
+	zip -r liner_py-1.0.${REVSION}-cp32-abi3-${PLATFORM_TAG}.whl liner liner_py-1.0.${REVSION}.*
 
 	popd
 }
