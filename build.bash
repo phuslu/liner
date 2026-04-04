@@ -55,7 +55,7 @@ function liner::build() {
 
 	cat <<EOF | parallel --line-buffer
 GOOS=linux GOARCH=amd64 \
-	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -gcflags='liner=-N' -o build/liner_linux_amd64/liner && \
+	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -o build/liner_linux_amd64/liner && \
 	cp example.yaml liner@.service build/changelog.txt build/liner_linux_amd64/ && \
 	cd build/liner_linux_amd64 && \
 	tar cv * | gzip -9 >../liner_linux_amd64-${REVSION}.tar.gz
