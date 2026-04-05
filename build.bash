@@ -181,8 +181,8 @@ function liner::python::windows() {
 	export CGO_ENABLED=1
 	export GOROOT=${GOROOT:-/tmp/go}
 	export GOPATH=${GOPATH:-/tmp/gopath}
+	export GOARCH=${GOARCH:-amd64}
 	export GOOS=windows
-	export GOARCH=amd64
 	export PATH=${GOPATH:-~/go}/bin:${GOROOT}/bin:$PATH
 	export REVSION=$(git rev-list --count HEAD)
 	export CC="zig cc -target $(uname -m)-windows-gnu"
