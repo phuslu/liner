@@ -121,7 +121,6 @@ https:
       enabled: true
       auth_table: authuser.csv
       allow_listens: ["127.0.0.1"]
-      enable_keep_alive: true
       log: true
     web:
       - location: /dns-query
@@ -228,7 +227,6 @@ tunnel:
     resolver: https://8.8.8.8/dns-query
     dialer: cloud
     dial_timeout: 5
-    enable_keep_alive: true
 sni:
   enabled: true
   forward:
