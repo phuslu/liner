@@ -179,14 +179,13 @@ function liner::python::windows() {
 	rm -rf python && unzip python.zip -d python && pushd python
 
 	export CGO_ENABLED=1
+	export GOOS=windows
+	export GOARCH=${GOARCH:-amd64}
 	export GOROOT=${GOROOT:-/tmp/go}
 	export GOPATH=${GOPATH:-/tmp/gopath}
-	export GOARCH=${GOARCH:-amd64}
-	export GOOS=windows
 	export PATH=${GOPATH:-~/go}/bin:${GOROOT}/bin:$PATH
 	export REVSION=$(git rev-list --count HEAD)
-	export CC="zig cc -target $(uname -m)-windows-gnu"
-	export CXX="zig c++ -target $(uname -m)-windows-gnu"
+	export CC="zig cc -target $(test $GOARCH = arm64 && echo -n aarch64 || echo -n x86_64)-windows-gnu"
 
 	mv liner_py-1.0.1984.dist-info liner_py-1.0.${REVSION}.dist-info
 

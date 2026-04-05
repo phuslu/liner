@@ -1,6 +1,6 @@
 //go:build windows
 
-// CGO_ENABLED=1 GOOS=windows GOARCH=amd64 CC=x86_64-w64-mingw32-gcc go build -v -trimpath -ldflags="-s -w" -buildmode=c-shared -o liner.dll
+// CGO_ENABLED=1 GOOS=windows GOARCH=amd64 CC="zig cc -target x86_64-windows-gnu" go build -v -trimpath -ldflags="-s -w" -buildmode=c-shared -o liner.dll
 
 package main
 
