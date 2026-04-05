@@ -93,8 +93,14 @@ func (h *SshHandler) Load(ctx context.Context) error {
 		ServerVersion: cmp.Or(h.Config.ServerVersion, fmt.Sprintf("SSH-2.0-liner-%s", version)),
 		PreAuthConnCallback: func(conn ssh.ServerPreAuthConn) {
 			bannerData := h.Config.BannerFile
-			if data, err := os.ReadFile(cmp.Or(bannerData, "/etc/motd")); err == nil {
-				bannerData = string(data)
+			if file := h.Config.BannerFile; file != "" && strings.IndexAny(file, "{} \n") < 0 {
+				data, err := os.ReadFile(file)
+				if os.IsNotExist(err) {
+					data, err = os.ReadFile("/etc/motd")
+				}
+				if err == nil {
+					bannerData = string(data)
+				}
 			}
 			if strings.Contains(bannerData, "{{") {
 				if banner, err := template.New("ssh_banner").Funcs(h.Functions).Parse(bannerData); err == nil {
