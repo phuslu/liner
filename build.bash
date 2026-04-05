@@ -183,14 +183,17 @@ function liner::python::windows() {
 	export GOPATH=${GOPATH:-/tmp/gopath}
 	export GOOS=windows
 	export GOARCH=amd64
-	export CC=x86_64-w64-mingw32-gcc
-	export CGO_LDFLAGS="-static -static-libgcc -static-libstdc++"
 	export PATH=${GOPATH:-~/go}/bin:${GOROOT}/bin:$PATH
 	export REVSION=$(git rev-list --count HEAD)
+	export CC="zig cc -target $(uname -m)-windows-gnu"
+	export CXX="zig c++ -target $(uname -m)-windows-gnu"
 
 	mv liner_py-1.0.1984.dist-info liner_py-1.0.${REVSION}.dist-info
 
-	command -v x86_64-w64-mingw32-gcc || apt install -y mingw-w64
+	if ! command -v zig; then
+		curl -sSLf https://ziglang.org/download/0.15.2/zig-$(uname -m)-linux-0.15.2.tar.xz | tar xvJ -C /tmp/
+		export PATH=$PATH:/tmp/zig-$(uname -m)-linux-0.15.2
+	fi
 
 	if command -v garble; then
 		export GOGARBLE=liner
@@ -209,7 +212,7 @@ linex = __dll.linex
 EOF
 
 	sed -i "s/^Version: .*/Version: 1.0.${REVSION}/" liner_py-1.0.${REVSION}.dist-info/METADATA
-	sed -i "s/Tag: cp32-abi3-.*/Tag: cp32-abi3-win_amd64/" liner_py-1.0.${REVSION}.dist-info/WHEEL
+	sed -i "s/Tag: cp32-abi3-.*/Tag: cp32-abi3-win_${GOARCH}/" liner_py-1.0.${REVSION}.dist-info/WHEEL
 
 	find liner liner_py-1.0.${REVSION}.* -type f ! -name 'RECORD' -exec sh -c '
 		for f; do
@@ -220,7 +223,7 @@ EOF
 		echo liner_py-1.0.${REVSION}.dist-info/RECORD,,
 	' sh {} + | tee liner_py-1.0.${REVSION}.dist-info/RECORD
 
-	zip -r liner_py-1.0.${REVSION}-cp32-abi3-win_amd64.whl liner liner_py-1.0.${REVSION}.*
+	zip -r liner_py-1.0.${REVSION}-cp32-abi3-win_${GOARCH}.whl liner liner_py-1.0.${REVSION}.*
 
 	popd
 }
