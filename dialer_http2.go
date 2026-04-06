@@ -127,7 +127,7 @@ func (d *HTTP2Dialer) DialContext(ctx context.Context, network, addr string) (ne
 
 	transport := d.clients[n]
 
-	pr, pw := ringbuffer.New(8192).Pipe()
+	pr, pw := ringbuffer.New(32 * 1024).Pipe()
 	req := &http.Request{
 		ProtoMajor: 2,
 		Method:     http.MethodConnect,

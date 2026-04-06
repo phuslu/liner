@@ -84,7 +84,7 @@ func (d *HTTP3Dialer) init() {
 func (d *HTTP3Dialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
 	d.init()
 
-	pr, pw := ringbuffer.New(8192).Pipe()
+	pr, pw := ringbuffer.New(32 * 1024).Pipe()
 	req := &http.Request{
 		ProtoMajor: 3,
 		Method:     http.MethodConnect,
