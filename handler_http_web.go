@@ -10,6 +10,7 @@ import (
 	"expvar"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -449,6 +450,80 @@ func (m *HTTPWebMiddlewareTinyAuth) ServeHTTP(rw http.ResponseWriter, req *http.
 		if info.Status != http.StatusOK || !info.IsLoggedIn || info.TotpPending {
 			http.Redirect(rw, req, loginURL, http.StatusTemporaryRedirect)
 			// http.Error(rw, "invaild username or password", http.StatusForbidden)
+			return
+		}
+	}
+	m.Handler.ServeHTTP(rw, req)
+}
+
+var _ HTTPHandler = (*HTTPWebMiddlewareForwardAuth)(nil)
+
+type HTTPWebMiddlewareForwardAuth struct {
+	Handler  HTTPHandler
+	Location string
+
+	ForwardAuth string
+	Transport   *http.Transport
+
+	prefix string
+}
+
+func (m *HTTPWebMiddlewareForwardAuth) Load(ctx context.Context) error {
+	m.prefix = strings.TrimSuffix(m.Location, "/") + "/"
+	return m.Handler.Load(ctx)
+}
+
+func (m *HTTPWebMiddlewareForwardAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	ri := req.Context().Value(HTTPRequestInfoContextKey).(*HTTPRequestInfo)
+	authorize := func(rw http.ResponseWriter, req *http.Request) bool {
+		req2, err := http.NewRequestWithContext(req.Context(), req.Method, m.ForwardAuth, nil)
+		if err != nil {
+			http.Error(rw, fmt.Sprintf("forward auth request failed: %v", err), http.StatusBadGateway)
+			return false
+		}
+		req2.Header = req.Header.Clone()
+		req2.Header.Del("Content-Length")
+		req2.Header.Set("X-Forwarded-Host", req.Host)
+		req2.Header.Set("X-Forwarded-URI", cmp.Or(req.URL.RequestURI(), "/"))
+		req2.Header.Set("X-Forwarded-Proto", cmp.Or(req2.Header.Get("X-Forwarded-Proto"), "https"))
+		if xff := req2.Header.Get("X-Forwarded-For"); xff == "" {
+			req2.Header.Set("X-Forwarded-For", xff+", "+ri.RealIP.String())
+		} else {
+			req2.Header.Set("X-Forwarded-For", ri.RealIP.String())
+		}
+		req2.Header.Set("X-Real-IP", ri.RealIP.String())
+		resp, err := m.Transport.RoundTrip(req2)
+		if err != nil {
+			http.Error(rw, fmt.Sprintf("forward auth request failed: %v", err), http.StatusBadGateway)
+			return false
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			rwHeader := rw.Header()
+			for key := range rwHeader {
+				delete(rwHeader, key)
+			}
+			maps.Copy(rwHeader, resp.Header)
+			rw.WriteHeader(resp.StatusCode)
+			io.Copy(rw, resp.Body)
+			return false
+		}
+		io.Copy(io.Discard, resp.Body)
+		for key, values := range resp.Header {
+			switch strings.ToLower(key) {
+			case "content-length", "content-type", "content-encoding", "transfer-encoding", "date", "server", "set-cookie":
+				continue
+			}
+			req.Header.Del(key)
+			for _, value := range values {
+				req.Header.Add(key, value)
+			}
+		}
+		return true
+	}
+
+	if strings.HasPrefix(req.RequestURI, m.prefix) {
+		if !authorize(rw, req) {
 			return
 		}
 	}
