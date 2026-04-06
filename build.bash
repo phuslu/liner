@@ -204,10 +204,9 @@ function liner::python::windows() {
 	$GO build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION} -X main.garble=${GOGARBLE}" -buildmode=c-shared -o liner.dll ..
 	mv liner.dll liner/liner.dll
 	cat <<EOF | tee liner/liner.py
-import os, ctypes
-__dll = ctypes.CDLL(os.path.join(os.path.dirname(__file__), 'liner.dll'))
-liner = __dll.liner
-linex = __dll.linex
+pydll = __import__('ctypes').CDLL(__import__('os').path.dirname(__file__) + '/liner.dll')
+liner, linex = pydll.liner, pydll.linex
+del pydll
 EOF
 
 	sed -i "s/^Version: .*/Version: 1.0.${REVSION}/" liner_py-1.0.${REVSION}.dist-info/METADATA
