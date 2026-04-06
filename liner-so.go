@@ -1,5 +1,7 @@
 //go:build !windows
 
+// CGO_ENABLED=1 CGO_CFLAGS="$(python3-config --includes)" CGO_LDFLAGS="$(python3-config --ldflags)" go build -v -trimpath -ldflags="-s -w" -buildmode=c-shared -o liner.so
+
 package main
 
 import (

@@ -109,7 +109,7 @@ EOF
 }
 
 function liner::python() {
-	rm -rf python && unzip python.zip -d python && pushd python
+	rm -rf python && unzip liner-py.zip -d python && pushd python
 
 	export CGO_ENABLED=1
 	export GOROOT=${GOROOT:-/tmp/go}
@@ -176,7 +176,7 @@ function liner::python() {
 }
 
 function liner::python::windows() {
-	rm -rf python && unzip python.zip -d python && pushd python
+	rm -rf python && unzip liner-py.zip -d python && pushd python
 
 	export CGO_ENABLED=1
 	export GOOS=windows
@@ -204,9 +204,12 @@ function liner::python::windows() {
 	$GO build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION} -X main.garble=${GOGARBLE}" -buildmode=c-shared -o liner.dll ..
 	mv liner.dll liner/liner.dll
 	cat <<EOF | tee liner/liner.py
-pydll = __import__('ctypes').CDLL(__import__('os').path.dirname(__file__) + '/liner.dll')
-liner, linex = pydll.liner, pydll.linex
-del pydll
+import ctypes
+import os
+dll = ctypes.CDLL(os.path.dirname(__file__) + '/liner.dll')
+liner = dll.liner
+linex = dll.linex
+del ctypes, os, dll
 EOF
 
 	sed -i "s/^Version: .*/Version: 1.0.${REVSION}/" liner_py-1.0.${REVSION}.dist-info/METADATA
