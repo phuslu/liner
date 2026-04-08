@@ -96,7 +96,7 @@ func (h *SshHandler) Load(ctx context.Context) error {
 			if file := h.Config.BannerFile; file != "" && strings.IndexAny(file, "{} \n") < 0 {
 				data, err := os.ReadFile(file)
 				if os.IsNotExist(err) {
-					data, err = os.ReadFile("/etc/motd")
+					data, err = os.ReadFile("/etc/issue.net")
 				}
 				if err == nil {
 					bannerData = string(data)
