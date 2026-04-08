@@ -267,6 +267,9 @@ func (h *SshHandler) Load(ctx context.Context) error {
 			PollDuration: 30 * time.Second,
 			Logger:       h.Logger.Slog(),
 		}
+		if h.keyloader.Load() == nil {
+			return fmt.Errorf("load authorized_keys %q failed", h.Config.AuthorizedKeys)
+		}
 		h.sshConfig.PublicKeyCallback = func(c ssh.ConnMetadata, pub ssh.PublicKey) (*ssh.Permissions, error) {
 			records := *h.keyloader.Load()
 			if len(records) == 0 {
