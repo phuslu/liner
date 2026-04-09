@@ -172,13 +172,8 @@ func (m *TLSInspector) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certific
 func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Config, error) {
 	m.ClientHelloMap.Store(PlainAddrFromNetAddr(hello.Conn.RemoteAddr()), &TLSClientHelloInfo{ClientHelloInfo: hello})
 
-	serverName := hello.ServerName
-	if host, _, err := net.SplitHostPort(serverName); err == nil {
-		serverName = host
-	}
-
 	var preferChacha20, disableTLS11, disableHTTP2, disableOCSP bool
-	if entry, ok := m.EntryMap[serverName]; ok {
+	if entry, ok := m.EntryMap[hello.ServerName]; ok {
 		preferChacha20 = entry.PreferChacha20
 		disableHTTP2 = entry.DisableHTTP2
 		disableTLS11 = entry.DisableTLS11
@@ -207,7 +202,7 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 	}
 
 	cacheKey := TLSInspectorCacheKey{
-		ServerName:     serverName,
+		ServerName:     hello.ServerName,
 		DisableTLS11:   disableTLS11,
 		DisableHTTP2:   disableHTTP2,
 		DisableOCSP:    disableOCSP,
@@ -225,13 +220,13 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 	if err != nil {
 		if err == ErrTLSServerNameNotFound && m.TLSServerNameHandle != nil {
 			if mc, ok := hello.Conn.(*MirrorHeaderConn); ok {
-				err := m.TLSServerNameHandle(hello.Context(), serverName, mc.Header(), mc.Conn)
+				err := m.TLSServerNameHandle(hello.Context(), hello.ServerName, mc.Header(), mc.Conn)
 				if err != nil {
 					return nil, err
 				}
 			}
 		}
-		return nil, fmt.Errorf("tls inspector cannot handle server name %#v: %w", serverName, err)
+		return nil, fmt.Errorf("tls inspector cannot handle server name %#v: %w", hello.ServerName, err)
 	}
 
 	cacert := cert.Leaf
@@ -246,7 +241,7 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 		if err != nil {
 			// just log error
 			if m.Logger != nil {
-				m.Logger.Error().Err(err).Str("tls_server_name", serverName).Msg("get ocsp response error")
+				m.Logger.Error().Err(err).Str("tls_server_name", hello.ServerName).Msg("get ocsp response error")
 			}
 		}
 	}
