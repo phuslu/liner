@@ -172,19 +172,13 @@ func (m *TLSInspector) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certific
 func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Config, error) {
 	m.ClientHelloMap.Store(PlainAddrFromNetAddr(hello.Conn.RemoteAddr()), &TLSClientHelloInfo{ClientHelloInfo: hello})
 
-	var preferChacha20, disableTLS11, disableHTTP2, disableOCSP bool
-	if entry, ok := m.EntryMap[hello.ServerName]; ok {
-		preferChacha20 = entry.PreferChacha20
-		disableHTTP2 = entry.DisableHTTP2
-		disableTLS11 = entry.DisableTLS11
-		disableOCSP = entry.DisableOCSP
-	}
+	entry, _ := m.EntryMap[hello.ServerName]
 
 	hasAES := (cpu.X86.HasAES && cpu.X86.HasPCLMULQDQ) || (cpu.ARM64.HasAES && cpu.ARM64.HasPMULL)
 	hasTLS13, ecsdaCipher := LookupEcdsaCiphers(hello)
 	hasChaCha20 := ecsdaCipher == tls.TLS_CHACHA20_POLY1305_SHA256
 
-	if preferChacha20 && !hasChaCha20 && hasTLS13 {
+	if entry.PreferChacha20 && !hasChaCha20 && hasTLS13 {
 		i, j := -1, -1
 		for index, cipher := range hello.CipherSuites {
 			if !IsTLSGreaseCode(cipher) && i < 0 {
@@ -203,9 +197,9 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 
 	cacheKey := TLSInspectorCacheKey{
 		ServerName:     hello.ServerName,
-		DisableTLS11:   disableTLS11,
-		DisableHTTP2:   disableHTTP2,
-		DisableOCSP:    disableOCSP,
+		DisableTLS11:   entry.DisableTLS11,
+		DisableHTTP2:   entry.DisableHTTP2,
+		DisableOCSP:    entry.DisableOCSP,
 		HasAES:         hasAES,
 		HasTLS13:       hasTLS13,
 		HasEcsdaCipher: ecsdaCipher != 0,
@@ -234,7 +228,7 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 		cacert, _ = x509.ParseCertificate(cert.Certificate[n-2])
 	}
 
-	if !disableOCSP && cacert != nil && len(cacert.OCSPServer) != 0 {
+	if !entry.DisableOCSP && cacert != nil && len(cacert.OCSPServer) != 0 {
 		ctx, cancel := context.WithTimeout(hello.Context(), 5*time.Second)
 		defer cancel()
 		cert.OCSPStaple, err = GetOCSPStaple(ctx, http.DefaultTransport, cacert)
@@ -254,11 +248,11 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 		NextProtos:               []string{"h2", "http/1.1", "acme-tls/1"},
 	}
 
-	if disableTLS11 {
+	if entry.DisableTLS11 {
 		config.MinVersion = tls.VersionTLS12
 	}
 
-	if disableHTTP2 {
+	if entry.DisableHTTP2 {
 		config.NextProtos = []string{"http/1.1", "acme-tls/1"}
 	}
 
