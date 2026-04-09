@@ -10,7 +10,6 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -72,7 +71,6 @@ type TLSInspector struct {
 	AutoCert            *autocert.Manager
 	RootCA              *RootCA
 	TLSConfigCache      *xsync.Map[TLSInspectorCacheKey, TLSInspectorCacheValue[*tls.Config]]
-	CertificateCache    *xsync.Map[TLSInspectorCacheKey, TLSInspectorCacheValue[*tls.Certificate]]
 	ClientHelloMap      *xsync.Map[PlainAddr, *TLSClientHelloInfo]
 	TLSServerNameHandle TLSServerNameHandle
 }
@@ -80,10 +78,6 @@ type TLSInspector struct {
 func (m *TLSInspector) AddTLSInspectorEntry(entry TLSInspectorEntry) error {
 	if m.TLSConfigCache == nil {
 		m.TLSConfigCache = xsync.NewMap[TLSInspectorCacheKey, TLSInspectorCacheValue[*tls.Config]]()
-	}
-
-	if m.CertificateCache == nil {
-		m.CertificateCache = xsync.NewMap[TLSInspectorCacheKey, TLSInspectorCacheValue[*tls.Certificate]]()
 	}
 
 	if m.AutoCert == nil {
@@ -165,26 +159,10 @@ func (m *TLSInspector) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certific
 	}
 
 	if entry.KeyFile != "" {
-		cacheKey := TLSInspectorCacheKey{ServerName: hello.ServerName}
-		cacheKey.HasTLS13, _ = LookupEcdsaCiphers(hello)
-
-		if v, _ := m.CertificateCache.Load(cacheKey); v.Value != nil && time.Since(v.CreatedAt) < 24*time.Hour {
-			return v.Value, nil
-		}
-
-		certfile, keyfile := entry.CertFile, entry.KeyFile
-		if !cacheKey.HasTLS13 {
-			if _, err := os.Stat(certfile + "+rsa"); err == nil {
-				certfile, keyfile = certfile+"+rsa", keyfile+"+rsa"
-			}
-		}
-		cert, err := tls.LoadX509KeyPair(certfile, keyfile)
+		cert, err := tls.LoadX509KeyPair(entry.CertFile, entry.KeyFile)
 		if err != nil {
 			return nil, err
 		}
-
-		m.CertificateCache.Store(cacheKey, TLSInspectorCacheValue[*tls.Certificate]{&cert, time.Now()})
-
 		return &cert, nil
 	}
 
