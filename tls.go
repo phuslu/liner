@@ -42,8 +42,8 @@ type TLSInspectorCacheKey struct {
 	HasChaCha20    bool
 }
 
-type TLSInspectorCacheValue[T any] struct {
-	Value     T
+type TLSInspectorCacheValue struct {
+	TLSConfig *tls.Config
 	CreatedAt time.Time
 }
 
@@ -70,14 +70,14 @@ type TLSInspector struct {
 	EntryWildcard       []TLSInspectorEntry
 	AutoCert            *autocert.Manager
 	RootCA              *RootCA
-	TLSConfigCache      *xsync.Map[TLSInspectorCacheKey, TLSInspectorCacheValue[*tls.Config]]
+	TLSConfigCache      *xsync.Map[TLSInspectorCacheKey, TLSInspectorCacheValue]
 	ClientHelloMap      *xsync.Map[PlainAddr, *TLSClientHelloInfo]
 	TLSServerNameHandle TLSServerNameHandle
 }
 
 func (m *TLSInspector) AddTLSInspectorEntry(entry TLSInspectorEntry) error {
 	if m.TLSConfigCache == nil {
-		m.TLSConfigCache = xsync.NewMap[TLSInspectorCacheKey, TLSInspectorCacheValue[*tls.Config]]()
+		m.TLSConfigCache = xsync.NewMap[TLSInspectorCacheKey, TLSInspectorCacheValue]()
 	}
 
 	if m.AutoCert == nil {
@@ -217,8 +217,8 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 		HasChaCha20:    hasChaCha20,
 	}
 
-	if v, _ := m.TLSConfigCache.Load(cacheKey); v.Value != nil && time.Since(v.CreatedAt) < 24*time.Hour {
-		return v.Value, nil
+	if v, _ := m.TLSConfigCache.Load(cacheKey); v.TLSConfig != nil && time.Since(v.CreatedAt) < 24*time.Hour {
+		return v.TLSConfig, nil
 	}
 
 	cert, err := m.GetCertificate(hello)
@@ -275,7 +275,7 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 		config.PreferServerCipherSuites = false
 	}
 
-	m.TLSConfigCache.Store(cacheKey, TLSInspectorCacheValue[*tls.Config]{config, time.Now()})
+	m.TLSConfigCache.Store(cacheKey, TLSInspectorCacheValue{config, time.Now()})
 
 	return config, nil
 }
