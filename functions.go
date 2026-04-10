@@ -40,10 +40,17 @@ type Functions struct {
 	FileIPSetCache *xsync.Map[string, *FileLoader[*netipx.IPSet]]
 
 	funcs template.FuncMap
+	ctx   context.Context
 }
 
 func (f *Functions) FuncMap() template.FuncMap {
 	return f.funcs
+}
+
+func (f *Functions) WithContext(ctx context.Context) *Functions {
+	fun := *f
+	fun.ctx = ctx
+	return &fun
 }
 
 func (f *Functions) Load() error {
@@ -87,6 +94,9 @@ func (f *Functions) Load() error {
 	f.funcs["readFile"] = f.readfile
 	f.funcs["readfile"] = f.readfile
 	f.funcs["savefile"] = f.savefile
+
+	// ctx for funcs
+	f.ctx = context.Background()
 
 	return nil
 }
@@ -149,7 +159,7 @@ func (f *Functions) geosite(domain string) string {
 	if host, _, err := net.SplitHostPort(domain); err == nil {
 		domain = host
 	}
-	return f.GeoResolver.GetGeoSiteInfo(context.Background(), domain).Site
+	return f.GeoResolver.GetGeoSiteInfo(f.ctx, domain).Site
 }
 
 func (f *Functions) geoip(ipStr string) (info GeoIPInfo) {
@@ -159,7 +169,7 @@ func (f *Functions) geoip(ipStr string) (info GeoIPInfo) {
 		}
 	}
 	if ip, err := netip.ParseAddr(ipStr); err == nil {
-		info = f.GeoResolver.GetGeoIPInfo(context.Background(), ip)
+		info = f.GeoResolver.GetGeoIPInfo(f.ctx, ip)
 	}
 	return
 }
@@ -173,7 +183,7 @@ func (f *Functions) dnsResolve(host string) string {
 		host = s
 	}
 
-	ips, _ := f.DnsResolver.LookupNetIP(context.Background(), "ip", host)
+	ips, _ := f.DnsResolver.LookupNetIP(f.ctx, "ip", host)
 	if len(ips) != 0 {
 		return ips[0].String()
 	}
@@ -198,7 +208,7 @@ func (f *Functions) nslookup(host string, nameservers ...string) ([]string, erro
 	}
 
 	if addr, err := netip.ParseAddr(host); err == nil && addr.IsValid() {
-		ptr, err := resolver.Client.LookupPTR(context.Background(), host)
+		ptr, err := resolver.Client.LookupPTR(f.ctx, host)
 
 		if err != nil {
 			return nil, err
@@ -207,7 +217,7 @@ func (f *Functions) nslookup(host string, nameservers ...string) ([]string, erro
 		return []string{ptr}, nil
 	}
 
-	ips, err := resolver.LookupNetIP(context.Background(), "ip", host)
+	ips, err := resolver.LookupNetIP(f.ctx, "ip", host)
 	if err != nil {
 		return nil, err
 	}
@@ -296,7 +306,7 @@ func (f *Functions) fetch(ua string, timeout, ttl int, uri string) (response Fet
 		return result, time.Duration(ttl), nil
 	}
 
-	resp, _, _ := f.FetchCache.GetOrLoad(context.Background(), uri, loader)
+	resp, _, _ := f.FetchCache.GetOrLoad(f.ctx, uri, loader)
 	if resp == nil {
 		return
 	}
@@ -332,7 +342,7 @@ func (f *Functions) isInNet(host, cidr string) bool {
 
 	ip, err := netip.ParseAddr(host)
 	if err != nil {
-		ips, err := f.DnsResolver.LookupNetIP(context.Background(), "ip", host)
+		ips, err := f.DnsResolver.LookupNetIP(f.ctx, "ip", host)
 		if err != nil {
 			log.Error().Err(err).Str("host", host).Str("cidr", cidr).Msg("isInNet LookupNetIP error")
 		}
@@ -350,7 +360,7 @@ func (f *Functions) hasIPv6(host string) bool {
 		host = s
 	}
 
-	ips, err := f.DnsResolver.LookupNetIP(context.Background(), "ip", host)
+	ips, err := f.DnsResolver.LookupNetIP(f.ctx, "ip", host)
 	if err != nil {
 		return false
 	}
