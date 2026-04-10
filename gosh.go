@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
@@ -1822,11 +1823,20 @@ func (c *goshAutoCompleter) pathCandidates(prefix string, dirsOnly bool) []strin
 		if !strings.HasPrefix(name, base) {
 			continue
 		}
-		if dirsOnly && !entry.IsDir() {
+		isDir := entry.IsDir()
+		if !isDir {
+			needStat := dirsOnly || entry.Type()&fs.ModeSymlink != 0
+			if needStat {
+				if info, err := os.Stat(filepath.Join(clean, name)); err == nil {
+					isDir = info.IsDir()
+				}
+			}
+		}
+		if dirsOnly && !isDir {
 			continue
 		}
 		candidate := dirPart + name
-		if entry.IsDir() {
+		if isDir {
 			candidate += string(os.PathSeparator)
 		}
 		matches = append(matches, candidate)
