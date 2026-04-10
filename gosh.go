@@ -210,6 +210,10 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 
 		// Restore the main prompt, updating it in case the effective UID
 		// changed (e.g. via su).
+		if runtime.GOOS == "windows" && isatty {
+			// Windows consoles may lose VT mode after programs exit.
+			EnableVirtualTerminalSequences()
+		}
 		setPrompt(goshPromptString(ctx, runner, stdin, stderr, "PS1", goshDefaultPrompt(), promptSeq))
 		promptSeq++
 		flushPrefix()
