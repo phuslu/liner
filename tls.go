@@ -154,7 +154,11 @@ func (m *TLSInspector) LookupEntry(serverName string) (entry TLSInspectorEntry, 
 	return
 }
 
-func (m *TLSInspector) HostPolicy(ctx context.Context, host string) error {
+func (m *TLSInspector) HostPolicy(ctx context.Context, serverName string) error {
+	_, ok := m.LookupEntry(serverName)
+	if !ok {
+		return errors.ErrUnsupported
+	}
 	return nil
 }
 
