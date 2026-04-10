@@ -75,7 +75,7 @@ type TLSInspector struct {
 	TLSServerNameHandle TLSServerNameHandle
 }
 
-func (m *TLSInspector) AddTLSInspectorEntry(entry TLSInspectorEntry) error {
+func (m *TLSInspector) AddEntry(entry TLSInspectorEntry) error {
 	if m.TLSConfigCache == nil {
 		m.TLSConfigCache = xsync.NewMap[TLSInspectorCacheKey, TLSInspectorCacheValue]()
 	}
@@ -130,30 +130,36 @@ func (m *TLSInspector) AddTLSInspectorEntry(entry TLSInspectorEntry) error {
 	return nil
 }
 
+func (m *TLSInspector) LookupEntry(serverName string) (entry TLSInspectorEntry, exists bool) {
+	entry, exists = m.EntryMap[serverName]
+	if exists {
+		return
+	}
+	for _, wild := range m.EntryWildcard {
+		if i := strings.IndexByte(wild.ServerName, '*'); i >= 0 {
+			switch {
+			case i == 0:
+				exists = strings.HasSuffix(serverName, wild.ServerName[i+1:])
+			case i == len(wild.ServerName)-1:
+				exists = strings.HasPrefix(serverName, wild.ServerName[:i])
+			default:
+				exists = strings.HasSuffix(serverName, wild.ServerName[i+1:]) && strings.HasPrefix(serverName, wild.ServerName[:i])
+			}
+		}
+		if exists {
+			entry = wild
+			break
+		}
+	}
+	return
+}
+
 func (m *TLSInspector) HostPolicy(ctx context.Context, host string) error {
 	return nil
 }
 
 func (m *TLSInspector) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-	entry, ok := m.EntryMap[hello.ServerName]
-	if !ok {
-		for _, wild := range m.EntryWildcard {
-			if i := strings.IndexByte(wild.ServerName, '*'); i >= 0 {
-				switch {
-				case i == 0:
-					ok = strings.HasSuffix(hello.ServerName, wild.ServerName[i+1:])
-				case i == len(wild.ServerName)-1:
-					ok = strings.HasPrefix(hello.ServerName, wild.ServerName[:i])
-				default:
-					ok = strings.HasSuffix(hello.ServerName, wild.ServerName[i+1:]) && strings.HasPrefix(hello.ServerName, wild.ServerName[:i])
-				}
-			}
-			if ok {
-				entry = wild
-				break
-			}
-		}
-	}
+	entry, ok := m.LookupEntry(hello.ServerName)
 	if !ok {
 		return nil, ErrTLSServerNameNotFound
 	}

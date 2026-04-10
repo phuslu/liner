@@ -593,7 +593,7 @@ func main() {
 				if config.Certfile == "" {
 					config.Certfile = config.Keyfile
 				}
-				tlsConfigurator.AddTLSInspectorEntry(TLSInspectorEntry{
+				tlsConfigurator.AddEntry(TLSInspectorEntry{
 					ServerName:     name,
 					KeyFile:        config.Keyfile,
 					CertFile:       config.Certfile,
