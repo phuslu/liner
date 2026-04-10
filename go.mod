@@ -12,7 +12,7 @@ require (
 	github.com/libp2p/go-yamux/v5 v5.1.0
 	github.com/mileusna/useragent v1.3.5
 	github.com/oschwald/maxminddb-golang/v2 v2.1.1
-	github.com/phuslu/fastdns v0.16.7
+	github.com/phuslu/fastdns v0.17.0
 	github.com/phuslu/geosite v1.0.20250901
 	github.com/phuslu/log v1.0.124
 	github.com/phuslu/lru v1.0.18
@@ -24,9 +24,9 @@ require (
 	github.com/smallnest/ringbuffer v0.1.1
 	github.com/valyala/bytebufferpool v1.0.0
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba
-	golang.org/x/crypto v0.49.0
-	golang.org/x/net v0.52.0
-	golang.org/x/sys v0.42.0
+	golang.org/x/crypto v0.50.0
+	golang.org/x/net v0.53.0
+	golang.org/x/sys v0.43.0
 	mvdan.cc/sh/v3 v3.13.1
 )
 
@@ -37,8 +37,8 @@ require (
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
 	go.uber.org/mock v0.6.0 // indirect
-	golang.org/x/term v0.41.0 // indirect
-	golang.org/x/text v0.35.0 // indirect
+	golang.org/x/term v0.42.0 // indirect
+	golang.org/x/text v0.36.0 // indirect
 )
 
 replace github.com/creack/pty/v2 v2.0.1 => github.com/photostorm/pty/v2 v2.0.0-20240405180724-bf40468acd65
