@@ -21,10 +21,10 @@ import (
 
 type HTTPWebShellHandler struct {
 	Location  string
-	Functions template.FuncMap
 	Command   string
 	Home      string
 	Template  map[string]string
+	Functions *Functions
 
 	webshell *template.Template
 }
@@ -37,7 +37,7 @@ func (h *HTTPWebShellHandler) Load(ctx context.Context) error {
 
 	var err error
 
-	h.webshell, err = template.New("http_web_shell_webshell").Funcs(h.Functions).Parse(webshell)
+	h.webshell, err = h.Functions.ParseTemplate("http_web_shell_webshell", webshell)
 	if err != nil {
 		return err
 	}

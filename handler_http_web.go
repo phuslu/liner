@@ -19,7 +19,6 @@ import (
 	"path"
 	"strconv"
 	"strings"
-	"text/template"
 	"time"
 
 	"github.com/phuslu/log"
@@ -34,7 +33,7 @@ type HTTPWebHandler struct {
 	MemoryDialers   *MemoryDialers
 	MemoryLogWriter *ringbuffer.RingBuffer
 	Transport       *http.Transport
-	Functions       template.FuncMap
+	Functions       *Functions
 
 	wildcards []struct {
 		location string

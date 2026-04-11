@@ -22,8 +22,8 @@ type HTTPWebDohHandler struct {
 	Policy          string
 	ProxyPass       string
 	CacheSize       int
-	Functions       template.FuncMap
 	DnsResolverPool *DnsResolverPool
+	Functions       *Functions
 
 	dialer fastdns.Dialer
 	policy *template.Template
@@ -38,7 +38,7 @@ func (h *HTTPWebDohHandler) Load(_ context.Context) error {
 	h.dialer = resolver.Client.Dialer
 
 	if s := h.Policy; s != "" && s != "proxy_pass" {
-		h.policy, err = template.New("http_web_doh_policy").Funcs(h.Functions).Parse(s)
+		h.policy, err = h.Functions.ParseTemplate("http_web_doh_policy", s)
 		if err != nil {
 			return fmt.Errorf("invaild doh policy: %#v: %w", s, err)
 		}

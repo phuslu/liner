@@ -35,7 +35,7 @@ type HTTPForwardHandler struct {
 	DnsResolver     *DnsResolver
 	GeoResolver     *GeoResolver
 	PerferedLocalIP string
-	Functions       template.FuncMap
+	Functions       *Functions
 
 	policy        *template.Template
 	tcpcongestion *template.Template
@@ -49,21 +49,21 @@ func (h *HTTPForwardHandler) Load(ctx context.Context) error {
 
 	h.Config.Forward.Policy = strings.TrimSpace(h.Config.Forward.Policy)
 	if s := h.Config.Forward.Policy; strings.Contains(s, "{{") {
-		if h.policy, err = template.New("http_forward_policy").Funcs(h.Functions).Parse(s); err != nil {
+		if h.policy, err = h.Functions.ParseTemplate("http_forward_policy", s); err != nil {
 			return err
 		}
 	}
 
 	h.Config.Forward.TcpCongestion = strings.TrimSpace(h.Config.Forward.TcpCongestion)
 	if s := h.Config.Forward.TcpCongestion; strings.Contains(s, "{{") {
-		if h.tcpcongestion, err = template.New("http_forward_tcpcongestion").Funcs(h.Functions).Parse(s); err != nil {
+		if h.tcpcongestion, err = h.Functions.ParseTemplate("http_forward_tcpcongestion", s); err != nil {
 			return err
 		}
 	}
 
 	h.Config.Forward.Dialer = strings.TrimSpace(h.Config.Forward.Dialer)
 	if s := h.Config.Forward.Dialer; strings.Contains(s, "{{") {
-		if h.dialer, err = template.New("http_forward_dialer").Funcs(h.Functions).Parse(s); err != nil {
+		if h.dialer, err = h.Functions.ParseTemplate("http_forward_dialer", s); err != nil {
 			return err
 		}
 	}

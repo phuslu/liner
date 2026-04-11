@@ -24,7 +24,6 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
-	"text/template"
 	"time"
 
 	"github.com/mileusna/useragent"
@@ -496,7 +495,7 @@ func main() {
 			GeoResolver: geoResolver,
 			LocalDialer: dialer,
 			Dialers:     dialers,
-			Functions:   functions.FuncMap(),
+			Functions:   functions,
 		}
 		err = handler.Load()
 		if err != nil {
@@ -528,12 +527,12 @@ func main() {
 				DnsResolver:     dnsResolver,
 				GeoResolver:     geoResolver,
 				PerferedLocalIP: first(GetPreferedLocalIP("1.1.1.1")).String(),
-				Functions:       functions.FuncMap(),
+				Functions:       functions,
 			},
 			TunnelHandler: &HTTPTunnelHandler{
 				Config:        server,
 				MemoryDialers: memoryDialers,
-				Functions:     functions.FuncMap(),
+				Functions:     functions,
 			},
 			WebHandler: &HTTPWebHandler{
 				Config:          server,
@@ -541,7 +540,7 @@ func main() {
 				MemoryDialers:   memoryDialers,
 				MemoryLogWriter: memoryLogWriter,
 				Transport:       transport,
-				Functions:       functions.FuncMap(),
+				Functions:       functions,
 			},
 			Hostnames: filter(server.ServerName, func(s string) bool {
 				return !strings.Contains(s, "*")
@@ -753,12 +752,12 @@ func main() {
 				DnsResolver:     dnsResolver,
 				GeoResolver:     geoResolver,
 				PerferedLocalIP: first(GetPreferedLocalIP("1.1.1.1")).String(),
-				Functions:       functions.FuncMap(),
+				Functions:       functions,
 			},
 			TunnelHandler: &HTTPTunnelHandler{
 				Config:        httpConfig,
 				MemoryDialers: memoryDialers,
-				Functions:     functions.FuncMap(),
+				Functions:     functions,
 			},
 			WebHandler: &HTTPWebHandler{
 				Config:          httpConfig,
@@ -766,7 +765,7 @@ func main() {
 				MemoryDialers:   memoryDialers,
 				MemoryLogWriter: memoryLogWriter,
 				Transport:       transport,
-				Functions:       functions.FuncMap(),
+				Functions:       functions,
 			},
 			Hostnames: filter(httpConfig.ServerName, func(s string) bool {
 				return !strings.Contains(s, "*")
@@ -864,7 +863,7 @@ func main() {
 				GeoResolver: geoResolver,
 				LocalDialer: dialer,
 				Dialers:     dialers,
-				Functions:   functions.FuncMap(),
+				Functions:   functions,
 			}
 
 			if err = h.Load(context.Background()); err != nil {
@@ -912,7 +911,7 @@ func main() {
 				GeoResolver: geoResolver,
 				LocalDialer: dialer,
 				Dialers:     dialers,
-				Functions:   functions.FuncMap(),
+				Functions:   functions,
 			}
 
 			if err = h.Load(); err != nil {
@@ -976,7 +975,7 @@ func main() {
 		for _, addr := range ssh.Listen {
 			h := &SshHandler{
 				Config:    ssh,
-				Functions: functions.FuncMap(),
+				Functions: functions,
 				Logger:    log.DefaultLogger,
 			}
 
@@ -1035,7 +1034,7 @@ func main() {
 
 			h := &DnsHandler{
 				Config:          dns,
-				Functions:       functions.FuncMap(),
+				Functions:       functions,
 				DataLogger:      dataLogger,
 				DnsResolverPool: dnsResolverPool,
 			}
@@ -1112,7 +1111,7 @@ func main() {
 		spec, command := job.Spec, job.Command
 		runner.AddFunc(spec, func() {
 			if strings.Contains(command, "{{") {
-				tmpl, err := template.New(command).Funcs(functions.FuncMap()).Parse(command)
+				tmpl, err := functions.ParseTemplate(command, command)
 				if err != nil {
 					log.Error().Str("command", command).Err(err).Msg("parse cron_command error")
 					return

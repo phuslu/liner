@@ -26,7 +26,7 @@ import (
 type HTTPWebProxyHandler struct {
 	MemoryDialers *MemoryDialers
 	Transport     *http.Transport
-	Functions     template.FuncMap
+	Functions     *Functions
 	Pass          string
 	StripPrefix   string
 	SetHeaders    string
@@ -50,7 +50,7 @@ func (h *HTTPWebProxyHandler) Load(ctx context.Context) error {
 			return err
 		}
 	} else {
-		h.proxypass.Template, err = template.New("http_web_proxy_pass").Funcs(h.Functions).Parse(h.Pass)
+		h.proxypass.Template, err = h.Functions.ParseTemplate("http_web_proxy_pass", h.Pass)
 		if err != nil {
 			return err
 		}
@@ -63,7 +63,7 @@ func (h *HTTPWebProxyHandler) Load(ctx context.Context) error {
 
 	if strings.Contains(h.SetHeaders, "{{") {
 		var err error
-		h.headers, err = template.New("http_web_proxy_headers").Funcs(h.Functions).Parse(h.SetHeaders)
+		h.headers, err = h.Functions.ParseTemplate("http_web_proxy_headers", h.SetHeaders)
 		if err != nil {
 			return err
 		}

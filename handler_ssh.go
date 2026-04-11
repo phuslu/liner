@@ -21,7 +21,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
-	"text/template"
 	"time"
 
 	"github.com/creack/pty/v2"
@@ -36,8 +35,8 @@ import (
 
 type SshHandler struct {
 	Config    SshConfig
-	Functions template.FuncMap
 	Logger    log.Logger
+	Functions *Functions
 
 	sshConfig   *ssh.ServerConfig
 	userchecker AuthUserChecker
@@ -103,7 +102,7 @@ func (h *SshHandler) Load(ctx context.Context) error {
 				}
 			}
 			if strings.Contains(bannerData, "{{") {
-				if banner, err := template.New("ssh_banner").Funcs(h.Functions).Parse(bannerData); err == nil {
+				if banner, err := h.Functions.ParseTemplate("ssh_banner", bannerData); err == nil {
 					var sb strings.Builder
 					nc, err := GetNetConnFromServerPreAuthConn(conn)
 					if err != nil {
@@ -648,7 +647,7 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, width, he
 		if !strings.Contains(text, "{{") {
 			return text, nil
 		}
-		tmpl, err := template.New(text).Funcs(h.Functions).Parse(text)
+		tmpl, err := h.Functions.ParseTemplate(text, text)
 		if err != nil {
 			return "", err
 		}

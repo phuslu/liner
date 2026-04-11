@@ -30,8 +30,8 @@ type SniHandler struct {
 	DnsResolver *DnsResolver
 	GeoResolver *GeoResolver
 	LocalDialer *LocalDialer
+	Functions   *Functions
 	Dialers     map[string]Dialer
-	Functions   template.FuncMap
 
 	policy *template.Template
 	dialer *template.Template
@@ -40,12 +40,12 @@ type SniHandler struct {
 func (h *SniHandler) Load() error {
 	var err error
 
-	if h.policy, err = template.New("sni_policy").Funcs(h.Functions).Parse(h.Config.Forward.Policy); err != nil {
+	if h.policy, err = h.Functions.ParseTemplate("sni_policy", h.Config.Forward.Policy); err != nil {
 		return err
 	}
 
 	if strings.Contains(h.Config.Forward.Dialer, "{{") {
-		if h.dialer, err = template.New("sni_dialer").Funcs(h.Functions).Parse(h.Config.Forward.Dialer); err != nil {
+		if h.dialer, err = h.Functions.ParseTemplate("sni_dialer", h.Config.Forward.Dialer); err != nil {
 			return err
 		}
 	}

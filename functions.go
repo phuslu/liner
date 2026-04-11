@@ -43,16 +43,6 @@ type Functions struct {
 	ctx   context.Context
 }
 
-func (f *Functions) FuncMap() template.FuncMap {
-	return f.funcs
-}
-
-func (f *Functions) WithContext(ctx context.Context) *Functions {
-	fun := *f
-	fun.ctx = ctx
-	return &fun
-}
-
 func (f *Functions) Load() error {
 	f.funcs = template.FuncMap(sprig.GenericFuncMap())
 
@@ -102,6 +92,16 @@ func (f *Functions) Load() error {
 	f.ctx = context.Background()
 
 	return nil
+}
+
+func (f *Functions) ParseTemplate(name string, text string) (*template.Template, error) {
+	return template.New(name).Funcs(f.funcs).Parse(text)
+}
+
+func (f *Functions) WithContext(ctx context.Context) *Functions {
+	fun := *f
+	fun.ctx = ctx
+	return &fun
 }
 
 func (f *Functions) slog(msg string, args ...any) string {
