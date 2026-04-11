@@ -90,6 +90,9 @@ func (f *Functions) Load() error {
 	f.funcs["inFileLine"] = f.inFileLine
 	f.funcs["inFileIPSet"] = f.inFileIPSet
 
+	// xml releated
+	f.funcs["xml2map"] = f.xml2map
+
 	// file related
 	f.funcs["readFile"] = f.readfile
 	f.funcs["readfile"] = f.readfile
@@ -372,6 +375,11 @@ func (f *Functions) hasIPv6(host string) bool {
 	}
 
 	return false
+}
+
+func (f *Functions) xml2map(input string) map[string]any {
+	m, _ := ParseXML(strings.NewReader(input))
+	return m
 }
 
 func (f *Functions) readfile(filename string) string {

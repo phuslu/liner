@@ -15,6 +15,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -1682,6 +1683,76 @@ func SetHTTP2ResponseWriterSentHeader(rw http.ResponseWriter, sent bool) error {
 	(*responseWriter)(data).rws.handlerDone = !sent
 
 	return nil
+}
+
+func ParseXML(r io.Reader) (map[string]any, error) {
+	decoder := xml.NewDecoder(r)
+
+	var stack []map[string]any
+	var current map[string]any
+	var root map[string]any
+
+	for {
+		tok, err := decoder.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		switch t := tok.(type) {
+
+		case xml.StartElement:
+			node := make(map[string]any)
+
+			// attributes
+			for _, attr := range t.Attr {
+				node["@"+attr.Name.Local] = attr.Value
+			}
+
+			if current != nil {
+				stack = append(stack, current)
+
+				if existing, ok := current[t.Name.Local]; ok {
+					switch v := existing.(type) {
+					case []any:
+						current[t.Name.Local] = append(v, node)
+					default:
+						current[t.Name.Local] = []any{v, node}
+					}
+				} else {
+					current[t.Name.Local] = node
+				}
+			} else {
+				// root node
+				root = map[string]any{
+					t.Name.Local: node,
+				}
+			}
+
+			current = node
+
+		case xml.EndElement:
+			if len(stack) > 0 {
+				current = stack[len(stack)-1]
+				stack = stack[:len(stack)-1]
+			}
+
+		case xml.CharData:
+			text := strings.TrimSpace(string(t))
+			if text != "" && current != nil {
+				// merge text
+				if old, ok := current["#text"]; ok {
+					current["#text"] = old.(string) + text
+				} else {
+					current["#text"] = text
+				}
+			}
+		}
+	}
+
+	return root, nil
 }
 
 func GetOCSPStaple(ctx context.Context, transport http.RoundTripper, cert *x509.Certificate) ([]byte, error) {
