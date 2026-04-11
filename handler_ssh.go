@@ -713,6 +713,7 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, width, he
 
 	shell.Env = append(shell.Env,
 		"PATH="+os.Getenv("PATH"),
+		"LOGNAME="+currentUser.Username,
 		"USER="+currentUser.Username,
 		"HOME="+cmp.Or(h.Config.Home, currentUser.HomeDir),
 		"SHELL="+shell.Args[0],
