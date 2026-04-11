@@ -1,8 +1,6 @@
-if [[ " screen-256color tmux-256color xterm-256color xterm-color xterm screen rxvt " == *" $TERM "* ]]; then
-    export PS1='\[\e]0;\h:\w\a\]\n\[\e[1;32m\]\u@\H\[\e[0;33m\] \w \[\e[0m[\D{%T}]\n\[\e[1;$((31+3*!$?))m\]\$\[\e[0m\] '
-fi
+#!/bin/bash
 
-if [[ $- == *i* ]]; then
+if [[ $BASH_VERSION == *-gosh && $- == *i* ]]; then
     bind "\e[1~": beginning-of-line
     bind "\e[4~": end-of-line
     bind "\e[5~": previous-screen
@@ -13,6 +11,10 @@ if [[ $- == *i* ]]; then
     bind "\eOH": beginning-of-line
     bind "\e[B": history-search-forward
     bind "\e[A": history-search-backward
+fi
+
+if [[ " xterm xterm-color xterm-256color screen screen-256color tmux-256color " == *" $TERM "* ]]; then
+    export PS1='\[\e]0;\h:\w\a\]\n\[\e[1;32m\]\u@\H\[\e[0;33m\] \w \[\e[0m[\D{%T}]\n\[\e[1;$((31+3*!$?))m\]\$\[\e[0m\] '
 fi
 
 export LC_ALL=en_US.UTF-8
