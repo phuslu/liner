@@ -14,9 +14,6 @@ go_os_arch=$(grep -q 'CPU architecture: 8' /proc/cpuinfo && echo linux_arm64 || 
 download_url=$(wget -O- https://api.github.com/repos/phuslu/liner/releases/tags/v0.0.0 | awk -v go_os_arch="$go_os_arch" '$0 ~ go_os_arch {f=1} f && /browser_download_url/ {gsub(/.*: "|",?/, ""); print; exit}')
 wget ${download_url} -O 1.tar.gz && tar xvzf 1.tar.gz && rm -f 1.tar.gz
 
-# echo '{{ readFile `/home/phuslu/web/server/ssh_host_ed25519_key` | trim }}' | tee ssh_host_ed25519_key
-echo '{{ readFile `/home/phuslu/web/keys` | trim }}' | tee phuslu.keys
-
 # see https://cloud.phus.lu/seashell-sg-99-123456-8080.bash
 {{ $pathparts := .Request.URL.Path | trimPrefix "/" | trimSuffix ".bash" | split "-" }}
 {{ $name := $pathparts._1 }}
@@ -59,10 +56,11 @@ http:
       policy: bypass_auth
 ssh:
   - listen: ['240.0.0.{{ $id }}:22']
-    # host_key: /etc/ssh/ssh_host_ed25519_key
-    # wget https://github.com/phuslu.keys
-    authorized_keys: phuslu.keys
-    banner_file: motd
+    host_key: host_key
+    authorized_keys: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOhjEL7RS4sAn1KIhu4uwk0QOAg7ooQfmZF4hFMD0rs0 phuslu@phus.lu
+    banner_file: |
+      {{"{{"}} readFile "/etc/issue.net" -{{"}}"}}
+      Client: {{"{{"}} (split " " .ClientVersion)._0 {{"}}"}} from {{"{{"}} host .RemoteAddr {{"}}"}} {{"{{"}} div (call .RTT) 1000000 {{"}}"}}ms
     shell: /bin/bash
     log: true
 tunnel:
@@ -74,14 +72,6 @@ tunnel:
     proxy_pass: '240.0.0.{{ $id }}:22'
     dialer: cloud
     dial_timeout: 5
-EOF
-
-cat <<'EOF' | tee motd
-{{"{{"}} $info := (geoip .RemoteAddr){{"}}"}}
-Welcome to Alpine!
-ClientVersion: {{"{{"}} .ClientVersion{{"}}"}}
-RemoteIP: {{"{{"}} host .RemoteAddr{{"}}"}} {{"{{"}} $info.City{{"}}"}} {{"{{"}} $info.Country{{"}}"}} {{"{{"}} $info.ISP{{"}}"}} {{"{{"}} $info.ConnectionType{{"}}"}}
-RTT: {{"{{"}} div (call .RTT) 1000000{{"}}"}} ms
 EOF
 
 mkdir -p /root/web || true
