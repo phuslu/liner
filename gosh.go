@@ -1005,8 +1005,11 @@ type goshShellEnviron struct {
 }
 
 func (e *goshShellEnviron) Get(name string) expand.Variable {
-	if name == "-" {
+	switch name {
+	case "-":
 		return expand.Variable{Set: true, Kind: expand.String, Str: e.flags()}
+	case "BASH_VERSION":
+		return expand.Variable{Set: true, Kind: expand.String, Str: version + "(1)-gosh"}
 	}
 	if e.base == nil {
 		return expand.Variable{}
