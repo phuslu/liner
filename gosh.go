@@ -126,10 +126,7 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 
 	// export HISTFILE=""
 	histFile, ok := os.LookupEnv("HISTFILE")
-	switch {
-	case !ok:
-		histFile = os.ExpandEnv("$HOME/.ash_history")
-	case histFile == os.DevNull || histFile == "/dev/null":
+	if !ok || histFile == os.DevNull || histFile == "/dev/null" {
 		histFile = ""
 	}
 
