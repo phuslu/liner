@@ -326,7 +326,6 @@ func main() {
 				CACert:     u.Query().Get("cacert"),
 				ClientKey:  u.Query().Get("key"),
 				ClientCert: u.Query().Get("cert"),
-				MaxClients: cmp.Or(first(strconv.Atoi(u.Query().Get("max_clients"))), 8),
 				Logger:     slog.Default(),
 				Dialer:     underlay,
 			}

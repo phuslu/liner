@@ -34,7 +34,6 @@ type HTTP2Dialer struct {
 	CACert     string
 	ClientKey  string
 	ClientCert string
-	MaxClients int
 
 	Logger *slog.Logger
 	Dialer Dialer
