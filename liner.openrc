@@ -20,6 +20,7 @@ start_pre() {
 start() {
 	ebegin "Starting ${RC_SVCNAME}"
 
+	export GODEBUG=http2xconnect=1
 	export HTTP2_WRITER_POOL_BUFFER_SIZE=65536
 	
 	cd "${appdir}"
