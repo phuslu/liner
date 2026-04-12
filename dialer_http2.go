@@ -148,10 +148,12 @@ func (d *HTTP2Dialer) DialContext(ctx context.Context, network, addr string) (ne
 	}
 
 	var remoteAddr, localAddr net.Addr
+	var netConn net.Conn
 
 	req = req.WithContext(httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
 		GotConn: func(connInfo httptrace.GotConnInfo) {
 			remoteAddr, localAddr = connInfo.Conn.RemoteAddr(), connInfo.Conn.LocalAddr()
+			netConn = connInfo.Conn
 		},
 	}))
 
@@ -176,6 +178,7 @@ func (d *HTTP2Dialer) DialContext(ctx context.Context, network, addr string) (ne
 		closed:     make(chan struct{}),
 		remoteAddr: remoteAddr,
 		localAddr:  localAddr,
+		netConn:    netConn,
 	}
 
 	return conn, nil
@@ -189,6 +192,7 @@ type http2Stream struct {
 
 	remoteAddr net.Addr
 	localAddr  net.Addr
+	netConn    net.Conn
 }
 
 func (c *http2Stream) Read(b []byte) (n int, err error) {
@@ -236,4 +240,8 @@ func (c *http2Stream) SetReadDeadline(t time.Time) error {
 func (c *http2Stream) SetWriteDeadline(t time.Time) error {
 	return nil
 	// return &net.OpError{Op: "set", Net: "http2", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
+}
+
+func (c *http2Stream) NetConn() net.Conn {
+	return c.netConn
 }

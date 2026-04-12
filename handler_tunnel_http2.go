@@ -103,10 +103,12 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialerName, dialerURL stri
 	}
 
 	var remoteAddr, localAddr net.Addr
+	var netConn net.Conn
 
 	req = req.WithContext(httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
 		GotConn: func(connInfo httptrace.GotConnInfo) {
 			remoteAddr, localAddr = connInfo.Conn.RemoteAddr(), connInfo.Conn.LocalAddr()
+			netConn = connInfo.Conn
 		},
 	}))
 
@@ -133,6 +135,7 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialerName, dialerURL stri
 		closed:     make(chan struct{}),
 		remoteAddr: remoteAddr,
 		localAddr:  localAddr,
+		netConn:    netConn,
 	}
 
 	session, err := yamux.Server(conn, &yamux.Config{
