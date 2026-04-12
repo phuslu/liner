@@ -37,6 +37,7 @@ type HTTP3Dialer struct {
 	Logger    *slog.Logger
 
 	mu        sync.Mutex
+	tlsConfig *tls.Config
 	transport *http3.Transport
 }
 
@@ -52,18 +53,20 @@ func (d *HTTP3Dialer) init() {
 		return
 	}
 
+	d.tlsConfig = &tls.Config{
+		NextProtos:         []string{"h3"},
+		InsecureSkipVerify: d.Insecure,
+		ServerName:         d.Host,
+		ClientSessionCache: tls.NewLRUClientSessionCache(2048),
+	}
+
 	d.transport = &http3.Transport{
 		DisableCompression: false,
 		EnableDatagrams:    true,
 		Dial: func(ctx context.Context, addr string, tlsConf *tls.Config, conf *quic.Config) (*quic.Conn, error) {
 			return quic.DialAddrEarly(ctx,
 				net.JoinHostPort(cmp.Or(d.Resolve, d.Host), cmp.Or(d.Port, "443")),
-				&tls.Config{
-					NextProtos:         []string{"h3"},
-					InsecureSkipVerify: d.Insecure,
-					ServerName:         d.Host,
-					ClientSessionCache: tls.NewLRUClientSessionCache(2048),
-				},
+				d.tlsConfig,
 				&quic.Config{
 					DisablePathMTUDiscovery:    false,
 					EnableDatagrams:            true,
