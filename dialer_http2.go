@@ -15,9 +15,7 @@ import (
 	"net/url"
 	"os"
 	"sync"
-	"sync/atomic"
 	"time"
-	"unsafe"
 
 	utls "github.com/refraction-networking/utls"
 	"github.com/smallnest/ringbuffer"
@@ -41,91 +39,85 @@ type HTTP2Dialer struct {
 	Logger *slog.Logger
 	Dialer Dialer
 
-	mutexes [64]sync.Mutex
-	clients [64]*http2.Transport
+	mu        sync.Mutex
+	tlscache  utls.ClientSessionCache
+	transport *http2.Transport
+}
+
+func (d *HTTP2Dialer) init() {
+	if d.transport != nil {
+		return
+	}
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if d.transport != nil {
+		return
+	}
+
+	d.tlscache = utls.NewLRUClientSessionCache(2048)
+
+	d.transport = &http2.Transport{
+		DisableCompression: false,
+		MaxReadFrameSize:   1024 * 1024, // 1MB read frame, https://github.com/golang/go/issues/47840
+		DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
+			hostport := net.JoinHostPort(d.Host, cmp.Or(d.Port, "443"))
+			dialer := d.Dialer
+			if md := MemoryDialerOf(ctx, network, hostport); md != nil {
+				if d.Logger != nil {
+					d.Logger.Info("http2 dialer switch to memory dialer", "memory_dialer_address", md.Address)
+				}
+				dialer = md
+			}
+			if dialer == nil {
+				dialer = &net.Dialer{}
+			}
+			conn, err := dialer.DialContext(ctx, "tcp", hostport)
+			if err != nil {
+				return nil, err
+			}
+
+			tlsConfig := &utls.Config{
+				NextProtos:         []string{"h2"},
+				InsecureSkipVerify: d.Insecure,
+				ServerName:         d.Host,
+				ClientSessionCache: d.tlscache,
+			}
+			if d.CACert != "" && d.ClientKey != "" && d.ClientCert != "" {
+				caData, err := os.ReadFile(d.CACert)
+				if err != nil {
+					return nil, err
+				}
+
+				cert, err := utls.LoadX509KeyPair(d.ClientCert, d.ClientKey)
+				if err != nil {
+					return nil, err
+				}
+
+				tlsConfig.RootCAs = x509.NewCertPool()
+				tlsConfig.RootCAs.AppendCertsFromPEM(caData)
+				tlsConfig.Certificates = []utls.Certificate{cert}
+			}
+
+			tlsConn := utls.UClient(conn, tlsConfig, utls.HelloChrome_Auto)
+
+			err = tlsConn.HandshakeContext(ctx)
+			if err != nil {
+				return nil, err
+			}
+
+			return tlsConn, nil
+		},
+	}
+
+	if d.UserAgent == "" {
+		d.UserAgent = DefaultUserAgent
+	}
 }
 
 func (d *HTTP2Dialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
-	connect := func() (*http2.Transport, error) {
-		return &http2.Transport{
-			MaxReadFrameSize:   1024 * 1024, // 1MB read frame, https://github.com/golang/go/issues/47840
-			DisableCompression: false,
-			DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
-				hostport := net.JoinHostPort(d.Host, cmp.Or(d.Port, "443"))
-				dialer := d.Dialer
-				if md := MemoryDialerOf(ctx, network, hostport); md != nil {
-					if d.Logger != nil {
-						d.Logger.Info("http2 dialer switch to memory dialer", "memory_dialer_address", md.Address)
-					}
-					dialer = md
-				}
-				if dialer == nil {
-					dialer = &net.Dialer{}
-				}
-				conn, err := dialer.DialContext(ctx, "tcp", hostport)
-				if err != nil {
-					return nil, err
-				}
-
-				tlsConfig := &utls.Config{
-					NextProtos:         []string{"h2"},
-					InsecureSkipVerify: d.Insecure,
-					ServerName:         d.Host,
-					ClientSessionCache: utls.NewLRUClientSessionCache(2048),
-				}
-				if d.CACert != "" && d.ClientKey != "" && d.ClientCert != "" {
-					caData, err := os.ReadFile(d.CACert)
-					if err != nil {
-						return nil, err
-					}
-
-					cert, err := utls.LoadX509KeyPair(d.ClientCert, d.ClientKey)
-					if err != nil {
-						return nil, err
-					}
-
-					tlsConfig.RootCAs = x509.NewCertPool()
-					tlsConfig.RootCAs.AppendCertsFromPEM(caData)
-					tlsConfig.Certificates = []utls.Certificate{cert}
-				}
-
-				tlsConn := utls.UClient(conn, tlsConfig, utls.HelloChrome_Auto)
-
-				err = tlsConn.HandshakeContext(ctx)
-				if err != nil {
-					return nil, err
-				}
-
-				return tlsConn, nil
-			},
-		}, nil
-	}
-
-	maxClient := d.MaxClients
-	if maxClient == 0 {
-		maxClient = 1
-	}
-
-	n := 1
-	if 0 < maxClient && maxClient < len(d.clients) {
-		n = maxClient
-	}
-	n = int(fastrandn(uint32(n)))
-
-	if atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&d.clients[n]))) == nil {
-		d.mutexes[n].Lock()
-		if d.clients[n] == nil {
-			c, err := connect()
-			if err != nil {
-				d.mutexes[n].Unlock()
-				return nil, err
-			}
-			atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&d.clients[n])), unsafe.Pointer(c))
-		}
-		d.mutexes[n].Unlock()
-	}
-
-	transport := d.clients[n]
+	d.init()
 
 	pr, pw := ringbuffer.New(32 * 1024).Pipe()
 	req := &http.Request{
@@ -163,7 +155,7 @@ func (d *HTTP2Dialer) DialContext(ctx context.Context, network, addr string) (ne
 		},
 	}))
 
-	resp, err := transport.RoundTrip(req)
+	resp, err := d.transport.RoundTrip(req)
 	if err != nil {
 		return nil, err
 	}
