@@ -37,6 +37,7 @@ type HTTP3Dialer struct {
 	Logger    *slog.Logger
 
 	mu        sync.Mutex
+	tlscache  tls.ClientSessionCache
 	transport *http3.Transport
 }
 
@@ -52,6 +53,8 @@ func (d *HTTP3Dialer) init() {
 		return
 	}
 
+	d.tlscache = tls.NewLRUClientSessionCache(2048)
+
 	d.transport = &http3.Transport{
 		DisableCompression: false,
 		EnableDatagrams:    true,
@@ -62,7 +65,7 @@ func (d *HTTP3Dialer) init() {
 					NextProtos:         []string{"h3"},
 					InsecureSkipVerify: d.Insecure,
 					ServerName:         d.Host,
-					ClientSessionCache: tls.NewLRUClientSessionCache(2048),
+					ClientSessionCache: d.tlscache,
 				},
 				&quic.Config{
 					DisablePathMTUDiscovery:    false,
