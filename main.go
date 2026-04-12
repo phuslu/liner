@@ -437,7 +437,7 @@ func main() {
 
 	// template functions
 	functions := &Functions{
-		Logger: log.Logger{
+		Logger: &log.Logger{
 			Level:        log.DefaultLogger.Level,
 			Caller:       0,
 			TimeField:    log.DefaultLogger.TimeField,

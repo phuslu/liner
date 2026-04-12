@@ -26,7 +26,7 @@ import (
 )
 
 type Functions struct {
-	Logger          log.Logger
+	Logger          *log.Logger
 	DnsResolverPool *DnsResolverPool
 	DnsResolver     *DnsResolver
 	GeoResolver     *GeoResolver
