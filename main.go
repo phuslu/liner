@@ -331,8 +331,8 @@ func main() {
 				ClientKey:  u.Query().Get("key"),
 				ClientCert: u.Query().Get("cert"),
 				Logger:     slog.Default(),
-				TLSCache:   tlsClientSessionCache,
-				Dialer:     underlay,
+				// TLSCache:   tlsClientSessionCache,
+				Dialer: underlay,
 			}
 		case "http3", "http3+wss":
 			return &HTTP3Dialer{

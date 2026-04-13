@@ -36,11 +36,10 @@ type HTTP2Dialer struct {
 	ClientCert string
 
 	Logger   *slog.Logger
-	TLSCache tls.ClientSessionCache
+	TLSCache utls.ClientSessionCache
 	Dialer   Dialer
 
 	mu        sync.Mutex
-	tlsConfig *utls.Config
 	transport *http2.Transport
 }
 
@@ -56,11 +55,8 @@ func (d *HTTP2Dialer) init() {
 		return
 	}
 
-	d.tlsConfig = &utls.Config{
-		NextProtos:         []string{"h2"},
-		InsecureSkipVerify: d.Insecure,
-		ServerName:         d.Host,
-		ClientSessionCache: utls.NewLRUClientSessionCache(2048),
+	if d.TLSCache == nil {
+		d.TLSCache = utls.NewLRUClientSessionCache(256)
 	}
 
 	d.transport = &http2.Transport{
@@ -83,7 +79,12 @@ func (d *HTTP2Dialer) init() {
 				return nil, err
 			}
 
-			tlsConfig := d.tlsConfig
+			tlsConfig := &utls.Config{
+				NextProtos:         []string{"h2"},
+				InsecureSkipVerify: d.Insecure,
+				ServerName:         d.Host,
+				ClientSessionCache: d.TLSCache,
+			}
 			if d.CACert != "" && d.ClientKey != "" && d.ClientCert != "" {
 				caData, err := os.ReadFile(d.CACert)
 				if err != nil {
