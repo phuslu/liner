@@ -57,7 +57,7 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialerName, dialerURL stri
 			}
 
 			tlsConfig := &utls.Config{
-				NextProtos:         []string{"h2"},
+				NextProtos:         []string{"h2", "http/1.1"},
 				InsecureSkipVerify: u.Query().Get("insecure") == "true",
 				ServerName:         u.Hostname(),
 			}
@@ -125,7 +125,7 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialerName, dialerURL stri
 	}
 
 	if remoteAddr == nil || localAddr == nil {
-		remoteAddr, localAddr = &net.UDPAddr{}, &net.UDPAddr{}
+		remoteAddr, localAddr = &net.TCPAddr{}, &net.TCPAddr{}
 	}
 
 	conn := &http2Stream{

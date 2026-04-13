@@ -80,7 +80,7 @@ func (d *HTTP2Dialer) init() {
 			}
 
 			tlsConfig := &utls.Config{
-				NextProtos:         []string{"h2"},
+				NextProtos:         []string{"h2", "http/1.1"},
 				InsecureSkipVerify: d.Insecure,
 				ServerName:         d.Host,
 				ClientSessionCache: d.TLSCache,
