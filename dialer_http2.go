@@ -56,7 +56,7 @@ func (d *HTTP2Dialer) init() {
 	}
 
 	if d.TLSCache == nil {
-		d.TLSCache = utls.NewLRUClientSessionCache(256)
+		d.TLSCache = utls.NewLRUClientSessionCache(32)
 	}
 
 	d.transport = &http2.Transport{
