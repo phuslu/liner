@@ -34,8 +34,8 @@ type HTTP3Dialer struct {
 	Insecure  bool
 	Resolve   string
 	Websocket bool
+	TLSCache  *TLSClientSessionCache
 	Logger    *slog.Logger
-	TLSCache  tls.ClientSessionCache
 
 	mu        sync.Mutex
 	transport *http3.Transport

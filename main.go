@@ -177,7 +177,7 @@ func main() {
 		}
 	}
 
-	tlsClientSessionCache := tls.NewLRUClientSessionCache(8192)
+	tlsClientSessionCache := &TLSClientSessionCache{lru.NewLRUCache[string, *tls.ClientSessionState](8192)}
 
 	// dns resolver generator
 	dnsResolverPool := &DnsResolverPool{

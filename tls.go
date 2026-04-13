@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/phuslu/log"
+	"github.com/phuslu/lru"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/quic-go/quic-go"
 	"golang.org/x/crypto/acme/autocert"
@@ -311,4 +312,16 @@ func (m *TLSInspector) HTTPConnState(c net.Conn, cs http.ConnState) {
 	case http.StateHijacked, http.StateClosed:
 		m.ClientHelloMap.Delete(addr)
 	}
+}
+
+type TLSClientSessionCache struct {
+	lrucache *lru.LRUCache[string, *tls.ClientSessionState]
+}
+
+func (m *TLSClientSessionCache) Get(key string) (*tls.ClientSessionState, bool) {
+	return m.lrucache.Get(key)
+}
+
+func (m *TLSClientSessionCache) Put(key string, state *tls.ClientSessionState) {
+	m.lrucache.Set(key, state)
 }

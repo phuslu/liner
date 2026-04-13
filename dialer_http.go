@@ -37,7 +37,7 @@ type HTTPDialer struct {
 	ClientCert  string
 	Resolve     map[string]string
 	Dialer      Dialer
-	TLSCache    tls.ClientSessionCache
+	TLSCache    *TLSClientSessionCache
 	Logger      *slog.Logger
 	DnsResolver *DnsResolver
 

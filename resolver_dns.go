@@ -27,8 +27,8 @@ import (
 type DnsResolverPool struct {
 	Logger      *log.Logger
 	Cache       *lru.TTLCache[DnsResolverCacheKey, []netip.Addr]
+	TLSCache    *TLSClientSessionCache
 	DisableIPv6 bool
-	TLSCache    tls.ClientSessionCache
 
 	resolvers *xsync.Map[string, dnsresolvererr]
 }
