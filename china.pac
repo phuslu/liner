@@ -70,7 +70,7 @@ var blacklist = {"10.10.10.10":1,"101.226.10.8":1,"103.56.16.112":1,"104.239.213
 
 // see https://github.com/misakaio/chnroutes2
 var iplist = [
-	{{- range (fetch "" 15 86400 "https://cdn.jsdelivr.net/gh/misakaio/chnroutes2/chnroutes.txt").Lines -}}
+	{{- range (fetch "" 15 86400 "https://cloud.phus.lu/server/chnroutes.txt").Lines -}}
 	{{ with $a := split "/" . }}{{ with $b := ipInt $a._0 }}{{ $b }},{{ sub 32 $a._1 }},{{ end }}{{ end }}{{ end -}}
 ]
 
