@@ -60,7 +60,6 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialerName, dialerURL stri
 				NextProtos:         []string{"h2"},
 				InsecureSkipVerify: u.Query().Get("insecure") == "true",
 				ServerName:         u.Hostname(),
-				ClientSessionCache: utls.NewLRUClientSessionCache(1024),
 			}
 
 			tlsConn := utls.UClient(conn, tlsConfig, utls.HelloChrome_Auto)

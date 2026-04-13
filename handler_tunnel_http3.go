@@ -48,7 +48,6 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 						NextProtos:         []string{"h3"},
 						InsecureSkipVerify: u.Query().Get("insecure") == "true",
 						ServerName:         u.Hostname(),
-						ClientSessionCache: tls.NewLRUClientSessionCache(1024),
 					},
 					&quic.Config{
 						DisablePathMTUDiscovery:    false,
