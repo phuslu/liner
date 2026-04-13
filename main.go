@@ -177,10 +177,13 @@ func main() {
 		}
 	}
 
+	tlsCache := tls.NewLRUClientSessionCache(8192)
+
 	// dns resolver generator
 	dnsResolverPool := &DnsResolverPool{
 		Logger:      &log.DefaultLogger,
 		Cache:       lru.NewTTLCache[DnsResolverCacheKey, []netip.Addr](cmp.Or(config.Global.DnsCacheSize, 16*1024)),
+		TLSCache:    tlsCache,
 		DisableIPv6: config.Global.DisableIpv6,
 	}
 

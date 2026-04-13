@@ -28,6 +28,7 @@ type DnsResolverPool struct {
 	Logger      *log.Logger
 	Cache       *lru.TTLCache[DnsResolverCacheKey, []netip.Addr]
 	DisableIPv6 bool
+	TLSCache    tls.ClientSessionCache
 
 	resolvers *xsync.Map[string, dnsresolvererr]
 }
@@ -103,7 +104,7 @@ func (pool *DnsResolverPool) Get(addr string, ttl time.Duration) (*DnsResolver, 
 				Addr: func() (ua *net.TCPAddr) { ua, _ = net.ResolveTCPAddr(tcp, hostport); return }(),
 				TLSConfig: &tls.Config{
 					ServerName:         u.Hostname(),
-					ClientSessionCache: tls.NewLRUClientSessionCache(128),
+					ClientSessionCache: pool.TLSCache,
 				},
 				Timeout:  5 * time.Second,
 				MaxConns: cmp.Or(uint16(first(strconv.Atoi(u.Query().Get("max_conns")))), 8),
@@ -119,7 +120,7 @@ func (pool *DnsResolverPool) Get(addr string, ttl time.Duration) (*DnsResolver, 
 				Transport: &http2.Transport{
 					TLSClientConfig: &tls.Config{
 						ServerName:         u.Hostname(),
-						ClientSessionCache: tls.NewLRUClientSessionCache(128),
+						ClientSessionCache: pool.TLSCache,
 					},
 					DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
 						return (&tls.Dialer{Config: cfg}).DialContext(ctx, tcp, addr)
@@ -141,7 +142,7 @@ func (pool *DnsResolverPool) Get(addr string, ttl time.Duration) (*DnsResolver, 
 						NextProtos:         []string{"h3"},
 						InsecureSkipVerify: u.Query().Get("insecure") == "true",
 						ServerName:         u.Hostname(),
-						ClientSessionCache: tls.NewLRUClientSessionCache(128),
+						ClientSessionCache: pool.TLSCache,
 					},
 					QUICConfig: &quic.Config{
 						DisablePathMTUDiscovery: false,
