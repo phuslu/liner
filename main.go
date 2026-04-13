@@ -177,9 +177,10 @@ func main() {
 		}
 	}
 
-	tlsClientSessionCache := &TLSClientSessionCache{lru.NewLRUCache[string, *tls.ClientSessionState](8192)}
+	// global tls client session cache
+	tlsClientSessionCache := &TLSClientSessionCache{lru.NewLRUCache[string, *tls.ClientSessionState](cmp.Or(config.Global.TlsCacheSize, 4096))}
 
-	// dns resolver generator
+	// dns resolver pool
 	dnsResolverPool := &DnsResolverPool{
 		Logger:      &log.DefaultLogger,
 		Cache:       lru.NewTTLCache[DnsResolverCacheKey, []netip.Addr](cmp.Or(config.Global.DnsCacheSize, 16*1024)),
