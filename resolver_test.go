@@ -81,7 +81,6 @@ func TestDnsResolverDoH3(t *testing.T) {
 					NextProtos:         []string{"h3"},
 					InsecureSkipVerify: true,
 					ServerName:         "8.8.8.8",
-					ClientSessionCache: tls.NewLRUClientSessionCache(128),
 				},
 				QUICConfig: &quic.Config{
 					DisablePathMTUDiscovery: false,
