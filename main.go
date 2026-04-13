@@ -177,13 +177,13 @@ func main() {
 		}
 	}
 
-	tlsCache := tls.NewLRUClientSessionCache(8192)
+	tlsClientSessionCache := tls.NewLRUClientSessionCache(8192)
 
 	// dns resolver generator
 	dnsResolverPool := &DnsResolverPool{
 		Logger:      &log.DefaultLogger,
 		Cache:       lru.NewTTLCache[DnsResolverCacheKey, []netip.Addr](cmp.Or(config.Global.DnsCacheSize, 16*1024)),
-		TLSCache:    tlsCache,
+		TLSCache:    tlsClientSessionCache,
 		DisableIPv6: config.Global.DisableIpv6,
 	}
 
@@ -276,7 +276,7 @@ func main() {
 		TCPKeepAlive:    30 * time.Second,
 		TLSConfig: &tls.Config{
 			InsecureSkipVerify: config.Global.TlsInsecure,
-			ClientSessionCache: tls.NewLRUClientSessionCache(2048),
+			ClientSessionCache: tlsClientSessionCache,
 		},
 	}
 
@@ -295,7 +295,7 @@ func main() {
 				TCPKeepAlive:    30 * time.Second,
 				TLSConfig: &tls.Config{
 					InsecureSkipVerify: u.Query().Get("insecure") == "true",
-					ClientSessionCache: tls.NewLRUClientSessionCache(2048),
+					ClientSessionCache: tlsClientSessionCache,
 				},
 			}
 		case "http", "https", "ws", "wss":
@@ -315,6 +315,7 @@ func main() {
 				ClientCert:  u.Query().Get("cert"),
 				Logger:      slog.Default(),
 				Resolve:     map[string]string{u.Host: u.Query().Get("resolve")},
+				TLSCache:    tlsClientSessionCache,
 				DnsResolver: dnsResolver,
 				Dialer:      underlay,
 			}
@@ -330,6 +331,7 @@ func main() {
 				ClientKey:  u.Query().Get("key"),
 				ClientCert: u.Query().Get("cert"),
 				Logger:     slog.Default(),
+				TLSCache:   tlsClientSessionCache,
 				Dialer:     underlay,
 			}
 		case "http3", "http3+wss":
@@ -342,6 +344,7 @@ func main() {
 				Insecure:  u.Query().Get("insecure") == "true",
 				Resolve:   u.Query().Get("resolve"),
 				Websocket: strings.HasSuffix(u.Scheme, "+wss"),
+				TLSCache:  tlsClientSessionCache,
 				Logger:    slog.Default(),
 			}
 		case "socks4", "socks4a", "socks", "socks5", "socks5h":

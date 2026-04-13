@@ -35,8 +35,9 @@ type HTTP2Dialer struct {
 	ClientKey  string
 	ClientCert string
 
-	Logger *slog.Logger
-	Dialer Dialer
+	Logger   *slog.Logger
+	TLSCache tls.ClientSessionCache
+	Dialer   Dialer
 
 	mu        sync.Mutex
 	tlsConfig *utls.Config

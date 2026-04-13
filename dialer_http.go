@@ -37,6 +37,7 @@ type HTTPDialer struct {
 	ClientCert  string
 	Resolve     map[string]string
 	Dialer      Dialer
+	TLSCache    tls.ClientSessionCache
 	Logger      *slog.Logger
 	DnsResolver *DnsResolver
 
@@ -55,7 +56,7 @@ func (d *HTTPDialer) init() error {
 	d.tlsConfig = &tls.Config{
 		InsecureSkipVerify: d.Insecure,
 		ServerName:         d.Host,
-		ClientSessionCache: tls.NewLRUClientSessionCache(2048),
+		ClientSessionCache: d.TLSCache,
 	}
 	if d.CACert != "" && d.ClientKey != "" && d.ClientCert != "" {
 		caData, err := os.ReadFile(d.CACert)
