@@ -699,6 +699,10 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, width, he
 				args0 += ".exe"
 			}
 		}
+		// pip install liner-py
+		if strings.HasSuffix(strings.ToLower(filepath.Base(args0)), "python") {
+			args0 = "linex"
+		}
 		shell = exec.CommandContext(ctx, args0, os.Args[1:]...)
 		shell.Env = append(shell.Env, "GOSH=1")
 	} else {
