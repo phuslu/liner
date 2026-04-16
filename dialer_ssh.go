@@ -25,7 +25,6 @@ type SSHDialer struct {
 	Port                  string
 	StrictHostKeyChecking bool
 	UserKnownHostsFile    string
-	MaxClients            int
 	Timeout               time.Duration
 	IdleTimeout           time.Duration
 	TcpReadBuffer         int
@@ -33,8 +32,8 @@ type SSHDialer struct {
 	Logger                *slog.Logger
 	Dialer                Dialer
 
-	mutexes [64]sync.Mutex
-	clients [64]*ssh.Client
+	mu     sync.Mutex
+	client *ssh.Client
 }
 
 func (d *SSHDialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -103,40 +102,29 @@ func (d *SSHDialer) DialContext(ctx context.Context, network, addr string) (net.
 		return ssh.NewClient(c, chans, reqs), nil
 	}
 
-	maxClient := d.MaxClients
-	if maxClient == 0 {
-		maxClient = 1
-	}
-
-	n := 1
-	if 0 < maxClient && maxClient < len(d.clients) {
-		n = maxClient
-	}
-	n = int(fastrandn(uint32(n)))
-
-	if atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&d.clients[n]))) == nil {
-		d.mutexes[n].Lock()
-		if d.clients[n] == nil {
+	if atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&d.client))) == nil {
+		d.mu.Lock()
+		if d.client == nil {
 			c, err := connect(ctx)
 			if err != nil {
-				d.mutexes[n].Unlock()
+				d.mu.Unlock()
 				return nil, err
 			}
-			atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&d.clients[n])), unsafe.Pointer(c))
+			atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&d.client)), unsafe.Pointer(c))
 		}
-		d.mutexes[n].Unlock()
+		d.mu.Unlock()
 	}
 
-	conn, err := d.clients[n].DialContext(ctx, network, addr)
+	conn, err := d.client.DialContext(ctx, network, addr)
 	if err != nil {
 		time.Sleep(time.Duration(100+fastrandn(200)) * time.Millisecond)
-		old := d.clients[n]
-		d.mutexes[n].Lock()
-		if d.clients[n] == old {
-			d.clients[n], err = connect(ctx)
+		old := d.client
+		d.mu.Lock()
+		if d.client == old {
+			d.client, err = connect(ctx)
 		}
-		d.mutexes[n].Unlock()
-		if c := d.clients[n]; c != nil && c != old {
+		d.mu.Unlock()
+		if c := d.client; c != nil && c != old {
 			conn, err = c.DialContext(ctx, network, addr)
 		}
 	}
