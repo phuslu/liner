@@ -330,10 +330,11 @@ func (h *goshHistory) Entries() []string {
 }
 
 func goshDefaultPrompt() string {
+	symbol := "$"
 	if os.Geteuid() == 0 {
-		return "# "
+		symbol = "#"
 	}
-	return "$ "
+	return "sh-" + version[:3] + symbol + " "
 }
 
 func goshPromptString(ctx context.Context, runner *interp.Runner, stdin io.Reader, stderr io.Writer, name, fallback string, seq int) goshPromptParts {
