@@ -14,13 +14,13 @@ dialer:
   wireguard: local://wg0
   torsocks: socks5h://127.0.0.1:9050
   proxy1: https://user:passwd@proxy1.example.org:443/?user_agent=liner-1984
-  proxy2: http2://foobar:123456@proxy2.example.com:443/?user_agent=liner-1984&max_clients=8
+  proxy2: http2://foobar:123456@proxy2.example.com:443/?user_agent=liner-1984
   proxy3: http3://foobar:123456@proxy3.example.com:443/?user_agent=liner-1984
   proxychain: |
     ssh://foobar:123456@cn.phus.lu:22/
-    http2://foobar:123456@ipv6.phus.lu:443/?user_agent=liner-jumper-cn&max_clients=8
+    http2://foobar:123456@ipv6.phus.lu:443/?user_agent=liner-jumper-cn
   wss: wss://phuslu:123456@www.phus.lu:443/
-  ssh: ssh://phuslu:123456@phus.lu:22/?timeout=8&max_clients=4&key=/home/phuslu/.ssh/id_rsa
+  ssh: ssh://phuslu:123456@phus.lu:22/?timeout=8&key=/home/phuslu/.ssh/id_rsa
 dns:
   - listen: [':53', 'tcp://0.0.0.0:53', 'tls://0.0.0.0:853']
     keyfile: phus_lu.pem
