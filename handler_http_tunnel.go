@@ -314,7 +314,7 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	session, err := yamux.Client(conn, &yamux.Config{
 		AcceptBacklog:           256,
 		PingBacklog:             32,
-		EnableKeepAlive:         true,
+		EnableKeepAlive:         req.ProtoMajor != 3,
 		KeepAliveInterval:       30 * time.Second,
 		MeasureRTTInterval:      30 * time.Second,
 		ConnectionWriteTimeout:  10 * time.Second,
@@ -384,6 +384,12 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	}(req.Context())
 
 	go func(ctx context.Context) {
+		if req.ProtoMajor == 3 {
+			<-ctx.Done()
+			log.Info().NetIPAddrPort("tunnel_listen", addrport).NetAddr("remote_addr", session.RemoteAddr()).Msg("http3 tunnel request context done")
+			exit <- nil
+			return
+		}
 		count := 0
 		seconds := 5 + fastrandn(30)
 		for {
