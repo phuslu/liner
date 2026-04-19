@@ -870,6 +870,10 @@ type ConnWithData struct {
 	Data []byte
 }
 
+func (c *ConnWithData) NetConn() net.Conn {
+	return c.Conn
+}
+
 func (c *ConnWithData) Read(b []byte) (int, error) {
 	if c.Data == nil {
 		if c.Conn == nil {
