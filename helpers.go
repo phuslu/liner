@@ -1093,7 +1093,7 @@ func AppendJA3Fingerprint(dst []byte, version uint16, info *tls.ClientHelloInfo)
 	return b
 }
 
-func AppendJA4Fingerprint(dst []byte, version uint16, info *tls.ClientHelloInfo, isquic bool) []byte {
+func AppendJA4Fingerprint(dst []byte, version uint16, info *tls.ClientHelloInfo) []byte {
 	b := AppendableBytes(dst)
 
 	ciphers := make([]uint16, 0, 32)
@@ -1114,10 +1114,21 @@ func AppendJA4Fingerprint(dst []byte, version uint16, info *tls.ClientHelloInfo,
 		}
 	}
 
-	if isquic {
-		b = b.Byte('q')
-	} else {
+	conn := info.Conn
+	for {
+		c, ok := conn.(interface {
+			NetConn() net.Conn
+		})
+		if !ok {
+			break
+		}
+		conn = c.NetConn()
+	}
+
+	if _, ok := conn.(*net.TCPConn); ok {
 		b = b.Byte('t')
+	} else {
+		b = b.Byte('q')
 	}
 	switch version {
 	case tls.VersionTLS13:

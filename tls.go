@@ -285,7 +285,7 @@ var HTTP3ClientHelloInfoContextKey any = &HTTPContextKey{"http3-clienthello-info
 func (m *TLSInspector) HTTP3ConnContext(ctx context.Context, conn *quic.Conn) context.Context {
 	addr := PlainAddrFromNetAddr(conn.RemoteAddr())
 	if info, ok := m.ClientHelloMap.Load(addr); ok {
-		AppendJA4Fingerprint(info.JA4[:0], conn.ConnectionState().TLS.Version, info.ClientHelloInfo, true)
+		AppendJA4Fingerprint(info.JA4[:0], conn.ConnectionState().TLS.Version, info.ClientHelloInfo)
 		info.QuicConn = conn
 		ctx = context.WithValue(ctx, HTTP3ClientHelloInfoContextKey, info)
 		m.ClientHelloMap.Delete(addr)
@@ -303,7 +303,7 @@ func (m *TLSInspector) HTTPConnState(c net.Conn, cs http.ConnState) {
 				ConnectionState() tls.ConnectionState
 			}); ok {
 				cs := tc.ConnectionState()
-				AppendJA4Fingerprint(info.JA4[:0], cs.Version, info.ClientHelloInfo, false)
+				AppendJA4Fingerprint(info.JA4[:0], cs.Version, info.ClientHelloInfo)
 			}
 			info.NetConn = c
 		} else {
