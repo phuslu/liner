@@ -129,7 +129,7 @@ https:
           set_headers: "Host: 8.8.8.8"
       - location: /china.pac
         index:
-          file: /home/phuslu/liner/china.pac
+          file: china.pac
       - location: /webshell/
         shell:
           enabled: true
