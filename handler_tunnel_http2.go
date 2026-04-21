@@ -36,7 +36,7 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialerName, dialerURL stri
 		MaxReadFrameSize:   1024 * 1024, // 1MB read frame, https://github.com/golang/go/issues/47840
 		DisableCompression: false,
 		DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
-			hostport := net.JoinHostPort(u.Hostname(), cmp.Or(u.Port(), "443"))
+			hostport := net.JoinHostPort(cmp.Or(u.Query().Get("resolve"), u.Hostname()), cmp.Or(u.Port(), "443"))
 			dialer := h.LocalDialer
 			if md := MemoryDialerOf(ctx, network, hostport); md != nil {
 				dialer = md
