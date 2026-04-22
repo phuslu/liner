@@ -72,7 +72,6 @@ type TLSInspector struct {
 	AutoCert            *autocert.Manager
 	RootCA              *RootCA
 	TLSConfigCache      *xsync.Map[TLSInspectorCacheKey, TLSInspectorCacheValue]
-	ClientHelloMap      *xsync.Map[PlainAddr, *TLSClientHelloInfo]
 	TLSServerNameHandle TLSServerNameHandle
 }
 
@@ -181,7 +180,9 @@ func (m *TLSInspector) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certific
 }
 
 func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Config, error) {
-	m.ClientHelloMap.Store(PlainAddrFromNetAddr(hello.Conn.RemoteAddr()), &TLSClientHelloInfo{ClientHelloInfo: hello})
+	if info := HTTPClientHelloInfoFromContext(hello.Context()); info != nil {
+		info.ClientHelloInfo = hello
+	}
 
 	entry, _ := m.EntryMap[hello.ServerName]
 
@@ -280,38 +281,30 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 	return config, nil
 }
 
-var HTTP3ClientHelloInfoContextKey any = &HTTPContextKey{"http3-clienthello-info"}
+var HTTPClientHelloInfoContextKey any = &HTTPContextKey{"http-clienthello-info"}
 
-func (m *TLSInspector) HTTP3ConnContext(ctx context.Context, conn *quic.Conn) context.Context {
-	addr := PlainAddrFromNetAddr(conn.RemoteAddr())
-	if info, ok := m.ClientHelloMap.Load(addr); ok {
-		AppendJA4Fingerprint(info.JA4[:0], conn.ConnectionState().TLS.Version, info.ClientHelloInfo)
-		info.QuicConn = conn
-		ctx = context.WithValue(ctx, HTTP3ClientHelloInfoContextKey, info)
-		m.ClientHelloMap.Delete(addr)
+func HTTPClientHelloInfoFromContext(ctx context.Context) *TLSClientHelloInfo {
+	if ctx == nil {
+		return nil
 	}
-
-	return ctx
+	info, _ := ctx.Value(HTTPClientHelloInfoContextKey).(*TLSClientHelloInfo)
+	return info
 }
 
-func (m *TLSInspector) HTTPConnState(c net.Conn, cs http.ConnState) {
-	addr := PlainAddrFromNetAddr(c.RemoteAddr())
-	switch cs {
-	case http.StateActive:
-		if info, ok := m.ClientHelloMap.Load(addr); ok {
-			if tc, ok := c.(interface {
-				ConnectionState() tls.ConnectionState
-			}); ok {
-				cs := tc.ConnectionState()
-				AppendJA4Fingerprint(info.JA4[:0], cs.Version, info.ClientHelloInfo)
-			}
-			info.NetConn = c
-		} else {
-			m.ClientHelloMap.Store(addr, &TLSClientHelloInfo{NetConn: c})
-		}
-	case http.StateHijacked, http.StateClosed:
-		m.ClientHelloMap.Delete(addr)
+func (m *TLSInspector) HTTPConnContext(ctx context.Context, conn net.Conn) context.Context {
+	return context.WithValue(ctx, HTTPClientHelloInfoContextKey, &TLSClientHelloInfo{NetConn: conn})
+}
+
+func (m *TLSInspector) HTTP3QUICConnContext(ctx context.Context, _ *quic.ClientInfo) (context.Context, error) {
+	return context.WithValue(ctx, HTTPClientHelloInfoContextKey, &TLSClientHelloInfo{}), nil
+}
+
+func (m *TLSInspector) HTTP3ConnContext(ctx context.Context, conn *quic.Conn) context.Context {
+	if info := HTTPClientHelloInfoFromContext(ctx); info != nil {
+		info.QuicConn = conn
+		AppendJA4Fingerprint(info.JA4[:0], conn.ConnectionState().TLS.Version, info.ClientHelloInfo)
 	}
+	return ctx
 }
 
 type TLSClientSessionCache struct {

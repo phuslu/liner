@@ -15,7 +15,6 @@ import (
 
 	"github.com/mileusna/useragent"
 	"github.com/phuslu/log"
-	"github.com/puzpuzpuz/xsync/v4"
 )
 
 type HTTPHandler interface {
@@ -27,7 +26,6 @@ type HTTPServerHandler struct {
 	Config         HTTPConfig
 	Hostnames      []string
 	HostnameAffix  [][2]string
-	ClientHelloMap *xsync.Map[PlainAddr, *TLSClientHelloInfo]
 	UserAgentMap   *CachingMap[string, useragent.UserAgent]
 	DnsResolver    *DnsResolver
 	GeoResolver    *GeoResolver
@@ -94,34 +92,25 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	}
 
 	ri.ClientHelloInfo, ri.ClientHelloRaw, ri.ClientConnOps, ri.JA4 = nil, nil, ConnOps{}, ""
-	switch req.ProtoMajor {
-	case 3:
-		if v, ok := req.Context().Value(HTTP3ClientHelloInfoContextKey).(*TLSClientHelloInfo); ok {
-			if v.JA4[0] != 0 {
-				ri.JA4 = b2s(v.JA4[:])
+	if v := HTTPClientHelloInfoFromContext(req.Context()); v != nil {
+		ri.JA4 = b2s(AppendJA4Fingerprint(v.JA4[:0], ri.TLSVersion, v.ClientHelloInfo))
+		ri.ClientHelloInfo = v.ClientHelloInfo
+		if v.ClientHelloInfo != nil && v.ClientHelloInfo.Conn != nil {
+			var conn net.Conn = v.ClientHelloInfo.Conn
+			if c, ok := conn.(*tls.Conn); ok && c != nil {
+				conn = c.NetConn()
 			}
-			ri.ClientHelloInfo = v.ClientHelloInfo
-			ri.ClientConnOps = ConnOps{nil, v.QuicConn}
+			if c, ok := conn.(*MirrorHeaderConn); ok {
+				if header := c.Header(); len(header) > 0 {
+					ri.ClientHelloRaw = header
+				}
+			}
 		}
-	case 2, 1:
-		if v, ok := h.ClientHelloMap.Load(PlainAddrFromAddrPort(ri.RemoteAddr)); ok {
-			if v.JA4[0] != 0 {
-				ri.JA4 = b2s(v.JA4[:])
-			}
-			ri.ClientHelloInfo = v.ClientHelloInfo
-			if v.ClientHelloInfo != nil && v.ClientHelloInfo.Conn != nil {
-				var conn net.Conn = v.ClientHelloInfo.Conn
-				if c, ok := conn.(*tls.Conn); ok && c != nil {
-					conn = c.NetConn()
-				}
-				if c, ok := conn.(*MirrorHeaderConn); ok {
-					if header := c.Header(); len(header) > 0 {
-						ri.ClientHelloRaw = header
-					}
-				}
-			}
+		if req.ProtoMajor == 3 {
+			ri.ClientConnOps = ConnOps{nil, v.QuicConn}
+		} else {
 			conn := v.NetConn
-			for {
+			for conn != nil {
 				c, ok := conn.(interface {
 					NetConn() net.Conn
 				})

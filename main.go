@@ -487,9 +487,8 @@ func main() {
 
 	// tls inspector
 	tlsConfigurator := &TLSInspector{
-		Logger:         &log.DefaultLogger,
-		AutoCertDir:    config.Global.AutocertDir,
-		ClientHelloMap: xsync.NewMap[PlainAddr, *TLSClientHelloInfo](),
+		Logger:      &log.DefaultLogger,
+		AutoCertDir: config.Global.AutocertDir,
 	}
 
 	// sni proxy
@@ -561,11 +560,10 @@ func main() {
 					panic("unsupported server_name: " + s)
 				}
 			}),
-			ClientHelloMap: tlsConfigurator.ClientHelloMap,
-			UserAgentMap:   useragentMap,
-			DnsResolver:    dnsResolver,
-			GeoResolver:    geoResolver,
-			Config:         server,
+			UserAgentMap: useragentMap,
+			DnsResolver:  dnsResolver,
+			GeoResolver:  geoResolver,
+			Config:       server,
 		}
 
 		for _, h := range []HTTPHandler{
@@ -688,7 +686,7 @@ func main() {
 				GetConfigForClient: tlsConfigurator.GetConfigForClient,
 				NextProtos:         []string{"h2", "http/1.1", "acme-tls/1"},
 			},
-			ConnState: tlsConfigurator.HTTPConnState,
+			ConnContext: tlsConfigurator.HTTPConnContext,
 			ErrorLog: func() *stdLog.Logger {
 				var logger = log.DefaultLogger
 				logger.Writer = log.WriterFunc(func(e *log.Entry) (int, error) {
@@ -715,7 +713,14 @@ func main() {
 
 		// start http3 server
 		if !config.Global.DisableHttp3 {
-			go (&http3.Server{
+			pc, err := lc.ListenPacket(context.Background(), "udp", addr)
+			if err != nil {
+				log.Fatal().Err(err).Str("address", addr).Msg("net.ListenPacket error")
+			}
+
+			log.Info().Str("version", version).NetAddr("address", pc.LocalAddr()).Msg("liner listen and serve http3")
+
+			http3Server := &http3.Server{
 				Addr:      addr,
 				Handler:   server.Handler,
 				TLSConfig: server.TLSConfig,
@@ -729,7 +734,19 @@ func main() {
 				},
 				ConnContext: tlsConfigurator.HTTP3ConnContext,
 				Logger:      log.DefaultLogger.Slog().With("logger", "http3_server"),
-			}).ListenAndServe()
+			}
+
+			tr := &quic.Transport{
+				Conn:        pc,
+				ConnContext: tlsConfigurator.HTTP3QUICConnContext,
+			}
+
+			ln, err := tr.ListenEarly(http3.ConfigureTLSConfig(server.TLSConfig), http3Server.QUICConfig)
+			if err != nil {
+				log.Fatal().Err(err).Str("address", addr).Msg("quic.ListenEarly error")
+			}
+
+			go http3Server.ServeListener(ln)
 		}
 	}
 
@@ -786,11 +803,10 @@ func main() {
 					panic("unsupported server_name: " + s)
 				}
 			}),
-			ClientHelloMap: tlsConfigurator.ClientHelloMap,
-			UserAgentMap:   useragentMap,
-			DnsResolver:    dnsResolver,
-			GeoResolver:    geoResolver,
-			Config:         httpConfig,
+			UserAgentMap: useragentMap,
+			DnsResolver:  dnsResolver,
+			GeoResolver:  geoResolver,
+			Config:       httpConfig,
 		}
 
 		for _, h := range []HTTPHandler{
@@ -820,9 +836,9 @@ func main() {
 	for addr, handler := range h1handlers {
 
 		server := &http.Server{
-			Handler:   handler.HTTPHandler,
-			ErrorLog:  log.DefaultLogger.Std("", 0),
-			ConnState: tlsConfigurator.HTTPConnState,
+			Handler:     handler.HTTPHandler,
+			ErrorLog:    log.DefaultLogger.Std("", 0),
+			ConnContext: tlsConfigurator.HTTPConnContext,
 		}
 
 		var ln net.Listener
