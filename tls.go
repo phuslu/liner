@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"net"
@@ -41,7 +42,7 @@ type TLSInspectorCacheKey struct {
 
 type TLSInspectorCacheValue struct {
 	TLSConfig *tls.Config
-	CreatedAt time.Time
+	ExpiredAt time.Time
 }
 
 type TLSClientHelloInfo struct {
@@ -214,7 +215,7 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 		HasChaCha20:    hasChaCha20,
 	}
 
-	if v, _ := m.TLSConfigCache.Load(cacheKey); v.TLSConfig != nil && time.Since(v.CreatedAt) < 24*time.Hour {
+	if v, _ := m.TLSConfigCache.Load(cacheKey); v.TLSConfig != nil && time.Since(v.ExpiredAt) >= 0 {
 		return v.TLSConfig, nil
 	}
 
@@ -255,7 +256,16 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 		config.PreferServerCipherSuites = false
 	}
 
-	m.TLSConfigCache.Store(cacheKey, TLSInspectorCacheValue{config, time.Now()})
+	var expiredAt time.Time
+	if cert.Leaf != nil {
+		expiredAt = cert.Leaf.NotAfter.Add(-6 * time.Hour)
+	} else if leaf, err := x509.ParseCertificate(cert.Certificate[0]); err == nil {
+		expiredAt = leaf.NotAfter.Add(-6 * time.Hour)
+	} else {
+		expiredAt = time.Now().Add(6 * time.Hour)
+	}
+
+	m.TLSConfigCache.Store(cacheKey, TLSInspectorCacheValue{config, expiredAt})
 
 	return config, nil
 }
