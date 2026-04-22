@@ -602,7 +602,6 @@ func main() {
 					DisableHTTP2:   config.DisableHttp2,
 					DisableTLS11:   config.DisableTls11,
 					PreferChacha20: config.PreferChacha20,
-					DisableOCSP:    config.DisableOcsp,
 				})
 				if _, ok := h2handlers[listen]; !ok {
 					h2handlers[listen] = &struct {

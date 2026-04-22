@@ -4,11 +4,9 @@ import (
 	"cmp"
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"errors"
 	"fmt"
 	"net"
-	"net/http"
 	"net/netip"
 	"path/filepath"
 	"strings"
@@ -29,14 +27,12 @@ type TLSInspectorEntry struct {
 	DisableHTTP2   bool
 	DisableTLS11   bool
 	PreferChacha20 bool
-	DisableOCSP    bool
 }
 
 type TLSInspectorCacheKey struct {
 	ServerName     string
 	DisableTLS11   bool
 	DisableHTTP2   bool
-	DisableOCSP    bool
 	HasAES         bool
 	HasTLS13       bool
 	HasEcsdaCipher bool
@@ -212,7 +208,6 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 		ServerName:     hello.ServerName,
 		DisableTLS11:   entry.DisableTLS11,
 		DisableHTTP2:   entry.DisableHTTP2,
-		DisableOCSP:    entry.DisableOCSP,
 		HasAES:         hasAES,
 		HasTLS13:       hasTLS13,
 		HasEcsdaCipher: ecsdaCipher != 0,
@@ -234,23 +229,6 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 			}
 		}
 		return nil, fmt.Errorf("tls inspector cannot handle server name %#v: %w", hello.ServerName, err)
-	}
-
-	cacert := cert.Leaf
-	if n := len(cert.Certificate); cacert == nil && n >= 2 {
-		cacert, _ = x509.ParseCertificate(cert.Certificate[n-2])
-	}
-
-	if !entry.DisableOCSP && cacert != nil && len(cacert.OCSPServer) != 0 {
-		ctx, cancel := context.WithTimeout(hello.Context(), 5*time.Second)
-		defer cancel()
-		cert.OCSPStaple, err = GetOCSPStaple(ctx, http.DefaultTransport, cacert)
-		if err != nil {
-			// just log error
-			if m.Logger != nil {
-				m.Logger.Error().Err(err).Str("tls_server_name", hello.ServerName).Msg("get ocsp response error")
-			}
-		}
 	}
 
 	config := &tls.Config{
