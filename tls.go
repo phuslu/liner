@@ -182,6 +182,7 @@ func (m *TLSInspector) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certific
 func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Config, error) {
 	if info := HTTPClientHelloInfoFromContext(hello.Context()); info != nil {
 		info.ClientHelloInfo = hello
+		AppendJA4Fingerprint(info.JA4[:0], info.ClientHelloInfo)
 	}
 
 	entry, _ := m.EntryMap[hello.ServerName]
@@ -302,7 +303,6 @@ func (m *TLSInspector) HTTP3QUICConnContext(ctx context.Context, _ *quic.ClientI
 func (m *TLSInspector) HTTP3ConnContext(ctx context.Context, conn *quic.Conn) context.Context {
 	if info := HTTPClientHelloInfoFromContext(ctx); info != nil {
 		info.QuicConn = conn
-		AppendJA4Fingerprint(info.JA4[:0], conn.ConnectionState().TLS.Version, info.ClientHelloInfo)
 	}
 	return ctx
 }

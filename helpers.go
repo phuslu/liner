@@ -1097,8 +1097,16 @@ func AppendJA3Fingerprint(dst []byte, version uint16, info *tls.ClientHelloInfo)
 	return b
 }
 
-func AppendJA4Fingerprint(dst []byte, version uint16, info *tls.ClientHelloInfo) []byte {
+func AppendJA4Fingerprint(dst []byte, info *tls.ClientHelloInfo) []byte {
 	b := AppendableBytes(dst)
+
+	var version uint16
+	for _, v := range info.SupportedVersions {
+		if !IsTLSGreaseCode(v) {
+			version = v
+			break
+		}
+	}
 
 	ciphers := make([]uint16, 0, 32)
 	for _, c := range info.CipherSuites {
@@ -1118,21 +1126,10 @@ func AppendJA4Fingerprint(dst []byte, version uint16, info *tls.ClientHelloInfo)
 		}
 	}
 
-	conn := info.Conn
-	for {
-		c, ok := conn.(interface {
-			NetConn() net.Conn
-		})
-		if !ok {
-			break
-		}
-		conn = c.NetConn()
-	}
-
-	if _, ok := conn.(*net.TCPConn); ok {
-		b = b.Byte('t')
-	} else {
+	if _, ok := info.Conn.RemoteAddr().(*net.UDPAddr); ok {
 		b = b.Byte('q')
+	} else {
+		b = b.Byte('t')
 	}
 	switch version {
 	case tls.VersionTLS13:
@@ -1176,7 +1173,7 @@ func AppendJA4Fingerprint(dst []byte, version uint16, info *tls.ClientHelloInfo)
 
 	b = b.Byte('_')
 
-	buf := AppendableBytes(make([]byte, 0, 128))
+	buf := AppendableBytes(make([]byte, 0, 256))
 
 	if len(ciphers) != 0 {
 		slices.Sort(ciphers)

@@ -91,10 +91,10 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		ri.TLSVersion = 0
 	}
 
-	ri.ClientHelloInfo, ri.ClientHelloRaw, ri.ClientConnOps, ri.JA4 = nil, nil, ConnOps{}, ""
+	ri.ClientHelloInfo, ri.ClientHelloRaw, ri.JA4, ri.ClientConnOps = nil, nil, "", ConnOps{}
 	if v := HTTPClientHelloInfoFromContext(req.Context()); v != nil {
-		ri.JA4 = b2s(AppendJA4Fingerprint(v.JA4[:0], ri.TLSVersion, v.ClientHelloInfo))
 		ri.ClientHelloInfo = v.ClientHelloInfo
+		ri.JA4 = b2s(v.JA4[:])
 		if v.ClientHelloInfo != nil && v.ClientHelloInfo.Conn != nil {
 			var conn net.Conn = v.ClientHelloInfo.Conn
 			if c, ok := conn.(*tls.Conn); ok && c != nil {
