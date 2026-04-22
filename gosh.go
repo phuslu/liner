@@ -78,6 +78,23 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 	}
 	goshInstallShellOptionVariable(runner, interactive, stdin != nil)
 
+	runner.Run(ctx, func() *syntax.File {
+		prog, err := parser.Parse(strings.NewReader(`
+			bind "\e[1~": beginning-of-line
+			bind "\e[4~": end-of-line
+			bind "\e[5~": previous-screen
+			bind "\e[6~": next-screen
+			bind "\e[F": end-of-line
+			bind "\e[H": beginning-of-line
+			bind "\eOF": end-of-line
+			bind "\eOH": beginning-of-line
+		`), "")
+		if err != nil {
+			panic(err)
+		}
+		return prog
+	}())
+
 	// source the init files.
 	if file, err := os.Open(os.ExpandEnv(cmp.Or(os.Getenv("GOSH_ENV"), "$HOME/.bashrc"))); err == nil {
 		prog, err := parser.Parse(file, file.Name())
