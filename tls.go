@@ -307,6 +307,8 @@ func (m *TLSInspector) HTTP3ConnContext(ctx context.Context, conn *quic.Conn) co
 	return ctx
 }
 
+var _ tls.ClientSessionCache = (*TLSClientSessionCache)(nil)
+
 type TLSClientSessionCache struct {
 	lrucache *lru.LRUCache[string, *tls.ClientSessionState]
 }
