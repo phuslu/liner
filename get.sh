@@ -41,8 +41,9 @@ if test "$(cat $filename | $sha1sum | awk '{ print $1 }')" != "$(echo $checksum 
   exit 1
 fi
 
-if test -x liner; then
+if test -f liner; then
   echo liner | tar xvzf $filename -T -
+  test -f liner@.service || echo liner@.service | tar xvzf $filename -T -
   rm -rf $filename
   exit 0
 fi
