@@ -1,0 +1,13 @@
+* text=auto eol=lf
+
+*.go text eol=lf
+*.sh text eol=lf
+*.csv text eol=lf
+*.pac text eol=lf
+*.bash text eol=lf
+*.html text eol=lf
+*.yaml text eol=lf
+*.service text eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
