@@ -16,6 +16,7 @@ require (
 	github.com/phuslu/geosite v1.0.20250901
 	github.com/phuslu/log v1.0.124
 	github.com/phuslu/lru v1.0.18
+	github.com/phuslu/tcp-brutal v1.0.1-0.20260428140401-68c78bad227a
 	github.com/pkg/sftp v1.13.10
 	github.com/puzpuzpuz/xsync/v4 v4.4.0
 	github.com/quic-go/quic-go v0.59.0

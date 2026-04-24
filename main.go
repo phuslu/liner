@@ -10,6 +10,7 @@ import (
 	"io"
 	stdLog "log"
 	"log/slog"
+	"maps"
 	"net"
 	"net/http"
 	"net/netip"
@@ -31,6 +32,7 @@ import (
 	"github.com/phuslu/geosite"
 	"github.com/phuslu/log"
 	"github.com/phuslu/lru"
+	brutal "github.com/phuslu/tcp-brutal"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
@@ -57,6 +59,12 @@ func main() {
 		}
 		return
 	}
+
+	if g, p, m := runtime.Version(), os.Getenv("GOMAXPROCS"), GetMaxProcsFromCgroupV2(); g < "go1.25" && p == "" && m > 0 {
+		runtime.GOMAXPROCS(m)
+	}
+
+	RegisterMimeTypes()
 
 	filename := "-"
 	if env := os.Getenv("ENV"); env != "" {
@@ -88,12 +96,6 @@ func main() {
 		log.Fatal().Err(err).Str("filename", filename).Msg("NewConfig() error")
 		os.Exit(1)
 	}
-
-	if g, p, m := runtime.Version(), os.Getenv("GOMAXPROCS"), GetMaxProcsFromCgroupV2(); g < "go1.25" && p == "" && m > 0 {
-		runtime.GOMAXPROCS(m)
-	}
-
-	RegisterMimeTypes()
 
 	// log broadcaster
 	memoryLogWriter := ringbuffer.New(8192)
@@ -159,6 +161,19 @@ func main() {
 	}
 
 	slog.SetDefault(log.DefaultLogger.Slog())
+
+	// load tcp-brutal
+	if !config.Global.DisableBrutal && runtime.GOOS == "linux" {
+		if slices.ContainsFunc(config.Http, func(c HTTPConfig) bool { return c.Forward.TcpCongestion != "" || c.Tunnel.TcpCongestion != "" }) ||
+			slices.ContainsFunc(config.Https, func(c HTTPConfig) bool { return c.Forward.TcpCongestion != "" || c.Tunnel.TcpCongestion != "" }) ||
+			slices.ContainsFunc(slices.Collect(maps.Values(config.Dialer)), func(v string) bool { return strings.Contains(v, "brutal_rate=") }) {
+			if err := brutal.Load(); err != nil {
+				log.Error().Err(err).Msg("load tcp-brutal eBPF program failed")
+			} else {
+				log.Info().Msg("load tcp-brutal eBPF program ok")
+			}
+		}
+	}
 
 	// default resolver
 	if config.Global.DisableIpv6 {
