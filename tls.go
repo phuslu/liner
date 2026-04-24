@@ -102,7 +102,9 @@ func (m *TLSInspector) AddEntry(entry TLSInspectorEntry) error {
 	if addr, err := netip.ParseAddr(entry.ServerName); err == nil && addr.IsValid() {
 		if entry.KeyFile == "" {
 			// a pure ip server name, generate a self-sign certificate
-			m.RootCA.Issue(entry.ServerName)
+			if err := m.RootCA.Issue(entry.ServerName); err != nil {
+				return fmt.Errorf("issue ip certificate for %q: %w", entry.ServerName, err)
+			}
 			entry.KeyFile = filepath.Join(m.RootCA.DirName, entry.ServerName+".crt")
 		}
 	}

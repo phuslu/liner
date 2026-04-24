@@ -13,6 +13,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"math/big"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -153,58 +154,26 @@ func (ca *RootCA) RootCertificate() *x509.Certificate {
 }
 
 func (ca *RootCA) Issue(commonName string) error {
-	ca.once.Do(func() { ca.init() })
-
-	csrTemplate := &x509.CertificateRequest{
-		Signature: []byte(commonName),
-		Subject: pkix.Name{
-			Country:            []string{ca.Country},
-			Organization:       []string{commonName},
-			OrganizationalUnit: []string{ca.CommonName},
-			CommonName:         commonName,
-		},
-		DNSNames: []string{commonName},
+	var initErr error
+	ca.once.Do(func() { initErr = ca.init() })
+	if initErr != nil {
+		return initErr
+	}
+	if ca.ca == nil || ca.priv == nil {
+		return fmt.Errorf("root ca is not initialized: %s", ca.CommonName)
 	}
 
-	csrBytes, err := x509.CreateCertificateRequest(rand.Reader, csrTemplate, ca.priv)
-	if err != nil {
-		return err
-	}
-
-	csr, err := x509.ParseCertificateRequest(csrBytes)
-	if err != nil {
-		return err
-	}
-
-	certTemplate := &x509.Certificate{
-		Subject:            csr.Subject,
-		DNSNames:           []string{commonName},
-		PublicKeyAlgorithm: csr.PublicKeyAlgorithm,
-		PublicKey:          csr.PublicKey,
-		SerialNumber:       big.NewInt(time.Now().UnixNano()),
-		NotBefore:          time.Now().Add(-time.Duration(30 * 24 * time.Hour)),
-		NotAfter:           time.Now().Add(ca.Duration),
-		KeyUsage:           x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
-		ExtKeyUsage: []x509.ExtKeyUsage{
-			x509.ExtKeyUsageServerAuth,
-			x509.ExtKeyUsageClientAuth,
-		},
-	}
-
-	certBytes, err := x509.CreateCertificate(rand.Reader, certTemplate, ca.ca, csr.PublicKey, ca.priv)
-	if err != nil {
-		return err
-	}
-
-	var b bytes.Buffer
+	var (
+		publicKey any
+		keyBlock  *pem.Block
+	)
 	if ca.ForceRSA {
 		priv, err := rsa.GenerateKey(rand.Reader, 2048)
 		if err != nil {
 			return err
 		}
-		privBytes := x509.MarshalPKCS1PrivateKey(priv)
-		pem.Encode(&b, &pem.Block{Type: "PRIVATE KEY", Bytes: privBytes})
-		pem.Encode(&b, &pem.Block{Type: "CERTIFICATE", Bytes: certBytes})
+		publicKey = &priv.PublicKey
+		keyBlock = &pem.Block{Type: "PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)}
 	} else {
 		priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 		if err != nil {
@@ -214,9 +183,40 @@ func (ca *RootCA) Issue(commonName string) error {
 		if err != nil {
 			return err
 		}
-		pem.Encode(&b, &pem.Block{Type: "EC PRIVATE KEY", Bytes: privBytes})
-		pem.Encode(&b, &pem.Block{Type: "CERTIFICATE", Bytes: certBytes})
+		publicKey = &priv.PublicKey
+		keyBlock = &pem.Block{Type: "EC PRIVATE KEY", Bytes: privBytes}
 	}
+
+	certTemplate := &x509.Certificate{
+		Subject: pkix.Name{
+			Country:            []string{ca.Country},
+			Organization:       []string{commonName},
+			OrganizationalUnit: []string{ca.CommonName},
+			CommonName:         commonName,
+		},
+		SerialNumber: big.NewInt(time.Now().UnixNano()),
+		NotBefore:    time.Now().Add(-time.Duration(30 * 24 * time.Hour)),
+		NotAfter:     time.Now().Add(ca.Duration),
+		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage: []x509.ExtKeyUsage{
+			x509.ExtKeyUsageServerAuth,
+			x509.ExtKeyUsageClientAuth,
+		},
+	}
+	if ip := net.ParseIP(commonName); ip != nil {
+		certTemplate.IPAddresses = []net.IP{ip}
+	} else {
+		certTemplate.DNSNames = []string{commonName}
+	}
+
+	certBytes, err := x509.CreateCertificate(rand.Reader, certTemplate, ca.ca, publicKey, ca.priv)
+	if err != nil {
+		return err
+	}
+
+	var b bytes.Buffer
+	pem.Encode(&b, keyBlock)
+	pem.Encode(&b, &pem.Block{Type: "CERTIFICATE", Bytes: certBytes})
 
 	err = os.WriteFile(filepath.Join(ca.DirName, commonName+ca.ext()), b.Bytes(), 0644)
 	if err != nil {
