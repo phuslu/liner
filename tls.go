@@ -215,7 +215,7 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 		HasChaCha20:    hasChaCha20,
 	}
 
-	if v, _ := m.TLSConfigCache.Load(cacheKey); v.TLSConfig != nil && time.Since(v.ExpiredAt) >= 0 {
+	if v, _ := m.TLSConfigCache.Load(cacheKey); v.TLSConfig != nil && time.Now().Before(v.ExpiredAt) {
 		return v.TLSConfig, nil
 	}
 
