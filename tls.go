@@ -182,7 +182,7 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 		AppendJA4Fingerprint(info.JA4[:0], info.ClientHelloInfo)
 	}
 
-	entry, _ := m.EntryMap[hello.ServerName]
+	entry, _ := m.LookupEntry(hello.ServerName)
 
 	hasAES := (cpu.X86.HasAES && cpu.X86.HasPCLMULQDQ) || (cpu.ARM64.HasAES && cpu.ARM64.HasPMULL)
 	hasTLS13, ecsdaCipher := LookupEcdsaCiphers(hello)
