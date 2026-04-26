@@ -1,8 +1,8 @@
-[Unit]
+[Unit]                                                                                                                                                                                                                                      
 Wants=network-online.target
-After=network.target network-online.target local-fs.target
+After=network.target local-fs.target
 Description=a protocol liner
-
+ 
 [Service]
 Type=simple
 KillMode=process
@@ -13,8 +13,10 @@ WorkingDirectory=/root/liner
 ExecStart=/root/liner/liner %i.yaml
 User=root
 Group=root
-PermissionsStartOnly=true
+CapabilityBoundingSet=~
+AmbientCapabilities=~
+NoNewPrivileges=false
 LimitNOFILE=1048576
-
+ 
 [Install]
 WantedBy=multi-user.target
