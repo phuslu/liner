@@ -91,7 +91,10 @@ func (h *TunnelHandler) h1tunnel(ctx context.Context, dialerName, dialerURL stri
 		}
 		err := tc.SetKeepAliveConfig(config)
 		log.DefaultLogger.Err(err).Str("tunnel_host", hostport).Any("keepalive_config", config).Msg("set tunnel host keepalive")
-		if h.Config.SpeedLimit > 0 {
+		if rate, _ := strconv.ParseUint(u.Query().Get("brutal_rate"), 10, 64); rate > 0 {
+			err := (ConnOps{tc, nil}).SetTcpCongestion("brutal", uint64(rate), uint32(20))
+			log.DefaultLogger.Err(err).Str("tunnel_host", hostport).Uint64("tunnel_brutal_rate", rate).Msg("set tunnel brutal rate")
+		} else if h.Config.SpeedLimit > 0 {
 			err := (ConnOps{tc, nil}).SetTcpMaxPacingRate(int(h.Config.SpeedLimit))
 			log.DefaultLogger.Err(err).Str("tunnel_host", hostport).Any("tunnel_speedlimit", h.Config.SpeedLimit).Msg("set tunnel speedlimit")
 		}

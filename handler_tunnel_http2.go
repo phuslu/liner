@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptrace"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/libp2p/go-yamux/v5"
@@ -51,9 +52,14 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialerName, dialerURL stri
 				return nil, err
 			}
 
-			if tc, _ := conn.(*net.TCPConn); conn != nil && h.Config.SpeedLimit > 0 {
-				err := (ConnOps{tc, nil}).SetTcpMaxPacingRate(int(h.Config.SpeedLimit))
-				log.DefaultLogger.Err(err).Str("tunnel_proxy_pass", h.Config.ProxyPass).Str("tunnel_dialer_name", h.Config.Dialer).Int64("tunnel_speedlimit", h.Config.SpeedLimit).Msg("set speedlimit")
+			if tc, _ := conn.(*net.TCPConn); conn != nil {
+				if rate, _ := strconv.ParseUint(u.Query().Get("brutal_rate"), 10, 64); rate > 0 {
+					err := (ConnOps{tc, nil}).SetTcpCongestion("brutal", uint64(rate), uint32(20))
+					log.DefaultLogger.Err(err).Str("tunnel_proxy_pass", h.Config.ProxyPass).Str("tunnel_dialer_name", h.Config.Dialer).Uint64("tunnel_brutal_rate", rate).Msg("set tunnel brutal rate")
+				} else if h.Config.SpeedLimit > 0 {
+					err := (ConnOps{tc, nil}).SetTcpMaxPacingRate(int(h.Config.SpeedLimit))
+					log.DefaultLogger.Err(err).Str("tunnel_proxy_pass", h.Config.ProxyPass).Str("tunnel_dialer_name", h.Config.Dialer).Int64("tunnel_speedlimit", h.Config.SpeedLimit).Msg("set tunnel speedlimit")
+				}
 			}
 
 			tlsConfig := &utls.Config{
