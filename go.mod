@@ -11,14 +11,14 @@ require (
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
 	github.com/libp2p/go-yamux/v5 v5.1.0
 	github.com/mileusna/useragent v1.3.5
-	github.com/oschwald/maxminddb-golang/v2 v2.1.1
+	github.com/oschwald/maxminddb-golang/v2 v2.2.0
 	github.com/phuslu/fastdns v0.17.0
 	github.com/phuslu/geosite v1.0.20250901
 	github.com/phuslu/log v1.0.124
 	github.com/phuslu/lru v1.0.18
 	github.com/phuslu/tcp-brutal v1.0.1-0.20260428140401-68c78bad227a
 	github.com/pkg/sftp v1.13.10
-	github.com/puzpuzpuz/xsync/v4 v4.4.0
+	github.com/puzpuzpuz/xsync/v4 v4.5.0
 	github.com/quic-go/quic-go v0.59.0
 	github.com/refraction-networking/utls v1.8.2
 	github.com/robfig/cron/v3 v3.0.1
