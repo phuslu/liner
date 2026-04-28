@@ -48,6 +48,8 @@ github.com/phuslu/log v1.0.124 h1:jQMyco4WVPW+0gf6R0cdgtsnFu86z1MbcJv+oWuAXIA=
 github.com/phuslu/log v1.0.124/go.mod h1:F8osGJADo5qLK/0F88djWwdyoZZ9xDJQL1HYRHFEkS0=
 github.com/phuslu/lru v1.0.18 h1:ioKRYLym7nv6UmaKHXSR0Z8s2KCEra+mcWcn9zXQnlM=
 github.com/phuslu/lru v1.0.18/go.mod h1:ci5hb8dRIa+2I+KcPl4958OWCg09FxwZCP8InU1L1ME=
+github.com/phuslu/quic-go v0.0.0-20260428174744-6bbec3218ab8 h1:SSi5qOVowjR3GrcZypfPLJVriigk411iTOHlJJa3AUU=
+github.com/phuslu/quic-go v0.0.0-20260428174744-6bbec3218ab8/go.mod h1:5vG+t8W9b0dkdBVwNBbgGI3xfu5sBYdCepgih+s1yxw=
 github.com/phuslu/tcp-brutal v1.0.1-0.20260428140401-68c78bad227a h1:71VxtZ7HsOUxuFalvGUvr8WvhDDYJbyFLMgIv9R9K8Q=
 github.com/phuslu/tcp-brutal v1.0.1-0.20260428140401-68c78bad227a/go.mod h1:KIy0oH2sKrMGLM89+3SHBujPLLui0V/jwg13QAfiQL0=
 github.com/pkg/sftp v1.13.10 h1:+5FbKNTe5Z9aspU88DPIKJ9z2KZoaGCu6Sr6kKR/5mU=
@@ -58,8 +60,6 @@ github.com/puzpuzpuz/xsync/v4 v4.4.0 h1:vlSN6/CkEY0pY8KaB0yqo/pCLZvp9nhdbBdjipT4
 github.com/puzpuzpuz/xsync/v4 v4.4.0/go.mod h1:VJDmTCJMBt8igNxnkQd86r+8KUeN1quSfNKu5bLYFQo=
 github.com/quic-go/qpack v0.6.0 h1:g7W+BMYynC1LbYLSqRt8PBg5Tgwxn214ZZR34VIOjz8=
 github.com/quic-go/qpack v0.6.0/go.mod h1:lUpLKChi8njB4ty2bFLX2x4gzDqXwUpaO1DP9qMDZII=
-github.com/quic-go/quic-go v0.59.0 h1:OLJkp1Mlm/aS7dpKgTc6cnpynnD2Xg7C1pwL6vy/SAw=
-github.com/quic-go/quic-go v0.59.0/go.mod h1:upnsH4Ju1YkqpLXC305eW3yDZ4NfnNbmQRCMWS58IKU=
 github.com/refraction-networking/utls v1.8.2 h1:j4Q1gJj0xngdeH+Ox/qND11aEfhpgoEvV+S9iJ2IdQo=
 github.com/refraction-networking/utls v1.8.2/go.mod h1:jkSOEkLqn+S/jtpEHPOsVv/4V4EVnelwbMQl4vCWXAM=
 github.com/robfig/cron/v3 v3.0.1 h1:WdRxkvbJztn8LMz/QEvLN5sBU+xKpSqwwUO1Pjr4qDs=
