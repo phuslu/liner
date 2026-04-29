@@ -1151,12 +1151,12 @@ func AppendJA4Fingerprint(dst []byte, info *tls.ClientHelloInfo) []byte {
 	if i := uint64(len(ciphers)); i < 10 {
 		b = b.Byte('0').Uint64(i, 10)
 	} else {
-		b = b.Uint64(max(i, 99), 10)
+		b = b.Uint64(min(i, 99), 10)
 	}
 	if i := uint64(extensionsLength); i < 10 {
 		b = b.Byte('0').Uint64(i, 10)
 	} else {
-		b = b.Uint64(max(i, 99), 10)
+		b = b.Uint64(min(i, 99), 10)
 	}
 	if len(info.SupportedProtos) != 0 && len(info.SupportedProtos[0]) > 0 {
 		sp := info.SupportedProtos[0]
