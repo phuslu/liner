@@ -44,5 +44,5 @@ require (
 
 replace (
 	github.com/creack/pty/v2 v2.0.1 => github.com/photostorm/pty/v2 v2.0.0-20240405180724-bf40468acd65
-	github.com/quic-go/quic-go v0.59.0 => github.com/phuslu/quic-go v0.0.0-20260428174744-6bbec3218ab8
+	github.com/quic-go/quic-go v0.59.0 => github.com/phuslu/quic-go v0.0.0-20260429130316-ecbcb7bc16fd
 )
