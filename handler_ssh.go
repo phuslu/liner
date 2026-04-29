@@ -23,10 +23,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/creack/pty/v2"
 	"github.com/google/shlex"
 	"github.com/libp2p/go-yamux/v5"
 	"github.com/phuslu/log"
+	"github.com/phuslu/pty"
 	"github.com/pkg/sftp"
 	"github.com/quic-go/quic-go"
 	"golang.org/x/crypto/ed25519"
@@ -430,7 +430,7 @@ func (h *SshHandler) handleDirectTCPIP(ctx context.Context, newChannel ssh.NewCh
 
 func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, requests <-chan *ssh.Request, conn *ssh.ServerConn) {
 	// Sessions have out-of-band requests such as "shell", "pty-req" and "env"
-	var shellfile *os.File
+	var shellfile pty.Pty
 	var window struct {
 		Width       uint32
 		Height      uint32
@@ -581,7 +581,7 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 			}(req.Payload[length+20:])
 			h.Logger.Info().Str("req_type", req.Type).Str("term", envs["TERM"]).Uint32("width", window.Width).Uint32("height", window.Height).Any("modes", window.Modes).Msg("handle ssh request")
 			if shellfile != nil {
-				SetTermWindowSize(shellfile.Fd(), uint16(window.Width), uint16(window.Height))
+				pty.SetSize(shellfile, &pty.Winsize{Cols: uint16(window.Width), Rows: uint16(window.Height)})
 			}
 			// Responding true (OK) here will let the client
 			// know we have a pty ready for input
@@ -594,7 +594,7 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 			window.Height = binary.BigEndian.Uint32(req.Payload[4:])
 			h.Logger.Info().Str("req_type", req.Type).Uint32("width", window.Width).Uint32("height", window.Height).Msg("handle ssh request")
 			if shellfile != nil {
-				SetTermWindowSize(shellfile.Fd(), uint16(window.Width), uint16(window.Height))
+				pty.SetSize(shellfile, &pty.Winsize{Cols: uint16(window.Width), Rows: uint16(window.Height)})
 			}
 		case "subsystem":
 			var payload struct {
@@ -637,7 +637,7 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 	}
 }
 
-func (h *SshHandler) startShell(ctx context.Context, shellPath string, width, height uint32, modes map[byte]uint32, envs map[string]string, channel ssh.Channel) (*os.File, error) {
+func (h *SshHandler) startShell(ctx context.Context, shellPath string, width, height uint32, modes map[byte]uint32, envs map[string]string, channel ssh.Channel) (pty.Pty, error) {
 	currentUser, err := user.Current()
 	if err != nil {
 		return nil, err
@@ -771,8 +771,13 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, width, he
 		shell.SysProcAttr = spa
 	}
 
+	var file pty.Pty
+
 	// Prepare teardown function
 	close := func() {
+		if file != nil {
+			_ = file.Close()
+		}
 		if shell.Process != nil {
 			shell.Process.Signal(os.Interrupt)
 			timer := time.AfterFunc(time.Minute, func() { shell.Process.Signal(os.Kill) })
@@ -790,7 +795,7 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, width, he
 
 	// Allocate a terminal for this channel
 	h.Logger.Printf("Creating pty...")
-	file, err := pty.StartWithSize(shell, &pty.Winsize{
+	file, err = pty.StartWithSize(ctx, shell, &pty.Winsize{
 		Cols: uint16(width),
 		Rows: uint16(height),
 	})
@@ -811,7 +816,5 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, width, he
 		once.Do(close)
 	}()
 
-	result, _ := file.(*os.File)
-
-	return result, nil
+	return file, nil
 }

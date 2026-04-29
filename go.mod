@@ -5,7 +5,6 @@ go 1.26
 require (
 	github.com/chzyer/readline v1.5.1
 	github.com/coder/websocket v1.8.14
-	github.com/creack/pty/v2 v2.0.1
 	github.com/go-task/slim-sprig/v3 v3.0.0
 	github.com/goccy/go-yaml v1.19.2
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
@@ -16,6 +15,7 @@ require (
 	github.com/phuslu/geosite v1.0.20250901
 	github.com/phuslu/log v1.0.124
 	github.com/phuslu/lru v1.0.18
+	github.com/phuslu/pty v0.0.0-20260430085601-510d7e5c4682
 	github.com/phuslu/tcp-brutal v1.0.1-0.20260428140401-68c78bad227a
 	github.com/pkg/sftp v1.13.10
 	github.com/puzpuzpuz/xsync/v4 v4.5.0
@@ -42,7 +42,4 @@ require (
 	golang.org/x/text v0.36.0 // indirect
 )
 
-replace (
-	github.com/creack/pty/v2 v2.0.1 => github.com/photostorm/pty/v2 v2.0.0-20240405180724-bf40468acd65
-	github.com/quic-go/quic-go v0.59.0 => github.com/phuslu/quic-go v0.0.0-20260429130316-ecbcb7bc16fd
-)
+replace github.com/quic-go/quic-go v0.59.0 => github.com/phuslu/quic-go v0.0.0-20260429130316-ecbcb7bc16fd

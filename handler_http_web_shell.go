@@ -15,8 +15,8 @@ import (
 	"text/template"
 
 	"github.com/coder/websocket"
-	"github.com/creack/pty/v2"
 	"github.com/phuslu/log"
+	"github.com/phuslu/pty"
 )
 
 type HTTPWebShellHandler struct {
@@ -106,7 +106,7 @@ func (h *HTTPWebShellHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 	cmd.Dir = cmp.Or(h.Home, os.Getenv("HOME"))
 
-	ptyfile, err := pty.Start(cmd)
+	ptyfile, err := pty.Start(req.Context(), cmd)
 	if err != nil {
 		conn.Close(websocket.StatusInternalError, "failed to start pty")
 		return
@@ -166,7 +166,7 @@ func (h *HTTPWebShellHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 			switch msg.Type {
 			case "resize":
 				ws := &pty.Winsize{Rows: uint16(msg.Rows), Cols: uint16(msg.Cols)}
-				if err := pty.Setsize(ptyfile, ws); err != nil {
+				if err := pty.SetSize(ptyfile, ws); err != nil {
 					log.Printf("failed to resize pty: %v", err)
 				}
 			}

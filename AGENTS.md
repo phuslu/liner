@@ -371,6 +371,7 @@ go build -ldflags "-X main.version=1.0.$(git describe --tags)"
 - `github.com/phuslu/log` – structured logging
 - `github.com/phuslu/fastdns` – DNS protocol stack, DoH/DoH3 transports
 - `github.com/phuslu/geosite`, `github.com/oschwald/maxminddb-golang/v2` – GeoIP/GeoSite DBs
+- `github.com/phuslu/pty` backed by standard-library `syscall` – PTY management for SSH/WebShell
 - `github.com/puzpuzpuz/xsync/v4` – concurrent maps for dialers, auth tables, logtail clients
 - `github.com/quic-go/quic-go`, `github.com/quic-go/quic-go/http3` – HTTP/3/QUIC transports
 - `github.com/libp2p/go-yamux/v5`, `github.com/xtaci/smux` – tunnel/SSH multiplexers
@@ -378,7 +379,6 @@ go build -ldflags "-X main.version=1.0.$(git describe --tags)"
 - `github.com/mileusna/useragent` – UA parsing for policy templates
 - `github.com/coder/websocket` – WebSocket implementation used by WebShell/logtail/tunnel proxies
 - `github.com/chzyer/readline`, `mvdan.cc/sh/v3`, `github.com/go-task/slim-sprig/v3` – GOSH shell UI/parser and templating helpers
-- `github.com/creack/pty/v2` – PTY management for SSH/WebShell
 - `github.com/robfig/cron/v3` – Cron scheduler for background commands
 - `github.com/smallnest/ringbuffer` – in-memory log broadcaster
 
