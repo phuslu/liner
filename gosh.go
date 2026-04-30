@@ -144,6 +144,7 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 
 	// export HISTFILE=""
 	history.limit = goshResolveShellHistoryLimit(runner)
+	history.control = goshResolveShellHistoryControl(runner)
 	histFile := goshResolveShellHistoryFile(runner)
 
 	boundStdin := &goshKeyBindingInput{src: stdin, mgr: bindings}
@@ -155,16 +156,17 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 	bindings.registerActionHandler(goshKeyActionHistorySearchBackward, historySearch.Search)
 	bindings.registerActionHandler(goshKeyActionHistorySearchForward, historySearch.Search)
 	rl, err := readline.NewEx(&readline.Config{
-		Prompt:          currentPrompt.prompt,
-		HistoryFile:     histFile,
-		HistoryLimit:    history.limit,
-		InterruptPrompt: "^C",
-		EOFPrompt:       "exit",
-		Stdin:           readline.NewCancelableStdin(boundStdin),
-		Stdout:          rlStdout,
-		Stderr:          rlStderr,
-		AutoComplete:    completer,
-		Listener:        historySearch,
+		Prompt:                 currentPrompt.prompt,
+		HistoryFile:            histFile,
+		HistoryLimit:           history.limit,
+		DisableAutoSaveHistory: true,
+		InterruptPrompt:        "^C",
+		EOFPrompt:              "exit",
+		Stdin:                  readline.NewCancelableStdin(boundStdin),
+		Stdout:                 rlStdout,
+		Stderr:                 rlStderr,
+		AutoComplete:           completer,
+		Listener:               historySearch,
 		FuncGetWidth: func() int {
 			if w := readline.GetScreenWidth(); w > 0 {
 				return w
@@ -298,9 +300,7 @@ func (r *goshReader) Read(p []byte) (int, error) {
 		return 0, io.EOF
 	}
 
-	if r.history != nil {
-		r.history.Add(line)
-	}
+	r.saveHistory(line)
 	data := []byte(line + "\n")
 	n := copy(p, data)
 	if n < len(data) {
@@ -309,10 +309,34 @@ func (r *goshReader) Read(p []byte) (int, error) {
 	return n, nil
 }
 
+func (r *goshReader) saveHistory(line string) {
+	if r.rl == nil {
+		if r.history != nil {
+			r.history.Add(line)
+		}
+		return
+	}
+	if r.history == nil {
+		_ = r.rl.SaveHistory(line)
+		return
+	}
+	if r.history.Add(line) {
+		_ = r.rl.SaveHistory(line)
+		return
+	}
+	_ = r.rl.SaveHistory("")
+}
+
 type goshHistory struct {
 	limit   int
+	control goshHistoryControl
 	mu      sync.Mutex
 	entries []string
+}
+
+type goshHistoryControl struct {
+	ignoreDups  bool
+	ignoreSpace bool
 }
 
 func goshResolveHistoryLimit() int {
@@ -338,6 +362,31 @@ func goshParseHistoryLimit(val string) int {
 		return 0
 	}
 	return n
+}
+
+func goshResolveShellHistoryControl(runner *interp.Runner) goshHistoryControl {
+	if val, ok := goshRunnerStringVar(runner, "HISTCONTROL"); ok {
+		return goshParseHistoryControl(val)
+	}
+	return goshParseHistoryControl(os.Getenv("HISTCONTROL"))
+}
+
+func goshParseHistoryControl(val string) goshHistoryControl {
+	var control goshHistoryControl
+	for _, part := range strings.FieldsFunc(val, func(r rune) bool {
+		return r == ':' || r == ',' || unicode.IsSpace(r)
+	}) {
+		switch part {
+		case "ignoredups":
+			control.ignoreDups = true
+		case "ignorespace":
+			control.ignoreSpace = true
+		case "ignoreboth":
+			control.ignoreDups = true
+			control.ignoreSpace = true
+		}
+	}
+	return control
 }
 
 func goshResolveShellHistoryFile(runner *interp.Runner) string {
@@ -385,7 +434,7 @@ func (h *goshHistory) Load(r io.Reader) error {
 	for {
 		line, err := br.ReadString('\n')
 		if line != "" {
-			h.Add(line)
+			h.append(line)
 		}
 		if err != nil {
 			if errors.Is(err, io.EOF) {
@@ -396,13 +445,34 @@ func (h *goshHistory) Load(r io.Reader) error {
 	}
 }
 
-func (h *goshHistory) Add(line string) {
+func (h *goshHistory) Add(line string) bool {
+	line = strings.TrimRight(line, "\r\n")
+	if strings.TrimSpace(line) == "" {
+		return false
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.control.ignoreSpace && strings.HasPrefix(line, " ") {
+		return false
+	}
+	if h.control.ignoreDups && len(h.entries) > 0 && h.entries[len(h.entries)-1] == line {
+		return false
+	}
+	h.appendLocked(line)
+	return true
+}
+
+func (h *goshHistory) append(line string) {
 	line = strings.TrimRight(line, "\r\n")
 	if strings.TrimSpace(line) == "" {
 		return
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	h.appendLocked(line)
+}
+
+func (h *goshHistory) appendLocked(line string) {
 	h.entries = append(h.entries, line)
 	if h.limit > 0 && len(h.entries) > h.limit {
 		h.entries = h.entries[len(h.entries)-h.limit:]
