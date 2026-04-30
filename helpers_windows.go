@@ -296,13 +296,6 @@ func (ops ConnOps) SetTcpMaxPacingRate(rate int) error {
 	return errors.ErrUnsupported
 }
 
-func SetTermWindowSize(fd uintptr, width, height uint16) error {
-	return windows.ResizePseudoConsole(windows.Handle(fd), windows.Coord{
-		X: int16(width),
-		Y: int16(height),
-	})
-}
-
 func SetProcessName(name string) error {
 	return errors.ErrUnsupported
 }

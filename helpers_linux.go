@@ -254,22 +254,6 @@ func (ops ConnOps) SetTcpMaxPacingRate(rate int) (err error) {
 	return
 }
 
-func SetTermWindowSize(fd uintptr, width, height uint16) error {
-	ws := &struct {
-		Height uint16
-		Width  uint16
-		x      uint16 // unused
-		y      uint16 // unused
-	}{
-		Width:  width,
-		Height: height,
-	}
-
-	syscall.Syscall(syscall.SYS_IOCTL, fd, uintptr(syscall.TIOCSWINSZ), uintptr(unsafe.Pointer(ws)))
-
-	return nil
-}
-
 func KillPid(pid int, sig syscall.Signal) error {
 	return syscall.Kill(pid, sig)
 }

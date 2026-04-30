@@ -55,10 +55,6 @@ func (ops ConnOps) SetTcpMaxPacingRate(rate int) error {
 	return errors.ErrUnsupported
 }
 
-func SetTermWindowSize(fd uintptr, width, height uint16) error {
-	return errors.ErrUnsupported
-}
-
 func SetProcessName(name string) error {
 	return errors.ErrUnsupported
 }
