@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"cmp"
 	"context"
@@ -142,10 +143,8 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 	}
 
 	// export HISTFILE=""
-	histFile, ok := os.LookupEnv("HISTFILE")
-	if !ok || histFile == os.DevNull || histFile == "/dev/null" {
-		histFile = ""
-	}
+	history.limit = goshResolveShellHistoryLimit(runner)
+	histFile := goshResolveShellHistoryFile(runner)
 
 	boundStdin := &goshKeyBindingInput{src: stdin, mgr: bindings}
 	promptPrinter := &goshPromptPrinter{}
@@ -176,6 +175,7 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 	if err != nil {
 		return err
 	}
+	_ = history.LoadFile(histFile)
 	completer.attach(rl)
 	historySearch.Attach(rl)
 	defer rl.Close()
@@ -316,13 +316,84 @@ type goshHistory struct {
 }
 
 func goshResolveHistoryLimit() int {
-	val, ok := os.LookupEnv("HISTSIZE")
-	if ok {
-		if n, err := strconv.Atoi(strings.TrimSpace(val)); err == nil && n > 0 {
+	val, _ := os.LookupEnv("HISTSIZE")
+	if n := goshParseHistoryLimit(val); n > 0 {
+		return n
+	}
+	return 1000
+}
+
+func goshResolveShellHistoryLimit(runner *interp.Runner) int {
+	if val, ok := goshRunnerStringVar(runner, "HISTSIZE"); ok {
+		if n := goshParseHistoryLimit(val); n > 0 {
 			return n
 		}
 	}
-	return 1000
+	return goshResolveHistoryLimit()
+}
+
+func goshParseHistoryLimit(val string) int {
+	n, err := strconv.Atoi(strings.TrimSpace(val))
+	if err != nil || n <= 0 {
+		return 0
+	}
+	return n
+}
+
+func goshResolveShellHistoryFile(runner *interp.Runner) string {
+	histFile, ok := goshRunnerStringVar(runner, "HISTFILE")
+	if !ok {
+		histFile, ok = os.LookupEnv("HISTFILE")
+	}
+	if !ok || histFile == os.DevNull || histFile == "/dev/null" {
+		return ""
+	}
+	return histFile
+}
+
+func goshRunnerStringVar(runner *interp.Runner, name string) (string, bool) {
+	if runner != nil && runner.Vars != nil {
+		if vr, ok := runner.Vars[name]; ok && vr.IsSet() {
+			return vr.String(), true
+		}
+	}
+	if runner != nil && runner.Env != nil {
+		if vr := runner.Env.Get(name); vr.IsSet() {
+			return vr.String(), true
+		}
+	}
+	return "", false
+}
+
+func (h *goshHistory) LoadFile(name string) error {
+	if h == nil || name == "" {
+		return nil
+	}
+	file, err := os.Open(name)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	defer file.Close()
+	return h.Load(file)
+}
+
+func (h *goshHistory) Load(r io.Reader) error {
+	br := bufio.NewReader(r)
+	for {
+		line, err := br.ReadString('\n')
+		if line != "" {
+			h.Add(line)
+		}
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return err
+		}
+	}
 }
 
 func (h *goshHistory) Add(line string) {
