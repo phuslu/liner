@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/tls"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -134,7 +135,7 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		req = req.WithContext(MemoryDialersWith(req.Context(), h.MemoryDialers))
 	}
 
-	if protocol := req.Header.Get(":protocol"); protocol != "" && req.ProtoMajor == 2 && req.Method == http.MethodConnect && req.RequestURI[0] == '/' {
+	if protocol := req.Header.Get(":protocol"); protocol != "" && req.ProtoMajor == 2 && req.Method == http.MethodConnect && strings.HasPrefix(req.RequestURI, "/") {
 		switch protocol {
 		case "websocket":
 			break
@@ -142,6 +143,46 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 			http.Error(rw, "pesudo protocol "+protocol+" is not supportted", http.StatusBadGateway)
 			return
 		}
+		req.URL.Scheme = proxypass.Scheme
+		req.URL.Host = proxypass.Host
+		req.Host = proxypass.Host
+
+		if prefix := h.StripPrefix; prefix != "" {
+			req.URL.Path = strings.TrimPrefix(req.URL.Path, prefix)
+			req.URL.RawPath = ""
+			req.RequestURI = strings.TrimPrefix(req.RequestURI, prefix)
+			if req.URL.Path == "" {
+				req.URL.Path = "/"
+			} else if req.URL.Path[0] != '/' {
+				req.URL.Path = "/" + req.URL.Path
+			}
+			if req.RequestURI == "" || req.RequestURI[0] != '/' {
+				req.RequestURI = req.URL.RequestURI()
+				if req.RequestURI == "" || req.RequestURI[0] != '/' {
+					req.RequestURI = "/" + req.RequestURI
+				}
+			}
+		}
+
+		if s := req.Header.Get("x-forwarded-for"); s != "" {
+			req.Header.Set("x-forwarded-for", s+", "+ri.RemoteAddr.Addr().String())
+		} else {
+			req.Header.Set("x-forwarded-for", ri.RemoteAddr.Addr().String())
+		}
+		req.Header.Set("x-real-ip", ri.RealIP.String())
+
+		if ri.TLSVersion != 0 {
+			req.Header.Set("x-forwarded-proto", "https")
+		}
+
+		if h.SetHeaders != "" {
+			h.setHeaders(req, ri)
+		}
+
+		if req.TLS != nil && req.TLS.ServerName != "" && strings.HasPrefix(req.Host, "127.") {
+			req.Host = req.TLS.ServerName
+		}
+
 		hostport := proxypass.Host
 		if _, _, err := net.SplitHostPort(hostport); err != nil {
 			port := "80"
@@ -161,7 +202,18 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		defer conn.Close()
 
 		if proxypass.Scheme == "https" {
-			tlsConn := tls.Client(conn, h.Transport.TLSClientConfig)
+			tlsConfig := &tls.Config{}
+			if h.Transport.TLSClientConfig != nil {
+				tlsConfig = h.Transport.TLSClientConfig.Clone()
+			}
+			tlsConfig.NextProtos = []string{"http/1.1"}
+			if tlsConfig.ServerName == "" {
+				tlsConfig.ServerName, _, _ = net.SplitHostPort(hostport)
+				if tlsConfig.ServerName == "" {
+					tlsConfig.ServerName = hostport
+				}
+			}
+			tlsConn := tls.Client(conn, tlsConfig)
 			err := tlsConn.HandshakeContext(req.Context())
 			if err != nil {
 				http.Error(rw, err.Error(), http.StatusBadGateway)
@@ -170,17 +222,25 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 			conn = tlsConn
 		}
 
-		wskey := AppendableBytes(make([]byte, 0, 128)).Uint64(uint64(fastrandn(1<<32-1)), 16).Uint64(uint64(fastrandn(1<<32-1)), 16)
+		wskey := make([]byte, 16)
+		binary.LittleEndian.PutUint32(wskey[0:4], fastrandn(1<<32-1))
+		binary.LittleEndian.PutUint32(wskey[4:8], fastrandn(1<<32-1))
+		binary.LittleEndian.PutUint32(wskey[8:12], fastrandn(1<<32-1))
+		binary.LittleEndian.PutUint32(wskey[12:16], fastrandn(1<<32-1))
 
 		b := AppendableBytes(make([]byte, 0, 1024))
 		b = b.Str("GET ").Str(req.RequestURI).Str(" HTTP/1.1\r\n")
 		for key, values := range req.Header {
+			switch strings.ToLower(key) {
+			case ":protocol", "connection", "host", "upgrade", "sec-websocket-accept", "sec-websocket-key":
+				continue
+			}
 			for _, value := range values {
-				if strings.HasPrefix(key, ":") {
-					continue
-				}
 				b = b.Str(key).Str(": ").Str(value).Str("\r\n")
 			}
+		}
+		if req.Header.Get("Sec-WebSocket-Version") == "" {
+			b = b.Str("Sec-WebSocket-Version: 13\r\n")
 		}
 		b = b.Str("Sec-WebSocket-Key: ").Base64(wskey).Str("\r\n")
 		b = b.Str("Upgrade: ").Str(req.Header.Get(":protocol")).Str("\r\n")
@@ -212,11 +272,19 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		}
 
 		for key, values := range resp.Header {
+			switch strings.ToLower(key) {
+			case "connection", "keep-alive", "proxy-connection", "sec-websocket-accept", "transfer-encoding", "upgrade":
+				continue
+			}
 			for _, value := range values {
 				rw.Header().Add(key, value)
 			}
 		}
 		rw.WriteHeader(http.StatusOK)
+		if err := http.NewResponseController(rw).Flush(); err != nil {
+			log.Error().Context(ri.LogContext).Err(err).Str("proxypass", proxypass.String()).Str("hostport", hostport).Msg("http2 flush websocket proxypass response error")
+			return
+		}
 
 		rwc := HTTPRequestStream{req.Body, rw, http.NewResponseController(rw), net.TCPAddrFromAddrPort(ri.RemoteAddr), net.TCPAddrFromAddrPort(ri.ServerAddr)}
 		defer rwc.Close()
