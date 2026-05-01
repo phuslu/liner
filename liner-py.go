@@ -8,7 +8,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/phuslu/log"
+	"github.com/phuslu/pty"
 )
 
 /*
@@ -47,7 +47,7 @@ func liner() *C.PyObject {
 
 //export linex
 func linex() *C.PyObject {
-	gosh(context.Background(), log.IsTerminal(os.Stdin.Fd()), os.Stdin, os.Stdout, os.Stderr)
+	gosh(context.Background(), pty.IsTerminal(os.Stdin.Fd()), os.Stdin, os.Stdout, os.Stderr)
 	C.Py_IncRef(C.Py_None)
 	return C.Py_None
 }

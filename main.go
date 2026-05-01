@@ -32,6 +32,7 @@ import (
 	"github.com/phuslu/geosite"
 	"github.com/phuslu/log"
 	"github.com/phuslu/lru"
+	"github.com/phuslu/pty"
 	brutal "github.com/phuslu/tcp-brutal"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/quic-go/quic-go"
@@ -53,7 +54,7 @@ var (
 
 func main() {
 	if os.Getenv("GOSH") == "1" {
-		err := gosh(context.Background(), log.IsTerminal(os.Stdin.Fd()), os.Stdin, os.Stdout, os.Stderr)
+		err := gosh(context.Background(), pty.IsTerminal(os.Stdin.Fd()), os.Stdin, os.Stdout, os.Stderr)
 		if err != nil {
 			os.Exit(127)
 		}
@@ -108,7 +109,7 @@ func main() {
 			Writer: log.IOWriter{Writer: io.Discard},
 		}
 		dataLogger = log.DefaultLogger
-	} else if log.IsTerminal(os.Stderr.Fd()) {
+	} else if pty.IsTerminal(os.Stderr.Fd()) {
 		log.DefaultLogger = log.Logger{
 			Level:      log.ParseLevel(cmp.Or(config.Global.LogLevel, "info")),
 			Caller:     1,
@@ -1134,7 +1135,7 @@ func main() {
 		cronOptions = append(cronOptions, cron.WithLocation(time.UTC))
 	}
 	runner := cron.New(cronOptions...)
-	if config.Global.LogLevel != "discard" && !log.IsTerminal(os.Stderr.Fd()) {
+	if config.Global.LogLevel != "discard" && !pty.IsTerminal(os.Stderr.Fd()) {
 		runner.AddFunc("0 0 0 * * *", func() { (*log.DefaultLogger.Writer.(*log.MultiEntryWriter))[0].(*log.FileWriter).Rotate() })
 		if slices.ContainsFunc(config.Http, func(c HTTPConfig) bool { return c.Forward.Log }) ||
 			slices.ContainsFunc(config.Https, func(c HTTPConfig) bool { return c.Forward.Log }) ||
