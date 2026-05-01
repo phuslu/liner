@@ -14,8 +14,8 @@ require (
 	github.com/phuslu/fastdns v0.17.0
 	github.com/phuslu/geosite v1.0.20250901
 	github.com/phuslu/log v1.0.124
-	github.com/phuslu/lru v1.0.18
-	github.com/phuslu/pty v0.0.0-20260501042121-97cb30422e15
+	github.com/phuslu/lru v1.0.19
+	github.com/phuslu/pty v0.0.0-20260501142048-f3bbbfc1a8c0
 	github.com/phuslu/tcp-brutal v1.0.1-0.20260428140401-68c78bad227a
 	github.com/pkg/sftp v1.13.10
 	github.com/puzpuzpuz/xsync/v4 v4.5.0
@@ -33,7 +33,7 @@ require (
 
 require (
 	github.com/andybalholm/brotli v1.2.1 // indirect
-	github.com/klauspost/compress v1.18.5 // indirect
+	github.com/klauspost/compress v1.18.6 // indirect
 	github.com/kr/fs v0.1.0 // indirect
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
