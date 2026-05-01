@@ -5,10 +5,7 @@
 package main
 
 import (
-	"context"
 	"os"
-
-	"github.com/phuslu/pty"
 )
 
 /*
@@ -47,7 +44,7 @@ func liner() *C.PyObject {
 
 //export linex
 func linex() *C.PyObject {
-	gosh(context.Background(), pty.IsTerminal(os.Stdin.Fd()), os.Stdin, os.Stdout, os.Stderr)
+	gosh(os.Stdin, os.Stdout, os.Stderr)
 	C.Py_IncRef(C.Py_None)
 	return C.Py_None
 }

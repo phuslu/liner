@@ -54,7 +54,7 @@ var (
 
 func main() {
 	if os.Getenv("GOSH") == "1" {
-		err := gosh(context.Background(), pty.IsTerminal(os.Stdin.Fd()), os.Stdin, os.Stdout, os.Stderr)
+		err := gosh(os.Stdin, os.Stdout, os.Stderr)
 		if err != nil {
 			os.Exit(127)
 		}

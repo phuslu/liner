@@ -16,10 +16,7 @@ del ctypes, os, dll
 package main
 
 import (
-	"context"
 	"os"
-
-	"github.com/phuslu/pty"
 )
 
 import "C"
@@ -31,5 +28,5 @@ func liner() {
 
 //export linex
 func linex() {
-	gosh(context.Background(), pty.IsTerminal(os.Stdin.Fd()), os.Stdin, os.Stdout, os.Stderr)
+	gosh(os.Stdin, os.Stdout, os.Stderr)
 }

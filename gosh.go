@@ -30,12 +30,15 @@ import (
 	"unsafe"
 
 	"github.com/chzyer/readline"
+	"github.com/phuslu/pty"
 	"mvdan.cc/sh/v3/expand"
 	"mvdan.cc/sh/v3/interp"
 	"mvdan.cc/sh/v3/syntax"
 )
 
-func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.Writer) error {
+func gosh(stdin, stdout, stderr *os.File) error {
+	isatty := pty.IsTerminal(stdin.Fd())
+
 	command, err := goshParseCommand(os.Args)
 	if err != nil {
 		return err
@@ -46,7 +49,8 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 	if !interactive {
 		signals = append(signals, os.Interrupt)
 	}
-	ctx, cancel := signal.NotifyContext(ctx, signals...)
+
+	ctx, cancel := signal.NotifyContext(context.Background(), signals...)
 	defer cancel()
 
 	SetProcessName(os.Args[0])
@@ -149,9 +153,7 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 
 	boundStdin := &goshKeyBindingInput{src: stdin, mgr: bindings}
 	promptPrinter := &goshPromptPrinter{}
-	rlStdout := cmp.Or(stdout.(*os.File), os.Stdout)
-	rlStderr := cmp.Or(stderr.(*os.File), os.Stderr)
-	completer := &goshAutoCompleter{ctx: ctx, runner: runner, stdin: stdin, stderr: stderr, stdout: rlStdout, promptPrinter: promptPrinter}
+	completer := &goshAutoCompleter{ctx: ctx, runner: runner, stdin: stdin, stdout: stdout, stderr: stderr, promptPrinter: promptPrinter}
 	historySearch := &goshHistorySearch{history: history, searchIndex: -1}
 	bindings.registerActionHandler(goshKeyActionHistorySearchBackward, historySearch.Search)
 	bindings.registerActionHandler(goshKeyActionHistorySearchForward, historySearch.Search)
@@ -163,8 +165,8 @@ func gosh(ctx context.Context, isatty bool, stdin io.Reader, stdout, stderr io.W
 		InterruptPrompt:        "^C",
 		EOFPrompt:              "exit",
 		Stdin:                  readline.NewCancelableStdin(boundStdin),
-		Stdout:                 rlStdout,
-		Stderr:                 rlStderr,
+		Stdout:                 stdout,
+		Stderr:                 stderr,
 		AutoComplete:           completer,
 		Listener:               historySearch,
 		FuncGetWidth: func() int {
