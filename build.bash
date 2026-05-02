@@ -11,6 +11,9 @@ function liner::setup() {
 
 	curl -L https://github.com/phuslu/go/releases/download/v0.0.0/go1.26.linux-${goarch}.tar.xz | \
 	tar xvJ -C /tmp/
+
+	curl -LOJ https://www.wintun.net/builds/wintun-0.14.1.zip && \
+	unzip wintun-0.14.1.zip && rm -f wintun-0.14.1.zip
 }
 
 function liner::build() {
@@ -100,12 +103,14 @@ GOOS=android GOARCH=arm64 \
 GOOS=windows GOARCH=amd64 \
 	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -o build/liner_windows_amd64/liner.exe && \
 	cp example.yaml liner-ui.exe build/changelog.txt build/liner_windows_amd64/ && \
+	cp wintun/bin/amd64/wintun.dll build/liner_windows_amd64/ && \
 	cd build/liner_windows_amd64 && \
 	tar cv * | gzip -9 >../liner_windows_amd64-${REVSION}.tar.gz
 
 GOOS=windows GOARCH=arm64 \
 	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -o build/liner_windows_arm64/liner.exe && \
 	cp example.yaml liner-ui.exe build/changelog.txt build/liner_windows_arm64/ && \
+	cp wintun/bin/arm64/wintun.dll build/liner_windows_amd64/ && \
 	cd build/liner_windows_arm64 && \
 	tar cv * | gzip -9 >../liner_windows_arm64-${REVSION}.tar.gz
 EOF
