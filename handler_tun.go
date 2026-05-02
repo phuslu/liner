@@ -56,6 +56,14 @@ type TunRequest struct {
 	TraceID    log.XID
 }
 
+type tunForward struct {
+	ctx        context.Context
+	cancel     context.CancelFunc
+	dialer     Dialer
+	dialerName string
+	policyName string
+}
+
 type TunHandler struct {
 	Config      TunConfig
 	DataLogger  log.Logger
@@ -128,7 +136,7 @@ func (h *TunHandler) Load() error {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cmp.Or(h.Config.Forward.DialTimeout, 10))*time.Second)
 		defer cancel()
 		seen := make(map[netip.Addr]struct{})
-		resolveHost := func(host string) []netip.Addr {
+		addHost := func(host string) []netip.Addr {
 			host = strings.TrimSpace(host)
 			if h, _, err := net.SplitHostPort(host); err == nil {
 				host = h
@@ -137,18 +145,17 @@ func (h *TunHandler) Load() error {
 			if host == "" {
 				return nil
 			}
+			var ips []netip.Addr
 			if ip, err := netip.ParseAddr(host); err == nil {
-				return []netip.Addr{ip}
+				ips = []netip.Addr{ip}
+			} else {
+				var err error
+				ips, err = h.LocalDialer.DnsResolver.LookupNetIP(ctx, "ip4", host)
+				if err != nil {
+					log.Warn().Err(err).Str("tun_name", h.name).Str("host", host).Msg("resolve tun bypass route error")
+					return nil
+				}
 			}
-			ips, err := h.LocalDialer.DnsResolver.LookupNetIP(ctx, "ip4", host)
-			if err != nil {
-				log.Warn().Err(err).Str("tun_name", h.name).Str("host", host).Msg("resolve tun bypass route error")
-				return nil
-			}
-			return ips
-		}
-		addHost := func(host string) []netip.Addr {
-			ips := resolveHost(host)
 			for _, ip := range ips {
 				if !ip.Is4() {
 					continue
@@ -161,40 +168,40 @@ func (h *TunHandler) Load() error {
 			}
 			return ips
 		}
-		var walkDialer func(Dialer)
-		walkDialer = func(d Dialer) {
-			switch d := d.(type) {
-			case *HTTPDialer:
-				host := d.Host
-				for _, value := range d.Resolve {
-					if value != "" {
-						host = value
-						break
-					}
-				}
-				addHost(host)
-				walkDialer(d.Dialer)
-			case *HTTP2Dialer:
-				addHost(d.Host)
-				walkDialer(d.Dialer)
-			case *HTTP3Dialer:
-				if d.Resolve != "" {
-					addHost(d.Resolve)
-					break
-				}
-				if ips := addHost(d.Host); len(ips) > 0 {
-					d.Resolve = ips[0].String()
-				}
-			case *SocksDialer:
-				addHost(d.Host)
-				walkDialer(d.Dialer)
-			case *SSHDialer:
-				addHost(d.Host)
-				walkDialer(d.Dialer)
-			}
-		}
+
 		for _, dialer := range h.Dialers {
-			walkDialer(dialer)
+			for dialer != nil {
+				switch d := dialer.(type) {
+				case *HTTPDialer:
+					host := d.Host
+					for _, value := range d.Resolve {
+						if value != "" {
+							host = value
+							break
+						}
+					}
+					addHost(host)
+					dialer = d.Dialer
+				case *HTTP2Dialer:
+					addHost(d.Host)
+					dialer = d.Dialer
+				case *HTTP3Dialer:
+					if d.Resolve != "" {
+						addHost(d.Resolve)
+					} else if ips := addHost(d.Host); len(ips) > 0 {
+						d.Resolve = ips[0].String()
+					}
+					dialer = nil
+				case *SocksDialer:
+					addHost(d.Host)
+					dialer = d.Dialer
+				case *SSHDialer:
+					addHost(d.Host)
+					dialer = d.Dialer
+				default:
+					dialer = nil
+				}
+			}
 		}
 	}
 	cleanup, err := ConfigureTunInterface(h.name, addressPrefix, routePrefix, cmp.Or(h.Config.RouteMetric, 32767), bypassPrefixes)
@@ -428,28 +435,28 @@ func (h *TunHandler) forwardTCP(r *tcp.ForwarderRequest) {
 		TraceID:    log.NewXID(),
 	}
 
-	ctx, cancel, dialer, dialerName, policyName, ok := h.prepareDial(req)
+	forward, ok := h.prepareDial(req)
 	if !ok {
 		r.Complete(true)
 		return
 	}
 
-	rconn, err := dialer.DialContext(ctx, "tcp", req.ServerAddr.String())
+	rconn, err := forward.dialer.DialContext(forward.ctx, "tcp", req.ServerAddr.String())
 	if err != nil {
-		cancel()
-		log.Error().Err(err).Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Str("forward_policy_name", policyName).Str("forward_dialer_name", dialerName).Msg("tun tcp dial error")
+		forward.cancel()
+		log.Error().Err(err).Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Str("forward_policy_name", forward.policyName).Str("forward_dialer_name", forward.dialerName).Msg("tun tcp dial error")
 		r.Complete(true)
 		if rconn != nil {
 			rconn.Close()
 		}
 		return
 	}
-	defer cancel()
+	defer forward.cancel()
 
 	var wq waiter.Queue
 	ep, tcpipErr := r.CreateEndpoint(&wq)
 	if tcpipErr != nil {
-		log.Error().Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Str("forward_policy_name", policyName).Str("forward_dialer_name", dialerName).Str("error", tcpipErr.String()).Msg("tun tcp create endpoint error")
+		log.Error().Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Str("forward_policy_name", forward.policyName).Str("forward_dialer_name", forward.dialerName).Str("error", tcpipErr.String()).Msg("tun tcp create endpoint error")
 		r.Complete(true)
 		rconn.Close()
 		return
@@ -460,18 +467,12 @@ func (h *TunHandler) forwardTCP(r *tcp.ForwarderRequest) {
 	defer lconn.Close()
 	defer rconn.Close()
 
-	log.Info().Xid("trace_id", req.TraceID).Str("tun_name", h.name).Str("tun_network", req.Network).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Str("forward_policy_name", policyName).Str("forward_dialer_name", dialerName).Msg("forward tun request")
+	log.Info().Xid("trace_id", req.TraceID).Str("tun_name", h.name).Str("tun_network", req.Network).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Str("forward_policy_name", forward.policyName).Str("forward_dialer_name", forward.dialerName).Msg("forward tun request")
 
-	go func() {
-		buf := tunGetCopyBuffer(tunCopyBufferSize)
-		defer tunPutCopyBuffer(buf)
-		_, _ = io.CopyBuffer(rconn, lconn, buf)
-	}()
-	buf := tunGetCopyBuffer(tunCopyBufferSize)
-	_, _ = io.CopyBuffer(lconn, rconn, buf)
-	tunPutCopyBuffer(buf)
+	go io.Copy(rconn, lconn)
+	_, _ = io.Copy(lconn, rconn)
 
-	h.logData(context.Background(), req, policyName, dialerName)
+	h.logData(context.Background(), req, forward.policyName, forward.dialerName)
 }
 
 func (h *TunHandler) serveUDP(r *udp.ForwarderRequest) {
@@ -497,25 +498,24 @@ func (h *TunHandler) serveUDP(r *udp.ForwarderRequest) {
 	lconn := gonet.NewUDPConn(&wq, ep)
 	defer lconn.Close()
 
-	ctx, cancel, dialer, dialerName, policyName, ok := h.prepareDial(req)
+	forward, ok := h.prepareDial(req)
 	if !ok {
-		cancel()
 		return
 	}
 
-	rconn, err := dialer.DialContext(ctx, "udp", req.ServerAddr.String())
+	rconn, err := forward.dialer.DialContext(forward.ctx, "udp", req.ServerAddr.String())
 	if err != nil {
-		cancel()
-		log.Error().Err(err).Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Str("forward_policy_name", policyName).Str("forward_dialer_name", dialerName).Msg("tun udp dial error")
+		forward.cancel()
+		log.Error().Err(err).Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Str("forward_policy_name", forward.policyName).Str("forward_dialer_name", forward.dialerName).Msg("tun udp dial error")
 		if rconn != nil {
 			rconn.Close()
 		}
 		return
 	}
-	defer cancel()
+	defer forward.cancel()
 	defer rconn.Close()
 
-	log.Info().Xid("trace_id", req.TraceID).Str("tun_name", h.name).Str("tun_network", req.Network).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Str("forward_policy_name", policyName).Str("forward_dialer_name", dialerName).Msg("forward tun request")
+	log.Info().Xid("trace_id", req.TraceID).Str("tun_name", h.name).Str("tun_network", req.Network).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Str("forward_policy_name", forward.policyName).Str("forward_dialer_name", forward.dialerName).Msg("forward tun request")
 
 	timeout := time.Duration(cmp.Or(h.Config.Forward.UdpTimeout, 120)) * time.Second
 	touch := make(chan struct{}, 1)
@@ -574,7 +574,7 @@ func (h *TunHandler) serveUDP(r *udp.ForwarderRequest) {
 	go copyPacket(lconn, rconn)
 	<-done
 
-	h.logData(context.Background(), req, policyName, dialerName)
+	h.logData(context.Background(), req, forward.policyName, forward.dialerName)
 }
 
 func tunGetCopyBuffer(size int) []byte {
@@ -598,26 +598,25 @@ func tunPutCopyBuffer(b []byte) {
 	tunCopyBufferPool.Put(&b)
 }
 
-func (h *TunHandler) prepareDial(req TunRequest) (context.Context, context.CancelFunc, Dialer, string, string, bool) {
+func (h *TunHandler) prepareDial(req TunRequest) (tunForward, bool) {
 	ctx := context.Background()
 	cancel := func() {}
 	if h.Config.Forward.DialTimeout > 0 {
 		ctx, cancel = context.WithTimeout(ctx, time.Duration(h.Config.Forward.DialTimeout)*time.Second)
 	}
-
-	policyName := h.Config.Forward.Policy
-	if h.policy != nil {
+	forward := tunForward{ctx: ctx, cancel: cancel, policyName: h.Config.Forward.Policy, dialerName: h.Config.Forward.Dialer}
+	execute := func(t *template.Template) (string, error) {
 		bb := bytebufferpool.Get()
 		defer bytebufferpool.Put(bb)
 		bb.Reset()
 		var err error
 		if obfuscated {
-			err = h.policy.Execute(bb, map[string]any{
+			err = t.Execute(bb, map[string]any{
 				"Request":    req,
 				"ServerAddr": req.ServerAddr,
 			})
 		} else {
-			err = h.policy.Execute(bb, struct {
+			err = t.Execute(bb, struct {
 				Request    TunRequest
 				ServerAddr netip.AddrPort
 			}{
@@ -625,55 +624,43 @@ func (h *TunHandler) prepareDial(req TunRequest) (context.Context, context.Cance
 				ServerAddr: req.ServerAddr,
 			})
 		}
-		if err != nil {
+		return strings.TrimSpace(bb.String()), err
+	}
+
+	if h.policy != nil {
+		if s, err := execute(h.policy); err != nil {
 			log.Error().Err(err).Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("forward_policy", h.Config.Forward.Policy).Msg("execute tun_policy error")
 			cancel()
-			return ctx, cancel, nil, "", policyName, false
+			return forward, false
+		} else {
+			forward.policyName = s
 		}
-		policyName = strings.TrimSpace(bb.String())
-		log.Debug().Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("forward_policy_name", policyName).Msg("execute tun_policy ok")
+		log.Debug().Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("forward_policy_name", forward.policyName).Msg("execute tun_policy ok")
 	}
 
 	dialerValue := h.Config.Forward.Dialer
-	switch policyName {
+	switch forward.policyName {
 	case "reject", "deny", "reset", "close":
 		cancel()
-		return ctx, cancel, nil, "", policyName, false
+		return forward, false
 	case "", "direct", "allow":
 	default:
 		if dialerValue == "" && h.dialer == nil {
-			dialerValue = policyName
+			dialerValue = forward.policyName
 		}
 	}
 
 	if h.dialer != nil {
-		bb := bytebufferpool.Get()
-		defer bytebufferpool.Put(bb)
-		bb.Reset()
-		var err error
-		if obfuscated {
-			err = h.dialer.Execute(bb, map[string]any{
-				"Request":    req,
-				"ServerAddr": req.ServerAddr,
-			})
-		} else {
-			err = h.dialer.Execute(bb, struct {
-				Request    TunRequest
-				ServerAddr netip.AddrPort
-			}{
-				Request:    req,
-				ServerAddr: req.ServerAddr,
-			})
-		}
-		if err != nil {
+		if s, err := execute(h.dialer); err != nil {
 			log.Error().Err(err).Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("forward_dialer_name", h.Config.Forward.Dialer).Msg("execute tun_dialer error")
 			cancel()
-			return ctx, cancel, nil, "", policyName, false
+			return forward, false
+		} else {
+			dialerValue = s
 		}
-		dialerValue = strings.TrimSpace(bb.String())
 	}
 
-	dialerName := dialerValue
+	forward.dialerName = dialerValue
 	disableIPv6 := h.Config.Forward.DisableIpv6
 	preferIPv6 := h.Config.Forward.PreferIpv6
 	switch {
@@ -687,9 +674,9 @@ func (h *TunHandler) prepareDial(req TunRequest) (context.Context, context.Cance
 		if err != nil {
 			log.Error().Err(err).Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("forward_dialer_name", h.Config.Forward.Dialer).Msg("parse tun_dialer json error")
 			cancel()
-			return ctx, cancel, nil, "", policyName, false
+			return forward, false
 		}
-		dialerName = v.Dialer
+		forward.dialerName = v.Dialer
 		disableIPv6 = v.DisableIPv6
 		preferIPv6 = v.PreferIPv6
 	case strings.Contains(dialerValue, "="):
@@ -697,9 +684,9 @@ func (h *TunHandler) prepareDial(req TunRequest) (context.Context, context.Cance
 		if err != nil {
 			log.Error().Err(err).Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("forward_dialer_name", h.Config.Forward.Dialer).Msg("parse tun_dialer query error")
 			cancel()
-			return ctx, cancel, nil, "", policyName, false
+			return forward, false
 		}
-		dialerName = u.Get("dialer")
+		forward.dialerName = u.Get("dialer")
 		if s := u.Get("disable_ipv6"); s != "" {
 			disableIPv6, _ = strconv.ParseBool(s)
 		}
@@ -707,33 +694,32 @@ func (h *TunHandler) prepareDial(req TunRequest) (context.Context, context.Cance
 			preferIPv6, _ = strconv.ParseBool(s)
 		}
 	}
-	if dialerName == "direct" {
-		dialerName = ""
+	if forward.dialerName == "direct" {
+		forward.dialerName = ""
 	}
 
-	var dialer Dialer
-	if dialerName != "" {
+	if forward.dialerName != "" {
 		var ok bool
-		if dialer, ok = h.Dialers[dialerName]; !ok {
-			log.Error().Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("forward_dialer_name", h.Config.Forward.Dialer).Str("dialer_name", dialerName).Msg("dialer not exists")
+		if forward.dialer, ok = h.Dialers[forward.dialerName]; !ok {
+			log.Error().Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("forward_dialer_name", h.Config.Forward.Dialer).Str("dialer_name", forward.dialerName).Msg("dialer not exists")
 			cancel()
-			return ctx, cancel, nil, dialerName, policyName, false
+			return forward, false
 		}
 	} else {
-		dialer = h.LocalDialer
+		forward.dialer = h.LocalDialer
 	}
 
 	switch {
 	case disableIPv6:
-		ctx = context.WithValue(ctx, DialerDisableIPv6ContextKey, struct{}{})
+		forward.ctx = context.WithValue(forward.ctx, DialerDisableIPv6ContextKey, struct{}{})
 	case preferIPv6:
-		ctx = context.WithValue(ctx, DialerPreferIPv6ContextKey, struct{}{})
+		forward.ctx = context.WithValue(forward.ctx, DialerPreferIPv6ContextKey, struct{}{})
 	}
-	ctx = context.WithValue(ctx, DialerHTTPHeaderContextKey, http.Header{
+	forward.ctx = context.WithValue(forward.ctx, DialerHTTPHeaderContextKey, http.Header{
 		"X-Forwarded-For": []string{req.RemoteAddr.Addr().String()},
 	})
 
-	return ctx, cancel, dialer, dialerName, policyName, true
+	return forward, true
 }
 
 func (h *TunHandler) logData(ctx context.Context, req TunRequest, policyName, dialerName string) {
