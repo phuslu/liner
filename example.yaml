@@ -212,18 +212,19 @@ redsocks:
     forward:
       log: true
       dialer: proxy1
-# tun:
-#   - name: tun0
-#     address: 198.18.0.1/15
-#     route: 0.0.0.0/0
-#     route_metric: 32767
-#     mtu: 1420
-#     forward:
-#       policy: direct
-#       dialer: proxy1
-#       dial_timeout: 10
-#       udp_timeout: 120
-#       log: true
+tun:
+  - name: utun53
+    address: 198.168.53.1/24
+    route: none
+    # route: 0.0.0.0/0
+    route_metric: 32767
+    mtu: 1420
+    forward:
+      policy: direct
+      dialer: proxy1
+      dial_timeout: 10
+      udp_timeout: 120
+      log: true
 stream:
   - listen: [':853']
     keyfile: certs/example.org+rsa
