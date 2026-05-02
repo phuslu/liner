@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"os/exec"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -294,6 +295,42 @@ func (ops ConnOps) SetTcpCongestion(name string, values ...any) (err error) {
 
 func (ops ConnOps) SetTcpMaxPacingRate(rate int) error {
 	return errors.ErrUnsupported
+}
+
+func ConfigureTunInterface(name string, addressPrefix, routePrefix netip.Prefix, metric int) error {
+	if !addressPrefix.Addr().Is4() || routePrefix.IsValid() && !routePrefix.Addr().Is4() {
+		return errors.ErrUnsupported
+	}
+
+	run := func(args ...string) (string, error) {
+		data, err := exec.Command("netsh", args...).CombinedOutput()
+		return strings.TrimSpace(string(data)), err
+	}
+
+	args := []string{"interface", "ipv4", "set", "address", "name=" + name, "source=static", "address=" + addressPrefix.Addr().String(), "mask=" + net.IP(net.CIDRMask(addressPrefix.Bits(), 32)).String(), "gateway=none", "store=active"}
+	if msg, err := run(args...); err != nil {
+		return fmt.Errorf("set tun address: netsh %s: %w: %s", strings.Join(args, " "), err, msg)
+	}
+	args = []string{"interface", "set", "interface", "name=" + name, "admin=enabled"}
+	if msg, err := run(args...); err != nil {
+		return fmt.Errorf("set tun link up: netsh %s: %w: %s", strings.Join(args, " "), err, msg)
+	}
+
+	if routePrefix.IsValid() {
+		if metric <= 0 {
+			metric = 32767
+		}
+		routePrefix = routePrefix.Masked()
+		args = []string{"interface", "ipv4", "add", "route", "prefix=" + routePrefix.String(), "interface=" + name, "nexthop=0.0.0.0", fmt.Sprintf("metric=%d", metric), "store=active"}
+		if msg, err := run(args...); err != nil {
+			if strings.Contains(strings.ToLower(msg), "exist") {
+				return nil
+			}
+			return fmt.Errorf("set tun route: netsh %s: %w: %s", strings.Join(args, " "), err, msg)
+		}
+	}
+
+	return nil
 }
 
 func SetProcessName(name string) error {

@@ -1006,6 +1006,25 @@ func main() {
 		}
 	}
 
+	// tun handler
+	for _, tunConfig := range config.Tun {
+		h := &TunHandler{
+			Config:      tunConfig,
+			DataLogger:  dataLogger,
+			GeoResolver: geoResolver,
+			LocalDialer: dialer,
+			Dialers:     dialers,
+			Functions:   functions,
+		}
+
+		if err = h.Load(); err != nil {
+			log.Fatal().Err(err).Str("tun_name", tunConfig.Name).Msg("tun handler load error")
+		}
+
+		log.Info().Str("version", version).Str("tun_name", h.name).Int("tun_mtu", h.mtu).Msg("liner create and serve tun")
+		go h.Serve(context.Background())
+	}
+
 	// ssh handler
 	for _, ssh := range config.Ssh {
 		for _, addr := range ssh.Listen {
@@ -1139,6 +1158,7 @@ func main() {
 		runner.AddFunc("0 0 0 * * *", func() { (*log.DefaultLogger.Writer.(*log.MultiEntryWriter))[0].(*log.FileWriter).Rotate() })
 		if slices.ContainsFunc(config.Http, func(c HTTPConfig) bool { return c.Forward.Log }) ||
 			slices.ContainsFunc(config.Https, func(c HTTPConfig) bool { return c.Forward.Log }) ||
+			slices.ContainsFunc(config.Tun, func(c TunConfig) bool { return c.Forward.Log }) ||
 			len(config.Dns) > 0 {
 			runner.AddFunc("0 0 0 * * *", func() { dataLogger.Writer.(*log.AsyncWriter).Writer.(*log.FileWriter).Rotate() })
 		}

@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"syscall"
@@ -254,6 +255,45 @@ func (ops ConnOps) SetTcpCongestion(name string, values ...any) (err error) {
 
 func (ops ConnOps) SetTcpMaxPacingRate(rate int) error {
 	return errors.ErrUnsupported
+}
+
+func ConfigureTunInterface(name string, addressPrefix, routePrefix netip.Prefix, metric int) error {
+	if !addressPrefix.Addr().Is4() || routePrefix.IsValid() && !routePrefix.Addr().Is4() {
+		return errors.ErrUnsupported
+	}
+
+	run := func(command string, args ...string) (string, error) {
+		data, err := exec.Command(command, args...).CombinedOutput()
+		return strings.TrimSpace(string(data)), err
+	}
+
+	mask := net.IP(net.CIDRMask(addressPrefix.Bits(), 32)).String()
+	ip := addressPrefix.Addr().String()
+	args := []string{name, "inet", ip, ip, "netmask", mask, "up"}
+	if msg, err := run("ifconfig", args...); err != nil {
+		return fmt.Errorf("set tun address: ifconfig %s: %w: %s", strings.Join(args, " "), err, msg)
+	}
+	args = []string{name, "up"}
+	if msg, err := run("ifconfig", args...); err != nil {
+		return fmt.Errorf("set tun link up: ifconfig %s: %w: %s", strings.Join(args, " "), err, msg)
+	}
+
+	if routePrefix.IsValid() {
+		routePrefix = routePrefix.Masked()
+		dst := routePrefix.String()
+		if routePrefix.Bits() == 0 {
+			dst = "default"
+		}
+		args = []string{"-n", "add", "-net", dst, "-interface", name}
+		if msg, err := run("route", args...); err != nil {
+			if strings.Contains(msg, "File exists") {
+				return nil
+			}
+			return fmt.Errorf("set tun route: route %s: %w: %s", strings.Join(args, " "), err, msg)
+		}
+	}
+
+	return nil
 }
 
 func SetProcessName(name string) error {

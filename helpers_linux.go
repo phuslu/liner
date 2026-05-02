@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"net"
 	"net/netip"
 	"os"
@@ -14,6 +15,8 @@ import (
 	"strings"
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/unix"
 )
 
 type ListenConfig struct {
@@ -296,6 +299,151 @@ func SetProcessName(name string) error {
 	err := os.WriteFile("/proc/"+strconv.Itoa(os.Getpid())+"/comm", []byte(name), 0644)
 
 	return err
+}
+
+func ConfigureTunInterface(name string, addressPrefix, routePrefix netip.Prefix, metric int) error {
+	if !addressPrefix.Addr().Is4() || routePrefix.IsValid() && !routePrefix.Addr().Is4() {
+		return errors.ErrUnsupported
+	}
+	iface, err := net.InterfaceByName(name)
+	if err != nil {
+		return err
+	}
+
+	attr := func(typ uint16, data []byte) []byte {
+		n := unix.SizeofRtAttr + len(data)
+		b := make([]byte, (n+unix.RTA_ALIGNTO-1)&^(unix.RTA_ALIGNTO-1))
+		rtattr := (*unix.RtAttr)(unsafe.Pointer(&b[0]))
+		rtattr.Len = uint16(n)
+		rtattr.Type = typ
+		copy(b[unix.SizeofRtAttr:], data)
+		return b
+	}
+	uint32attr := func(typ uint16, value uint32) []byte {
+		var b [4]byte
+		binary.NativeEndian.PutUint32(b[:], value)
+		return attr(typ, b[:])
+	}
+	update := func(typ, flags uint16, data []byte, attrs ...[]byte) error {
+		fd, err := unix.Socket(unix.AF_NETLINK, unix.SOCK_RAW|unix.SOCK_CLOEXEC, unix.NETLINK_ROUTE)
+		if err != nil {
+			return err
+		}
+		defer unix.Close(fd)
+
+		n := unix.SizeofNlMsghdr + len(data)
+		for _, attr := range attrs {
+			n += len(attr)
+		}
+		b := make([]byte, n)
+		hdr := (*unix.NlMsghdr)(unsafe.Pointer(&b[0]))
+		hdr.Len = uint32(len(b))
+		hdr.Type = typ
+		hdr.Flags = unix.NLM_F_REQUEST | flags
+		hdr.Seq = 1
+
+		off := unix.SizeofNlMsghdr
+		off += copy(b[off:], data)
+		for _, attr := range attrs {
+			off += copy(b[off:], attr)
+		}
+		if err = unix.Sendto(fd, b, 0, &unix.SockaddrNetlink{Family: unix.AF_NETLINK}); err != nil {
+			return err
+		}
+
+		reply := make([]byte, 8192)
+		for {
+			n, _, err = unix.Recvfrom(fd, reply, 0)
+			if err != nil {
+				return err
+			}
+			for remain := reply[:n]; len(remain) >= unix.SizeofNlMsghdr; {
+				h := *(*unix.NlMsghdr)(unsafe.Pointer(&remain[0]))
+				if h.Len < unix.SizeofNlMsghdr || int(h.Len) > len(remain) {
+					return unix.EINVAL
+				}
+				if h.Type == unix.NLMSG_ERROR {
+					if int(h.Len) < unix.SizeofNlMsghdr+unix.SizeofNlMsgerr {
+						return unix.EINVAL
+					}
+					e := *(*unix.NlMsgerr)(unsafe.Pointer(&remain[unix.SizeofNlMsghdr]))
+					if e.Error == 0 {
+						return nil
+					}
+					return unix.Errno(-e.Error)
+				}
+				if h.Type == unix.NLMSG_DONE {
+					return nil
+				}
+				step := (int(h.Len) + unix.NLMSG_ALIGNTO - 1) & ^(unix.NLMSG_ALIGNTO - 1)
+				if step > len(remain) {
+					step = len(remain)
+				}
+				remain = remain[step:]
+			}
+		}
+	}
+
+	ip4 := addressPrefix.Addr().As4()
+	addrmsg := unix.IfAddrmsg{
+		Family:    unix.AF_INET,
+		Prefixlen: uint8(addressPrefix.Bits()),
+		Scope:     unix.RT_SCOPE_UNIVERSE,
+		Index:     uint32(iface.Index),
+	}
+	err = update(unix.RTM_NEWADDR, unix.NLM_F_ACK|unix.NLM_F_CREATE|unix.NLM_F_REPLACE, unsafe.Slice((*byte)(unsafe.Pointer(&addrmsg)), unix.SizeofIfAddrmsg),
+		attr(unix.IFA_LOCAL, ip4[:]),
+		attr(unix.IFA_ADDRESS, ip4[:]),
+	)
+	if err != nil && !errors.Is(err, unix.EEXIST) {
+		return fmt.Errorf("set tun address: %w", err)
+	}
+
+	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_DGRAM|unix.SOCK_CLOEXEC, 0)
+	if err != nil {
+		return fmt.Errorf("set tun link up: %w", err)
+	}
+	defer unix.Close(fd)
+
+	ifr, err := unix.NewIfreq(name)
+	if err != nil {
+		return fmt.Errorf("set tun link up: %w", err)
+	}
+	if err = unix.IoctlIfreq(fd, unix.SIOCGIFFLAGS, ifr); err != nil {
+		return fmt.Errorf("set tun link up: %w", err)
+	}
+	if flags := ifr.Uint16(); flags&uint16(unix.IFF_UP) == 0 {
+		ifr.SetUint16(flags | uint16(unix.IFF_UP))
+		if err = unix.IoctlIfreq(fd, unix.SIOCSIFFLAGS, ifr); err != nil {
+			return fmt.Errorf("set tun link up: %w", err)
+		}
+	}
+
+	if routePrefix.IsValid() {
+		routePrefix = routePrefix.Masked()
+		rmsg := unix.RtMsg{
+			Family:   unix.AF_INET,
+			Dst_len:  uint8(routePrefix.Bits()),
+			Table:    unix.RT_TABLE_MAIN,
+			Protocol: unix.RTPROT_STATIC,
+			Scope:    unix.RT_SCOPE_LINK,
+			Type:     unix.RTN_UNICAST,
+		}
+		attrs := [][]byte{uint32attr(unix.RTA_OIF, uint32(iface.Index))}
+		if metric > 0 {
+			attrs = append(attrs, uint32attr(unix.RTA_PRIORITY, uint32(metric)))
+		}
+		if routePrefix.Bits() > 0 {
+			ip4 = routePrefix.Addr().As4()
+			attrs = append(attrs, attr(unix.RTA_DST, ip4[:]))
+		}
+		err = update(unix.RTM_NEWROUTE, unix.NLM_F_ACK|unix.NLM_F_CREATE|unix.NLM_F_EXCL, unsafe.Slice((*byte)(unsafe.Pointer(&rmsg)), unix.SizeofRtMsg), attrs...)
+		if err != nil && !errors.Is(err, unix.EEXIST) {
+			return fmt.Errorf("set tun route: %w", err)
+		}
+	}
+
+	return nil
 }
 
 func AppendSetSidToSysProcAttr(old *syscall.SysProcAttr, uid, gid int) *syscall.SysProcAttr {

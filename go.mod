@@ -28,11 +28,14 @@ require (
 	golang.org/x/crypto v0.50.0
 	golang.org/x/net v0.53.0
 	golang.org/x/sys v0.43.0
+	golang.zx2c4.com/wireguard v0.0.0-20250521234502-f333402bd9cb
+	gvisor.dev/gvisor v0.0.0-20250503011706-39ed1f5ac29c
 	mvdan.cc/sh/v3 v3.13.1
 )
 
 require (
 	github.com/andybalholm/brotli v1.2.1 // indirect
+	github.com/google/btree v1.1.2 // indirect
 	github.com/klauspost/compress v1.18.6 // indirect
 	github.com/kr/fs v0.1.0 // indirect
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
@@ -40,6 +43,8 @@ require (
 	go.uber.org/mock v0.6.0 // indirect
 	golang.org/x/term v0.42.0 // indirect
 	golang.org/x/text v0.36.0 // indirect
+	golang.org/x/time v0.7.0 // indirect
+	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
 )
 
 replace github.com/quic-go/quic-go v0.59.0 => github.com/phuslu/quic-go v0.0.0-20260429130316-ecbcb7bc16fd

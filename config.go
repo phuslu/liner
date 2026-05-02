@@ -138,6 +138,25 @@ type StreamConfig struct {
 	Log           bool     `json:"log" yaml:"log"`
 }
 
+type TunConfig struct {
+	Name           string `json:"name" yaml:"name"`
+	Address        string `json:"address" yaml:"address"`
+	Route          string `json:"route" yaml:"route"`
+	RouteMetric    int    `json:"route_metric" yaml:"route_metric"`
+	MTU            int    `json:"mtu" yaml:"mtu"`
+	StackQueueSize int    `json:"stack_queue_size" yaml:"stack_queue_size"`
+	Forward        struct {
+		Policy         string `json:"policy" yaml:"policy"`
+		Dialer         string `json:"dialer" yaml:"dialer"`
+		DialTimeout    int    `json:"dial_timeout" yaml:"dial_timeout"`
+		UdpTimeout     int    `json:"udp_timeout" yaml:"udp_timeout"`
+		TcpMaxInFlight int    `json:"tcp_max_in_flight" yaml:"tcp_max_in_flight"`
+		DisableIpv6    bool   `json:"disable_ipv6" yaml:"disable_ipv6"`
+		PreferIpv6     bool   `json:"prefer_ipv6" yaml:"prefer_ipv6"`
+		Log            bool   `json:"log" yaml:"log"`
+	} `json:"forward" yaml:"forward"`
+}
+
 type TunnelConfig struct {
 	RemoteListen     []string `json:"remote_listen" yaml:"remote_listen"`
 	ProxyPass        string   `json:"proxy_pass" yaml:"proxy_pass"`
@@ -219,6 +238,7 @@ type Config struct {
 	Redsocks []RedsocksConfig  `json:"redsocks" yaml:"redsocks"`
 	Tunnel   []TunnelConfig    `json:"tunnel" yaml:"tunnel"`
 	Stream   []StreamConfig    `json:"stream" yaml:"stream"`
+	Tun      []TunConfig       `json:"tun" yaml:"tun"`
 	Ssh      []SshConfig       `json:"ssh" yaml:"ssh"`
 	Dns      []DnsConfig       `json:"dns" yaml:"dns"`
 }
@@ -290,6 +310,7 @@ func NewConfig(filename string) (*Config, error) {
 		config.Socks = append(config.Socks, c.Socks...)
 		config.Tunnel = append(config.Tunnel, c.Tunnel...)
 		config.Stream = append(config.Stream, c.Stream...)
+		config.Tun = append(config.Tun, c.Tun...)
 		config.Dns = append(config.Dns, c.Dns...)
 		config.Ssh = append(config.Ssh, c.Ssh...)
 	}
@@ -330,6 +351,10 @@ func NewConfig(filename string) (*Config, error) {
 	for i := range config.Socks {
 		config.Socks[i].Forward.Policy = read(config.Socks[i].Forward.Policy)
 		config.Socks[i].Forward.Dialer = read(config.Socks[i].Forward.Dialer)
+	}
+	for i := range config.Tun {
+		config.Tun[i].Forward.Policy = read(config.Tun[i].Forward.Policy)
+		config.Tun[i].Forward.Dialer = read(config.Tun[i].Forward.Dialer)
 	}
 	for i := range config.Tunnel {
 		if len(config.Tunnel[i].RemoteListen) == 0 || config.Tunnel[i].RemoteListen[0] == "" {
