@@ -295,7 +295,7 @@ func (h *TunHandler) Serve(ctx context.Context) {
 			default:
 			}
 
-			n, err := h.device.Read(bufs, sizes, 0)
+			n, err := h.device.Read(bufs, sizes, tunPacketOffset)
 			if errors.Is(err, tun.ErrTooManySegments) {
 				log.Warn().Err(err).Str("tun_name", h.name).Msg("tun read too many segments")
 				continue
@@ -309,7 +309,7 @@ func (h *TunHandler) Serve(ctx context.Context) {
 				if sizes[i] == 0 {
 					continue
 				}
-				packet := bufs[i][:sizes[i]]
+				packet := bufs[i][tunPacketOffset : tunPacketOffset+sizes[i]]
 				var network tcpip.NetworkProtocolNumber
 				switch packet[0] >> 4 {
 				case 4:
