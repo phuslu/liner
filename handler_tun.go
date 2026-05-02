@@ -257,6 +257,24 @@ func (h *TunHandler) Load() error {
 	return nil
 }
 
+func (h *TunHandler) Unload() error {
+	h.once.Do(func() {
+		if h.cleanup != nil {
+			h.cleanup()
+		}
+		if h.device != nil {
+			h.device.Close()
+		}
+		if h.endpoint != nil {
+			h.endpoint.Close()
+		}
+		if h.stack != nil {
+			h.stack.Close()
+		}
+	})
+	return nil
+}
+
 const tunPacketOffset = 16
 
 func (h *TunHandler) Serve(ctx context.Context) {
@@ -382,25 +400,7 @@ func (h *TunHandler) Serve(ctx context.Context) {
 		}
 	}
 
-	h.Close()
-}
-
-func (h *TunHandler) Close() error {
-	h.once.Do(func() {
-		if h.cleanup != nil {
-			h.cleanup()
-		}
-		if h.device != nil {
-			h.device.Close()
-		}
-		if h.endpoint != nil {
-			h.endpoint.Close()
-		}
-		if h.stack != nil {
-			h.stack.Close()
-		}
-	})
-	return nil
+	h.Unload()
 }
 
 func (h *TunHandler) forwardTCP(r *tcp.ForwarderRequest) {
