@@ -405,6 +405,9 @@ func (h *TunHandler) Serve(ctx context.Context) {
 
 func (h *TunHandler) Close() error {
 	h.once.Do(func() {
+		if h.cleanup != nil {
+			h.cleanup()
+		}
 		if h.device != nil {
 			h.device.Close()
 		}
@@ -413,9 +416,6 @@ func (h *TunHandler) Close() error {
 		}
 		if h.stack != nil {
 			h.stack.Close()
-		}
-		if h.cleanup != nil {
-			h.cleanup()
 		}
 	})
 	return nil

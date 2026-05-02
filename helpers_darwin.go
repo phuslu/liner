@@ -271,8 +271,22 @@ func ConfigureTunInterface(name string, addressPrefix, routePrefix netip.Prefix,
 		data, err := exec.Command(command, args...).CombinedOutput()
 		return strings.TrimSpace(string(data)), err
 	}
+	type tunRoute struct {
+		prefix netip.Prefix
+		scoped bool
+	}
 	var addedBypass []netip.Prefix
+	var addedRoutes []tunRoute
 	cleanup := func() {
+		for i := len(addedRoutes) - 1; i >= 0; i-- {
+			route := addedRoutes[i]
+			dst := route.prefix.Masked().String()
+			args := []string{"-n", "delete", "-net"}
+			if route.scoped {
+				args = append(args, "-ifscope", name)
+			}
+			exec.Command("route", append(args, dst, "-interface", name)...).Run()
+		}
 		for _, prefix := range addedBypass {
 			exec.Command("route", "-n", "delete", "-host", prefix.Addr().String()).Run()
 		}
@@ -334,18 +348,28 @@ func ConfigureTunInterface(name string, addressPrefix, routePrefix netip.Prefix,
 	}
 
 	if routePrefix.IsValid() {
-		routePrefix = routePrefix.Masked()
-		dst := routePrefix.String()
+		routes := []netip.Prefix{routePrefix.Masked()}
 		if routePrefix.Bits() == 0 {
-			dst = "default"
-		}
-		args = []string{"-n", "add", "-net", dst, "-interface", name}
-		if msg, err := run("route", args...); err != nil {
-			if strings.Contains(msg, "File exists") {
-				ok = true
-				return cleanup, nil
+			routes = []netip.Prefix{
+				netip.PrefixFrom(netip.AddrFrom4([4]byte{0, 0, 0, 0}), 1),
+				netip.PrefixFrom(netip.AddrFrom4([4]byte{128, 0, 0, 0}), 1),
 			}
-			return nil, fmt.Errorf("set tun route: route %s: %w: %s", strings.Join(args, " "), err, msg)
+		}
+		for _, route := range routes {
+			for _, scoped := range []bool{false, true} {
+				args = []string{"-n", "add", "-net"}
+				if scoped {
+					args = append(args, "-ifscope", name)
+				}
+				args = append(args, route.String(), "-interface", name)
+				if msg, err := run("route", args...); err != nil {
+					if strings.Contains(msg, "File exists") {
+						continue
+					}
+					return nil, fmt.Errorf("set tun route: route %s: %w: %s", strings.Join(args, " "), err, msg)
+				}
+				addedRoutes = append(addedRoutes, tunRoute{route, scoped})
+			}
 		}
 	}
 
