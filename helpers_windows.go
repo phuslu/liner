@@ -379,7 +379,10 @@ func ConfigureTunInterface(name string, addressPrefix, routePrefix netip.Prefix,
 			bypassPrefixes = nil
 		}
 		for _, prefix := range bypassPrefixes {
-			args = []string{"interface", "ipv4", "add", "route", "prefix=" + prefix.Masked().String(), "interface=" + iface, "nexthop=" + gateway, "metric=1", "store=active"}
+			args = []string{"interface", "ipv4", "add", "route", "prefix=" + prefix.Masked().String(), "interface=" + iface, "metric=1", "store=active"}
+			if gateway != "" && gateway != "0.0.0.0" {
+				args = append(args, "nexthop="+gateway)
+			}
 			if msg, err := run(args...); err != nil {
 				if strings.Contains(strings.ToLower(msg), "exist") {
 					continue
@@ -395,7 +398,7 @@ func ConfigureTunInterface(name string, addressPrefix, routePrefix netip.Prefix,
 			metric = 32767
 		}
 		routePrefix = routePrefix.Masked()
-		args = []string{"interface", "ipv4", "add", "route", "prefix=" + routePrefix.String(), "interface=" + name, "nexthop=0.0.0.0", fmt.Sprintf("metric=%d", metric), "store=active"}
+		args = []string{"interface", "ipv4", "add", "route", "prefix=" + routePrefix.String(), "interface=" + name, fmt.Sprintf("metric=%d", metric), "store=active"}
 		if msg, err := run(args...); err != nil {
 			if strings.Contains(strings.ToLower(msg), "exist") {
 				ok = true
