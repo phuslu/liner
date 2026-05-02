@@ -220,7 +220,6 @@ tun:
     route_metric: 32767
     mtu: 1420
     forward:
-      policy: direct
       dialer: proxy1
       dial_timeout: 10
       udp_timeout: 120

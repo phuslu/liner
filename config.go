@@ -146,7 +146,6 @@ type TunConfig struct {
 	MTU            int    `json:"mtu" yaml:"mtu"`
 	StackQueueSize int    `json:"stack_queue_size" yaml:"stack_queue_size"`
 	Forward        struct {
-		Policy         string `json:"policy" yaml:"policy"`
 		Dialer         string `json:"dialer" yaml:"dialer"`
 		DialTimeout    int    `json:"dial_timeout" yaml:"dial_timeout"`
 		UdpTimeout     int    `json:"udp_timeout" yaml:"udp_timeout"`
@@ -353,7 +352,6 @@ func NewConfig(filename string) (*Config, error) {
 		config.Socks[i].Forward.Dialer = read(config.Socks[i].Forward.Dialer)
 	}
 	for i := range config.Tun {
-		config.Tun[i].Forward.Policy = read(config.Tun[i].Forward.Policy)
 		config.Tun[i].Forward.Dialer = read(config.Tun[i].Forward.Dialer)
 	}
 	for i := range config.Tunnel {
