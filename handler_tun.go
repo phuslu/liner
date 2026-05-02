@@ -34,18 +34,6 @@ import (
 	"gvisor.dev/gvisor/pkg/waiter"
 )
 
-const (
-	tunCopyBufferSize = 64 * 1024
-	tunPacketOffset   = 16
-)
-
-var tunCopyBufferPool = sync.Pool{
-	New: func() any {
-		b := make([]byte, tunCopyBufferSize)
-		return &b
-	},
-}
-
 type TunRequest struct {
 	TunName    string
 	Network    string
@@ -54,14 +42,6 @@ type TunRequest struct {
 	Host       string
 	Port       uint16
 	TraceID    log.XID
-}
-
-type tunForward struct {
-	ctx        context.Context
-	cancel     context.CancelFunc
-	dialer     Dialer
-	dialerName string
-	policyName string
 }
 
 type TunHandler struct {
@@ -282,6 +262,8 @@ func (h *TunHandler) Load() error {
 	loaded = true
 	return nil
 }
+
+const tunPacketOffset = 16
 
 func (h *TunHandler) Serve(ctx context.Context) {
 	errc := make(chan error, 2)
@@ -645,6 +627,15 @@ func (h *TunHandler) serveUDP(r *udp.ForwarderRequest) {
 	h.logData(context.Background(), req, forward.policyName, forward.dialerName)
 }
 
+const tunCopyBufferSize = 64 * 1024
+
+var tunCopyBufferPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, tunCopyBufferSize)
+		return &b
+	},
+}
+
 func tunGetCopyBuffer(size int) []byte {
 	if size <= 0 {
 		size = tunCopyBufferSize
@@ -664,6 +655,14 @@ func tunPutCopyBuffer(b []byte) {
 	}
 	b = b[:cap(b)]
 	tunCopyBufferPool.Put(&b)
+}
+
+type tunForward struct {
+	ctx        context.Context
+	cancel     context.CancelFunc
+	dialer     Dialer
+	dialerName string
+	policyName string
 }
 
 func (h *TunHandler) prepareDial(req TunRequest) (tunForward, bool) {
