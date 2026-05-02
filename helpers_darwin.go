@@ -347,29 +347,34 @@ func ConfigureTunInterface(name string, addressPrefix, routePrefix netip.Prefix,
 		addedBypass = append(addedBypass, prefix)
 	}
 
+	var routes []netip.Prefix
+	scopes := []bool{false, true}
 	if routePrefix.IsValid() {
-		routes := []netip.Prefix{routePrefix.Masked()}
-		if routePrefix.Bits() == 0 {
-			routes = []netip.Prefix{
-				netip.PrefixFrom(netip.AddrFrom4([4]byte{0, 0, 0, 0}), 1),
-				netip.PrefixFrom(netip.AddrFrom4([4]byte{128, 0, 0, 0}), 1),
-			}
+		routes = []netip.Prefix{routePrefix.Masked()}
+	}
+	if !routePrefix.IsValid() || routePrefix.Bits() == 0 {
+		routes = []netip.Prefix{
+			netip.PrefixFrom(netip.AddrFrom4([4]byte{0, 0, 0, 0}), 1),
+			netip.PrefixFrom(netip.AddrFrom4([4]byte{128, 0, 0, 0}), 1),
 		}
-		for _, route := range routes {
-			for _, scoped := range []bool{false, true} {
-				args = []string{"-n", "add", "-net"}
-				if scoped {
-					args = append(args, "-ifscope", name)
-				}
-				args = append(args, route.String(), "-interface", name)
-				if msg, err := run("route", args...); err != nil {
-					if strings.Contains(msg, "File exists") {
-						continue
-					}
-					return nil, fmt.Errorf("set tun route: route %s: %w: %s", strings.Join(args, " "), err, msg)
-				}
-				addedRoutes = append(addedRoutes, tunRoute{route, scoped})
+	}
+	if !routePrefix.IsValid() {
+		scopes = []bool{true}
+	}
+	for _, route := range routes {
+		for _, scoped := range scopes {
+			args = []string{"-n", "add", "-net"}
+			if scoped {
+				args = append(args, "-ifscope", name)
 			}
+			args = append(args, route.String(), "-interface", name)
+			if msg, err := run("route", args...); err != nil {
+				if strings.Contains(msg, "File exists") {
+					continue
+				}
+				return nil, fmt.Errorf("set tun route: route %s: %w: %s", strings.Join(args, " "), err, msg)
+			}
+			addedRoutes = append(addedRoutes, tunRoute{route, scoped})
 		}
 	}
 

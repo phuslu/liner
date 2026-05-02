@@ -206,6 +206,8 @@ func (h *TunHandler) Load() error {
 	}
 	if routePrefix.IsValid() {
 		log.Info().Str("tun_name", h.name).Str("tun_route", routePrefix.String()).Msg("tun route updated")
+	} else if strings.EqualFold(route, "none") {
+		log.Info().Str("tun_name", h.name).Str("tun_route", "none").Msg("tun bound route updated")
 	}
 
 	s := stack.New(stack.Options{

@@ -312,7 +312,11 @@ func ConfigureTunInterface(name string, addressPrefix, routePrefix netip.Prefix,
 		return strings.TrimSpace(string(data)), err
 	}
 	var addedBypass []netip.Prefix
+	var addedRoute netip.Prefix
 	cleanup := func() {
+		if addedRoute.IsValid() {
+			exec.Command("netsh", "interface", "ipv4", "delete", "route", "prefix="+addedRoute.String(), "interface="+name).Run()
+		}
 		for _, prefix := range addedBypass {
 			exec.Command("netsh", "interface", "ipv4", "delete", "route", "prefix="+prefix.Masked().String()).Run()
 		}
@@ -393,20 +397,23 @@ func ConfigureTunInterface(name string, addressPrefix, routePrefix netip.Prefix,
 		}
 	}
 
-	if routePrefix.IsValid() {
-		if metric <= 0 {
-			metric = 32767
-		}
-		routePrefix = routePrefix.Masked()
-		args = []string{"interface", "ipv4", "add", "route", "prefix=" + routePrefix.String(), "interface=" + name, fmt.Sprintf("metric=%d", metric), "store=active"}
-		if msg, err := run(args...); err != nil {
-			if strings.Contains(strings.ToLower(msg), "exist") {
-				ok = true
-				return cleanup, nil
-			}
-			return nil, fmt.Errorf("set tun route: netsh %s: %w: %s", strings.Join(args, " "), err, msg)
-		}
+	if metric <= 0 {
+		metric = 32767
 	}
+	if routePrefix.IsValid() {
+		routePrefix = routePrefix.Masked()
+	} else {
+		routePrefix = netip.PrefixFrom(netip.AddrFrom4([4]byte{}), 0)
+	}
+	args = []string{"interface", "ipv4", "add", "route", "prefix=" + routePrefix.String(), "interface=" + name, fmt.Sprintf("metric=%d", metric), "store=active"}
+	if msg, err := run(args...); err != nil {
+		if strings.Contains(strings.ToLower(msg), "exist") {
+			ok = true
+			return cleanup, nil
+		}
+		return nil, fmt.Errorf("set tun route: netsh %s: %w: %s", strings.Join(args, " "), err, msg)
+	}
+	addedRoute = routePrefix
 
 	ok = true
 	return cleanup, nil
