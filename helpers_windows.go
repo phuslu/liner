@@ -297,23 +297,89 @@ func (ops ConnOps) SetTcpMaxPacingRate(rate int) error {
 	return errors.ErrUnsupported
 }
 
-func ConfigureTunInterface(name string, addressPrefix, routePrefix netip.Prefix, metric int) error {
+func ConfigureTunInterface(name string, addressPrefix, routePrefix netip.Prefix, metric int, bypassPrefixes []netip.Prefix) (func(), error) {
 	if !addressPrefix.Addr().Is4() || routePrefix.IsValid() && !routePrefix.Addr().Is4() {
-		return errors.ErrUnsupported
+		return nil, errors.ErrUnsupported
+	}
+	for _, prefix := range bypassPrefixes {
+		if !prefix.Addr().Is4() {
+			return nil, errors.ErrUnsupported
+		}
 	}
 
 	run := func(args ...string) (string, error) {
 		data, err := exec.Command("netsh", args...).CombinedOutput()
 		return strings.TrimSpace(string(data)), err
 	}
+	var addedBypass []netip.Prefix
+	cleanup := func() {
+		for _, prefix := range addedBypass {
+			exec.Command("netsh", "interface", "ipv4", "delete", "route", "prefix="+prefix.Masked().String()).Run()
+		}
+	}
+	ok := false
+	defer func() {
+		if !ok {
+			cleanup()
+		}
+	}()
 
 	args := []string{"interface", "ipv4", "set", "address", "name=" + name, "source=static", "address=" + addressPrefix.Addr().String(), "mask=" + net.IP(net.CIDRMask(addressPrefix.Bits(), 32)).String(), "gateway=none", "store=active"}
 	if msg, err := run(args...); err != nil {
-		return fmt.Errorf("set tun address: netsh %s: %w: %s", strings.Join(args, " "), err, msg)
+		return nil, fmt.Errorf("set tun address: netsh %s: %w: %s", strings.Join(args, " "), err, msg)
 	}
 	args = []string{"interface", "set", "interface", "name=" + name, "admin=enabled"}
 	if msg, err := run(args...); err != nil {
-		return fmt.Errorf("set tun link up: netsh %s: %w: %s", strings.Join(args, " "), err, msg)
+		return nil, fmt.Errorf("set tun link up: netsh %s: %w: %s", strings.Join(args, " "), err, msg)
+	}
+
+	if len(bypassPrefixes) > 0 {
+		size := uint32(15 * 1024)
+		var iface, gateway string
+		bestMetric := ^uint32(0)
+		for {
+			buf := make([]byte, size)
+			adapter := (*windows.IpAdapterAddresses)(unsafe.Pointer(&buf[0]))
+			err := windows.GetAdaptersAddresses(syscall.AF_INET, windows.GAA_FLAG_INCLUDE_PREFIX, 0, adapter, &size)
+			if err == nil {
+				for aa := adapter; aa != nil; aa = aa.Next {
+					if aa.OperStatus != windows.IfOperStatusUp || aa.FirstGatewayAddress == nil {
+						continue
+					}
+					for ga := aa.FirstGatewayAddress; ga != nil; ga = ga.Next {
+						if ga.Address.Sockaddr == nil {
+							continue
+						}
+						sa := (*windows.RawSockaddrInet4)(unsafe.Pointer(ga.Address.Sockaddr))
+						if sa.Family != syscall.AF_INET {
+							continue
+						}
+						if metric := cmp.Or(aa.Ipv4Metric, uint32(1)); iface == "" || metric < bestMetric {
+							iface = windows.UTF16PtrToString(aa.FriendlyName)
+							gateway = netip.AddrFrom4(sa.Addr).String()
+							bestMetric = metric
+						}
+					}
+				}
+				break
+			}
+			if err != syscall.ERROR_BUFFER_OVERFLOW {
+				return nil, os.NewSyscallError("GetAdaptersAddresses", err)
+			}
+		}
+		if iface == "" || strings.EqualFold(iface, name) {
+			return nil, fmt.Errorf("set tun bypass route: no default gateway outside %s", name)
+		}
+		for _, prefix := range bypassPrefixes {
+			args = []string{"interface", "ipv4", "add", "route", "prefix=" + prefix.Masked().String(), "interface=" + iface, "nexthop=" + gateway, "metric=1", "store=active"}
+			if msg, err := run(args...); err != nil {
+				if strings.Contains(strings.ToLower(msg), "exist") {
+					continue
+				}
+				return nil, fmt.Errorf("set tun bypass route: netsh %s: %w: %s", strings.Join(args, " "), err, msg)
+			}
+			addedBypass = append(addedBypass, prefix)
+		}
 	}
 
 	if routePrefix.IsValid() {
@@ -324,13 +390,15 @@ func ConfigureTunInterface(name string, addressPrefix, routePrefix netip.Prefix,
 		args = []string{"interface", "ipv4", "add", "route", "prefix=" + routePrefix.String(), "interface=" + name, "nexthop=0.0.0.0", fmt.Sprintf("metric=%d", metric), "store=active"}
 		if msg, err := run(args...); err != nil {
 			if strings.Contains(strings.ToLower(msg), "exist") {
-				return nil
+				ok = true
+				return cleanup, nil
 			}
-			return fmt.Errorf("set tun route: netsh %s: %w: %s", strings.Join(args, " "), err, msg)
+			return nil, fmt.Errorf("set tun route: netsh %s: %w: %s", strings.Join(args, " "), err, msg)
 		}
 	}
 
-	return nil
+	ok = true
+	return cleanup, nil
 }
 
 func SetProcessName(name string) error {

@@ -500,6 +500,7 @@ func main() {
 	}
 
 	memoryDialers := &MemoryDialers{xsync.NewMap[string, *MemoryDialer]()}
+	var shutdowns []func()
 
 	// tls inspector
 	tlsConfigurator := &TLSInspector{
@@ -1022,6 +1023,7 @@ func main() {
 		}
 
 		log.Info().Str("version", version).Str("tun_name", h.name).Int("tun_mtu", h.mtu).Msg("liner create and serve tun")
+		shutdowns = append(shutdowns, func() { h.Close() })
 		go h.Serve(context.Background())
 	}
 
@@ -1206,6 +1208,9 @@ func main() {
 	<-ctx.Done()
 
 	log.Info().Msg("liner flush logs and exit.")
+	for i := len(shutdowns) - 1; i >= 0; i-- {
+		shutdowns[i]()
+	}
 	for _, w := range []log.Writer{
 		dataLogger.Writer,
 		log.DefaultLogger.Writer,

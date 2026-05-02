@@ -69,6 +69,8 @@ type TunHandler struct {
 	stack    *stack.Stack
 	name     string
 	mtu      int
+	cleanup  func()
+	once     sync.Once
 
 	policy *template.Template
 	dialer *template.Template
@@ -121,11 +123,94 @@ func (h *TunHandler) Load() error {
 			return fmt.Errorf("parse tun route: %w", err)
 		}
 	}
-	if err = ConfigureTunInterface(h.name, addressPrefix, routePrefix, cmp.Or(h.Config.RouteMetric, 32767)); err != nil {
+	var bypassPrefixes []netip.Prefix
+	if routePrefix.IsValid() && routePrefix.Addr().Is4() && routePrefix.Bits() == 0 {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cmp.Or(h.Config.Forward.DialTimeout, 10))*time.Second)
+		defer cancel()
+		seen := make(map[netip.Addr]struct{})
+		resolveHost := func(host string) []netip.Addr {
+			host = strings.TrimSpace(host)
+			if h, _, err := net.SplitHostPort(host); err == nil {
+				host = h
+			}
+			host = strings.Trim(host, "[]")
+			if host == "" {
+				return nil
+			}
+			if ip, err := netip.ParseAddr(host); err == nil {
+				return []netip.Addr{ip}
+			}
+			ips, err := h.LocalDialer.DnsResolver.LookupNetIP(ctx, "ip4", host)
+			if err != nil {
+				log.Warn().Err(err).Str("tun_name", h.name).Str("host", host).Msg("resolve tun bypass route error")
+				return nil
+			}
+			return ips
+		}
+		addHost := func(host string) []netip.Addr {
+			ips := resolveHost(host)
+			for _, ip := range ips {
+				if !ip.Is4() {
+					continue
+				}
+				if _, ok := seen[ip]; ok {
+					continue
+				}
+				seen[ip] = struct{}{}
+				bypassPrefixes = append(bypassPrefixes, netip.PrefixFrom(ip, 32))
+			}
+			return ips
+		}
+		var walkDialer func(Dialer)
+		walkDialer = func(d Dialer) {
+			switch d := d.(type) {
+			case *HTTPDialer:
+				host := d.Host
+				for _, value := range d.Resolve {
+					if value != "" {
+						host = value
+						break
+					}
+				}
+				addHost(host)
+				walkDialer(d.Dialer)
+			case *HTTP2Dialer:
+				addHost(d.Host)
+				walkDialer(d.Dialer)
+			case *HTTP3Dialer:
+				if d.Resolve != "" {
+					addHost(d.Resolve)
+					break
+				}
+				if ips := addHost(d.Host); len(ips) > 0 {
+					d.Resolve = ips[0].String()
+				}
+			case *SocksDialer:
+				addHost(d.Host)
+				walkDialer(d.Dialer)
+			case *SSHDialer:
+				addHost(d.Host)
+				walkDialer(d.Dialer)
+			}
+		}
+		for _, dialer := range h.Dialers {
+			walkDialer(dialer)
+		}
+	}
+	cleanup, err := ConfigureTunInterface(h.name, addressPrefix, routePrefix, cmp.Or(h.Config.RouteMetric, 32767), bypassPrefixes)
+	if err != nil {
 		return fmt.Errorf("configure tun interface: %w", err)
 	}
+	defer func() {
+		if !loaded && cleanup != nil {
+			cleanup()
+		}
+	}()
 	log.Info().Str("tun_name", h.name).Str("tun_address", addressPrefix.String()).Msg("tun address updated")
 	log.Info().Str("tun_name", h.name).Msg("tun link up")
+	for _, prefix := range bypassPrefixes {
+		log.Info().Str("tun_name", h.name).Str("tun_route", prefix.String()).Msg("tun bypass route updated")
+	}
 	if routePrefix.IsValid() {
 		log.Info().Str("tun_name", h.name).Str("tun_route", routePrefix.String()).Msg("tun route updated")
 	}
@@ -180,6 +265,7 @@ func (h *TunHandler) Load() error {
 
 	h.stack = s
 	h.endpoint = ep
+	h.cleanup = cleanup
 	loaded = true
 	return nil
 }
@@ -307,15 +393,25 @@ func (h *TunHandler) Serve(ctx context.Context) {
 		}
 	}
 
-	if h.device != nil {
-		h.device.Close()
-	}
-	if h.endpoint != nil {
-		h.endpoint.Close()
-	}
-	if h.stack != nil {
-		h.stack.Close()
-	}
+	h.Close()
+}
+
+func (h *TunHandler) Close() error {
+	h.once.Do(func() {
+		if h.device != nil {
+			h.device.Close()
+		}
+		if h.endpoint != nil {
+			h.endpoint.Close()
+		}
+		if h.stack != nil {
+			h.stack.Close()
+		}
+		if h.cleanup != nil {
+			h.cleanup()
+		}
+	})
+	return nil
 }
 
 func (h *TunHandler) forwardTCP(r *tcp.ForwarderRequest) {

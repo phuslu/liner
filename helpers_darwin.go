@@ -257,25 +257,80 @@ func (ops ConnOps) SetTcpMaxPacingRate(rate int) error {
 	return errors.ErrUnsupported
 }
 
-func ConfigureTunInterface(name string, addressPrefix, routePrefix netip.Prefix, metric int) error {
+func ConfigureTunInterface(name string, addressPrefix, routePrefix netip.Prefix, metric int, bypassPrefixes []netip.Prefix) (func(), error) {
 	if !addressPrefix.Addr().Is4() || routePrefix.IsValid() && !routePrefix.Addr().Is4() {
-		return errors.ErrUnsupported
+		return nil, errors.ErrUnsupported
+	}
+	for _, prefix := range bypassPrefixes {
+		if !prefix.Addr().Is4() {
+			return nil, errors.ErrUnsupported
+		}
 	}
 
 	run := func(command string, args ...string) (string, error) {
 		data, err := exec.Command(command, args...).CombinedOutput()
 		return strings.TrimSpace(string(data)), err
 	}
+	var addedBypass []netip.Prefix
+	cleanup := func() {
+		for _, prefix := range addedBypass {
+			exec.Command("route", "-n", "delete", "-host", prefix.Addr().String()).Run()
+		}
+	}
+	ok := false
+	defer func() {
+		if !ok {
+			cleanup()
+		}
+	}()
 
 	mask := net.IP(net.CIDRMask(addressPrefix.Bits(), 32)).String()
 	ip := addressPrefix.Addr().String()
 	args := []string{name, "inet", ip, ip, "netmask", mask, "up"}
 	if msg, err := run("ifconfig", args...); err != nil {
-		return fmt.Errorf("set tun address: ifconfig %s: %w: %s", strings.Join(args, " "), err, msg)
+		return nil, fmt.Errorf("set tun address: ifconfig %s: %w: %s", strings.Join(args, " "), err, msg)
 	}
 	args = []string{name, "up"}
 	if msg, err := run("ifconfig", args...); err != nil {
-		return fmt.Errorf("set tun link up: ifconfig %s: %w: %s", strings.Join(args, " "), err, msg)
+		return nil, fmt.Errorf("set tun link up: ifconfig %s: %w: %s", strings.Join(args, " "), err, msg)
+	}
+
+	for _, prefix := range bypassPrefixes {
+		msg, err := run("route", "-n", "get", prefix.Addr().String())
+		if err != nil {
+			return nil, fmt.Errorf("set tun bypass route: route -n get %s: %w: %s", prefix.Addr(), err, msg)
+		}
+		var gateway, iface string
+		for line := range strings.Lines(msg) {
+			key, value, ok := strings.Cut(strings.TrimSpace(line), ":")
+			if !ok {
+				continue
+			}
+			switch strings.TrimSpace(key) {
+			case "gateway":
+				gateway = strings.TrimSpace(value)
+			case "interface":
+				iface = strings.TrimSpace(value)
+			}
+		}
+		if iface == name {
+			return nil, fmt.Errorf("set tun bypass route: route to %s already uses %s", prefix.Addr(), name)
+		}
+		args = []string{"-n", "add", "-host", prefix.Addr().String()}
+		if gateway != "" && !strings.HasPrefix(gateway, "link#") {
+			args = append(args, gateway)
+		} else if iface != "" {
+			args = append(args, "-interface", iface)
+		} else {
+			return nil, fmt.Errorf("set tun bypass route: route to %s has no gateway or interface", prefix.Addr())
+		}
+		if msg, err := run("route", args...); err != nil {
+			if strings.Contains(msg, "File exists") {
+				continue
+			}
+			return nil, fmt.Errorf("set tun bypass route: route %s: %w: %s", strings.Join(args, " "), err, msg)
+		}
+		addedBypass = append(addedBypass, prefix)
 	}
 
 	if routePrefix.IsValid() {
@@ -287,13 +342,15 @@ func ConfigureTunInterface(name string, addressPrefix, routePrefix netip.Prefix,
 		args = []string{"-n", "add", "-net", dst, "-interface", name}
 		if msg, err := run("route", args...); err != nil {
 			if strings.Contains(msg, "File exists") {
-				return nil
+				ok = true
+				return cleanup, nil
 			}
-			return fmt.Errorf("set tun route: route %s: %w: %s", strings.Join(args, " "), err, msg)
+			return nil, fmt.Errorf("set tun route: route %s: %w: %s", strings.Join(args, " "), err, msg)
 		}
 	}
 
-	return nil
+	ok = true
+	return cleanup, nil
 }
 
 func SetProcessName(name string) error {

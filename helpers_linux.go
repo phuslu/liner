@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"syscall"
@@ -301,14 +302,31 @@ func SetProcessName(name string) error {
 	return err
 }
 
-func ConfigureTunInterface(name string, addressPrefix, routePrefix netip.Prefix, metric int) error {
+func ConfigureTunInterface(name string, addressPrefix, routePrefix netip.Prefix, metric int, bypassPrefixes []netip.Prefix) (func(), error) {
 	if !addressPrefix.Addr().Is4() || routePrefix.IsValid() && !routePrefix.Addr().Is4() {
-		return errors.ErrUnsupported
+		return nil, errors.ErrUnsupported
+	}
+	for _, prefix := range bypassPrefixes {
+		if !prefix.Addr().Is4() {
+			return nil, errors.ErrUnsupported
+		}
 	}
 	iface, err := net.InterfaceByName(name)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	var addedBypass []netip.Prefix
+	cleanup := func() {
+		for _, prefix := range addedBypass {
+			exec.Command("ip", "-4", "route", "delete", prefix.Masked().String()).Run()
+		}
+	}
+	ok := false
+	defer func() {
+		if !ok {
+			cleanup()
+		}
+	}()
 
 	attr := func(typ uint16, data []byte) []byte {
 		n := unix.SizeofRtAttr + len(data)
@@ -396,26 +414,67 @@ func ConfigureTunInterface(name string, addressPrefix, routePrefix netip.Prefix,
 		attr(unix.IFA_ADDRESS, ip4[:]),
 	)
 	if err != nil && !errors.Is(err, unix.EEXIST) {
-		return fmt.Errorf("set tun address: %w", err)
+		return nil, fmt.Errorf("set tun address: %w", err)
 	}
 
 	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_DGRAM|unix.SOCK_CLOEXEC, 0)
 	if err != nil {
-		return fmt.Errorf("set tun link up: %w", err)
+		return nil, fmt.Errorf("set tun link up: %w", err)
 	}
 	defer unix.Close(fd)
 
 	ifr, err := unix.NewIfreq(name)
 	if err != nil {
-		return fmt.Errorf("set tun link up: %w", err)
+		return nil, fmt.Errorf("set tun link up: %w", err)
 	}
 	if err = unix.IoctlIfreq(fd, unix.SIOCGIFFLAGS, ifr); err != nil {
-		return fmt.Errorf("set tun link up: %w", err)
+		return nil, fmt.Errorf("set tun link up: %w", err)
 	}
 	if flags := ifr.Uint16(); flags&uint16(unix.IFF_UP) == 0 {
 		ifr.SetUint16(flags | uint16(unix.IFF_UP))
 		if err = unix.IoctlIfreq(fd, unix.SIOCSIFFLAGS, ifr); err != nil {
-			return fmt.Errorf("set tun link up: %w", err)
+			return nil, fmt.Errorf("set tun link up: %w", err)
+		}
+	}
+
+	if len(bypassPrefixes) > 0 {
+		run := func(args ...string) (string, error) {
+			data, err := exec.Command("ip", args...).CombinedOutput()
+			return strings.TrimSpace(string(data)), err
+		}
+		for _, prefix := range bypassPrefixes {
+			msg, err := run("-4", "route", "get", prefix.Addr().String())
+			if err != nil {
+				return nil, fmt.Errorf("set tun bypass route: ip -4 route get %s: %w: %s", prefix.Addr(), err, msg)
+			}
+			var via, dev string
+			fields := strings.Fields(msg)
+			for i := 0; i+1 < len(fields); i++ {
+				switch fields[i] {
+				case "via":
+					via = fields[i+1]
+				case "dev":
+					dev = fields[i+1]
+				}
+			}
+			if dev == name {
+				return nil, fmt.Errorf("set tun bypass route: route to %s already uses %s", prefix.Addr(), name)
+			}
+			if dev == "" {
+				return nil, fmt.Errorf("set tun bypass route: route to %s has no device: %s", prefix.Addr(), msg)
+			}
+			args := []string{"-4", "route", "add", prefix.Masked().String()}
+			if via != "" {
+				args = append(args, "via", via)
+			}
+			args = append(args, "dev", dev)
+			if msg, err := run(args...); err != nil {
+				if strings.Contains(msg, "File exists") {
+					continue
+				}
+				return nil, fmt.Errorf("set tun bypass route: ip %s: %w: %s", strings.Join(args, " "), err, msg)
+			}
+			addedBypass = append(addedBypass, prefix)
 		}
 	}
 
@@ -439,11 +498,12 @@ func ConfigureTunInterface(name string, addressPrefix, routePrefix netip.Prefix,
 		}
 		err = update(unix.RTM_NEWROUTE, unix.NLM_F_ACK|unix.NLM_F_CREATE|unix.NLM_F_EXCL, unsafe.Slice((*byte)(unsafe.Pointer(&rmsg)), unix.SizeofRtMsg), attrs...)
 		if err != nil && !errors.Is(err, unix.EEXIST) {
-			return fmt.Errorf("set tun route: %w", err)
+			return nil, fmt.Errorf("set tun route: %w", err)
 		}
 	}
 
-	return nil
+	ok = true
+	return cleanup, nil
 }
 
 func AppendSetSidToSysProcAttr(old *syscall.SysProcAttr, uid, gid int) *syscall.SysProcAttr {

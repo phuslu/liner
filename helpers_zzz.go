@@ -55,8 +55,8 @@ func (ops ConnOps) SetTcpMaxPacingRate(rate int) error {
 	return errors.ErrUnsupported
 }
 
-func ConfigureTunInterface(name string, addressPrefix, routePrefix netip.Prefix, metric int) error {
-	return errors.ErrUnsupported
+func ConfigureTunInterface(name string, addressPrefix, routePrefix netip.Prefix, metric int, bypassPrefixes []netip.Prefix) (func(), error) {
+	return nil, errors.ErrUnsupported
 }
 
 func SetProcessName(name string) error {
