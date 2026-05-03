@@ -14,6 +14,7 @@
 //
 
 import Cocoa
+import Darwin
 import Foundation
 
 // ============================================================
@@ -25,6 +26,23 @@ let CHILD_BIN = "liner"
 
 // 应用显示名 / 默认窗口标题 / tooltip
 let APP_TITLE = "Liner"
+
+// 系统代理入口默认从 ENV 对应的 YAML 里第一个 http.listen 推断。
+// 也可用环境变量或同目录 .env 覆盖：
+//   LINER_PROXY_HOST=127.0.0.1
+//   LINER_PROXY_PORT=8080
+//   LINER_PAC_URL=http://127.0.0.1:8080/proxy.pac
+// 解析不到 http.listen 时使用下面的兜底值。
+let DEFAULT_PROXY_HOST = "127.0.0.1"
+let DEFAULT_PROXY_PORT = "8080"
+let DEFAULT_PAC_PATH = "/proxy.pac"
+
+// 控制台最多保留的 UTF-16 code units，避免长时间运行后 NSTextView 无限增长。
+let CONSOLE_MAX_LENGTH = 2_000_000
+let CONSOLE_TRIM_EXTRA = 100_000
+
+// 重启/退出时等待 liner 优雅退出的最长时间。
+let CHILD_STOP_TIMEOUT: TimeInterval = 5.0
 
 // ANSI 颜色 → NSColor，索引 0..7 对应 ANSI 30..37
 let ansiColors: [NSColor] = [
@@ -49,37 +67,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var consoleWindow: NSWindow!
     var consoleView: NSTextView!
     var childProcess: Process?
-    var pendingBuffer = Data()
+    var expectedTerminationPids = Set<Int32>()
     var currentColor: NSColor = ansiColors[0]
     let consoleFont = NSFont(name: "Monaco", size: 12.0)
                        ?? NSFont.userFixedPitchFont(ofSize: 12.0)!
+    lazy var dotEnv = readDotEnv()
 
     // 脚本所在目录，用于定位同目录下的子进程二进制
     let workDir: String = {
         let fm = FileManager.default
-        var path = CommandLine.arguments[0]
-
-        // 如果是符号链接，解析到真实路径
-        if let real = try? fm.destinationOfSymbolicLink(atPath: path) {
-            path = real
-        }
-
-        // CommandLine.arguments[0] 可能是相对路径（"./foo.command" 甚至 "foo.command"），
-        // 用当前工作目录拼成绝对路径
-        if !path.hasPrefix("/") {
-            let cwd = fm.currentDirectoryPath
-            path = (cwd as NSString).appendingPathComponent(path)
-        }
-
-        // 标准化路径，消除 "./" 和 "../"
-        path = (path as NSString).standardizingPath
-
-        var dir = (path as NSString).deletingLastPathComponent
-        // 万一还是空的（极端情况），兜底到 cwd
-        if dir.isEmpty {
-            dir = fm.currentDirectoryPath
-        }
-        return dir
+        let base = URL(fileURLWithPath: fm.currentDirectoryPath)
+        let script = URL(fileURLWithPath: CommandLine.arguments[0],
+                         relativeTo: base)
+            .standardized
+            .resolvingSymlinksInPath()
+        return script.deletingLastPathComponent().path
     }()
 
     // ----- App lifecycle -----
@@ -90,12 +92,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         setupStatusItem()
         setupConsoleWindow()
-        startChild()
-        sendStartupNotification()
+        if startChild() {
+            sendNotification(title: APP_TITLE, body: "Started.")
+        } else {
+            showConsole(nil)
+            sendNotification(title: APP_TITLE,
+                             body: "Failed to start. Check the console.")
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        stopChild()
+        _ = stopChild()
     }
 
     // 关闭日志窗口时只隐藏，不退出整个 App
@@ -173,6 +180,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(NSMenuItem.separator())
 
         // System Proxy 子菜单
+        let proxySettings = resolveProxySettings()
         let proxyItem = NSMenuItem(title: "System Proxy", action: nil, keyEquivalent: "")
         let submenu = NSMenu()
 
@@ -182,12 +190,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         let pacItem = makeItem(title: "Auto Configuration (PAC)",
                                action: #selector(setProxyPac(_:)))
-        pacItem.toolTip = "http://127.0.0.1:8087/proxy.pac"
+        pacItem.toolTip = proxySettings.pacURL
         submenu.addItem(pacItem)
 
         let manualItem = makeItem(title: "Manual (HTTP/HTTPS)",
                                   action: #selector(setProxyHttp(_:)))
-        manualItem.toolTip = "127.0.0.1:8087"
+        manualItem.toolTip = proxySettings.address
         submenu.addItem(manualItem)
 
         proxyItem.submenu = submenu
@@ -244,63 +252,288 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     // ----- 子进程 -----
 
-    // 解析 ENV：先看进程环境变量，再读同目录 .env
-    // 返回 nil 表示两处都没拿到
-    func resolveEnvName() -> String? {
-        if let v = ProcessInfo.processInfo.environment["ENV"],
-           !v.isEmpty {
-            return v
+    struct ProxySettings {
+        let host: String
+        let port: String
+        let pacURL: String
+
+        var address: String {
+            "\(ProxySettings.urlHost(host)):\(port)"
         }
-        let dotenvPath = workDir + "/.env"
-        guard let content = try? String(contentsOfFile: dotenvPath,
+
+        static func defaultFor(host: String, port: String) -> ProxySettings {
+            ProxySettings(host: host,
+                          port: port,
+                          pacURL: "http://\(urlHost(host)):\(port)\(DEFAULT_PAC_PATH)")
+        }
+
+        static func urlHost(_ host: String) -> String {
+            if host.contains(":") &&
+               !host.hasPrefix("[") &&
+               !host.hasSuffix("]") {
+                return "[\(host)]"
+            }
+            return host
+        }
+    }
+
+    // 解析同目录 .env，支持 `KEY=value` 和 `export KEY=value`。
+    func readDotEnv() -> [String: String] {
+        guard let content = try? String(contentsOfFile: workDir + "/.env",
                                         encoding: .utf8) else {
-            return nil
+            return [:]
         }
-        for rawLine in content.split(whereSeparator: { $0 == "\n" || $0 == "\r" }) {
+
+        var values = [String: String]()
+        for rawLine in content.components(separatedBy: .newlines) {
             var line = rawLine.trimmingCharacters(in: .whitespaces)
             if line.isEmpty || line.hasPrefix("#") { continue }
-            // 兼容 `export ENV=foo`
             if line.hasPrefix("export ") {
                 line = String(line.dropFirst("export ".count))
                        .trimmingCharacters(in: .whitespaces)
             }
-            guard let eq = line.firstIndex(of: "=") else { continue }
-            let key = line[..<eq].trimmingCharacters(in: .whitespaces)
-            guard key == "ENV" else { continue }
-            var value = line[line.index(after: eq)...]
-                          .trimmingCharacters(in: .whitespaces)
-            // 去掉首尾匹配的引号
-            if value.count >= 2 {
-                let first = value.first!
-                let last = value.last!
-                if (first == "\"" && last == "\"") ||
-                   (first == "'"  && last == "'") {
-                    value = String(value.dropFirst().dropLast())
-                }
+
+            let parts = line.split(separator: "=", maxSplits: 1)
+            guard parts.count == 2 else { continue }
+
+            let key = String(parts[0]).trimmingCharacters(in: .whitespaces)
+            let value = stripMatchingQuotes(
+                String(parts[1]).trimmingCharacters(in: .whitespaces))
+            if !key.isEmpty && !value.isEmpty {
+                values[key] = value
             }
-            if !value.isEmpty {
+        }
+        return values
+    }
+
+    func resolveSetting(_ keys: [String]) -> String? {
+        let env = ProcessInfo.processInfo.environment
+        for key in keys {
+            if let value = env[key], !value.isEmpty {
+                return value
+            }
+        }
+
+        for key in keys {
+            if let value = dotEnv[key], !value.isEmpty {
                 return value
             }
         }
         return nil
     }
 
-    func startChild() {
+    // 解析 ENV：先看进程环境变量，再读同目录 .env
+    // 返回 nil 表示两处都没拿到
+    func resolveEnvName() -> String? {
+        resolveSetting(["ENV"])
+    }
+
+    func resolveProxySettings() -> ProxySettings {
+        let inferred = inferProxySettingsFromConfig()
+                       ?? ProxySettings.defaultFor(host: DEFAULT_PROXY_HOST,
+                                                   port: DEFAULT_PROXY_PORT)
+        let host = resolveSetting(["LINER_PROXY_HOST", "PROXY_HOST"]) ?? inferred.host
+        let port = resolveSetting(["LINER_PROXY_PORT", "PROXY_PORT"]) ?? inferred.port
+        let defaultPacURL = "http://\(ProxySettings.urlHost(host)):\(port)\(DEFAULT_PAC_PATH)"
+        let pacURL = resolveSetting(["LINER_PAC_URL", "PAC_URL"])
+                     ?? defaultPacURL
+        return ProxySettings(host: host, port: port, pacURL: pacURL)
+    }
+
+    func inferProxySettingsFromConfig() -> ProxySettings? {
+        guard let envName = resolveEnvName() else {
+            return nil
+        }
+
+        let configFile = "\(envName).yaml"
+        let configPath = workDir + "/" + configFile
+        for path in configDataPaths(configPath: configPath) {
+            guard let content = try? String(contentsOfFile: path,
+                                            encoding: .utf8) else {
+                continue
+            }
+            if let listen = firstHTTPListen(in: content),
+               let settings = proxySettings(fromListen: listen) {
+                return settings
+            }
+        }
+        return nil
+    }
+
+    private func configDataPaths(configPath: String) -> [String] {
+        let overlayDir = (configPath as NSString).deletingPathExtension + ".d"
+        let overlays = (try? FileManager.default.contentsOfDirectory(atPath: overlayDir))?
+            .sorted()
+            .filter { $0.hasSuffix(".yaml") }
+            .map { (overlayDir as NSString).appendingPathComponent($0) } ?? []
+        return [configPath] + overlays
+    }
+
+    private func firstHTTPListen(in yaml: String) -> String? {
+        var inHTTP = false
+        var inListenBlock = false
+
+        for rawLine in yaml.components(separatedBy: .newlines) {
+            let trimmed = rawLine.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty { continue }
+            if trimmed.hasPrefix("#") { continue }
+
+            if !inHTTP {
+                if trimmed == "http:" || trimmed.hasPrefix("http: ") {
+                    inHTTP = true
+                }
+                continue
+            }
+
+            // 只扫 http: 顶层块，遇到下一个顶层 key 就停止。
+            if let first = rawLine.first,
+               !first.isWhitespace,
+               !trimmed.hasPrefix("- ") {
+                break
+            }
+
+            if inListenBlock {
+                if trimmed.hasPrefix("- "),
+                   let value = cleanYAMLScalar(String(trimmed.dropFirst(2))) {
+                    return value
+                }
+                if !trimmed.hasPrefix("#") {
+                    inListenBlock = false
+                }
+            }
+
+            let candidate = trimmed.hasPrefix("- ")
+                ? String(trimmed.dropFirst(2)).trimmingCharacters(in: .whitespaces)
+                : trimmed
+            guard candidate.hasPrefix("listen:") else {
+                continue
+            }
+
+            let rawValue = String(candidate.dropFirst("listen:".count))
+                .trimmingCharacters(in: .whitespaces)
+            if rawValue.isEmpty {
+                inListenBlock = true
+            } else {
+                return firstListenScalar(rawValue)
+            }
+        }
+
+        return nil
+    }
+
+    private func firstListenScalar(_ raw: String) -> String? {
+        var value = stripYAMLComment(raw)
+        if value.hasPrefix("[") && value.hasSuffix("]") {
+            value = value
+                .trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+                .split(separator: ",", maxSplits: 1)
+                .first
+                .map(String.init) ?? ""
+        }
+        return cleanYAMLScalar(value)
+    }
+
+    private func cleanYAMLScalar(_ raw: String) -> String? {
+        let value = stripYAMLComment(raw)
+        guard !value.isEmpty && value != "|" && value != ">" else {
+            return nil
+        }
+        return stripMatchingQuotes(value).trimmingCharacters(in: .whitespaces)
+    }
+
+    private func stripYAMLComment(_ raw: String) -> String {
+        raw.split(separator: "#", maxSplits: 1)
+            .first
+            .map(String.init)?
+            .trimmingCharacters(in: .whitespaces) ?? ""
+    }
+
+    private func stripMatchingQuotes(_ value: String) -> String {
+        guard value.count >= 2,
+              let first = value.first,
+              let last = value.last,
+              first == last,
+              (first == "\"" || first == "'") else {
+            return value
+        }
+        return String(value.dropFirst().dropLast())
+    }
+
+    private func proxySettings(fromListen rawListen: String) -> ProxySettings? {
+        var listen = rawListen.trimmingCharacters(in: .whitespaces)
+        if let scheme = listen.range(of: "://") {
+            listen = String(listen[scheme.upperBound...])
+        }
+        if let slash = listen.firstIndex(of: "/") {
+            listen = String(listen[..<slash])
+        }
+        if let question = listen.firstIndex(of: "?") {
+            listen = String(listen[..<question])
+        }
+
+        let host: String
+        let port: String
+        if listen.hasPrefix("["),
+           let close = listen.firstIndex(of: "]") {
+            host = String(listen[listen.index(after: listen.startIndex)..<close])
+            let rest = listen[listen.index(after: close)...]
+            guard rest.hasPrefix(":") else { return nil }
+            port = String(rest.dropFirst())
+        } else if let colon = listen.lastIndex(of: ":") {
+            host = String(listen[..<colon])
+            port = String(listen[listen.index(after: colon)...])
+        } else if Int(listen) != nil {
+            host = DEFAULT_PROXY_HOST
+            port = listen
+        } else {
+            return nil
+        }
+
+        guard let portNumber = Int(port),
+              (1...65535).contains(portNumber) else {
+            return nil
+        }
+
+        let normalizedHost = proxyHostForListenHost(host)
+        return ProxySettings.defaultFor(host: normalizedHost,
+                                        port: String(portNumber))
+    }
+
+    private func proxyHostForListenHost(_ host: String) -> String {
+        let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty ||
+           trimmed == "*" ||
+           trimmed == "0.0.0.0" ||
+           trimmed == "::" ||
+           trimmed == "::0" {
+            return DEFAULT_PROXY_HOST
+        }
+        return trimmed
+    }
+
+    @discardableResult
+    func startChild() -> Bool {
         appendToConsole("Working directory: \(workDir)\n",
                         color: ansiColors[7])
+
+        if let p = childProcess, p.isRunning {
+            appendToConsole("\(CHILD_BIN) is already running.\n",
+                            color: ansiColors[3])
+            return true
+        }
 
         let binPath = workDir + "/" + CHILD_BIN
         guard FileManager.default.isExecutableFile(atPath: binPath) else {
             appendToConsole("Cannot find executable: \(binPath)\n",
                             color: ansiColors[1])
-            return
+            return false
         }
 
         guard let envName = resolveEnvName() else {
             appendToConsole(
                 "ENV not set. Define `ENV` in environment or in \(workDir)/.env\n",
                 color: ansiColors[1])
-            return
+            return false
         }
 
         let configFile = "\(envName).yaml"
@@ -308,7 +541,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard FileManager.default.fileExists(atPath: configPath) else {
             appendToConsole("Config file not found: \(configPath)\n",
                             color: ansiColors[1])
-            return
+            return false
         }
 
         appendToConsole("Starting: \(CHILD_BIN) \(configFile)\n",
@@ -318,25 +551,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         p.currentDirectoryURL = URL(fileURLWithPath: workDir)
         p.executableURL = URL(fileURLWithPath: binPath)
         p.arguments = [configFile]
+        var environment = ProcessInfo.processInfo.environment
+        environment["LINER_LOG_TO_STDERR"] = "1"
+        p.environment = environment
 
         let outPipe = Pipe()
         let errPipe = Pipe()
         p.standardOutput = outPipe
         p.standardError = errPipe
         p.standardInput = FileHandle.nullDevice
+        p.terminationHandler = { [weak self] process in
+            DispatchQueue.main.async {
+                self?.childDidTerminate(process)
+            }
+        }
 
+        self.childProcess = p
         do {
             try p.run()
-            self.childProcess = p
         } catch {
+            if self.childProcess === p {
+                self.childProcess = nil
+            }
             appendToConsole("Failed to start \(CHILD_BIN): \(error)\n",
                             color: ansiColors[1])
-            return
+            return false
         }
 
         // 后台读 stdout / stderr，都 merge 到控制台
         startReading(handle: outPipe.fileHandleForReading)
         startReading(handle: errPipe.fileHandleForReading)
+        return true
     }
 
     private func startReading(handle: FileHandle) {
@@ -346,24 +591,90 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 h.readabilityHandler = nil
                 return
             }
-            // 解码到 String，回主线程刷新 UI
-            let text = String(data: data, encoding: .utf8)
-                ?? String(data: data, encoding: .isoLatin1)
-                ?? ""
             DispatchQueue.main.async {
-                self?.handleIncoming(text)
+                self?.handleIncoming(String(decoding: data, as: UTF8.self))
             }
         }
     }
 
-    func stopChild() {
-        if let p = childProcess, p.isRunning {
-            p.terminate()
+    @discardableResult
+    func stopChild() -> Bool {
+        guard let p = childProcess else {
+            return true
         }
-        childProcess = nil
+
+        expectedTerminationPids.insert(p.processIdentifier)
+        if p.isRunning {
+            p.terminate()
+
+            if !waitForExit(p, timeout: CHILD_STOP_TIMEOUT) {
+                appendToConsole(
+                    "\(CHILD_BIN) did not exit after \(Int(CHILD_STOP_TIMEOUT))s; killing it.\n",
+                    color: ansiColors[3])
+                Darwin.kill(p.processIdentifier, SIGKILL)
+                _ = waitForExit(p, timeout: 2.0)
+            }
+        }
+
+        if childProcess === p {
+            childProcess = nil
+        }
+        return !p.isRunning
+    }
+
+    private func waitForExit(_ process: Process, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while process.isRunning && Date() < deadline {
+            RunLoop.current.run(mode: .default,
+                                before: Date().addingTimeInterval(0.05))
+        }
+        return !process.isRunning
+    }
+
+    private func childDidTerminate(_ process: Process) {
+        let expected = expectedTerminationPids.remove(process.processIdentifier) != nil
+        if childProcess === process {
+            childProcess = nil
+        }
+        guard !expected else { return }
+
+        let status = process.terminationStatus
+        let reason: String
+        switch process.terminationReason {
+        case .exit:
+            reason = "exit status \(status)"
+        case .uncaughtSignal:
+            reason = "signal \(status)"
+        @unknown default:
+            reason = "status \(status)"
+        }
+
+        appendToConsole("\n\(CHILD_BIN) exited unexpectedly: \(reason)\n",
+                        color: ansiColors[1])
+        statusItem.button?.toolTip = "\(APP_TITLE) stopped: \(reason)"
+        showConsole(nil)
+        sendNotification(title: APP_TITLE,
+                         body: "\(CHILD_BIN) stopped: \(reason)")
     }
 
     // ----- 输出解析与渲染 -----
+
+    private func applyANSICodes(_ codeStr: String) {
+        let parts = codeStr.split(separator: ";", omittingEmptySubsequences: false)
+        if parts.isEmpty {
+            currentColor = ansiColors[0]
+            return
+        }
+
+        for part in parts {
+            let code = Int(String(part)) ?? 0
+            if (30..<38).contains(code) {
+                currentColor = ansiColors[code - 30]
+            } else if code == 0 || code == 39 {
+                currentColor = ansiColors[0]
+            }
+        }
+    }
 
     func handleIncoming(_ raw: String) {
         var line = raw
@@ -385,23 +696,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             if line[idx] == "\u{1b}",
                line.distance(from: idx, to: line.endIndex) >= 2,
                line[line.index(after: idx)] == "[" {
-                // 找到 'm' 终止
-                if let mIdx = line.range(of: "m", range: idx..<line.endIndex) {
+                let codeStart = line.index(idx, offsetBy: 2)
+                if let mRange = line.range(of: "m", range: codeStart..<line.endIndex) {
                     // 先把累积文本写出
                     if !pendingText.isEmpty {
                         appendToConsole(pendingText, color: currentColor)
                         pendingText = ""
                     }
-                    let codeStart = line.index(idx, offsetBy: 2)
-                    let codeStr = String(line[codeStart..<mIdx.lowerBound])
-                    if let code = Int(codeStr) {
-                        if (30..<38).contains(code) {
-                            currentColor = ansiColors[code - 30]
-                        } else if code == 0 {
-                            currentColor = ansiColors[0]
-                        }
-                    }
-                    idx = mIdx.upperBound
+                    let codeStr = String(line[codeStart..<mRange.lowerBound])
+                    applyANSICodes(codeStr)
+                    idx = mRange.upperBound
                     continue
                 }
             }
@@ -414,16 +718,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func appendToConsole(_ text: String, color: NSColor) {
+        // 自动滚到底部（仅当用户已在底部时，避免打断阅读）
+        let needScroll = NSMaxY(consoleView.visibleRect)
+                       >= NSMaxY(consoleView.bounds) - 20
+
         let attrs: [NSAttributedString.Key: Any] = [
             .foregroundColor: color,
             .font: consoleFont,
         ]
         let attr = NSAttributedString(string: text, attributes: attrs)
         consoleView.textStorage?.append(attr)
+        trimConsoleIfNeeded()
 
-        // 自动滚到底部（仅当用户已在底部时，避免打断阅读）
-        let needScroll = NSMaxY(consoleView.visibleRect)
-                       >= NSMaxY(consoleView.bounds) - 20
         if needScroll {
             consoleView.scrollRangeToVisible(
                 NSRange(location: consoleView.string.utf16.count, length: 0)
@@ -431,12 +737,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
+    private func trimConsoleIfNeeded() {
+        guard let storage = consoleView.textStorage else { return }
+        let overflow = storage.length - CONSOLE_MAX_LENGTH
+        guard overflow > 0 else { return }
+
+        var deleteLength = min(storage.length,
+                               overflow + CONSOLE_TRIM_EXTRA)
+        if deleteLength < storage.length {
+            let string = storage.string as NSString
+            let searchRange = NSRange(
+                location: deleteLength,
+                length: min(4096, storage.length - deleteLength)
+            )
+            let newline = string.range(of: "\n", options: [], range: searchRange)
+            if newline.location != NSNotFound {
+                deleteLength = newline.location + newline.length
+            }
+        }
+
+        storage.deleteCharacters(in: NSRange(location: 0,
+                                             length: deleteLength))
+    }
+
     // ----- 通知 -----
+    private func appleScriptStringLiteral(_ value: String) -> String {
+        let escaped = value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        return "\"\(escaped)\""
+    }
+
     // 用 osascript 投递系统通知。比 NSUserNotification 简单，且不依赖
     // app bundle（单文件脚本走不了 UNUserNotificationCenter，因为没有 bundle id）。
-    func sendStartupNotification() {
-        let body = "\(APP_TITLE) Started."
-        let script = "display notification \"\" with title \"\(body)\" sound name \"default\""
+    func sendNotification(title: String, body: String) {
+        let script = "display notification \(appleScriptStringLiteral(body)) " +
+                     "with title \(appleScriptStringLiteral(title)) " +
+                     "sound name \"default\""
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
         task.arguments = ["-e", script]
@@ -455,40 +792,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         consoleWindow.orderOut(nil)
     }
 
+    enum ProxyMode {
+        case off
+        case pac
+        case http
+    }
+
     @objc func setProxyOff(_ sender: Any?) {
-        runAdminCommands([
-            "networksetup -setwebproxystate Wi-Fi off",
-            "networksetup -setsecurewebproxystate Wi-Fi off",
-            "networksetup -setautoproxystate Wi-Fi off",
-        ])
+        applyProxyMode(.off)
     }
 
     @objc func setProxyPac(_ sender: Any?) {
-        runAdminCommands([
-            "networksetup -setautoproxyurl Wi-Fi http://127.0.0.1:8087/proxy.pac",
-            "networksetup -setautoproxystate Wi-Fi on",
-            "networksetup -setwebproxystate Wi-Fi off",
-            "networksetup -setsecurewebproxystate Wi-Fi off",
-        ])
+        applyProxyMode(.pac)
     }
 
     @objc func setProxyHttp(_ sender: Any?) {
-        runAdminCommands([
-            "networksetup -setwebproxy Wi-Fi 127.0.0.1 8087",
-            "networksetup -setwebproxystate Wi-Fi on",
-            "networksetup -setsecurewebproxy Wi-Fi 127.0.0.1 8087",
-            "networksetup -setsecurewebproxystate Wi-Fi on",
-            "networksetup -setautoproxystate Wi-Fi off",
-        ])
+        applyProxyMode(.http)
     }
 
     @objc func reload(_ sender: Any?) {
         showConsole(sender)
-        stopChild()
+        guard stopChild() else {
+            appendToConsole("Restart aborted: \(CHILD_BIN) is still running.\n",
+                            color: ansiColors[1])
+            return
+        }
         consoleView.string = ""
-        // 给一点时间让进程真正退出
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-            self?.startChild()
+        if startChild() {
+            sendNotification(title: APP_TITLE, body: "Restarted.")
+        } else {
+            showConsole(nil)
+            sendNotification(title: APP_TITLE,
+                             body: "Restart failed. Check the console.")
         }
     }
 
@@ -497,15 +832,132 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NSApp.terminate(nil)
     }
 
+    private func applyProxyMode(_ mode: ProxyMode) {
+        let services = networkServices()
+        guard !services.isEmpty else {
+            appendToConsole("No enabled network services found.\n",
+                            color: ansiColors[1])
+            showConsole(nil)
+            return
+        }
+
+        let settings = resolveProxySettings()
+        let commands = proxyCommands(mode: mode,
+                                     settings: settings,
+                                     services: services)
+        let modeName: String
+        switch mode {
+        case .off:
+            modeName = "Disable"
+        case .pac:
+            modeName = "PAC \(settings.pacURL)"
+        case .http:
+            modeName = "HTTP/HTTPS \(settings.address)"
+        }
+
+        appendToConsole(
+            "Applying System Proxy '\(modeName)' to: \(services.joined(separator: ", "))\n",
+            color: ansiColors[7])
+        runAdminCommands(commands,
+                         successMessage: "System proxy updated.\n")
+    }
+
+    private func proxyCommands(mode: ProxyMode,
+                               settings: ProxySettings,
+                               services: [String]) -> [String] {
+        var commands = [String]()
+        for service in services {
+            let svc = shellQuote(service)
+            switch mode {
+            case .off:
+                commands.append("/usr/sbin/networksetup -setwebproxystate \(svc) off")
+                commands.append("/usr/sbin/networksetup -setsecurewebproxystate \(svc) off")
+                commands.append("/usr/sbin/networksetup -setautoproxystate \(svc) off")
+            case .pac:
+                commands.append("/usr/sbin/networksetup -setautoproxyurl \(svc) \(shellQuote(settings.pacURL))")
+                commands.append("/usr/sbin/networksetup -setautoproxystate \(svc) on")
+                commands.append("/usr/sbin/networksetup -setwebproxystate \(svc) off")
+                commands.append("/usr/sbin/networksetup -setsecurewebproxystate \(svc) off")
+            case .http:
+                commands.append("/usr/sbin/networksetup -setwebproxy \(svc) \(shellQuote(settings.host)) \(shellQuote(settings.port))")
+                commands.append("/usr/sbin/networksetup -setwebproxystate \(svc) on")
+                commands.append("/usr/sbin/networksetup -setsecurewebproxy \(svc) \(shellQuote(settings.host)) \(shellQuote(settings.port))")
+                commands.append("/usr/sbin/networksetup -setsecurewebproxystate \(svc) on")
+                commands.append("/usr/sbin/networksetup -setautoproxystate \(svc) off")
+            }
+        }
+        return commands
+    }
+
+    private func networkServices() -> [String] {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/sbin/networksetup")
+        task.arguments = ["-listallnetworkservices"]
+
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = pipe
+
+        do {
+            try task.run()
+            task.waitUntilExit()
+        } catch {
+            appendToConsole("networksetup failed: \(error)\n",
+                            color: ansiColors[1])
+            return []
+        }
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let output = String(data: data, encoding: .utf8)
+                     ?? String(decoding: data, as: UTF8.self)
+        guard task.terminationStatus == 0 else {
+            appendToConsole("networksetup failed: \(output)\n",
+                            color: ansiColors[1])
+            return []
+        }
+
+        return output
+            .split(whereSeparator: { $0 == "\n" || $0 == "\r" })
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { line in
+                !line.isEmpty &&
+                !line.hasPrefix("*") &&
+                !line.hasPrefix("An asterisk")
+            }
+    }
+
+    private func shellQuote(_ value: String) -> String {
+        if value.isEmpty { return "''" }
+        return "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+
     // 用 osascript 弹系统授权框，执行需要 root 的 networksetup
-    private func runAdminCommands(_ cmds: [String]) {
+    private func runAdminCommands(_ cmds: [String], successMessage: String) {
         let joined = cmds.joined(separator: " && ")
-        // 转义双引号
-        let escaped = joined.replacingOccurrences(of: "\"", with: "\\\"")
-        let osa = "do shell script \"\(escaped)\" with administrator privileges"
+        let osa = "do shell script \(appleScriptStringLiteral(joined)) " +
+                  "with administrator privileges"
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
         task.arguments = ["-e", osa]
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = pipe
+        task.terminationHandler = { [weak self] process in
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8)
+                         ?? String(decoding: data, as: UTF8.self)
+            DispatchQueue.main.async {
+                if process.terminationStatus == 0 {
+                    self?.appendToConsole(successMessage,
+                                          color: ansiColors[2])
+                } else {
+                    self?.appendToConsole(
+                        "System proxy update failed: \(output)\n",
+                        color: ansiColors[1])
+                    self?.showConsole(nil)
+                }
+            }
+        }
         do {
             try task.run()
         } catch {
