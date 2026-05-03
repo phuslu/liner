@@ -257,9 +257,14 @@ func (ops ConnOps) SetTcpMaxPacingRate(rate int) error {
 	return errors.ErrUnsupported
 }
 
-func ConfigureTunInterface(name string, addressPrefix, routePrefix netip.Prefix, metric int, bypassPrefixes []netip.Prefix) (func(), error) {
-	if !addressPrefix.Addr().Is4() || routePrefix.IsValid() && !routePrefix.Addr().Is4() {
+func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixes []netip.Prefix, metric int, bypassPrefixes []netip.Prefix) (func(), error) {
+	if !addressPrefix.Addr().Is4() {
 		return nil, errors.ErrUnsupported
+	}
+	for _, prefix := range routePrefixes {
+		if !prefix.Addr().Is4() {
+			return nil, errors.ErrUnsupported
+		}
 	}
 	for _, prefix := range bypassPrefixes {
 		if !prefix.Addr().Is4() {
@@ -347,19 +352,10 @@ func ConfigureTunInterface(name string, addressPrefix, routePrefix netip.Prefix,
 		addedBypass = append(addedBypass, prefix)
 	}
 
-	var routes []netip.Prefix
 	scopes := []bool{false, true}
-	if routePrefix.IsValid() {
-		routes = []netip.Prefix{routePrefix.Masked()}
-	}
-	if !routePrefix.IsValid() || routePrefix.Bits() == 0 {
-		routes = []netip.Prefix{
-			netip.PrefixFrom(netip.AddrFrom4([4]byte{0, 0, 0, 0}), 1),
-			netip.PrefixFrom(netip.AddrFrom4([4]byte{128, 0, 0, 0}), 1),
-		}
-	}
-	if !routePrefix.IsValid() {
-		scopes = []bool{true}
+	routes := make([]netip.Prefix, 0, len(routePrefixes))
+	for _, route := range routePrefixes {
+		routes = append(routes, route.Masked())
 	}
 	for _, route := range routes {
 		for _, scoped := range scopes {

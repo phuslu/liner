@@ -302,9 +302,14 @@ func SetProcessName(name string) error {
 	return err
 }
 
-func ConfigureTunInterface(name string, addressPrefix, routePrefix netip.Prefix, metric int, bypassPrefixes []netip.Prefix) (func(), error) {
-	if !addressPrefix.Addr().Is4() || routePrefix.IsValid() && !routePrefix.Addr().Is4() {
+func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixes []netip.Prefix, metric int, bypassPrefixes []netip.Prefix) (func(), error) {
+	if !addressPrefix.Addr().Is4() {
 		return nil, errors.ErrUnsupported
+	}
+	for _, prefix := range routePrefixes {
+		if !prefix.Addr().Is4() {
+			return nil, errors.ErrUnsupported
+		}
 	}
 	for _, prefix := range bypassPrefixes {
 		if !prefix.Addr().Is4() {
@@ -316,12 +321,10 @@ func ConfigureTunInterface(name string, addressPrefix, routePrefix netip.Prefix,
 		return nil, err
 	}
 	var addedBypass []netip.Prefix
-	var boundTable int
+	var addedRoutes []netip.Prefix
 	cleanup := func() {
-		if boundTable > 0 {
-			table := strconv.Itoa(boundTable)
-			exec.Command("ip", "-4", "rule", "delete", "oif", name, "table", table).Run()
-			exec.Command("ip", "-4", "route", "flush", "table", table).Run()
+		for i := len(addedRoutes) - 1; i >= 0; i-- {
+			exec.Command("ip", "-4", "route", "delete", addedRoutes[i].String(), "dev", name).Run()
 		}
 		for _, prefix := range addedBypass {
 			exec.Command("ip", "-4", "route", "delete", prefix.Masked().String()).Run()
@@ -484,46 +487,31 @@ func ConfigureTunInterface(name string, addressPrefix, routePrefix netip.Prefix,
 		}
 	}
 
-	if routePrefix.IsValid() {
-		routePrefix = routePrefix.Masked()
-		rmsg := unix.RtMsg{
-			Family:   unix.AF_INET,
-			Dst_len:  uint8(routePrefix.Bits()),
-			Table:    unix.RT_TABLE_MAIN,
-			Protocol: unix.RTPROT_STATIC,
-			Scope:    unix.RT_SCOPE_LINK,
-			Type:     unix.RTN_UNICAST,
-		}
-		attrs := [][]byte{uint32attr(unix.RTA_OIF, uint32(iface.Index))}
-		if metric > 0 {
-			attrs = append(attrs, uint32attr(unix.RTA_PRIORITY, uint32(metric)))
-		}
-		if routePrefix.Bits() > 0 {
-			ip4 = routePrefix.Addr().As4()
-			attrs = append(attrs, attr(unix.RTA_DST, ip4[:]))
-		}
-		err = update(unix.RTM_NEWROUTE, unix.NLM_F_ACK|unix.NLM_F_CREATE|unix.NLM_F_EXCL, unsafe.Slice((*byte)(unsafe.Pointer(&rmsg)), unix.SizeofRtMsg), attrs...)
-		if err != nil && !errors.Is(err, unix.EEXIST) {
-			return nil, fmt.Errorf("set tun route: %w", err)
-		}
-	} else {
-		run := func(args ...string) (string, error) {
-			data, err := exec.Command("ip", args...).CombinedOutput()
-			return strings.TrimSpace(string(data)), err
-		}
-		table := strconv.Itoa(10000 + iface.Index)
-		exec.Command("ip", "-4", "rule", "delete", "oif", name, "table", table).Run()
-		if msg, err := run("-4", "route", "replace", "table", table, "default", "dev", name); err != nil {
-			return nil, fmt.Errorf("set tun bound route: ip %s: %w: %s", "-4 route replace table "+table+" default dev "+name, err, msg)
-		}
-		boundTable = 10000 + iface.Index
-		args := []string{"-4", "rule", "add", "oif", name, "table", table}
-		if metric > 0 {
-			args = append(args, "priority", strconv.Itoa(metric))
-		}
-		if msg, err := run(args...); err != nil {
-			if !strings.Contains(msg, "File exists") {
-				return nil, fmt.Errorf("set tun bound rule: ip %s: %w: %s", strings.Join(args, " "), err, msg)
+	if len(routePrefixes) > 0 {
+		for _, route := range routePrefixes {
+			route = route.Masked()
+			rmsg := unix.RtMsg{
+				Family:   unix.AF_INET,
+				Dst_len:  uint8(route.Bits()),
+				Table:    unix.RT_TABLE_MAIN,
+				Protocol: unix.RTPROT_STATIC,
+				Scope:    unix.RT_SCOPE_LINK,
+				Type:     unix.RTN_UNICAST,
+			}
+			attrs := [][]byte{uint32attr(unix.RTA_OIF, uint32(iface.Index))}
+			if metric > 0 {
+				attrs = append(attrs, uint32attr(unix.RTA_PRIORITY, uint32(metric)))
+			}
+			if route.Bits() > 0 {
+				ip4 = route.Addr().As4()
+				attrs = append(attrs, attr(unix.RTA_DST, ip4[:]))
+			}
+			err = update(unix.RTM_NEWROUTE, unix.NLM_F_ACK|unix.NLM_F_CREATE|unix.NLM_F_EXCL, unsafe.Slice((*byte)(unsafe.Pointer(&rmsg)), unix.SizeofRtMsg), attrs...)
+			if err != nil && !errors.Is(err, unix.EEXIST) {
+				return nil, fmt.Errorf("set tun route %s: %w", route, err)
+			}
+			if err == nil {
+				addedRoutes = append(addedRoutes, route)
 			}
 		}
 	}

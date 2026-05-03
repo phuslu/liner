@@ -141,8 +141,7 @@ type StreamConfig struct {
 type TunConfig struct {
 	Name           string   `json:"name" yaml:"name"`
 	Address        string   `json:"address" yaml:"address"`
-	Route          string   `json:"route" yaml:"route"`
-	RouteBypass    []string `json:"route_bypass" yaml:"route_bypass"`
+	Routes         []string `json:"routes" yaml:"routes"`
 	RouteMetric    int      `json:"route_metric" yaml:"route_metric"`
 	MTU            int      `json:"mtu" yaml:"mtu"`
 	StackQueueSize int      `json:"stack_queue_size" yaml:"stack_queue_size"`

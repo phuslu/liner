@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -98,17 +99,55 @@ func (h *TunHandler) Load() error {
 		return fmt.Errorf("parse tun address: %w", err)
 	}
 	addressPrefix := prefix
-	routePrefix := netip.Prefix{}
-	route := cmp.Or(strings.TrimSpace(h.Config.Route), "none")
-	if !strings.EqualFold(route, "none") {
-		routePrefix, err = netip.ParsePrefix(route)
-		if err != nil {
-			return fmt.Errorf("parse tun route: %w", err)
+	routeAutoBypass := func(prefixes []netip.Prefix) bool {
+		var lowerDefault, upperDefault bool
+		for _, prefix := range prefixes {
+			if !prefix.Addr().Is4() {
+				continue
+			}
+			switch {
+			case prefix.Bits() == 0:
+				return true
+			case prefix.Bits() == 1 && prefix.Addr() == netip.AddrFrom4([4]byte{0, 0, 0, 0}):
+				lowerDefault = true
+			case prefix.Bits() == 1 && prefix.Addr() == netip.AddrFrom4([4]byte{128, 0, 0, 0}):
+				upperDefault = true
+			}
 		}
+		return lowerDefault && upperDefault
+	}
+	parseRoutes := func(routes []string) ([]netip.Prefix, []string, bool, error) {
+		if runtime.GOOS == "windows" && len(routes) == 1 && strings.TrimSpace(routes[0]) == "0.0.0.0/0" {
+			routes = []string{"0.0.0.0/1", "128.0.0.0/1"}
+		}
+
+		prefixes := make([]netip.Prefix, 0, len(routes))
+		var bypasses []string
+		for _, route := range routes {
+			route = strings.TrimSpace(route)
+			if route == "" || strings.EqualFold(route, "none") {
+				continue
+			}
+			if strings.HasPrefix(route, "-") {
+				if route = strings.TrimSpace(route[1:]); route != "" {
+					bypasses = append(bypasses, route)
+				}
+				continue
+			}
+			prefix, err := netip.ParsePrefix(route)
+			if err != nil {
+				return nil, nil, false, fmt.Errorf("parse tun route %q: %w", route, err)
+			}
+			prefixes = append(prefixes, prefix.Masked())
+		}
+		return prefixes, bypasses, routeAutoBypass(prefixes), nil
+	}
+	routePrefixes, bypassRoutes, autoBypass, err := parseRoutes(h.Config.Routes)
+	if err != nil {
+		return err
 	}
 	var bypassPrefixes []netip.Prefix
-	autoBypass := routePrefix.IsValid() && routePrefix.Addr().Is4() && routePrefix.Bits() == 0
-	if len(h.Config.RouteBypass) > 0 || autoBypass {
+	if len(bypassRoutes) > 0 || autoBypass {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cmp.Or(h.Config.Forward.DialTimeout, 10))*time.Second)
 		defer cancel()
 		seen := make(map[netip.Prefix]struct{})
@@ -163,9 +202,9 @@ func (h *TunHandler) Load() error {
 			}
 			return ips, nil
 		}
-		for _, bypass := range h.Config.RouteBypass {
+		for _, bypass := range bypassRoutes {
 			if _, err := addBypass(bypass); err != nil {
-				return fmt.Errorf("parse tun route_bypass %q: %w", bypass, err)
+				return fmt.Errorf("parse tun bypass route %q: %w", bypass, err)
 			}
 		}
 		if autoBypass {
@@ -234,7 +273,7 @@ func (h *TunHandler) Load() error {
 			}
 		}
 	}
-	cleanup, err := ConfigureTunInterface(h.name, addressPrefix, routePrefix, cmp.Or(h.Config.RouteMetric, 32767), bypassPrefixes)
+	cleanup, err := ConfigureTunInterface(h.name, addressPrefix, routePrefixes, cmp.Or(h.Config.RouteMetric, 32767), bypassPrefixes)
 	if err != nil {
 		return fmt.Errorf("configure tun interface: %w", err)
 	}
@@ -248,10 +287,11 @@ func (h *TunHandler) Load() error {
 	for _, prefix := range bypassPrefixes {
 		log.Info().Str("tun_name", h.name).Str("tun_route", prefix.String()).Msg("tun bypass route updated")
 	}
-	if routePrefix.IsValid() {
-		log.Info().Str("tun_name", h.name).Str("tun_route", routePrefix.String()).Msg("tun route updated")
-	} else if strings.EqualFold(route, "none") {
-		log.Info().Str("tun_name", h.name).Str("tun_route", "none").Msg("tun bound route updated")
+	for _, prefix := range routePrefixes {
+		log.Info().Str("tun_name", h.name).Str("tun_route", prefix.String()).Msg("tun route updated")
+	}
+	if len(routePrefixes) == 0 {
+		log.Info().Str("tun_name", h.name).Str("tun_route", "none").Msg("tun route updated")
 	}
 
 	s := stack.New(stack.Options{

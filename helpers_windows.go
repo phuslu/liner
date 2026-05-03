@@ -297,9 +297,14 @@ func (ops ConnOps) SetTcpMaxPacingRate(rate int) error {
 	return errors.ErrUnsupported
 }
 
-func ConfigureTunInterface(name string, addressPrefix, routePrefix netip.Prefix, metric int, bypassPrefixes []netip.Prefix) (func(), error) {
-	if !addressPrefix.Addr().Is4() || routePrefix.IsValid() && !routePrefix.Addr().Is4() {
+func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixes []netip.Prefix, metric int, bypassPrefixes []netip.Prefix) (func(), error) {
+	if !addressPrefix.Addr().Is4() {
 		return nil, errors.ErrUnsupported
+	}
+	for _, prefix := range routePrefixes {
+		if !prefix.Addr().Is4() {
+			return nil, errors.ErrUnsupported
+		}
 	}
 	for _, prefix := range bypassPrefixes {
 		if !prefix.Addr().Is4() {
@@ -312,10 +317,11 @@ func ConfigureTunInterface(name string, addressPrefix, routePrefix netip.Prefix,
 		return strings.TrimSpace(string(data)), err
 	}
 	var addedBypass []netip.Prefix
-	var addedRoute netip.Prefix
+	var addedRoutes []netip.Prefix
 	cleanup := func() {
-		if addedRoute.IsValid() {
-			exec.Command("netsh", "interface", "ipv4", "delete", "route", "prefix="+addedRoute.String(), "interface="+name).Run()
+		for i := len(addedRoutes) - 1; i >= 0; i-- {
+			route := addedRoutes[i]
+			exec.Command("netsh", "interface", "ipv4", "delete", "route", "prefix="+route.String(), "interface="+name).Run()
 		}
 		for _, prefix := range addedBypass {
 			exec.Command("netsh", "interface", "ipv4", "delete", "route", "prefix="+prefix.Masked().String()).Run()
@@ -335,6 +341,17 @@ func ConfigureTunInterface(name string, addressPrefix, routePrefix netip.Prefix,
 	args = []string{"interface", "set", "interface", "name=" + name, "admin=enabled"}
 	if msg, err := run(args...); err != nil {
 		return nil, fmt.Errorf("set tun link up: netsh %s: %w: %s", strings.Join(args, " "), err, msg)
+	}
+	if metric <= 0 {
+		metric = 32767
+	}
+	interfaceMetric := metric
+	if interfaceMetric > 9999 {
+		interfaceMetric = 9999
+	}
+	args = []string{"interface", "ipv4", "set", "interface", "interface=" + name, fmt.Sprintf("metric=%d", interfaceMetric), "store=active"}
+	if msg, err := run(args...); err != nil {
+		return nil, fmt.Errorf("set tun interface metric: netsh %s: %w: %s", strings.Join(args, " "), err, msg)
 	}
 
 	if len(bypassPrefixes) > 0 {
@@ -397,23 +414,22 @@ func ConfigureTunInterface(name string, addressPrefix, routePrefix netip.Prefix,
 		}
 	}
 
-	if metric <= 0 {
-		metric = 32767
-	}
-	if routePrefix.IsValid() {
-		routePrefix = routePrefix.Masked()
-	} else {
-		routePrefix = netip.PrefixFrom(netip.AddrFrom4([4]byte{}), 0)
-	}
-	args = []string{"interface", "ipv4", "add", "route", "prefix=" + routePrefix.String(), "interface=" + name, fmt.Sprintf("metric=%d", metric), "store=active"}
-	if msg, err := run(args...); err != nil {
-		if strings.Contains(strings.ToLower(msg), "exist") {
-			ok = true
-			return cleanup, nil
+	for _, route := range routePrefixes {
+		route = route.Masked()
+		exec.Command("netsh", "interface", "ipv4", "delete", "route", "prefix="+route.String(), "interface="+name).Run()
+		args = []string{"interface", "ipv4", "add", "route", "prefix=" + route.String(), "interface=" + name, fmt.Sprintf("metric=%d", metric), "store=active"}
+		if msg, err := run(args...); err != nil {
+			if strings.Contains(strings.ToLower(msg), "exist") {
+				args = []string{"interface", "ipv4", "set", "route", "prefix=" + route.String(), "interface=" + name, fmt.Sprintf("metric=%d", metric), "store=active"}
+				if msg, err = run(args...); err != nil {
+					return nil, fmt.Errorf("set tun route: netsh %s: %w: %s", strings.Join(args, " "), err, msg)
+				}
+			} else {
+				return nil, fmt.Errorf("set tun route: netsh %s: %w: %s", strings.Join(args, " "), err, msg)
+			}
 		}
-		return nil, fmt.Errorf("set tun route: netsh %s: %w: %s", strings.Join(args, " "), err, msg)
+		addedRoutes = append(addedRoutes, route)
 	}
-	addedRoute = routePrefix
 
 	ok = true
 	return cleanup, nil

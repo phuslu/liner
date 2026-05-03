@@ -215,8 +215,11 @@ redsocks:
 tun:
   - name: utun53
     address: 198.168.53.1/24
-    route: none
-    # route: 0.0.0.0/0
+    routes: []
+    # routes:
+    #   - 0.0.0.0/0
+    #   - -10.0.0.0/8
+    #   - -192.168.0.0/16
     route_metric: 32767
     mtu: 1420
     forward:
