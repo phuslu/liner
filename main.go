@@ -109,7 +109,7 @@ func main() {
 			Writer: log.IOWriter{Writer: io.Discard},
 		}
 		dataLogger = log.DefaultLogger
-	} else if pty.IsTerminal(os.Stderr.Fd()) {
+	} else if os.Getenv("LINER_LOG_TO_STDERR") == "1" || pty.IsTerminal(os.Stderr.Fd()) {
 		log.DefaultLogger = log.Logger{
 			Level:      log.ParseLevel(cmp.Or(config.Global.LogLevel, "info")),
 			Caller:     1,
