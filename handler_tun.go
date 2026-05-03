@@ -99,26 +99,13 @@ func (h *TunHandler) Load() error {
 		return fmt.Errorf("parse tun address: %w", err)
 	}
 	addressPrefix := prefix
-	routeAutoBypass := func(prefixes []netip.Prefix) bool {
-		var lowerDefault, upperDefault bool
-		for _, prefix := range prefixes {
-			if !prefix.Addr().Is4() {
-				continue
+	autoBypass := false
+	parseRoutes := func(routes []string) ([]netip.Prefix, []string, error) {
+		if len(routes) > 0 && strings.TrimSpace(routes[0]) == "0.0.0.0/0" {
+			autoBypass = true
+			if runtime.GOOS == "windows" {
+				routes = []string{"0.0.0.0/1", "128.0.0.0/1"}
 			}
-			switch {
-			case prefix.Bits() == 0:
-				return true
-			case prefix.Bits() == 1 && prefix.Addr() == netip.AddrFrom4([4]byte{0, 0, 0, 0}):
-				lowerDefault = true
-			case prefix.Bits() == 1 && prefix.Addr() == netip.AddrFrom4([4]byte{128, 0, 0, 0}):
-				upperDefault = true
-			}
-		}
-		return lowerDefault && upperDefault
-	}
-	parseRoutes := func(routes []string) ([]netip.Prefix, []string, bool, error) {
-		if runtime.GOOS == "windows" && len(routes) == 1 && strings.TrimSpace(routes[0]) == "0.0.0.0/0" {
-			routes = []string{"0.0.0.0/1", "128.0.0.0/1"}
 		}
 
 		prefixes := make([]netip.Prefix, 0, len(routes))
@@ -136,13 +123,13 @@ func (h *TunHandler) Load() error {
 			}
 			prefix, err := netip.ParsePrefix(route)
 			if err != nil {
-				return nil, nil, false, fmt.Errorf("parse tun route %q: %w", route, err)
+				return nil, nil, fmt.Errorf("parse tun route %q: %w", route, err)
 			}
 			prefixes = append(prefixes, prefix.Masked())
 		}
-		return prefixes, bypasses, routeAutoBypass(prefixes), nil
+		return prefixes, bypasses, nil
 	}
-	routePrefixes, bypassRoutes, autoBypass, err := parseRoutes(h.Config.Routes)
+	routePrefixes, bypassRoutes, err := parseRoutes(h.Config.Routes)
 	if err != nil {
 		return err
 	}
