@@ -3,9 +3,9 @@
 // Liner macOS 状态栏托盘程序 —— Swift 单文件脚本版
 //
 // 用法：
-//   chmod +x liner-macos.command
-//   ./liner-macos.command           # 命令行运行
-//   双击 liner-macos.command        # Finder 中双击启动
+//   chmod +x liner.command
+//   ./liner.command                 # 命令行运行
+//   双击 liner.command              # Finder 中双击启动
 //
 // 同目录下需有 `liner` 可执行二进制，本脚本作为它的 GUI 外壳。
 //
