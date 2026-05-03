@@ -214,7 +214,7 @@ redsocks:
       dialer: proxy1
 tun:
   - name: utun53
-    address: 198.168.53.1/24
+    address: 198.18.0.1/15
     routes: []
     # routes:
     #   - 0.0.0.0/0

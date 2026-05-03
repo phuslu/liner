@@ -506,6 +506,7 @@ func (h *TunHandler) forwardTCP(r *tcp.ForwarderRequest) {
 			lconn.Close()
 		}
 	}()
+
 	ensureLocalConn := func() (net.Conn, error) {
 		if lconn != nil {
 			return lconn, nil
@@ -523,9 +524,42 @@ func (h *TunHandler) forwardTCP(r *tcp.ForwarderRequest) {
 		return lconn, nil
 	}
 
-	if h.dialer != nil {
-		req.TLSClientHello = h.tlsClientHelloFunc(req, &lconn, ensureLocalConn)
+	req.TLSClientHello = func() (*tls.ClientHelloInfo, error) {
+		c, err := ensureLocalConn()
+		if err != nil {
+			return nil, err
+		}
+		data := make([]byte, 2048)
+		n, err := c.Read(data)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				log.Debug().Err(err).Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Msg("failed to peek data from tun tcp connection")
+				return nil, nil
+			}
+			log.Error().Err(err).Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Msg("failed to peek data from tun tcp connection")
+			return nil, err
+		}
+		data = data[:n]
+		lconn = &ConnWithData{Conn: c, Data: data}
+
+		if n > 40 && data[0] == 0x16 && data[1] == 0x03 {
+			var clienthello *tls.ClientHelloInfo
+			err = tls.Server(&ConnWithData{Data: data}, &tls.Config{
+				GetConfigForClient: func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
+					clienthello = hello
+					return nil, nil
+				},
+			}).HandshakeContext(context.Background())
+			if clienthello != nil {
+				return clienthello, nil
+			}
+			if err != nil {
+				log.Debug().Err(err).Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Msg("parse tls client hello failed")
+			}
+		}
+		return nil, nil
 	}
+
 	forward, ok := h.prepareDial(req)
 	if !ok {
 		if !completed {
@@ -560,45 +594,6 @@ func (h *TunHandler) forwardTCP(r *tcp.ForwarderRequest) {
 	_, _ = io.Copy(lconn, rconn)
 
 	h.logData(context.Background(), req, forward.dialerName)
-}
-
-func (h *TunHandler) tlsClientHelloFunc(req TunRequest, conn *net.Conn, ensureConn func() (net.Conn, error)) func() (*tls.ClientHelloInfo, error) {
-	return func() (*tls.ClientHelloInfo, error) {
-		c, err := ensureConn()
-		if err != nil {
-			return nil, err
-		}
-		data := make([]byte, 2048)
-		n, err := c.Read(data)
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				log.Debug().Err(err).Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Msg("failed to peek data from tun tcp connection")
-				return nil, nil
-			}
-			log.Error().Err(err).Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Msg("failed to peek data from tun tcp connection")
-			return nil, err
-		}
-		data = data[:n]
-		*conn = &ConnWithData{Conn: c, Data: data}
-
-		if n > 40 && data[0] == 0x16 && data[1] == 0x03 {
-			var clienthello *tls.ClientHelloInfo
-			err = tls.Server(&ConnWithData{Data: data}, &tls.Config{
-				GetConfigForClient: func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
-					clienthello = hello
-					return nil, nil
-				},
-			}).HandshakeContext(context.Background())
-			if clienthello != nil {
-				return clienthello, nil
-			}
-			if err != nil {
-				log.Debug().Err(err).Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Msg("parse tls client hello failed")
-			}
-		}
-
-		return nil, nil
-	}
 }
 
 func (h *TunHandler) serveUDP(r *udp.ForwarderRequest) {
