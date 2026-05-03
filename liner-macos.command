@@ -70,6 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var consoleView: NSTextView!
     var childProcess: Process?
     var authorization: AuthorizationRef?
+    var signalSources = [DispatchSourceSignal]()
     var expectedTerminationPids = Set<Int32>()
     var currentColor: NSColor = ansiColors[0]
     let consoleFont = NSFont(name: "Monaco", size: 12.0)
@@ -102,6 +103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             sendNotification(title: APP_TITLE,
                              body: "Failed to start. Check the console.")
         }
+        installSignalHandlers()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -571,8 +573,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         self.childProcess = p
         do {
+            restoreSignalHandlersForChild()
             try p.run()
+            restoreSignalHandlersForApp()
         } catch {
+            restoreSignalHandlersForApp()
             if self.childProcess === p {
                 self.childProcess = nil
             }
@@ -598,6 +603,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 self?.handleIncoming(String(decoding: data, as: UTF8.self))
             }
         }
+    }
+
+    private func installSignalHandlers() {
+        guard signalSources.isEmpty else { return }
+
+        for sig in [SIGINT, SIGTERM] {
+            signal(sig, SIG_IGN)
+            let source = DispatchSource.makeSignalSource(signal: sig,
+                                                         queue: .main)
+            source.setEventHandler { [weak self] in
+                self?.terminateFromSignal(sig)
+            }
+            source.resume()
+            signalSources.append(source)
+        }
+    }
+
+    private func restoreSignalHandlersForChild() {
+        guard !signalSources.isEmpty else { return }
+        signal(SIGINT, SIG_DFL)
+        signal(SIGTERM, SIG_DFL)
+    }
+
+    private func restoreSignalHandlersForApp() {
+        guard !signalSources.isEmpty else { return }
+        signal(SIGINT, SIG_IGN)
+        signal(SIGTERM, SIG_IGN)
+    }
+
+    private func terminateFromSignal(_ sig: Int32) {
+        appendToConsole("\nReceived signal \(sig), stopping \(CHILD_BIN)...\n",
+                        color: ansiColors[3])
+        _ = stopChild()
+        NSApp.terminate(nil)
     }
 
     @discardableResult
