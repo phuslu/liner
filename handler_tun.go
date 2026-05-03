@@ -96,7 +96,7 @@ func (h *TunHandler) Load() error {
 	}
 	addressPrefix := prefix
 	routePrefix := netip.Prefix{}
-	route := cmp.Or(strings.TrimSpace(h.Config.Route), "0.0.0.0/0")
+	route := cmp.Or(strings.TrimSpace(h.Config.Route), "none")
 	if !strings.EqualFold(route, "none") {
 		routePrefix, err = netip.ParsePrefix(route)
 		if err != nil {
@@ -104,82 +104,114 @@ func (h *TunHandler) Load() error {
 		}
 	}
 	var bypassPrefixes []netip.Prefix
-	if routePrefix.IsValid() && routePrefix.Addr().Is4() && routePrefix.Bits() == 0 {
+	autoBypass := routePrefix.IsValid() && routePrefix.Addr().Is4() && routePrefix.Bits() == 0
+	if len(h.Config.RouteBypass) > 0 || autoBypass {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cmp.Or(h.Config.Forward.DialTimeout, 10))*time.Second)
 		defer cancel()
-		seen := make(map[netip.Addr]struct{})
-		addHost := func(host string) []netip.Addr {
-			host = strings.TrimSpace(host)
-			if u, err := url.Parse(host); err == nil && u.Host != "" {
-				host = u.Host
+		seen := make(map[netip.Prefix]struct{})
+		addBypass := func(value string) ([]netip.Addr, error) {
+			value = strings.TrimSpace(value)
+			if value == "" {
+				return nil, nil
 			}
-			if h, _, err := net.SplitHostPort(host); err == nil {
-				host = h
+			if u, err := url.Parse(value); err == nil && u.Host != "" {
+				value = u.Host
 			}
-			host = strings.Trim(host, "[]")
-			if host == "" {
-				return nil
+			if host, _, err := net.SplitHostPort(value); err == nil {
+				value = host
 			}
+			value = strings.Trim(value, "[]")
+
 			var ips []netip.Addr
-			if ip, err := netip.ParseAddr(host); err == nil {
-				ips = []netip.Addr{ip}
-			} else {
+			var prefixes []netip.Prefix
+			switch {
+			case strings.Contains(value, "/"):
+				prefix, err := netip.ParsePrefix(value)
+				if err != nil {
+					return nil, err
+				}
+				prefixes = append(prefixes, prefix)
+			default:
+				if ip, err := netip.ParseAddr(value); err == nil {
+					prefixes = append(prefixes, netip.PrefixFrom(ip, 32))
+					break
+				}
+				if h.LocalDialer == nil || h.LocalDialer.DnsResolver == nil || h.LocalDialer.DnsResolver.Client == nil {
+					return nil, errors.New("dns resolver unavailable")
+				}
 				var err error
-				ips, err = h.LocalDialer.DnsResolver.LookupNetIP(ctx, "ip4", host)
+				if ips, err = h.LocalDialer.DnsResolver.LookupNetIP(ctx, "ip4", value); err != nil {
+					return nil, err
+				}
+				for _, ip := range ips {
+					prefixes = append(prefixes, netip.PrefixFrom(ip, 32))
+				}
+			}
+			for _, prefix := range prefixes {
+				if !prefix.Addr().Is4() {
+					return nil, errors.ErrUnsupported
+				}
+				prefix = prefix.Masked()
+				if _, ok := seen[prefix]; ok {
+					continue
+				}
+				seen[prefix] = struct{}{}
+				bypassPrefixes = append(bypassPrefixes, prefix)
+			}
+			return ips, nil
+		}
+		for _, bypass := range h.Config.RouteBypass {
+			if _, err := addBypass(bypass); err != nil {
+				return fmt.Errorf("parse tun route_bypass %q: %w", bypass, err)
+			}
+		}
+		if autoBypass {
+			addHost := func(host string) []netip.Addr {
+				ips, err := addBypass(host)
 				if err != nil {
 					log.Warn().Err(err).Str("tun_name", h.name).Str("host", host).Msg("resolve tun bypass route error")
 					return nil
 				}
+				return ips
 			}
-			for _, ip := range ips {
-				if !ip.Is4() {
-					continue
-				}
-				if _, ok := seen[ip]; ok {
-					continue
-				}
-				seen[ip] = struct{}{}
-				bypassPrefixes = append(bypassPrefixes, netip.PrefixFrom(ip, 32))
-			}
-			return ips
-		}
 
-		for _, dialer := range h.Dialers {
-			for dialer != nil {
-				switch d := dialer.(type) {
-				case *HTTPDialer:
-					host := d.Host
-					for _, value := range d.Resolve {
-						if value != "" {
-							host = value
-							break
+			for _, dialer := range h.Dialers {
+				for dialer != nil {
+					switch d := dialer.(type) {
+					case *HTTPDialer:
+						host := d.Host
+						for _, value := range d.Resolve {
+							if value != "" {
+								host = value
+								break
+							}
 						}
+						addHost(host)
+						dialer = d.Dialer
+					case *HTTP2Dialer:
+						addHost(d.Host)
+						dialer = d.Dialer
+					case *HTTP3Dialer:
+						if d.Resolve != "" {
+							addHost(d.Resolve)
+						} else if ips := addHost(d.Host); len(ips) > 0 {
+							d.Resolve = ips[0].String()
+						}
+						dialer = nil
+					case *SocksDialer:
+						addHost(d.Host)
+						dialer = d.Dialer
+					case *SSHDialer:
+						addHost(d.Host)
+						dialer = d.Dialer
+					default:
+						dialer = nil
 					}
-					addHost(host)
-					dialer = d.Dialer
-				case *HTTP2Dialer:
-					addHost(d.Host)
-					dialer = d.Dialer
-				case *HTTP3Dialer:
-					if d.Resolve != "" {
-						addHost(d.Resolve)
-					} else if ips := addHost(d.Host); len(ips) > 0 {
-						d.Resolve = ips[0].String()
-					}
-					dialer = nil
-				case *SocksDialer:
-					addHost(d.Host)
-					dialer = d.Dialer
-				case *SSHDialer:
-					addHost(d.Host)
-					dialer = d.Dialer
-				default:
-					dialer = nil
 				}
 			}
-		}
-		if h.LocalDialer != nil && h.LocalDialer.DnsResolver != nil && h.LocalDialer.DnsResolver.Client != nil {
-			addHost(h.LocalDialer.DnsResolver.Client.Addr)
+			if h.LocalDialer != nil && h.LocalDialer.DnsResolver != nil && h.LocalDialer.DnsResolver.Client != nil {
+				addHost(h.LocalDialer.DnsResolver.Client.Addr)
+			}
 		}
 	}
 	cleanup, err := ConfigureTunInterface(h.name, addressPrefix, routePrefix, cmp.Or(h.Config.RouteMetric, 32767), bypassPrefixes)
