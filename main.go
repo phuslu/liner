@@ -500,7 +500,7 @@ func main() {
 	}
 
 	memoryDialers := &MemoryDialers{xsync.NewMap[string, *MemoryDialer]()}
-	unloads := []func(){}
+	unloadHandlers := []interface{ Unload() error }{}
 
 	// tls inspector
 	tlsConfigurator := &TLSInspector{
@@ -1023,7 +1023,7 @@ func main() {
 		}
 
 		log.Info().Str("version", version).Str("tun_name", h.name).Int("tun_mtu", h.mtu).Msg("liner create and serve tun")
-		unloads = append(unloads, func() { h.Unload() })
+		unloadHandlers = append(unloadHandlers, h)
 		go h.Serve(context.Background())
 	}
 
@@ -1207,9 +1207,9 @@ func main() {
 
 	<-ctx.Done()
 
-	log.Info().Msg("liner flush logs and exit.")
-	for _, unload := range slices.Backward(unloads) {
-		unload()
+	log.Info().Msg("liner unload handlers and flush logs.")
+	for _, h := range slices.Backward(unloadHandlers) {
+		h.Unload()
 	}
 	for _, w := range []log.Writer{
 		dataLogger.Writer,
