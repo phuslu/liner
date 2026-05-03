@@ -16,6 +16,8 @@
 import Cocoa
 import Darwin
 import Foundation
+import Security
+import SystemConfiguration
 
 // ============================================================
 // 常量
@@ -67,6 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var consoleWindow: NSWindow!
     var consoleView: NSTextView!
     var childProcess: Process?
+    var authorization: AuthorizationRef?
     var expectedTerminationPids = Set<Int32>()
     var currentColor: NSColor = ansiColors[0]
     let consoleFont = NSFont(name: "Monaco", size: 12.0)
@@ -833,18 +836,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func applyProxyMode(_ mode: ProxyMode) {
-        let services = networkServices()
-        guard !services.isEmpty else {
-            appendToConsole("No enabled network services found.\n",
-                            color: ansiColors[1])
-            showConsole(nil)
-            return
-        }
-
         let settings = resolveProxySettings()
-        let commands = proxyCommands(mode: mode,
-                                     settings: settings,
-                                     services: services)
         let modeName: String
         switch mode {
         case .off:
@@ -855,114 +847,108 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             modeName = "HTTP/HTTPS \(settings.address)"
         }
 
-        appendToConsole(
-            "Applying System Proxy '\(modeName)' to: \(services.joined(separator: ", "))\n",
-            color: ansiColors[7])
-        runAdminCommands(commands,
-                         successMessage: "System proxy updated.\n")
-    }
-
-    private func proxyCommands(mode: ProxyMode,
-                               settings: ProxySettings,
-                               services: [String]) -> [String] {
-        var commands = [String]()
-        for service in services {
-            let svc = shellQuote(service)
-            switch mode {
-            case .off:
-                commands.append("/usr/sbin/networksetup -setwebproxystate \(svc) off")
-                commands.append("/usr/sbin/networksetup -setsecurewebproxystate \(svc) off")
-                commands.append("/usr/sbin/networksetup -setautoproxystate \(svc) off")
-            case .pac:
-                commands.append("/usr/sbin/networksetup -setautoproxyurl \(svc) \(shellQuote(settings.pacURL))")
-                commands.append("/usr/sbin/networksetup -setautoproxystate \(svc) on")
-                commands.append("/usr/sbin/networksetup -setwebproxystate \(svc) off")
-                commands.append("/usr/sbin/networksetup -setsecurewebproxystate \(svc) off")
-            case .http:
-                commands.append("/usr/sbin/networksetup -setwebproxy \(svc) \(shellQuote(settings.host)) \(shellQuote(settings.port))")
-                commands.append("/usr/sbin/networksetup -setwebproxystate \(svc) on")
-                commands.append("/usr/sbin/networksetup -setsecurewebproxy \(svc) \(shellQuote(settings.host)) \(shellQuote(settings.port))")
-                commands.append("/usr/sbin/networksetup -setsecurewebproxystate \(svc) on")
-                commands.append("/usr/sbin/networksetup -setautoproxystate \(svc) off")
-            }
-        }
-        return commands
-    }
-
-    private func networkServices() -> [String] {
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/sbin/networksetup")
-        task.arguments = ["-listallnetworkservices"]
-
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = pipe
-
         do {
-            try task.run()
-            task.waitUntilExit()
+            let services = try setSystemProxy(mode: mode, settings: settings)
+            appendToConsole(
+                "Applied System Proxy '\(modeName)' to: \(services.joined(separator: ", "))\n",
+                color: ansiColors[2])
         } catch {
-            appendToConsole("networksetup failed: \(error)\n",
+            appendToConsole("System proxy update failed: \(error.localizedDescription)\n",
                             color: ansiColors[1])
-            return []
+            showConsole(nil)
         }
-
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        let output = String(data: data, encoding: .utf8)
-                     ?? String(decoding: data, as: UTF8.self)
-        guard task.terminationStatus == 0 else {
-            appendToConsole("networksetup failed: \(output)\n",
-                            color: ansiColors[1])
-            return []
-        }
-
-        return output
-            .split(whereSeparator: { $0 == "\n" || $0 == "\r" })
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { line in
-                !line.isEmpty &&
-                !line.hasPrefix("*") &&
-                !line.hasPrefix("An asterisk")
-            }
     }
 
-    private func shellQuote(_ value: String) -> String {
-        if value.isEmpty { return "''" }
-        return "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    private func setSystemProxy(mode: ProxyMode,
+                                settings: ProxySettings) throws -> [String] {
+        let prefs = try authorizedPreferences()
+        guard let set = SCNetworkSetCopyCurrent(prefs),
+              let services = SCNetworkSetCopyServices(set) as? [SCNetworkService] else {
+            throw scError("read network services")
+        }
+
+        var changed = [String]()
+        for service in services where SCNetworkServiceGetEnabled(service) {
+            guard let proto = SCNetworkServiceCopyProtocol(
+                service, kSCNetworkProtocolTypeProxies) else {
+                continue
+            }
+
+            var config = (SCNetworkProtocolGetConfiguration(proto)
+                          as? [String: Any]) ?? [:]
+            applyProxyConfig(&config, mode: mode, settings: settings)
+
+            guard SCNetworkProtocolSetConfiguration(proto, config as CFDictionary) else {
+                throw scError("set proxy protocol")
+            }
+            changed.append((SCNetworkServiceGetName(service) as String?) ?? "Unknown")
+        }
+
+        guard !changed.isEmpty else {
+            throw simpleError("no enabled network services found")
+        }
+        guard SCPreferencesCommitChanges(prefs) else {
+            throw scError("commit proxy settings")
+        }
+        guard SCPreferencesApplyChanges(prefs) else {
+            throw scError("apply proxy settings")
+        }
+        return changed
     }
 
-    // 用 osascript 弹系统授权框，执行需要 root 的 networksetup
-    private func runAdminCommands(_ cmds: [String], successMessage: String) {
-        let joined = cmds.joined(separator: " && ")
-        let osa = "do shell script \(appleScriptStringLiteral(joined)) " +
-                  "with administrator privileges"
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        task.arguments = ["-e", osa]
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = pipe
-        task.terminationHandler = { [weak self] process in
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            let output = String(data: data, encoding: .utf8)
-                         ?? String(decoding: data, as: UTF8.self)
-            DispatchQueue.main.async {
-                if process.terminationStatus == 0 {
-                    self?.appendToConsole(successMessage,
-                                          color: ansiColors[2])
-                } else {
-                    self?.appendToConsole(
-                        "System proxy update failed: \(output)\n",
-                        color: ansiColors[1])
-                    self?.showConsole(nil)
-                }
+    private func applyProxyConfig(_ config: inout [String: Any],
+                                  mode: ProxyMode,
+                                  settings: ProxySettings) {
+        config[kSCPropNetProxiesHTTPEnable as String] = mode == .http ? 1 : 0
+        config[kSCPropNetProxiesHTTPSEnable as String] = mode == .http ? 1 : 0
+        config[kSCPropNetProxiesProxyAutoConfigEnable as String] = mode == .pac ? 1 : 0
+
+        if mode == .http {
+            let port = Int(settings.port) ?? 0
+            config[kSCPropNetProxiesHTTPProxy as String] = settings.host
+            config[kSCPropNetProxiesHTTPPort as String] = port
+            config[kSCPropNetProxiesHTTPSProxy as String] = settings.host
+            config[kSCPropNetProxiesHTTPSPort as String] = port
+        } else if mode == .pac {
+            config[kSCPropNetProxiesProxyAutoConfigURLString as String] = settings.pacURL
+        }
+    }
+
+    private func authorizedPreferences() throws -> SCPreferences {
+        if authorization == nil {
+            var auth: AuthorizationRef?
+            let flags: AuthorizationFlags = [
+                .interactionAllowed,
+                .extendRights,
+                .preAuthorize,
+            ]
+            let status = AuthorizationCreate(nil, nil, flags, &auth)
+            guard status == errAuthorizationSuccess, let auth = auth else {
+                throw authorizationError(status)
             }
+            authorization = auth
         }
-        do {
-            try task.run()
-        } catch {
-            appendToConsole("osascript failed: \(error)\n", color: ansiColors[1])
+
+        guard let prefs = SCPreferencesCreateWithAuthorization(
+            nil, APP_TITLE as CFString, nil, authorization) else {
+            throw scError("open network preferences")
         }
+        return prefs
+    }
+
+    private func authorizationError(_ status: OSStatus) -> Error {
+        let message = SecCopyErrorMessageString(status, nil) as String?
+        return simpleError(message ?? "authorization failed: \(status)")
+    }
+
+    private func scError(_ context: String) -> Error {
+        simpleError("\(context): \(String(cString: SCErrorString(SCError())))")
+    }
+
+    private func simpleError(_ message: String) -> Error {
+        NSError(domain: APP_TITLE,
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: message])
     }
 }
 
