@@ -12,6 +12,7 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -177,36 +178,53 @@ func (h *TunHandler) Load() error {
 
 			for _, dialer := range h.Dialers {
 				for dialer != nil {
-					switch d := dialer.(type) {
-					case *HTTPDialer:
-						host := d.Host
-						for _, value := range d.Resolve {
-							if value != "" {
-								host = value
-								break
+					v := reflect.ValueOf(dialer)
+					if v.Kind() != reflect.Pointer || v.IsNil() {
+						break
+					}
+					v = v.Elem()
+					if v.Kind() != reflect.Struct {
+						break
+					}
+
+					host := ""
+					if f := v.FieldByName("Host"); f.Kind() == reflect.String {
+						host = f.String()
+					}
+					if f := v.FieldByName("Resolve"); f.IsValid() {
+						switch f.Kind() {
+						case reflect.String:
+							if resolve := f.String(); resolve != "" {
+								host = resolve
+							} else {
+								if ips := addHost(host); len(ips) > 0 && f.CanSet() {
+									f.SetString(ips[0].String())
+								}
+								host = ""
+							}
+						case reflect.Map:
+							for _, key := range f.MapKeys() {
+								if key.Kind() == reflect.String {
+									value := f.MapIndex(key)
+									if value.Kind() == reflect.String && value.String() != "" {
+										host = value.String()
+										break
+									}
+								}
 							}
 						}
-						addHost(host)
-						dialer = d.Dialer
-					case *HTTP2Dialer:
-						addHost(d.Host)
-						dialer = d.Dialer
-					case *HTTP3Dialer:
-						if d.Resolve != "" {
-							addHost(d.Resolve)
-						} else if ips := addHost(d.Host); len(ips) > 0 {
-							d.Resolve = ips[0].String()
-						}
-						dialer = nil
-					case *SocksDialer:
-						addHost(d.Host)
-						dialer = d.Dialer
-					case *SSHDialer:
-						addHost(d.Host)
-						dialer = d.Dialer
-					default:
-						dialer = nil
 					}
+					if host != "" {
+						addHost(host)
+					}
+
+					if f := v.FieldByName("Dialer"); f.IsValid() && f.CanInterface() {
+						if next, ok := f.Interface().(Dialer); ok {
+							dialer = next
+							continue
+						}
+					}
+					dialer = nil
 				}
 			}
 			if h.LocalDialer != nil && h.LocalDialer.DnsResolver != nil && h.LocalDialer.DnsResolver.Client != nil {
