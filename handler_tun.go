@@ -52,6 +52,7 @@ type TunHandler struct {
 	Config      TunConfig
 	DataLogger  log.Logger
 	GeoResolver *GeoResolver
+	DnsResolver *DnsResolver
 	LocalDialer *LocalDialer
 	Functions   *Functions
 	Dialers     map[string]Dialer
@@ -75,6 +76,9 @@ func (h *TunHandler) Load() error {
 		if h.dialer, err = h.Functions.ParseTemplate("tun_dialer", s); err != nil {
 			return err
 		}
+	}
+	if h.DnsResolver == nil && h.LocalDialer != nil {
+		h.DnsResolver = h.LocalDialer.DnsResolver
 	}
 
 	h.mtu = cmp.Or(h.Config.MTU, 1420)
@@ -165,11 +169,15 @@ func (h *TunHandler) Load() error {
 					prefixes = append(prefixes, netip.PrefixFrom(ip, 32))
 					break
 				}
-				if h.LocalDialer == nil || h.LocalDialer.DnsResolver == nil || h.LocalDialer.DnsResolver.Client == nil {
+				resolver := h.DnsResolver
+				if resolver == nil && h.LocalDialer != nil {
+					resolver = h.LocalDialer.DnsResolver
+				}
+				if resolver == nil || resolver.Client == nil {
 					return nil, errors.New("dns resolver unavailable")
 				}
 				var err error
-				if ips, err = h.LocalDialer.DnsResolver.LookupNetIP(ctx, "ip4", value); err != nil {
+				if ips, err = resolver.LookupNetIP(ctx, "ip4", value); err != nil {
 					return nil, err
 				}
 				for _, ip := range ips {
@@ -255,9 +263,15 @@ func (h *TunHandler) Load() error {
 					dialer = nil
 				}
 			}
-			if h.LocalDialer != nil && h.LocalDialer.DnsResolver != nil && h.LocalDialer.DnsResolver.Client != nil {
-				addHost(h.LocalDialer.DnsResolver.Client.Addr)
+			addResolverHost := func(resolver *DnsResolver) {
+				if resolver != nil && resolver.Client != nil {
+					addHost(resolver.Client.Addr)
+				}
 			}
+			if h.LocalDialer != nil {
+				addResolverHost(h.LocalDialer.DnsResolver)
+			}
+			addResolverHost(h.DnsResolver)
 		}
 	}
 	cleanup, err := ConfigureTunInterface(h.name, addressPrefix, routePrefixes, cmp.Or(h.Config.RouteMetric, 32767), bypassPrefixes)
@@ -560,6 +574,14 @@ func (h *TunHandler) forwardTCP(r *tcp.ForwarderRequest) {
 		return nil, nil
 	}
 
+	if req.Port == 53 && h.DnsResolver != nil && h.DnsResolver.Client != nil {
+		if _, err := ensureLocalConn(); err != nil {
+			return
+		}
+		h.serveTCPDNS(req, lconn)
+		return
+	}
+
 	forward, ok := h.prepareDial(req)
 	if !ok {
 		if !completed {
@@ -619,12 +641,12 @@ func (h *TunHandler) serveUDP(r *udp.ForwarderRequest) {
 	lconn := gonet.NewUDPConn(&wq, ep)
 	defer lconn.Close()
 
-	if req.Port == 53 && h.LocalDialer != nil && h.LocalDialer.DnsResolver != nil && h.LocalDialer.DnsResolver.Client != nil {
-		log.Info().Xid("trace_id", req.TraceID).Str("tun_name", h.name).Str("tun_network", req.Network).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Str("forward_dialer_name", h.LocalDialer.DnsResolver.Client.Addr).Msg("forward tun request")
-		defer h.logData(context.Background(), req, h.LocalDialer.DnsResolver.Client.Addr)
+	if req.Port == 53 && h.DnsResolver != nil && h.DnsResolver.Client != nil {
+		client := h.DnsResolver.Client
+		log.Info().Xid("trace_id", req.TraceID).Str("tun_name", h.name).Str("tun_network", req.Network).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Str("forward_dialer_name", client.Addr).Msg("forward tun request")
+		defer h.logData(context.Background(), req, client.Addr)
 
-		client := h.LocalDialer.DnsResolver.Client
-		buf := tunGetCopyBuffer(cmp.Or(h.mtu, 1500))
+		buf := tunGetCopyBuffer(tunCopyBufferSize)
 		defer tunPutCopyBuffer(buf)
 		timeout := time.Duration(cmp.Or(h.Config.Forward.UdpTimeout, 120)) * time.Second
 		for {
@@ -635,44 +657,8 @@ func (h *TunHandler) serveUDP(r *udp.ForwarderRequest) {
 			if err != nil {
 				return
 			}
-			ctx := context.Background()
-			cancel := func() {}
-			if h.Config.Forward.DialTimeout > 0 {
-				ctx, cancel = context.WithTimeout(ctx, time.Duration(h.Config.Forward.DialTimeout)*time.Second)
-			}
-			var rconn net.Conn
-			if client.Dialer != nil {
-				rconn, err = client.Dialer.DialContext(ctx, "", "")
-			} else {
-				rconn, err = (&net.Dialer{}).DialContext(ctx, "udp", client.Addr)
-			}
+			n, err = h.exchangeTunDNS(req, buf[:n], buf)
 			if err != nil {
-				cancel()
-				log.Error().Err(err).Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("dns_server", client.Addr).Msg("tun dns dial error")
-				return
-			}
-			put := func() {
-				_ = rconn.SetDeadline(time.Time{})
-				if d, _ := client.Dialer.(interface{ Put(net.Conn) }); d != nil {
-					d.Put(rconn)
-				} else {
-					rconn.Close()
-				}
-			}
-			if client.Timeout > 0 {
-				_ = rconn.SetDeadline(time.Now().Add(client.Timeout))
-			}
-			if _, err = rconn.Write(buf[:n]); err != nil {
-				put()
-				cancel()
-				log.Error().Err(err).Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("dns_server", client.Addr).Msg("tun dns write error")
-				return
-			}
-			n, err = rconn.Read(buf)
-			put()
-			cancel()
-			if err != nil {
-				log.Error().Err(err).Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("dns_server", client.Addr).Msg("tun dns read error")
 				return
 			}
 			if _, err = lconn.Write(buf[:n]); err != nil {
@@ -758,6 +744,96 @@ func (h *TunHandler) serveUDP(r *udp.ForwarderRequest) {
 	<-done
 
 	h.logData(context.Background(), req, forward.dialerName)
+}
+
+func (h *TunHandler) serveTCPDNS(req TunRequest, lconn net.Conn) {
+	client := h.DnsResolver.Client
+	log.Info().Xid("trace_id", req.TraceID).Str("tun_name", h.name).Str("tun_network", req.Network).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Str("forward_dialer_name", client.Addr).Msg("forward tun request")
+	defer h.logData(context.Background(), req, client.Addr)
+
+	buf := tunGetCopyBuffer(tunCopyBufferSize)
+	defer tunPutCopyBuffer(buf)
+	resp := tunGetCopyBuffer(tunCopyBufferSize)
+	defer tunPutCopyBuffer(resp)
+	var header [2]byte
+	timeout := time.Duration(cmp.Or(h.Config.Forward.UdpTimeout, 120)) * time.Second
+	for {
+		if timeout > 0 {
+			_ = lconn.SetReadDeadline(time.Now().Add(timeout))
+		}
+		if _, err := io.ReadFull(lconn, header[:]); err != nil {
+			return
+		}
+		n := int(header[0])<<8 | int(header[1])
+		if n == 0 {
+			continue
+		}
+		if n > len(buf) {
+			log.Error().Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Int("dns_query_size", n).Msg("tun dns query too large")
+			return
+		}
+		if _, err := io.ReadFull(lconn, buf[:n]); err != nil {
+			return
+		}
+		n, err := h.exchangeTunDNS(req, buf[:n], resp)
+		if err != nil {
+			return
+		}
+		header[0], header[1] = byte(n>>8), byte(n)
+		if _, err = lconn.Write(header[:]); err != nil {
+			return
+		}
+		if _, err = lconn.Write(resp[:n]); err != nil {
+			return
+		}
+	}
+}
+
+func (h *TunHandler) exchangeTunDNS(req TunRequest, query, response []byte) (int, error) {
+	client := h.DnsResolver.Client
+	ctx := context.Background()
+	cancel := func() {}
+	if h.Config.Forward.DialTimeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(h.Config.Forward.DialTimeout)*time.Second)
+	}
+	defer cancel()
+
+	var (
+		rconn net.Conn
+		err   error
+	)
+	if client.Dialer != nil {
+		rconn, err = client.Dialer.DialContext(ctx, "udp", client.Addr)
+	} else {
+		rconn, err = (&net.Dialer{}).DialContext(ctx, "udp", client.Addr)
+	}
+	if err != nil {
+		log.Error().Err(err).Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("dns_server", client.Addr).Msg("tun dns dial error")
+		return 0, err
+	}
+	put := func() {
+		_ = rconn.SetDeadline(time.Time{})
+		if d, _ := client.Dialer.(interface{ Put(net.Conn) }); d != nil {
+			d.Put(rconn)
+		} else {
+			rconn.Close()
+		}
+	}
+	if client.Timeout > 0 {
+		_ = rconn.SetDeadline(time.Now().Add(client.Timeout))
+	}
+	if _, err = rconn.Write(query); err != nil {
+		put()
+		log.Error().Err(err).Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("dns_server", client.Addr).Msg("tun dns write error")
+		return 0, err
+	}
+	n, err := rconn.Read(response)
+	put()
+	if err != nil {
+		log.Error().Err(err).Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("dns_server", client.Addr).Msg("tun dns read error")
+		return 0, err
+	}
+	return n, nil
 }
 
 const tunCopyBufferSize = 64 * 1024

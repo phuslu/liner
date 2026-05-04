@@ -1009,10 +1009,18 @@ func main() {
 
 	// tun handler
 	for _, tunConfig := range config.Tun {
+		tunResolver := dnsResolver
+		if server := strings.TrimSpace(tunConfig.DnsServer); server != "" {
+			tunResolver, err = dnsResolverPool.Get(server, 600*time.Second)
+			if err != nil {
+				log.Fatal().Err(err).Str("tun_name", tunConfig.Name).Str("dns_server", tunConfig.DnsServer).Msg("tun dns_server load error")
+			}
+		}
 		h := &TunHandler{
 			Config:      tunConfig,
 			DataLogger:  dataLogger,
 			GeoResolver: geoResolver,
+			DnsResolver: tunResolver,
 			LocalDialer: dialer,
 			Dialers:     dialers,
 			Functions:   functions,

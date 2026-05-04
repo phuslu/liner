@@ -215,6 +215,7 @@ redsocks:
 tun:
   - name: utun53
     address: 198.18.0.1/15
+    dns_server: https://8.8.8.8/dns-query
     routes: []
     # routes:
     #   - 0.0.0.0/0

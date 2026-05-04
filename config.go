@@ -145,6 +145,7 @@ type TunConfig struct {
 	RouteMetric    int      `json:"route_metric" yaml:"route_metric"`
 	MTU            int      `json:"mtu" yaml:"mtu"`
 	StackQueueSize int      `json:"stack_queue_size" yaml:"stack_queue_size"`
+	DnsServer      string   `json:"dns_server" yaml:"dns_server"`
 	Forward        struct {
 		Dialer         string `json:"dialer" yaml:"dialer"`
 		DialTimeout    int    `json:"dial_timeout" yaml:"dial_timeout"`
