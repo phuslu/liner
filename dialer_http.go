@@ -35,7 +35,7 @@ type HTTPDialer struct {
 	CACert      string
 	ClientKey   string
 	ClientCert  string
-	Resolve     map[string]string
+	Resolve     string
 	Dialer      Dialer
 	TLSCache    *TLSClientSessionCache
 	Logger      *slog.Logger
@@ -90,13 +90,7 @@ func (d *HTTPDialer) DialContext(ctx context.Context, network, addr string) (net
 		return nil, errors.New("httpdialer: no support for HTTP proxy connections of type " + network)
 	}
 
-	hostport := net.JoinHostPort(d.Host, d.Port)
-	for _, key := range []string{hostport, d.Host} {
-		if value := d.Resolve[key]; value != "" {
-			hostport = net.JoinHostPort(value, d.Port)
-			break
-		}
-	}
+	hostport := net.JoinHostPort(cmp.Or(d.Resolve, d.Host), cmp.Or(d.Port, map[bool]string{false: "80", true: "443"}[d.TLS]))
 
 	dialer := d.Dialer
 	if md := MemoryDialerOf(ctx, network, hostport); md != nil {

@@ -331,7 +331,7 @@ func main() {
 				ClientKey:   u.Query().Get("key"),
 				ClientCert:  u.Query().Get("cert"),
 				Logger:      slog.Default(),
-				Resolve:     map[string]string{u.Host: u.Query().Get("resolve")},
+				Resolve:     u.Query().Get("resolve"),
 				TLSCache:    tlsClientSessionCache,
 				DnsResolver: dnsResolver,
 				Dialer:      underlay,
@@ -665,20 +665,16 @@ func main() {
 
 		server := &http.Server{
 			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if s, _, err := net.SplitHostPort(r.TLS.ServerName); err == nil {
-					r.TLS.ServerName = s
-				}
-				servername := r.TLS.ServerName
-				h, matched := handlers.Names[servername]
+				h, matched := handlers.Names[r.TLS.ServerName]
 				if !matched {
 					for _, affix := range handlers.Affix {
 						switch {
 						case affix.Prefix == "":
-							matched = strings.HasSuffix(servername, affix.Suffix)
+							matched = strings.HasSuffix(r.TLS.ServerName, affix.Suffix)
 						case affix.Suffix == "":
-							matched = strings.HasPrefix(servername, affix.Prefix)
+							matched = strings.HasPrefix(r.TLS.ServerName, affix.Prefix)
 						default:
-							matched = strings.HasPrefix(servername, affix.Prefix) && strings.HasSuffix(servername, affix.Suffix)
+							matched = strings.HasPrefix(r.TLS.ServerName, affix.Prefix) && strings.HasSuffix(r.TLS.ServerName, affix.Suffix)
 						}
 						if matched {
 							h = affix.Handler
