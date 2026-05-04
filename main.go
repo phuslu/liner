@@ -1023,7 +1023,7 @@ func main() {
 			Functions:   functions,
 		}
 
-		if err = h.Load(); err != nil {
+		if err = h.Load(context.Background()); err != nil {
 			log.Fatal().Err(err).Str("tun_name", tunConfig.Name).Msg("tun handler load error")
 		}
 
