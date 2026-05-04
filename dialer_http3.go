@@ -136,8 +136,11 @@ func (d *HTTP3Dialer) DialContext(ctx context.Context, network, addr string) (ne
 
 	var remoteAddr, localAddr net.Addr
 	var quicConn *quic.Conn
+	// The caller context bounds CONNECT setup; the returned stream must outlive it.
+	streamCtx, streamCancel := context.WithCancel(context.WithoutCancel(ctx))
+	stopDialCancel := context.AfterFunc(ctx, streamCancel)
 
-	req = req.WithContext(httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+	req = req.WithContext(httptrace.WithClientTrace(streamCtx, &httptrace.ClientTrace{
 		GotConn: func(connInfo httptrace.GotConnInfo) {
 			remoteAddr, localAddr = connInfo.Conn.RemoteAddr(), connInfo.Conn.LocalAddr()
 			// see https://github.com/quic-go/quic-go/blob/master/http3/trace.go
@@ -150,12 +153,25 @@ func (d *HTTP3Dialer) DialContext(ctx context.Context, network, addr string) (ne
 
 	resp, err := d.transport.RoundTripOpt(req, http3.RoundTripOpt{OnlyCachedConn: false})
 	if err != nil {
+		stopDialCancel()
+		streamCancel()
+		_ = pw.CloseWithError(err)
 		// if errmsg := err.Error(); strings.Contains(errmsg, "timeout: ") || strings.Contains(errmsg, "context deadline exceeded") || strings.Contains(errmsg, "context canceled") {
 		// 	if d.Logger != nil {
 		// 		d.Logger.Warn("close underlying http3 connection", "error", err)
 		// 	}
 		// }
 		return nil, err
+	}
+	if !stopDialCancel() {
+		_ = resp.Body.Close()
+		streamCancel()
+		if err := ctx.Err(); err != nil {
+			_ = pw.CloseWithError(err)
+			return nil, err
+		}
+		_ = pw.CloseWithError(context.Canceled)
+		return nil, context.Canceled
 	}
 
 	if d.Logger != nil {
@@ -165,7 +181,10 @@ func (d *HTTP3Dialer) DialContext(ctx context.Context, network, addr string) (ne
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusSwitchingProtocols {
 		data, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
-		return nil, errors.New("proxy: read from " + d.Host + " error: " + resp.Status + ": " + string(data))
+		streamCancel()
+		err := errors.New("proxy: read from " + d.Host + " error: " + resp.Status + ": " + string(data))
+		_ = pw.CloseWithError(err)
+		return nil, err
 	}
 
 	if remoteAddr == nil || localAddr == nil {
@@ -175,10 +194,19 @@ func (d *HTTP3Dialer) DialContext(ctx context.Context, network, addr string) (ne
 	return &http3Stream{
 		r:          resp.Body,
 		w:          pw,
-		closed:     make(chan struct{}),
 		remoteAddr: remoteAddr,
 		localAddr:  localAddr,
 		quicConn:   quicConn,
+		cancel: &httpStreamCancel{
+			cancel:    streamCancel,
+			closeRead: func(error) error { return resp.Body.Close() },
+			closeWrite: func(err error) error {
+				if err != nil {
+					return pw.CloseWithError(err)
+				}
+				return pw.Close()
+			},
+		},
 	}, nil
 }
 
@@ -186,35 +214,24 @@ type http3Stream struct {
 	r io.ReadCloser
 	w io.Writer
 
-	closed chan struct{}
-
 	remoteAddr net.Addr
 	localAddr  net.Addr
 	quicConn   *quic.Conn
+	cancel     *httpStreamCancel
 }
 
 func (c *http3Stream) Read(b []byte) (n int, err error) {
-	return c.r.Read(b)
+	n, err = c.r.Read(b)
+	return n, c.cancel.ReadError(err)
 }
 
 func (c *http3Stream) Write(b []byte) (n int, err error) {
-	return c.w.Write(b)
+	n, err = c.w.Write(b)
+	return n, c.cancel.WriteError(err)
 }
 
 func (c *http3Stream) Close() (err error) {
-	select {
-	case <-c.closed:
-		return
-	default:
-		close(c.closed)
-	}
-	if rc, ok := c.r.(io.Closer); ok {
-		err = rc.Close()
-	}
-	if w, ok := c.w.(io.Closer); ok {
-		err = w.Close()
-	}
-	return
+	return c.cancel.Close()
 }
 
 func (c *http3Stream) RemoteAddr() net.Addr {
@@ -226,18 +243,15 @@ func (c *http3Stream) LocalAddr() net.Addr {
 }
 
 func (c *http3Stream) SetDeadline(t time.Time) error {
-	return nil
-	// return &net.OpError{Op: "set", Net: "http3", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
+	return c.cancel.SetDeadline(t)
 }
 
 func (c *http3Stream) SetReadDeadline(t time.Time) error {
-	return nil
-	// return &net.OpError{Op: "set", Net: "http3", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
+	return c.cancel.SetReadDeadline(t)
 }
 
 func (c *http3Stream) SetWriteDeadline(t time.Time) error {
-	return nil
-	// return &net.OpError{Op: "set", Net: "http3", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
+	return c.cancel.SetWriteDeadline(t)
 }
 
 func (c *http3Stream) QuicConn() *quic.Conn {

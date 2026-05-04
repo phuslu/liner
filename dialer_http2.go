@@ -152,8 +152,11 @@ func (d *HTTP2Dialer) DialContext(ctx context.Context, network, addr string) (ne
 
 	var remoteAddr, localAddr net.Addr
 	var netConn net.Conn
+	// The caller context bounds CONNECT setup; the returned stream must outlive it.
+	streamCtx, streamCancel := context.WithCancel(context.WithoutCancel(ctx))
+	stopDialCancel := context.AfterFunc(ctx, streamCancel)
 
-	req = req.WithContext(httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+	req = req.WithContext(httptrace.WithClientTrace(streamCtx, &httptrace.ClientTrace{
 		GotConn: func(connInfo httptrace.GotConnInfo) {
 			remoteAddr, localAddr = connInfo.Conn.RemoteAddr(), connInfo.Conn.LocalAddr()
 			netConn = connInfo.Conn
@@ -162,13 +165,29 @@ func (d *HTTP2Dialer) DialContext(ctx context.Context, network, addr string) (ne
 
 	resp, err := d.transport.RoundTrip(req)
 	if err != nil {
+		stopDialCancel()
+		streamCancel()
+		_ = pw.CloseWithError(err)
 		return nil, err
+	}
+	if !stopDialCancel() {
+		_ = resp.Body.Close()
+		streamCancel()
+		if err := ctx.Err(); err != nil {
+			_ = pw.CloseWithError(err)
+			return nil, err
+		}
+		_ = pw.CloseWithError(context.Canceled)
+		return nil, context.Canceled
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		data, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
-		return nil, errors.New("proxy: read from " + d.Host + " error: " + resp.Status + ": " + string(data))
+		streamCancel()
+		err := errors.New("proxy: read from " + d.Host + " error: " + resp.Status + ": " + string(data))
+		_ = pw.CloseWithError(err)
+		return nil, err
 	}
 
 	if remoteAddr == nil || localAddr == nil {
@@ -178,10 +197,19 @@ func (d *HTTP2Dialer) DialContext(ctx context.Context, network, addr string) (ne
 	conn := &http2Stream{
 		r:          resp.Body,
 		w:          pw,
-		closed:     make(chan struct{}),
 		remoteAddr: remoteAddr,
 		localAddr:  localAddr,
 		netConn:    netConn,
+		cancel: &httpStreamCancel{
+			cancel:    streamCancel,
+			closeRead: func(error) error { return resp.Body.Close() },
+			closeWrite: func(err error) error {
+				if err != nil {
+					return pw.CloseWithError(err)
+				}
+				return pw.Close()
+			},
+		},
 	}
 
 	return conn, nil
@@ -191,35 +219,24 @@ type http2Stream struct {
 	r io.ReadCloser
 	w io.Writer
 
-	closed chan struct{}
-
 	remoteAddr net.Addr
 	localAddr  net.Addr
 	netConn    net.Conn
+	cancel     *httpStreamCancel
 }
 
 func (c *http2Stream) Read(b []byte) (n int, err error) {
-	return c.r.Read(b)
+	n, err = c.r.Read(b)
+	return n, c.cancel.ReadError(err)
 }
 
 func (c *http2Stream) Write(b []byte) (n int, err error) {
-	return c.w.Write(b)
+	n, err = c.w.Write(b)
+	return n, c.cancel.WriteError(err)
 }
 
 func (c *http2Stream) Close() (err error) {
-	select {
-	case <-c.closed:
-		return
-	default:
-		close(c.closed)
-	}
-	if rc, ok := c.r.(io.Closer); ok {
-		err = rc.Close()
-	}
-	if w, ok := c.w.(io.Closer); ok {
-		err = w.Close()
-	}
-	return
+	return c.cancel.Close()
 }
 
 func (c *http2Stream) RemoteAddr() net.Addr {
@@ -231,20 +248,157 @@ func (c *http2Stream) LocalAddr() net.Addr {
 }
 
 func (c *http2Stream) SetDeadline(t time.Time) error {
-	return nil
-	// return &net.OpError{Op: "set", Net: "http2", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
+	return c.cancel.SetDeadline(t)
 }
 
 func (c *http2Stream) SetReadDeadline(t time.Time) error {
-	return nil
-	// return &net.OpError{Op: "set", Net: "http2", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
+	return c.cancel.SetReadDeadline(t)
 }
 
 func (c *http2Stream) SetWriteDeadline(t time.Time) error {
-	return nil
-	// return &net.OpError{Op: "set", Net: "http2", Source: nil, Addr: nil, Err: errors.New("deadline not supported")}
+	return c.cancel.SetWriteDeadline(t)
 }
 
 func (c *http2Stream) NetConn() net.Conn {
 	return c.netConn
+}
+
+// httpStreamCancel makes CONNECT streams behave like net.Conn for close and deadlines.
+// HTTP request streams cannot be resurrected after a deadline, so any fired deadline
+// aborts the whole stream.
+type httpStreamCancel struct {
+	cancel     context.CancelFunc
+	closeRead  func(error) error
+	closeWrite func(error) error
+
+	mu         sync.Mutex
+	closed     bool
+	readErr    error
+	writeErr   error
+	readTimer  *time.Timer
+	writeTimer *time.Timer
+}
+
+func (c *httpStreamCancel) Close() error {
+	return c.closeWithError(net.ErrClosed)
+}
+
+func (c *httpStreamCancel) ReadError(err error) error {
+	if err == nil {
+		return nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.readErr != nil {
+		return c.readErr
+	}
+	if c.closed {
+		return net.ErrClosed
+	}
+	return err
+}
+
+func (c *httpStreamCancel) WriteError(err error) error {
+	if err == nil {
+		return nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.writeErr != nil {
+		return c.writeErr
+	}
+	if c.closed {
+		return net.ErrClosed
+	}
+	return err
+}
+
+func (c *httpStreamCancel) SetDeadline(t time.Time) error {
+	return c.setDeadline(t, true, true)
+}
+
+func (c *httpStreamCancel) SetReadDeadline(t time.Time) error {
+	return c.setDeadline(t, true, false)
+}
+
+func (c *httpStreamCancel) SetWriteDeadline(t time.Time) error {
+	return c.setDeadline(t, false, true)
+}
+
+func (c *httpStreamCancel) setDeadline(t time.Time, read, write bool) error {
+	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return net.ErrClosed
+	}
+	if read && c.readTimer != nil {
+		c.readTimer.Stop()
+		c.readTimer = nil
+	}
+	if write && c.writeTimer != nil {
+		c.writeTimer.Stop()
+		c.writeTimer = nil
+	}
+	if t.IsZero() {
+		c.mu.Unlock()
+		return nil
+	}
+	d := time.Until(t)
+	if d <= 0 {
+		c.mu.Unlock()
+		_ = c.closeWithError(os.ErrDeadlineExceeded)
+		return nil
+	}
+	if read {
+		c.readTimer = time.AfterFunc(d, func() {
+			_ = c.closeWithError(os.ErrDeadlineExceeded)
+		})
+	}
+	if write {
+		c.writeTimer = time.AfterFunc(d, func() {
+			_ = c.closeWithError(os.ErrDeadlineExceeded)
+		})
+	}
+	c.mu.Unlock()
+	return nil
+}
+
+func (c *httpStreamCancel) closeWithError(err error) error {
+	if err == nil {
+		err = net.ErrClosed
+	}
+
+	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return nil
+	}
+	c.closed = true
+	c.readErr = err
+	c.writeErr = err
+	if c.readTimer != nil {
+		c.readTimer.Stop()
+		c.readTimer = nil
+	}
+	if c.writeTimer != nil {
+		c.writeTimer.Stop()
+		c.writeTimer = nil
+	}
+	cancel := c.cancel
+	closeRead := c.closeRead
+	closeWrite := c.closeWrite
+	c.mu.Unlock()
+
+	if cancel != nil {
+		cancel()
+	}
+
+	var closeReadErr, closeWriteErr error
+	if closeRead != nil {
+		closeReadErr = closeRead(err)
+	}
+	if closeWrite != nil {
+		closeWriteErr = closeWrite(err)
+	}
+	return errors.Join(closeReadErr, closeWriteErr)
 }
