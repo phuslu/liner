@@ -347,6 +347,7 @@ func main() {
 				CACert:     u.Query().Get("cacert"),
 				ClientKey:  u.Query().Get("key"),
 				ClientCert: u.Query().Get("cert"),
+				Resolve:    u.Query().Get("resolve"),
 				Logger:     slog.Default(),
 				// TLSCache:   tlsClientSessionCache,
 				Dialer: underlay,

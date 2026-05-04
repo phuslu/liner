@@ -34,6 +34,7 @@ type HTTP2Dialer struct {
 	CACert     string
 	ClientKey  string
 	ClientCert string
+	Resolve    string
 
 	Logger   *slog.Logger
 	TLSCache utls.ClientSessionCache
@@ -63,7 +64,7 @@ func (d *HTTP2Dialer) init() {
 		DisableCompression: false,
 		MaxReadFrameSize:   1024 * 1024, // 1MB read frame, https://github.com/golang/go/issues/47840
 		DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
-			hostport := net.JoinHostPort(d.Host, cmp.Or(d.Port, "443"))
+			hostport := net.JoinHostPort(cmp.Or(d.Resolve, d.Host), cmp.Or(d.Port, "443"))
 			dialer := d.Dialer
 			if md := MemoryDialerOf(ctx, network, hostport); md != nil {
 				if d.Logger != nil {
