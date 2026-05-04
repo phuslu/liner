@@ -165,10 +165,19 @@ func (f *Functions) geosite(domain string) string {
 	return f.GeoResolver.GetGeoSiteInfo(f.ctx, domain).Site
 }
 
-func (f *Functions) geoip(ipStr string) (info GeoIPInfo) {
-	if strings.IndexByte(ipStr, ':') > 0 {
-		if host, _, err := net.SplitHostPort(ipStr); err == nil {
-			ipStr = host
+func (f *Functions) geoip(ip any) (info GeoIPInfo) {
+	var ipStr string
+	switch addr := ip.(type) {
+	case *netip.AddrPort:
+		ipStr = addr.Addr().String()
+	case *netip.Addr:
+		ipStr = addr.String()
+	case string:
+		ipStr = addr
+		if strings.IndexByte(ipStr, ':') > 0 {
+			if host, _, err := net.SplitHostPort(ipStr); err == nil {
+				ipStr = host
+			}
 		}
 	}
 	if ip, err := netip.ParseAddr(ipStr); err == nil {
@@ -177,7 +186,7 @@ func (f *Functions) geoip(ipStr string) (info GeoIPInfo) {
 	return
 }
 
-func (f *Functions) country(ip string) string {
+func (f *Functions) country(ip any) string {
 	return f.geoip(ip).Country
 }
 
