@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/netip"
 	"strings"
@@ -50,7 +51,7 @@ func (d *MemoryDialer) DialContext(ctx context.Context, network, address string)
 	case "tcp", "tcp4", "tcp6":
 		break
 	default:
-		return nil, net.InvalidAddrError("memory dialer network mismatched: " + network)
+		return nil, errors.ErrUnsupported
 	}
 
 	if address != d.Address {

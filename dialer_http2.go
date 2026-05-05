@@ -122,6 +122,12 @@ func (d *HTTP2Dialer) init() {
 func (d *HTTP2Dialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
 	d.init()
 
+	switch network {
+	case "tcp", "tcp6", "tcp4":
+	default:
+		return nil, errors.ErrUnsupported
+	}
+
 	pr, pw := ringbuffer.New(32 * 1024).Pipe()
 	req := &http.Request{
 		ProtoMajor: 2,

@@ -3,6 +3,7 @@ package main
 import (
 	"cmp"
 	"context"
+	"errors"
 	"log/slog"
 	"net"
 	"os"
@@ -37,6 +38,12 @@ type SSHDialer struct {
 }
 
 func (d *SSHDialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	switch network {
+	case "tcp", "tcp6", "tcp4":
+	default:
+		return nil, errors.ErrUnsupported
+	}
+
 	connect := func(ctx context.Context) (*ssh.Client, error) {
 		config := &ssh.ClientConfig{
 			User: d.Username,

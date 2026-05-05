@@ -43,9 +43,9 @@ func (d *SocksDialer) DialContext(ctx context.Context, network, addr string) (ne
 
 func (d *SocksDialer) dialsocks4(ctx context.Context, network, addr string) (net.Conn, error) {
 	switch network {
-	case "tcp", "tcp4", "tcp6":
+	case "tcp", "tcp6", "tcp4":
 	default:
-		return nil, errors.New("socksdialer: no support for SOCKS4 proxy connections of type " + network)
+		return nil, errors.ErrUnsupported
 	}
 
 	dialer := d.Dialer

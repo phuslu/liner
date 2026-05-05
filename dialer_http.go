@@ -87,7 +87,7 @@ func (d *HTTPDialer) DialContext(ctx context.Context, network, addr string) (net
 	switch network {
 	case "tcp", "tcp6", "tcp4":
 	default:
-		return nil, errors.New("httpdialer: no support for HTTP proxy connections of type " + network)
+		return nil, errors.ErrUnsupported
 	}
 
 	hostport := net.JoinHostPort(cmp.Or(d.Resolve, d.Host), cmp.Or(d.Port, map[bool]string{false: "80", true: "443"}[d.TLS]))
