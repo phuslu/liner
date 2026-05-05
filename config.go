@@ -151,6 +151,7 @@ type TunConfig struct {
 		DialTimeout    int    `json:"dial_timeout" yaml:"dial_timeout"`
 		UdpTimeout     int    `json:"udp_timeout" yaml:"udp_timeout"`
 		TcpMaxInFlight int    `json:"tcp_max_in_flight" yaml:"tcp_max_in_flight"`
+		TcpBufferSize  int    `json:"tcp_buffer_size" yaml:"tcp_buffer_size"`
 		DisableIpv6    bool   `json:"disable_ipv6" yaml:"disable_ipv6"`
 		PreferIpv6     bool   `json:"prefer_ipv6" yaml:"prefer_ipv6"`
 		Log            bool   `json:"log" yaml:"log"`

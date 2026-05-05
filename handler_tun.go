@@ -33,6 +33,7 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/network/ipv4"
 	"gvisor.dev/gvisor/pkg/tcpip/network/ipv6"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
+	stackgro "gvisor.dev/gvisor/pkg/tcpip/stack/gro"
 	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
 	"gvisor.dev/gvisor/pkg/tcpip/transport/udp"
 	"gvisor.dev/gvisor/pkg/waiter"
@@ -253,9 +254,26 @@ func (h *TunHandler) Load(ctx context.Context) error {
 	if err := s.SetTransportProtocolOption(tcp.ProtocolNumber, &sackEnabledOpt); err != nil {
 		return fmt.Errorf("enable tcp sack: %s", err)
 	}
+	tcpBufferSize := cmp.Or(h.Config.Forward.TcpBufferSize, tcp.MaxBufferSize)
+	if tcpBufferSize < tcp.MinBufferSize {
+		tcpBufferSize = tcp.MinBufferSize
+	}
+	tcpBufferSizeOpt := tcpip.TCPSendBufferSizeRangeOption{
+		Min:     tcp.MinBufferSize,
+		Default: tcpBufferSize,
+		Max:     max(tcpBufferSize, tcp.MaxBufferSize),
+	}
+	if err := s.SetTransportProtocolOption(tcp.ProtocolNumber, &tcpBufferSizeOpt); err != nil {
+		return fmt.Errorf("set tcp send buffer size: %s", err)
+	}
+	tcpReceiveBufferSizeOpt := tcpip.TCPReceiveBufferSizeRangeOption(tcpBufferSizeOpt)
+	if err := s.SetTransportProtocolOption(tcp.ProtocolNumber, &tcpReceiveBufferSizeOpt); err != nil {
+		return fmt.Errorf("set tcp receive buffer size: %s", err)
+	}
 
 	ep = channel.New(cmp.Or(h.Config.StackQueueSize, 1024), uint32(h.mtu), "")
 	ep.LinkEPCapabilities = stack.CapabilityRXChecksumOffload
+	ep.SupportedGSOKind = stack.GVisorGSOSupported
 	if err := s.CreateNIC(1, ep); err != nil {
 		return fmt.Errorf("create tun stack nic: %s", err)
 	}
@@ -278,7 +296,7 @@ func (h *TunHandler) Load(ctx context.Context) error {
 	s.AddRoute(tcpip.Route{Destination: header.IPv4EmptySubnet, NIC: 1})
 	s.AddRoute(tcpip.Route{Destination: header.IPv6EmptySubnet, NIC: 1})
 
-	tcpForwarder := tcp.NewForwarder(s, 0, cmp.Or(h.Config.Forward.TcpMaxInFlight, 1024), h.forwardTCP)
+	tcpForwarder := tcp.NewForwarder(s, tcpBufferSize, cmp.Or(h.Config.Forward.TcpMaxInFlight, 1024), h.forwardTCP)
 	udpForwarder := udp.NewForwarder(s, func(r *udp.ForwarderRequest) { go h.serveUDP(r) })
 	s.SetTransportProtocolHandler(tcp.ProtocolNumber, tcpForwarder.HandlePacket)
 	s.SetTransportProtocolHandler(udp.ProtocolNumber, udpForwarder.HandlePacket)
@@ -310,6 +328,16 @@ func (h *TunHandler) Unload() error {
 
 const tunPacketOffset = 16
 
+type tunGRODispatcher struct {
+	endpoint *channel.Endpoint
+}
+
+func (d tunGRODispatcher) DeliverNetworkPacket(protocol tcpip.NetworkProtocolNumber, pkt *stack.PacketBuffer) {
+	d.endpoint.InjectInbound(protocol, pkt)
+}
+
+func (tunGRODispatcher) DeliverLinkPacket(tcpip.NetworkProtocolNumber, *stack.PacketBuffer) {}
+
 func (h *TunHandler) Serve(ctx context.Context) {
 	errc := make(chan error, 2)
 	go func() {
@@ -319,6 +347,8 @@ func (h *TunHandler) Serve(ctx context.Context) {
 		for i := range bufs {
 			bufs[i] = make([]byte, 64*1024)
 		}
+		gro := stackgro.GRO{Dispatcher: tunGRODispatcher{endpoint: h.endpoint}}
+		gro.Init(true)
 
 		for {
 			select {
@@ -356,12 +386,18 @@ func (h *TunHandler) Serve(ctx context.Context) {
 				pkt := stack.NewPacketBuffer(stack.PacketBufferOptions{
 					Payload: buffer.MakeWithData(packet),
 				})
-				h.endpoint.InjectInbound(network, pkt)
+				pkt.NetworkProtocolNumber = network
+				pkt.RXChecksumValidated = true
+				gro.Enqueue(pkt)
 				pkt.DecRef()
 			}
+			gro.Flush()
 		}
 	}()
 	go func() {
+		batchSize := cmp.Or(h.device.BatchSize(), 1)
+		pkts := make([]*stack.PacketBuffer, 0, batchSize)
+		bufs := make([][]byte, 0, batchSize)
 		for {
 			pkt := h.endpoint.ReadContext(ctx)
 			if pkt == nil {
@@ -369,25 +405,34 @@ func (h *TunHandler) Serve(ctx context.Context) {
 				return
 			}
 
-			pktSize := pkt.Size()
-			if pktSize == 0 {
-				pkt.DecRef()
-				continue
+			pkts = append(pkts[:0], pkt)
+			for len(pkts) < batchSize {
+				pkt = h.endpoint.Read()
+				if pkt == nil {
+					break
+				}
+				pkts = append(pkts, pkt)
 			}
 
-			slices := pkt.AsSlices()
-			if len(slices) == 0 {
+			bufs = bufs[:0]
+			for _, pkt := range pkts {
+				pktSize := pkt.Size()
+				if pktSize == 0 {
+					pkt.DecRef()
+					continue
+				}
+				buf := tunGetCopyBuffer(tunPacketOffset + pktSize)
+				n := tunPacketOffset + tunCopyPacket(buf[tunPacketOffset:tunPacketOffset+pktSize], pkt)
 				pkt.DecRef()
+				bufs = append(bufs, buf[:n])
+			}
+			if len(bufs) == 0 {
 				continue
 			}
-			buf := tunGetCopyBuffer(tunPacketOffset + pktSize)
-			n := tunPacketOffset
-			for _, s := range slices {
-				n += copy(buf[n:], s)
+			_, err := h.device.Write(bufs, tunPacketOffset)
+			for _, buf := range bufs {
+				tunPutCopyBuffer(buf)
 			}
-			_, err := h.device.Write([][]byte{buf[:n]}, tunPacketOffset)
-			tunPutCopyBuffer(buf)
-			pkt.DecRef()
 			if err != nil {
 				errc <- err
 				return
@@ -795,6 +840,24 @@ func tunGetCopyBuffer(size int) []byte {
 		return make([]byte, size)
 	}
 	return b[:size]
+}
+
+func tunCopyPacket(dst []byte, pkt *stack.PacketBuffer) int {
+	views, offset := pkt.AsViewList()
+	n := 0
+	for v := views.Front(); v != nil; v = v.Next() {
+		s := v.AsSlice()
+		if offset >= len(s) {
+			offset -= len(s)
+			continue
+		}
+		if offset > 0 {
+			s = s[offset:]
+			offset = 0
+		}
+		n += copy(dst[n:], s)
+	}
+	return n
 }
 
 func tunPutCopyBuffer(b []byte) {
