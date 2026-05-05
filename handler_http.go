@@ -69,6 +69,7 @@ var hrPool = sync.Pool{
 const (
 	HTTPWellknownBase64PathPrefix  = "/.well-known/base64/"
 	HTTPTunnelConnectTCPPathPrefix = "/.well-known/masque/tcp/"
+	HTTPTunnelConnectUDPPathPrefix = "/.well-known/masque/udp/"
 	HTTPTunnelReverseTCPPathPrefix = "/.well-known/reverse/tcp/"
 )
 
@@ -266,7 +267,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	switch {
 	case hostname != "" && !matched:
 		h.ForwardHandler.ServeHTTP(rw, req)
-	case matched && strings.HasPrefix(req.URL.Path, HTTPTunnelConnectTCPPathPrefix):
+	case matched && (strings.HasPrefix(req.URL.Path, HTTPTunnelConnectTCPPathPrefix) || strings.HasPrefix(req.URL.Path, HTTPTunnelConnectUDPPathPrefix)):
 		h.ForwardHandler.ServeHTTP(rw, req)
 	case matched && h.Config.Tunnel.Enabled && strings.HasPrefix(req.URL.Path, HTTPTunnelReverseTCPPathPrefix):
 		h.TunnelHandler.ServeHTTP(rw, req)
