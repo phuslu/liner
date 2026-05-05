@@ -232,26 +232,12 @@ type http2Stream struct {
 }
 
 func (c *http2Stream) Read(b []byte) (n int, err error) {
-	finish, err := c.cancel.beginRead()
-	if err != nil {
-		return 0, err
-	}
 	n, err = c.r.Read(b)
-	if ferr := finish(); err == nil && ferr != nil {
-		err = ferr
-	}
 	return n, c.cancel.ReadError(err)
 }
 
 func (c *http2Stream) Write(b []byte) (n int, err error) {
-	finish, err := c.cancel.beginWrite()
-	if err != nil {
-		return 0, err
-	}
 	n, err = c.w.Write(b)
-	if ferr := finish(); err == nil && ferr != nil {
-		err = ferr
-	}
 	return n, c.cancel.WriteError(err)
 }
 
@@ -283,26 +269,18 @@ func (c *http2Stream) NetConn() net.Conn {
 	return c.netConn
 }
 
-// httpStreamCancel makes CONNECT streams behave like net.Conn for close and deadlines.
-// Deadlines are enforced only while an I/O call is active; setting an idle
-// deadline must not turn into a fixed timer that closes a long-lived tunnel.
+// httpStreamCancel makes CONNECT streams behave like net.Conn for close.
+// Deadlines are intentionally ignored: HTTP request streams don't expose
+// per-call deadlines, and turning them into timers would close long-lived tunnels.
 type httpStreamCancel struct {
 	cancel     context.CancelFunc
 	closeRead  func(error) error
 	closeWrite func(error) error
 
-	mu            sync.Mutex
-	closed        bool
-	readErr       error
-	writeErr      error
-	readDeadline  time.Time
-	writeDeadline time.Time
-	readActive    int
-	writeActive   int
-	readSeq       uint64
-	writeSeq      uint64
-	readTimer     *time.Timer
-	writeTimer    *time.Timer
+	mu       sync.Mutex
+	closed   bool
+	readErr  error
+	writeErr error
 }
 
 func (c *httpStreamCancel) Close() error {
@@ -340,216 +318,14 @@ func (c *httpStreamCancel) WriteError(err error) error {
 }
 
 func (c *httpStreamCancel) SetDeadline(t time.Time) error {
-	return c.setDeadline(t, true, true)
+	return nil
 }
 
 func (c *httpStreamCancel) SetReadDeadline(t time.Time) error {
-	return c.setDeadline(t, true, false)
+	return nil
 }
 
 func (c *httpStreamCancel) SetWriteDeadline(t time.Time) error {
-	return c.setDeadline(t, false, true)
-}
-
-func (c *httpStreamCancel) setDeadline(t time.Time, read, write bool) error {
-	var readSeq, writeSeq uint64
-	var readNow, writeNow bool
-
-	c.mu.Lock()
-	if c.closed {
-		c.mu.Unlock()
-		return net.ErrClosed
-	}
-	if read {
-		c.readDeadline = t
-		readSeq, readNow = c.armReadTimerLocked()
-	}
-	if write {
-		c.writeDeadline = t
-		writeSeq, writeNow = c.armWriteTimerLocked()
-	}
-	c.mu.Unlock()
-
-	if readNow {
-		_ = c.timeoutRead(readSeq)
-	}
-	if writeNow {
-		_ = c.timeoutWrite(writeSeq)
-	}
-	return nil
-}
-
-func (c *httpStreamCancel) beginRead() (func() error, error) {
-	c.mu.Lock()
-	if c.closed {
-		c.mu.Unlock()
-		return nil, net.ErrClosed
-	}
-	if c.readErr != nil {
-		err := c.readErr
-		c.mu.Unlock()
-		return nil, err
-	}
-	if deadlineExpired(c.readDeadline) {
-		c.mu.Unlock()
-		return nil, os.ErrDeadlineExceeded
-	}
-	c.readActive++
-	_, fireNow := c.armReadTimerLocked()
-	c.mu.Unlock()
-
-	if fireNow {
-		_ = c.finishRead()
-		return nil, os.ErrDeadlineExceeded
-	}
-	return c.finishRead, nil
-}
-
-func (c *httpStreamCancel) beginWrite() (func() error, error) {
-	c.mu.Lock()
-	if c.closed {
-		c.mu.Unlock()
-		return nil, net.ErrClosed
-	}
-	if c.writeErr != nil {
-		err := c.writeErr
-		c.mu.Unlock()
-		return nil, err
-	}
-	if deadlineExpired(c.writeDeadline) {
-		c.mu.Unlock()
-		return nil, os.ErrDeadlineExceeded
-	}
-	c.writeActive++
-	_, fireNow := c.armWriteTimerLocked()
-	c.mu.Unlock()
-
-	if fireNow {
-		_ = c.finishWrite()
-		return nil, os.ErrDeadlineExceeded
-	}
-	return c.finishWrite, nil
-}
-
-func (c *httpStreamCancel) finishRead() error {
-	c.mu.Lock()
-	if c.readActive > 0 {
-		c.readActive--
-	}
-	if c.readActive == 0 {
-		c.stopReadTimerLocked()
-	}
-	err := c.readErr
-	if err == nil && c.closed {
-		err = net.ErrClosed
-	}
-	c.mu.Unlock()
-	return err
-}
-
-func (c *httpStreamCancel) finishWrite() error {
-	c.mu.Lock()
-	if c.writeActive > 0 {
-		c.writeActive--
-	}
-	if c.writeActive == 0 {
-		c.stopWriteTimerLocked()
-	}
-	err := c.writeErr
-	if err == nil && c.closed {
-		err = net.ErrClosed
-	}
-	c.mu.Unlock()
-	return err
-}
-
-func deadlineExpired(t time.Time) bool {
-	return !t.IsZero() && !time.Now().Before(t)
-}
-
-func (c *httpStreamCancel) armReadTimerLocked() (uint64, bool) {
-	c.stopReadTimerLocked()
-	if c.readActive == 0 || c.readDeadline.IsZero() {
-		return 0, false
-	}
-	c.readSeq++
-	seq := c.readSeq
-	if d := time.Until(c.readDeadline); d > 0 {
-		c.readTimer = time.AfterFunc(d, func() {
-			_ = c.timeoutRead(seq)
-		})
-		return 0, false
-	}
-	return seq, true
-}
-
-func (c *httpStreamCancel) armWriteTimerLocked() (uint64, bool) {
-	c.stopWriteTimerLocked()
-	if c.writeActive == 0 || c.writeDeadline.IsZero() {
-		return 0, false
-	}
-	c.writeSeq++
-	seq := c.writeSeq
-	if d := time.Until(c.writeDeadline); d > 0 {
-		c.writeTimer = time.AfterFunc(d, func() {
-			_ = c.timeoutWrite(seq)
-		})
-		return 0, false
-	}
-	return seq, true
-}
-
-func (c *httpStreamCancel) stopReadTimerLocked() {
-	if c.readTimer != nil {
-		c.readTimer.Stop()
-		c.readTimer = nil
-		c.readSeq++
-	}
-}
-
-func (c *httpStreamCancel) stopWriteTimerLocked() {
-	if c.writeTimer != nil {
-		c.writeTimer.Stop()
-		c.writeTimer = nil
-		c.writeSeq++
-	}
-}
-
-func (c *httpStreamCancel) timeoutRead(seq uint64) error {
-	err := os.ErrDeadlineExceeded
-
-	c.mu.Lock()
-	if c.closed || c.readErr != nil || c.readActive == 0 || seq != c.readSeq {
-		c.mu.Unlock()
-		return nil
-	}
-	c.readErr = err
-	c.stopReadTimerLocked()
-	closeRead := c.closeRead
-	c.mu.Unlock()
-
-	if closeRead != nil {
-		return closeRead(err)
-	}
-	return nil
-}
-
-func (c *httpStreamCancel) timeoutWrite(seq uint64) error {
-	err := os.ErrDeadlineExceeded
-
-	c.mu.Lock()
-	if c.closed || c.writeErr != nil || c.writeActive == 0 || seq != c.writeSeq {
-		c.mu.Unlock()
-		return nil
-	}
-	c.writeErr = err
-	c.stopWriteTimerLocked()
-	closeWrite := c.closeWrite
-	c.mu.Unlock()
-
-	if closeWrite != nil {
-		return closeWrite(err)
-	}
 	return nil
 }
 
@@ -566,8 +342,6 @@ func (c *httpStreamCancel) closeWithError(err error) error {
 	c.closed = true
 	c.readErr = err
 	c.writeErr = err
-	c.stopReadTimerLocked()
-	c.stopWriteTimerLocked()
 	cancel := c.cancel
 	closeRead := c.closeRead
 	closeWrite := c.closeWrite
