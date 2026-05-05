@@ -33,7 +33,6 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/network/ipv4"
 	"gvisor.dev/gvisor/pkg/tcpip/network/ipv6"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
-	stackgro "gvisor.dev/gvisor/pkg/tcpip/stack/gro"
 	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
 	"gvisor.dev/gvisor/pkg/tcpip/transport/udp"
 	"gvisor.dev/gvisor/pkg/waiter"
@@ -278,7 +277,6 @@ func (h *TunHandler) Load(ctx context.Context) error {
 
 	ep = channel.New(cmp.Or(h.Config.StackQueueSize, 1024), uint32(h.mtu), "")
 	ep.LinkEPCapabilities = stack.CapabilityRXChecksumOffload
-	ep.SupportedGSOKind = stack.GVisorGSOSupported
 	if err := s.CreateNIC(1, ep); err != nil {
 		return fmt.Errorf("create tun stack nic: %s", err)
 	}
@@ -333,16 +331,6 @@ func (h *TunHandler) Unload() error {
 
 const tunPacketOffset = 16
 
-type tunGRODispatcher struct {
-	endpoint *channel.Endpoint
-}
-
-func (d tunGRODispatcher) DeliverNetworkPacket(protocol tcpip.NetworkProtocolNumber, pkt *stack.PacketBuffer) {
-	d.endpoint.InjectInbound(protocol, pkt)
-}
-
-func (tunGRODispatcher) DeliverLinkPacket(tcpip.NetworkProtocolNumber, *stack.PacketBuffer) {}
-
 func (h *TunHandler) Serve(ctx context.Context) {
 	errc := make(chan error, 2)
 	go func() {
@@ -352,8 +340,6 @@ func (h *TunHandler) Serve(ctx context.Context) {
 		for i := range bufs {
 			bufs[i] = make([]byte, 64*1024)
 		}
-		gro := stackgro.GRO{Dispatcher: tunGRODispatcher{endpoint: h.endpoint}}
-		gro.Init(true)
 
 		for {
 			select {
@@ -393,10 +379,9 @@ func (h *TunHandler) Serve(ctx context.Context) {
 				})
 				pkt.NetworkProtocolNumber = network
 				pkt.RXChecksumValidated = true
-				gro.Enqueue(pkt)
+				h.endpoint.InjectInbound(network, pkt)
 				pkt.DecRef()
 			}
-			gro.Flush()
 		}
 	}()
 	go func() {
