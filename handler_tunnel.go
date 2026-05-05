@@ -552,11 +552,9 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialerName, dialerURL stri
 	}
 
 	conn := &http2Stream{
-		body:  resp.Body,
-		pipe:  pw,
-		raddr: remoteAddr,
-		laddr: localAddr,
-		conn:  netConn,
+		body: resp.Body,
+		pipe: pw,
+		conn: netConn,
 		closeRead: func(error) error {
 			return resp.Body.Close()
 		},
@@ -566,6 +564,7 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialerName, dialerURL stri
 			}
 			return pw.Close()
 		},
+		cancel: nil,
 	}
 
 	session, err := yamux.Server(conn, &yamux.Config{
@@ -711,11 +710,9 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 	}
 
 	conn := &http3Stream{
-		body:  resp.Body,
-		pipe:  pw,
-		raddr: remoteAddr,
-		laddr: localAddr,
-		conn:  quicConn,
+		body: resp.Body,
+		pipe: pw,
+		conn: quicConn,
 		closeRead: func(error) error {
 			return resp.Body.Close()
 		},
@@ -725,6 +722,7 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 			}
 			return pw.Close()
 		},
+		cancel: nil,
 	}
 
 	session, err := yamux.Server(conn, &yamux.Config{

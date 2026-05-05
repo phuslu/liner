@@ -152,7 +152,6 @@ func (d *HTTP3Dialer) dialTCP(ctx context.Context, network, addr string) (net.Co
 		}
 	}
 
-	var remoteAddr, localAddr net.Addr
 	var quicConn *quic.Conn
 	// The caller context bounds CONNECT setup; the returned stream must outlive it.
 	streamCtx, streamCancel := context.WithCancel(context.WithoutCancel(ctx))
@@ -160,7 +159,6 @@ func (d *HTTP3Dialer) dialTCP(ctx context.Context, network, addr string) (net.Co
 
 	req = req.WithContext(httptrace.WithClientTrace(streamCtx, &httptrace.ClientTrace{
 		GotConn: func(connInfo httptrace.GotConnInfo) {
-			remoteAddr, localAddr = connInfo.Conn.RemoteAddr(), connInfo.Conn.LocalAddr()
 			// see https://github.com/quic-go/quic-go/blob/master/http3/trace.go
 			if data := (*[2]unsafe.Pointer)(unsafe.Pointer(&connInfo.Conn))[1]; data != nil {
 				type fakeConn struct{ conn *quic.Conn }
@@ -205,17 +203,10 @@ func (d *HTTP3Dialer) dialTCP(ctx context.Context, network, addr string) (net.Co
 		return nil, err
 	}
 
-	if remoteAddr == nil || localAddr == nil {
-		remoteAddr, localAddr = &net.UDPAddr{}, &net.UDPAddr{}
-	}
-
 	return &http3Stream{
-		body:   resp.Body,
-		pipe:   pw,
-		raddr:  remoteAddr,
-		laddr:  localAddr,
-		conn:   quicConn,
-		cancel: streamCancel,
+		body: resp.Body,
+		pipe: pw,
+		conn: quicConn,
 		closeRead: func(error) error {
 			return resp.Body.Close()
 		},
@@ -225,6 +216,7 @@ func (d *HTTP3Dialer) dialTCP(ctx context.Context, network, addr string) (net.Co
 			}
 			return pw.Close()
 		},
+		cancel: streamCancel,
 	}, nil
 }
 
@@ -388,12 +380,10 @@ func (d *HTTP3Dialer) closeHTTP3ClientConn(conn *quic.Conn) {
 type http3Stream struct {
 	body       io.ReadCloser
 	pipe       io.Writer
-	raddr      net.Addr
-	laddr      net.Addr
 	conn       *quic.Conn
-	cancel     context.CancelFunc
 	closeRead  func(error) error
 	closeWrite func(error) error
+	cancel     context.CancelFunc
 
 	mu       sync.Mutex
 	closed   bool
@@ -416,11 +406,11 @@ func (c *http3Stream) Close() (err error) {
 }
 
 func (c *http3Stream) RemoteAddr() net.Addr {
-	return c.raddr
+	return c.conn.RemoteAddr()
 }
 
 func (c *http3Stream) LocalAddr() net.Addr {
-	return c.laddr
+	return c.conn.LocalAddr()
 }
 
 func (c *http3Stream) SetDeadline(t time.Time) error {

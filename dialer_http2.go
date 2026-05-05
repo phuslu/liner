@@ -156,7 +156,6 @@ func (d *HTTP2Dialer) DialContext(ctx context.Context, network, addr string) (ne
 		req.Header.Set("proxy-authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(d.Username+":"+d.Password)))
 	}
 
-	var remoteAddr, localAddr net.Addr
 	var netConn net.Conn
 	// The caller context bounds CONNECT setup; the returned stream must outlive it.
 	streamCtx, streamCancel := context.WithCancel(context.WithoutCancel(ctx))
@@ -164,7 +163,6 @@ func (d *HTTP2Dialer) DialContext(ctx context.Context, network, addr string) (ne
 
 	req = req.WithContext(httptrace.WithClientTrace(streamCtx, &httptrace.ClientTrace{
 		GotConn: func(connInfo httptrace.GotConnInfo) {
-			remoteAddr, localAddr = connInfo.Conn.RemoteAddr(), connInfo.Conn.LocalAddr()
 			netConn = connInfo.Conn
 		},
 	}))
@@ -196,17 +194,10 @@ func (d *HTTP2Dialer) DialContext(ctx context.Context, network, addr string) (ne
 		return nil, err
 	}
 
-	if remoteAddr == nil || localAddr == nil {
-		remoteAddr, localAddr = &net.TCPAddr{}, &net.TCPAddr{}
-	}
-
 	conn := &http2Stream{
-		body:   resp.Body,
-		pipe:   pw,
-		raddr:  remoteAddr,
-		laddr:  localAddr,
-		conn:   netConn,
-		cancel: streamCancel,
+		body: resp.Body,
+		pipe: pw,
+		conn: netConn,
 		closeRead: func(error) error {
 			return resp.Body.Close()
 		},
@@ -216,6 +207,7 @@ func (d *HTTP2Dialer) DialContext(ctx context.Context, network, addr string) (ne
 			}
 			return pw.Close()
 		},
+		cancel: streamCancel,
 	}
 
 	return conn, nil
@@ -224,12 +216,10 @@ func (d *HTTP2Dialer) DialContext(ctx context.Context, network, addr string) (ne
 type http2Stream struct {
 	body       io.ReadCloser
 	pipe       io.Writer
-	raddr      net.Addr
-	laddr      net.Addr
 	conn       net.Conn
-	cancel     context.CancelFunc
 	closeRead  func(error) error
 	closeWrite func(error) error
+	cancel     context.CancelFunc
 
 	mu       sync.Mutex
 	closed   bool
@@ -252,11 +242,11 @@ func (c *http2Stream) Close() (err error) {
 }
 
 func (c *http2Stream) RemoteAddr() net.Addr {
-	return c.raddr
+	return c.conn.RemoteAddr()
 }
 
 func (c *http2Stream) LocalAddr() net.Addr {
-	return c.laddr
+	return c.conn.LocalAddr()
 }
 
 func (c *http2Stream) SetDeadline(t time.Time) error {
