@@ -771,6 +771,9 @@ GOCACHE=/tmp/liner-go-build go test ./...
 - `remote_listen` currently expects exactly one address in `TunnelHandler.Load`.
 - TUN default address is `198.18.0.1/15`, default MTU is `1420`, default stack
   queue size is `1024`, and negative route entries mean bypass prefixes.
+  Windows adds a high-metric `0.0.0.0/0` fallback when `routes` is empty so
+  source-bound clients such as `curl --interface 198.18.0.1` can select the TUN
+  without replacing normal default routing.
 - The reserved memory address range is `240.0.0.0/8`; ensure uniqueness of
   memory listener addresses across HTTP, SSH, and tunnels.
 - Config overlay merge behavior is manual in `NewConfig`; new top-level fields

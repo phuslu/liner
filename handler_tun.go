@@ -178,6 +178,11 @@ func (h *TunHandler) Load(ctx context.Context) error {
 		}
 		routePrefixes = append(routePrefixes, prefix.Masked())
 	}
+	if runtime.GOOS == "windows" && len(h.Config.Routes) == 0 {
+		// Windows still needs a destination route for sockets bound only to the
+		// TUN source address. Keep it as a high-metric /0 so normal routing wins.
+		routePrefixes = append(routePrefixes, netip.PrefixFrom(netip.AddrFrom4([4]byte{}), 0))
+	}
 	if slices.Contains(h.Config.Routes, "0.0.0.0/0") {
 		for _, dialer := range h.Dialers {
 			for dialer != nil {
