@@ -201,20 +201,20 @@ func (d *HTTP2Dialer) DialContext(ctx context.Context, network, addr string) (ne
 	}
 
 	conn := &http2Stream{
-		r:          resp.Body,
-		w:          pw,
-		remoteAddr: remoteAddr,
-		localAddr:  localAddr,
-		netConn:    netConn,
-		cancel: &httpStreamCancel{
-			cancel:    streamCancel,
-			closeRead: func(error) error { return resp.Body.Close() },
-			closeWrite: func(err error) error {
-				if err != nil {
-					return pw.CloseWithError(err)
-				}
-				return pw.Close()
-			},
+		body:   resp.Body,
+		pipe:   pw,
+		raddr:  remoteAddr,
+		laddr:  localAddr,
+		conn:   netConn,
+		cancel: streamCancel,
+		closeRead: func(error) error {
+			return resp.Body.Close()
+		},
+		closeWrite: func(err error) error {
+			if err != nil {
+				return pw.CloseWithError(err)
+			}
+			return pw.Close()
 		},
 	}
 
@@ -222,51 +222,119 @@ func (d *HTTP2Dialer) DialContext(ctx context.Context, network, addr string) (ne
 }
 
 type http2Stream struct {
-	r io.ReadCloser
-	w io.Writer
+	body       io.ReadCloser
+	pipe       io.Writer
+	raddr      net.Addr
+	laddr      net.Addr
+	conn       net.Conn
+	cancel     context.CancelFunc
+	closeRead  func(error) error
+	closeWrite func(error) error
 
-	remoteAddr net.Addr
-	localAddr  net.Addr
-	netConn    net.Conn
-	cancel     *httpStreamCancel
+	mu       sync.Mutex
+	closed   bool
+	readErr  error
+	writeErr error
 }
 
 func (c *http2Stream) Read(b []byte) (n int, err error) {
-	n, err = c.r.Read(b)
-	return n, c.cancel.ReadError(err)
+	n, err = c.body.Read(b)
+	return n, c.readError(err)
 }
 
 func (c *http2Stream) Write(b []byte) (n int, err error) {
-	n, err = c.w.Write(b)
-	return n, c.cancel.WriteError(err)
+	n, err = c.pipe.Write(b)
+	return n, c.writeError(err)
 }
 
 func (c *http2Stream) Close() (err error) {
-	return c.cancel.Close()
+	return c.closeWithError(net.ErrClosed)
 }
 
 func (c *http2Stream) RemoteAddr() net.Addr {
-	return c.remoteAddr
+	return c.raddr
 }
 
 func (c *http2Stream) LocalAddr() net.Addr {
-	return c.localAddr
+	return c.laddr
 }
 
 func (c *http2Stream) SetDeadline(t time.Time) error {
-	return c.cancel.SetDeadline(t)
+	return nil
 }
 
 func (c *http2Stream) SetReadDeadline(t time.Time) error {
-	return c.cancel.SetReadDeadline(t)
+	return nil
 }
 
 func (c *http2Stream) SetWriteDeadline(t time.Time) error {
-	return c.cancel.SetWriteDeadline(t)
+	return nil
 }
 
 func (c *http2Stream) NetConn() net.Conn {
-	return c.netConn
+	return c.conn
+}
+
+func (c *http2Stream) readError(err error) error {
+	if err == nil {
+		return nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.readErr != nil {
+		return c.readErr
+	}
+	if c.closed {
+		return net.ErrClosed
+	}
+	return err
+}
+
+func (c *http2Stream) writeError(err error) error {
+	if err == nil {
+		return nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.writeErr != nil {
+		return c.writeErr
+	}
+	if c.closed {
+		return net.ErrClosed
+	}
+	return err
+}
+
+func (c *http2Stream) closeWithError(err error) error {
+	if err == nil {
+		err = net.ErrClosed
+	}
+
+	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return nil
+	}
+	c.closed = true
+	c.readErr = err
+	c.writeErr = err
+	cancel := c.cancel
+	closeRead := c.closeRead
+	closeWrite := c.closeWrite
+	c.mu.Unlock()
+
+	if cancel != nil {
+		cancel()
+	}
+
+	var closeReadErr, closeWriteErr error
+	if closeRead != nil {
+		closeReadErr = closeRead(err)
+	}
+	if closeWrite != nil {
+		closeWriteErr = closeWrite(err)
+	}
+	return errors.Join(closeReadErr, closeWriteErr)
 }
 
 // httpStreamCancel makes CONNECT streams behave like net.Conn for close.

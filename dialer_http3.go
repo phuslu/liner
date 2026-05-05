@@ -210,20 +210,20 @@ func (d *HTTP3Dialer) dialTCP(ctx context.Context, network, addr string) (net.Co
 	}
 
 	return &http3Stream{
-		r:          resp.Body,
-		w:          pw,
-		remoteAddr: remoteAddr,
-		localAddr:  localAddr,
-		quicConn:   quicConn,
-		cancel: &httpStreamCancel{
-			cancel:    streamCancel,
-			closeRead: func(error) error { return resp.Body.Close() },
-			closeWrite: func(err error) error {
-				if err != nil {
-					return pw.CloseWithError(err)
-				}
-				return pw.Close()
-			},
+		body:   resp.Body,
+		pipe:   pw,
+		raddr:  remoteAddr,
+		laddr:  localAddr,
+		conn:   quicConn,
+		cancel: streamCancel,
+		closeRead: func(error) error {
+			return resp.Body.Close()
+		},
+		closeWrite: func(err error) error {
+			if err != nil {
+				return pw.CloseWithError(err)
+			}
+			return pw.Close()
 		},
 	}, nil
 }
@@ -390,51 +390,119 @@ func (d *HTTP3Dialer) closeHTTP3ClientConn(conn *quic.Conn) {
 }
 
 type http3Stream struct {
-	r io.ReadCloser
-	w io.Writer
+	body       io.ReadCloser
+	pipe       io.Writer
+	raddr      net.Addr
+	laddr      net.Addr
+	conn       *quic.Conn
+	cancel     context.CancelFunc
+	closeRead  func(error) error
+	closeWrite func(error) error
 
-	remoteAddr net.Addr
-	localAddr  net.Addr
-	quicConn   *quic.Conn
-	cancel     *httpStreamCancel
+	mu       sync.Mutex
+	closed   bool
+	readErr  error
+	writeErr error
 }
 
 func (c *http3Stream) Read(b []byte) (n int, err error) {
-	n, err = c.r.Read(b)
-	return n, c.cancel.ReadError(err)
+	n, err = c.body.Read(b)
+	return n, c.readError(err)
 }
 
 func (c *http3Stream) Write(b []byte) (n int, err error) {
-	n, err = c.w.Write(b)
-	return n, c.cancel.WriteError(err)
+	n, err = c.pipe.Write(b)
+	return n, c.writeError(err)
 }
 
 func (c *http3Stream) Close() (err error) {
-	return c.cancel.Close()
+	return c.closeWithError(net.ErrClosed)
 }
 
 func (c *http3Stream) RemoteAddr() net.Addr {
-	return c.remoteAddr
+	return c.raddr
 }
 
 func (c *http3Stream) LocalAddr() net.Addr {
-	return c.localAddr
+	return c.laddr
 }
 
 func (c *http3Stream) SetDeadline(t time.Time) error {
-	return c.cancel.SetDeadline(t)
+	return nil
 }
 
 func (c *http3Stream) SetReadDeadline(t time.Time) error {
-	return c.cancel.SetReadDeadline(t)
+	return nil
 }
 
 func (c *http3Stream) SetWriteDeadline(t time.Time) error {
-	return c.cancel.SetWriteDeadline(t)
+	return nil
 }
 
 func (c *http3Stream) QuicConn() *quic.Conn {
-	return c.quicConn
+	return c.conn
+}
+
+func (c *http3Stream) readError(err error) error {
+	if err == nil {
+		return nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.readErr != nil {
+		return c.readErr
+	}
+	if c.closed {
+		return net.ErrClosed
+	}
+	return err
+}
+
+func (c *http3Stream) writeError(err error) error {
+	if err == nil {
+		return nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.writeErr != nil {
+		return c.writeErr
+	}
+	if c.closed {
+		return net.ErrClosed
+	}
+	return err
+}
+
+func (c *http3Stream) closeWithError(err error) error {
+	if err == nil {
+		err = net.ErrClosed
+	}
+
+	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return nil
+	}
+	c.closed = true
+	c.readErr = err
+	c.writeErr = err
+	cancel := c.cancel
+	closeRead := c.closeRead
+	closeWrite := c.closeWrite
+	c.mu.Unlock()
+
+	if cancel != nil {
+		cancel()
+	}
+
+	var closeReadErr, closeWriteErr error
+	if closeRead != nil {
+		closeReadErr = closeRead(err)
+	}
+	if closeWrite != nil {
+		closeWriteErr = closeWrite(err)
+	}
+	return errors.Join(closeReadErr, closeWriteErr)
 }
 
 type http3UDPConn struct {

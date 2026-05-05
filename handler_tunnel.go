@@ -552,19 +552,19 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialerName, dialerURL stri
 	}
 
 	conn := &http2Stream{
-		r:          resp.Body,
-		w:          pw,
-		remoteAddr: remoteAddr,
-		localAddr:  localAddr,
-		netConn:    netConn,
-		cancel: &httpStreamCancel{
-			closeRead: func(error) error { return resp.Body.Close() },
-			closeWrite: func(err error) error {
-				if err != nil {
-					return pw.CloseWithError(err)
-				}
-				return pw.Close()
-			},
+		body:  resp.Body,
+		pipe:  pw,
+		raddr: remoteAddr,
+		laddr: localAddr,
+		conn:  netConn,
+		closeRead: func(error) error {
+			return resp.Body.Close()
+		},
+		closeWrite: func(err error) error {
+			if err != nil {
+				return pw.CloseWithError(err)
+			}
+			return pw.Close()
 		},
 	}
 
@@ -711,19 +711,19 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 	}
 
 	conn := &http3Stream{
-		r:          resp.Body,
-		w:          pw,
-		remoteAddr: remoteAddr,
-		localAddr:  localAddr,
-		quicConn:   quicConn,
-		cancel: &httpStreamCancel{
-			closeRead: func(error) error { return resp.Body.Close() },
-			closeWrite: func(err error) error {
-				if err != nil {
-					return pw.CloseWithError(err)
-				}
-				return pw.Close()
-			},
+		body:  resp.Body,
+		pipe:  pw,
+		raddr: remoteAddr,
+		laddr: localAddr,
+		conn:  quicConn,
+		closeRead: func(error) error {
+			return resp.Body.Close()
+		},
+		closeWrite: func(err error) error {
+			if err != nil {
+				return pw.CloseWithError(err)
+			}
+			return pw.Close()
 		},
 	}
 
