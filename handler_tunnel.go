@@ -501,14 +501,11 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialerName, dialerURL stri
 		return nil, fmt.Errorf("invalid remote_listen addr: %s", h.Config.RemoteListen[0])
 	}
 
-	streamCtx, streamCancel := context.WithCancel(ctx)
 	pr, pw := ringbuffer.New(8192).Pipe()
 
 	// see https://www.ietf.org/archive/id/draft-kazuho-httpbis-reverse-tunnel-00.html
-	req, err := http.NewRequestWithContext(streamCtx, http.MethodConnect, "https://"+u.Host+HTTPTunnelReverseTCPPathPrefix+targetHost+"/"+targetPort+"/", pr)
+	req, err := http.NewRequestWithContext(ctx, http.MethodConnect, "https://"+u.Host+HTTPTunnelReverseTCPPathPrefix+targetHost+"/"+targetPort+"/", pr)
 	if err != nil {
-		streamCancel()
-		_ = pw.CloseWithError(err)
 		return nil, err
 	}
 	req.ContentLength = -1
@@ -530,7 +527,7 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialerName, dialerURL stri
 	var remoteAddr, localAddr net.Addr
 	var netConn net.Conn
 
-	req = req.WithContext(httptrace.WithClientTrace(streamCtx, &httptrace.ClientTrace{
+	req = req.WithContext(httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
 		GotConn: func(connInfo httptrace.GotConnInfo) {
 			remoteAddr, localAddr = connInfo.Conn.RemoteAddr(), connInfo.Conn.LocalAddr()
 			netConn = connInfo.Conn
@@ -539,8 +536,6 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialerName, dialerURL stri
 
 	resp, err := transport.RoundTrip(req)
 	if err != nil {
-		streamCancel()
-		_ = pw.CloseWithError(err)
 		return nil, err
 	}
 
@@ -549,10 +544,7 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialerName, dialerURL stri
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusSwitchingProtocols {
 		data, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
-		err := errors.New("proxy: read from " + u.Host + " error: " + resp.Status + ": " + string(data))
-		streamCancel()
-		_ = pw.CloseWithError(err)
-		return nil, err
+		return nil, errors.New("proxy: read from " + u.Host + " error: " + resp.Status + ": " + string(data))
 	}
 
 	if remoteAddr == nil || localAddr == nil {
@@ -566,7 +558,6 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialerName, dialerURL stri
 		localAddr:  localAddr,
 		netConn:    netConn,
 		cancel: &httpStreamCancel{
-			cancel:    streamCancel,
 			closeRead: func(error) error { return resp.Body.Close() },
 			closeWrite: func(err error) error {
 				if err != nil {
@@ -652,14 +643,11 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 		return nil, fmt.Errorf("invalid remote_listen addr: %s", h.Config.RemoteListen[0])
 	}
 
-	streamCtx, streamCancel := context.WithCancel(ctx)
 	pr, pw := ringbuffer.New(8192).Pipe()
 
 	// see https://www.ietf.org/archive/id/draft-kazuho-httpbis-reverse-tunnel-00.html
-	req, err := http.NewRequestWithContext(streamCtx, http.MethodConnect, "https://"+u.Host, pr)
+	req, err := http.NewRequestWithContext(ctx, http.MethodConnect, "https://"+u.Host, pr)
 	if err != nil {
-		streamCancel()
-		_ = pw.CloseWithError(err)
 		return nil, err
 	}
 	req.ContentLength = -1
@@ -689,7 +677,7 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 	var remoteAddr, localAddr net.Addr
 	var quicConn *quic.Conn
 
-	req = req.WithContext(httptrace.WithClientTrace(streamCtx, &httptrace.ClientTrace{
+	req = req.WithContext(httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
 		GotConn: func(connInfo httptrace.GotConnInfo) {
 			remoteAddr, localAddr = connInfo.Conn.RemoteAddr(), connInfo.Conn.LocalAddr()
 			// see https://github.com/quic-go/quic-go/blob/master/http3/trace.go
@@ -702,8 +690,6 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 
 	resp, err := transport.RoundTripOpt(req, http3.RoundTripOpt{OnlyCachedConn: false})
 	if err != nil {
-		streamCancel()
-		_ = pw.CloseWithError(err)
 		if errmsg := err.Error(); strings.Contains(errmsg, "timeout: ") || strings.Contains(errmsg, "context deadline exceeded") || strings.Contains(errmsg, "context canceled") {
 			log.Warn().Err(err).Msg("close underlying http3 connection")
 			h.transport3.Delete(dialerName)
@@ -717,10 +703,7 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusSwitchingProtocols {
 		data, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
-		err := errors.New("proxy: read from " + u.Host + " error: " + resp.Status + ": " + string(data))
-		streamCancel()
-		_ = pw.CloseWithError(err)
-		return nil, err
+		return nil, errors.New("proxy: read from " + u.Host + " error: " + resp.Status + ": " + string(data))
 	}
 
 	if remoteAddr == nil || localAddr == nil {
@@ -734,7 +717,6 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 		localAddr:  localAddr,
 		quicConn:   quicConn,
 		cancel: &httpStreamCancel{
-			cancel:    streamCancel,
 			closeRead: func(error) error { return resp.Body.Close() },
 			closeWrite: func(err error) error {
 				if err != nil {

@@ -400,12 +400,26 @@ type http3Stream struct {
 }
 
 func (c *http3Stream) Read(b []byte) (n int, err error) {
+	finish, err := c.cancel.beginRead()
+	if err != nil {
+		return 0, err
+	}
 	n, err = c.r.Read(b)
+	if ferr := finish(); err == nil && ferr != nil {
+		err = ferr
+	}
 	return n, c.cancel.ReadError(err)
 }
 
 func (c *http3Stream) Write(b []byte) (n int, err error) {
+	finish, err := c.cancel.beginWrite()
+	if err != nil {
+		return 0, err
+	}
 	n, err = c.w.Write(b)
+	if ferr := finish(); err == nil && ferr != nil {
+		err = ferr
+	}
 	return n, c.cancel.WriteError(err)
 }
 
@@ -446,11 +460,22 @@ type http3UDPConn struct {
 	cancel     *httpStreamCancel
 }
 
-func (c *http3UDPConn) Read(b []byte) (int, error) {
+func (c *http3UDPConn) Read(b []byte) (n int, err error) {
+	finish, err := c.cancel.beginRead()
+	if err != nil {
+		return 0, err
+	}
+	defer func() {
+		if ferr := finish(); err == nil && ferr != nil {
+			err = ferr
+		}
+		err = c.cancel.ReadError(err)
+	}()
+
 	for {
 		data, err := c.stream.ReceiveDatagram(context.Background())
 		if err != nil {
-			return 0, c.cancel.ReadError(err)
+			return 0, err
 		}
 		contextID, n, err := quicvarint.Parse(data)
 		if err != nil || contextID != 0 {
@@ -461,14 +486,24 @@ func (c *http3UDPConn) Read(b []byte) (int, error) {
 }
 
 func (c *http3UDPConn) Write(b []byte) (int, error) {
+	finish, err := c.cancel.beginWrite()
+	if err != nil {
+		return 0, err
+	}
+
 	data := make([]byte, len(b)+1)
 	copy(data[1:], b)
-	if err := c.stream.SendDatagram(data); err != nil {
+	err = c.stream.SendDatagram(data)
+	ferr := finish()
+	if err != nil {
 		var dtle *quic.DatagramTooLargeError
 		if errors.As(err, &dtle) {
 			return 0, err
 		}
 		return 0, c.cancel.WriteError(err)
+	}
+	if ferr != nil {
+		return 0, c.cancel.WriteError(ferr)
 	}
 	return len(b), nil
 }
