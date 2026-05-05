@@ -20,6 +20,7 @@ import (
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
+	"github.com/quic-go/quic-go/quicvarint"
 	"github.com/smallnest/ringbuffer"
 )
 
@@ -39,6 +40,8 @@ type HTTP3Dialer struct {
 
 	mu        sync.Mutex
 	transport *http3.Transport
+	udpClient *http3.ClientConn
+	udpConn   *quic.Conn
 }
 
 func (d *HTTP3Dialer) init() {
@@ -57,23 +60,7 @@ func (d *HTTP3Dialer) init() {
 		DisableCompression: false,
 		EnableDatagrams:    true,
 		Dial: func(ctx context.Context, addr string, tlsConf *tls.Config, conf *quic.Config) (*quic.Conn, error) {
-			return quic.DialAddrEarly(ctx,
-				net.JoinHostPort(cmp.Or(d.Resolve, d.Host), cmp.Or(d.Port, "443")),
-				&tls.Config{
-					NextProtos:         []string{"h3"},
-					InsecureSkipVerify: d.Insecure,
-					ServerName:         d.Host,
-					ClientSessionCache: d.TLSCache,
-				},
-				&quic.Config{
-					DisablePathMTUDiscovery:    false,
-					EnableDatagrams:            true,
-					MaxIncomingUniStreams:      200,
-					MaxIncomingStreams:         200,
-					MaxStreamReceiveWindow:     12 * 1024 * 1024,
-					MaxConnectionReceiveWindow: 100 * 1024 * 1024,
-				},
-			)
+			return d.dialQUIC(ctx)
 		},
 	}
 
@@ -82,9 +69,40 @@ func (d *HTTP3Dialer) init() {
 	}
 }
 
+func (d *HTTP3Dialer) dialQUIC(ctx context.Context) (*quic.Conn, error) {
+	return quic.DialAddrEarly(ctx,
+		net.JoinHostPort(cmp.Or(d.Resolve, d.Host), cmp.Or(d.Port, "443")),
+		&tls.Config{
+			NextProtos:         []string{"h3"},
+			InsecureSkipVerify: d.Insecure,
+			ServerName:         d.Host,
+			ClientSessionCache: d.TLSCache,
+		},
+		&quic.Config{
+			DisablePathMTUDiscovery:    false,
+			EnableDatagrams:            true,
+			MaxIncomingUniStreams:      200,
+			MaxIncomingStreams:         200,
+			MaxStreamReceiveWindow:     12 * 1024 * 1024,
+			MaxConnectionReceiveWindow: 100 * 1024 * 1024,
+		},
+	)
+}
+
 func (d *HTTP3Dialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
 	d.init()
 
+	switch network {
+	case "tcp", "tcp4", "tcp6":
+		return d.dialTCP(ctx, network, addr)
+	case "udp", "udp4", "udp6":
+		return d.dialUDP(ctx, network, addr)
+	}
+
+	return nil, errors.ErrUnsupported
+}
+
+func (d *HTTP3Dialer) dialTCP(ctx context.Context, network, addr string) (net.Conn, error) {
 	pr, pw := ringbuffer.New(32 * 1024).Pipe()
 	req := &http.Request{
 		ProtoMajor: 3,
@@ -210,6 +228,167 @@ func (d *HTTP3Dialer) DialContext(ctx context.Context, network, addr string) (ne
 	}, nil
 }
 
+func (d *HTTP3Dialer) dialUDP(ctx context.Context, network, addr string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, err
+	}
+
+	cc, qconn, err := d.http3ClientConn(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	select {
+	case <-cc.ReceivedSettings():
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-qconn.Context().Done():
+		d.closeHTTP3ClientConn(qconn)
+		return nil, context.Cause(qconn.Context())
+	}
+
+	settings := cc.Settings()
+	switch {
+	case settings == nil:
+		return nil, errors.New("http3: server settings unavailable")
+	case !settings.EnableExtendedConnect:
+		return nil, errors.New("http3: server didn't enable Extended CONNECT")
+	case !settings.EnableDatagrams:
+		return nil, errors.New("http3: server didn't enable HTTP Datagrams")
+	}
+
+	req := &http.Request{
+		Proto:      "connect-udp",
+		ProtoMajor: 3,
+		ProtoMinor: 0,
+		Method:     http.MethodConnect,
+		URL: &url.URL{
+			Scheme: "https",
+			Host:   d.Host,
+			Path:   fmt.Sprintf(HTTPTunnelConnectUDPPathPrefix+"%s/%s/", host, port),
+		},
+		Host: d.Host,
+		Header: http.Header{
+			"user-agent":                []string{d.UserAgent},
+			"x-forwarded-network":       []string{network},
+			http3.CapsuleProtocolHeader: []string{"?1"},
+		},
+	}
+	if header, _ := ctx.Value(DialerHTTPHeaderContextKey).(http.Header); header != nil {
+		if d.Logger != nil {
+			d.Logger.Debug("http3 udp dialer set extras headers", "dialer_http_header", header)
+		}
+		for key, values := range header {
+			for _, value := range values {
+				req.Header.Add(key, value)
+			}
+		}
+	}
+
+	if d.Username != "" && d.Password != "" {
+		req.Header.Set("proxy-authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(d.Username+":"+d.Password)))
+	}
+
+	streamCtx, streamCancel := context.WithCancel(context.WithoutCancel(ctx))
+	stopDialCancel := context.AfterFunc(ctx, streamCancel)
+
+	stream, err := cc.OpenRequestStream(streamCtx)
+	if err != nil {
+		stopDialCancel()
+		streamCancel()
+		d.closeHTTP3ClientConn(qconn)
+		return nil, err
+	}
+	req = req.WithContext(streamCtx)
+	if err := stream.SendRequestHeader(req); err != nil {
+		stopDialCancel()
+		streamCancel()
+		stream.CancelRead(0)
+		stream.CancelWrite(0)
+		return nil, err
+	}
+
+	resp, err := stream.ReadResponse()
+	if err != nil {
+		stopDialCancel()
+		streamCancel()
+		stream.CancelRead(0)
+		stream.CancelWrite(0)
+		return nil, err
+	}
+	if !stopDialCancel() {
+		_ = resp.Body.Close()
+		streamCancel()
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		return nil, context.Canceled
+	}
+
+	if d.Logger != nil {
+		d.Logger.Debug("http3 udp dialer response", "resp_statuscode", resp.StatusCode, "resp_header", resp.Header)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		data, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		streamCancel()
+		err := errors.New("proxy: read from " + d.Host + " error: " + resp.Status + ": " + string(data))
+		return nil, err
+	}
+
+	return &http3UDPConn{
+		stream:     stream,
+		remoteAddr: qconn.RemoteAddr(),
+		localAddr:  qconn.LocalAddr(),
+		quicConn:   qconn,
+		cancel: &httpStreamCancel{
+			cancel: streamCancel,
+			closeRead: func(error) error {
+				stream.CancelRead(0)
+				return resp.Body.Close()
+			},
+			closeWrite: func(err error) error {
+				if err != nil {
+					stream.CancelWrite(0)
+				}
+				return stream.Close()
+			},
+		},
+	}, nil
+}
+
+func (d *HTTP3Dialer) http3ClientConn(ctx context.Context) (*http3.ClientConn, *quic.Conn, error) {
+	d.init()
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if d.udpClient != nil && d.udpConn != nil && d.udpConn.Context().Err() == nil {
+		return d.udpClient, d.udpConn, nil
+	}
+
+	qconn, err := d.dialQUIC(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	cc := d.transport.NewClientConn(qconn)
+	d.udpClient = cc
+	d.udpConn = qconn
+	return cc, qconn, nil
+}
+
+func (d *HTTP3Dialer) closeHTTP3ClientConn(conn *quic.Conn) {
+	d.mu.Lock()
+	if d.udpConn == conn {
+		d.udpClient = nil
+		d.udpConn = nil
+	}
+	d.mu.Unlock()
+	_ = conn.CloseWithError(0, "")
+}
+
 type http3Stream struct {
 	r io.ReadCloser
 	w io.Writer
@@ -255,5 +434,69 @@ func (c *http3Stream) SetWriteDeadline(t time.Time) error {
 }
 
 func (c *http3Stream) QuicConn() *quic.Conn {
+	return c.quicConn
+}
+
+type http3UDPConn struct {
+	stream *http3.RequestStream
+
+	remoteAddr net.Addr
+	localAddr  net.Addr
+	quicConn   *quic.Conn
+	cancel     *httpStreamCancel
+}
+
+func (c *http3UDPConn) Read(b []byte) (int, error) {
+	for {
+		data, err := c.stream.ReceiveDatagram(context.Background())
+		if err != nil {
+			return 0, c.cancel.ReadError(err)
+		}
+		contextID, n, err := quicvarint.Parse(data)
+		if err != nil || contextID != 0 {
+			continue
+		}
+		return copy(b, data[n:]), nil
+	}
+}
+
+func (c *http3UDPConn) Write(b []byte) (int, error) {
+	data := make([]byte, len(b)+1)
+	copy(data[1:], b)
+	if err := c.stream.SendDatagram(data); err != nil {
+		var dtle *quic.DatagramTooLargeError
+		if errors.As(err, &dtle) {
+			return 0, err
+		}
+		return 0, c.cancel.WriteError(err)
+	}
+	return len(b), nil
+}
+
+func (c *http3UDPConn) Close() error {
+	return c.cancel.Close()
+}
+
+func (c *http3UDPConn) RemoteAddr() net.Addr {
+	return c.remoteAddr
+}
+
+func (c *http3UDPConn) LocalAddr() net.Addr {
+	return c.localAddr
+}
+
+func (c *http3UDPConn) SetDeadline(t time.Time) error {
+	return c.cancel.SetDeadline(t)
+}
+
+func (c *http3UDPConn) SetReadDeadline(t time.Time) error {
+	return c.cancel.SetReadDeadline(t)
+}
+
+func (c *http3UDPConn) SetWriteDeadline(t time.Time) error {
+	return c.cancel.SetWriteDeadline(t)
+}
+
+func (c *http3UDPConn) QuicConn() *quic.Conn {
 	return c.quicConn
 }

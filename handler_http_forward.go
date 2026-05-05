@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -16,11 +17,15 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"text/template"
 	"time"
 
 	"github.com/mileusna/useragent"
 	"github.com/phuslu/log"
+	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/http3"
+	"github.com/quic-go/quic-go/quicvarint"
 	"github.com/valyala/bytebufferpool"
 	"golang.org/x/net/publicsuffix"
 )
@@ -103,11 +108,16 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 	// 	ri.RemoteIP = strings.Split(xfr, ",")[0]
 	// }
 
-	tunnel := strings.HasPrefix(req.URL.Path, HTTPTunnelConnectTCPPathPrefix)
-	if tunnel {
+	tcpTunnel := strings.HasPrefix(req.URL.Path, HTTPTunnelConnectTCPPathPrefix)
+	udpTunnel := strings.HasPrefix(req.URL.Path, HTTPTunnelConnectUDPPathPrefix)
+	if tcpTunnel || udpTunnel {
 		// see https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-connect-tcp-05
-		parts := strings.Split(req.URL.Path, "/")
-		hostport := net.JoinHostPort(parts[len(parts)-3], parts[len(parts)-2])
+		parts := strings.Split(strings.TrimSuffix(req.URL.Path, "/"), "/")
+		if len(parts) < 2 {
+			http.Error(rw, fmt.Sprintf("invalid tunnel path: %s", req.URL.Path), http.StatusBadRequest)
+			return
+		}
+		hostport := net.JoinHostPort(parts[len(parts)-2], parts[len(parts)-1])
 
 		// fix up request
 		req.Host = hostport
@@ -495,6 +505,9 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			})
 		}
 		network := cmp.Or(req.Header.Get("x-forwarded-network"), "tcp")
+		if udpTunnel {
+			network = "udp"
+		}
 		conn, err := dialer.DialContext(ctx, network, req.Host)
 		if err != nil {
 			log.Error().Err(err).Context(ri.LogContext).Msg("dial host error")
@@ -511,11 +524,86 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 
 		log.Debug().Context(ri.LogContext).Str("geosite", geosite.Site).Any("req_header", req.Header).NetAddr("conn_remote_addr", conn.RemoteAddr()).Msg("dial host ok")
 
+		switch network {
+		case "udp", "udp4", "udp6":
+			if req.ProtoMajor != 3 {
+				_ = conn.Close()
+				http.Error(rw, "udp tunnel requires http3", http.StatusBadRequest)
+				return
+			}
+			streamer, ok := rw.(http3.HTTPStreamer)
+			if !ok {
+				_ = conn.Close()
+				http.Error(rw, "http3 stream is unavailable", http.StatusBadRequest)
+				return
+			}
+
+			rw.Header().Set(http3.CapsuleProtocolHeader, "?1")
+			rw.WriteHeader(http.StatusOK)
+			stream := streamer.HTTPStream()
+
+			var receiveBytes, transmitBytes atomic.Int64
+			done := make(chan error, 2)
+			streamCtx, cancel := context.WithCancel(req.Context())
+
+			go func() {
+				for {
+					data, err := stream.ReceiveDatagram(streamCtx)
+					if err != nil {
+						done <- err
+						return
+					}
+					contextID, n, err := quicvarint.Parse(data)
+					if err != nil || contextID != 0 {
+						continue
+					}
+					written, err := conn.Write(data[n:])
+					receiveBytes.Add(int64(written))
+					if err != nil {
+						done <- err
+						return
+					}
+				}
+			}()
+			go func() {
+				buf := make([]byte, 64*1024)
+				for {
+					n, err := conn.Read(buf[1:])
+					if err != nil {
+						done <- err
+						return
+					}
+					if n == 0 {
+						continue
+					}
+					buf[0] = 0
+					if err := stream.SendDatagram(buf[:n+1]); err != nil {
+						var dtle *quic.DatagramTooLargeError
+						if errors.As(err, &dtle) {
+							continue
+						}
+						done <- err
+						return
+					}
+					transmitBytes.Add(int64(n))
+				}
+			}()
+
+			err = <-done
+			cancel()
+			_ = conn.Close()
+			_ = stream.Close()
+			stream.CancelRead(0)
+
+			log.Debug().Context(ri.LogContext).Str("geosite", geosite.Site).Str("username", ri.ProxyUserInfo.Username).Str("http_domain", domain).Int64("speed_limit", speedLimit).Int64("receive_bytes", receiveBytes.Load()).Int64("transmit_bytes", transmitBytes.Load()).Err(err).Msg("forward udp log")
+			return
+		}
+
 		var w io.Writer
 		var r io.Reader
 
 		if req.ProtoAtLeast(2, 0) {
-			if tunnel && req.Header.Get("Sec-Websocket-Key") != "" {
+			if tcpTunnel && req.Header.Get("Sec-Websocket-Key") != "" {
 				key := sha1.Sum([]byte(req.Header.Get("Sec-WebSocket-Key") + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
 				rw.Header().Set("sec-websocket-accept", base64.StdEncoding.EncodeToString(key[:]))
 				rw.Header().Set("upgrade", "websocket")
@@ -539,7 +627,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			w = lconn
 			r = lconn
 
-			if tunnel {
+			if tcpTunnel {
 				key := sha1.Sum([]byte(req.Header.Get("Sec-WebSocket-Key") + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
 				fmt.Fprintf(lconn, "HTTP/1.1 101 Switching Protocols\r\nSec-WebSocket-Accept: %s\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n", base64.StdEncoding.EncodeToString(key[:]))
 			} else {
