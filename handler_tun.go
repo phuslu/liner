@@ -89,7 +89,7 @@ func (h *TunHandler) Load(ctx context.Context) error {
 		h.DnsResolver = h.LocalDialer.DnsResolver
 	}
 
-	h.mtu = cmp.Or(h.Config.MTU, 1420)
+	h.mtu = cmp.Or(h.Config.MTU, map[bool]int{false: 9000, true: 4064}[runtime.GOOS == "darwin"])
 	h.device, err = tun.CreateTUN(cmp.Or(h.Config.Name, "tun%d"), h.mtu)
 	if err != nil {
 		return err

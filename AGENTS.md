@@ -774,8 +774,9 @@ GOCACHE=/tmp/liner-go-build go test ./...
 - Top-level `tunnel` is the remote client. Server-side reverse tunnel handling is
   configured under `http[].tunnel` or `https[].tunnel`.
 - `remote_listen` currently expects exactly one address in `TunnelHandler.Load`.
-- TUN default address is `198.18.0.1/15`, default MTU is `1420`, default stack
-  queue size is `1024`, and negative route entries mean bypass prefixes.
+- TUN default address is `198.18.0.1/15`, default MTU is `9000` except `4064`
+  on macOS, default stack queue size is `1024`, and negative route entries mean
+  bypass prefixes.
   Windows adds a high-metric `0.0.0.0/0` fallback when `routes` is empty so
   source-bound clients such as `curl --interface 198.18.0.1` can select the TUN
   without replacing normal default routing.
