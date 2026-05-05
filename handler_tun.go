@@ -156,7 +156,7 @@ func (h *TunHandler) Load(ctx context.Context) error {
 			if slices.Contains(bypassPrefixes, prefix) {
 				continue
 			}
-			log.Info().Str("tun_name", h.name).NetIPPrefix("tun_bypass_prefix", prefix).Msg("add bypass prefix")
+			// log.Info().Str("tun_name", h.name).NetIPPrefix("tun_bypass_prefix", prefix).Msg("add bypass prefix")
 			bypassPrefixes = append(bypassPrefixes, prefix)
 		}
 		return nil
@@ -297,7 +297,7 @@ func (h *TunHandler) Load(ctx context.Context) error {
 	s.AddRoute(tcpip.Route{Destination: header.IPv6EmptySubnet, NIC: 1})
 
 	tcpForwarder := tcp.NewForwarder(s, tcpBufferSize, cmp.Or(h.Config.Forward.TcpMaxInFlight, 1024), h.forwardTCP)
-	udpForwarder := udp.NewForwarder(s, func(r *udp.ForwarderRequest) { go h.serveUDP(r) })
+	udpForwarder := udp.NewForwarder(s, h.forwardUDP)
 	s.SetTransportProtocolHandler(tcp.ProtocolNumber, tcpForwarder.HandlePacket)
 	s.SetTransportProtocolHandler(udp.ProtocolNumber, udpForwarder.HandlePacket)
 
@@ -602,7 +602,7 @@ func (h *TunHandler) forwardTCP(r *tcp.ForwarderRequest) {
 	h.logData(context.Background(), req, forward.dialerName)
 }
 
-func (h *TunHandler) serveUDP(r *udp.ForwarderRequest) {
+func (h *TunHandler) forwardUDP(r *udp.ForwarderRequest) {
 	id := r.ID()
 	serverIP, _ := netip.AddrFromSlice(id.LocalAddress.AsSlice())
 	remoteIP, _ := netip.AddrFromSlice(id.RemoteAddress.AsSlice())
@@ -623,6 +623,11 @@ func (h *TunHandler) serveUDP(r *udp.ForwarderRequest) {
 		return
 	}
 	lconn := gonet.NewUDPConn(&wq, ep)
+
+	go h.serveUDP(req, lconn)
+}
+
+func (h *TunHandler) serveUDP(req TunRequest, lconn net.Conn) {
 	defer lconn.Close()
 
 	if req.Port == 53 && h.DnsResolver != nil && h.DnsResolver.Client != nil {
