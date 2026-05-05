@@ -734,9 +734,10 @@ func main() {
 			log.Info().Str("version", version).NetAddr("address", pc.LocalAddr()).Msg("liner listen and serve http3")
 
 			http3Server := &http3.Server{
-				Addr:      addr,
-				Handler:   server.Handler,
-				TLSConfig: server.TLSConfig,
+				Addr:            addr,
+				Handler:         server.Handler,
+				TLSConfig:       server.TLSConfig,
+				EnableDatagrams: true,
 				QUICConfig: &quic.Config{
 					Allow0RTT:                  true,
 					DisablePathMTUDiscovery:    false,
