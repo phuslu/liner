@@ -338,23 +338,19 @@ func (d *HTTP3Dialer) dialUDP(ctx context.Context, network, addr string) (net.Co
 		return nil, err
 	}
 
-	return &http3UDPConn{
-		stream:     stream,
-		remoteAddr: qconn.RemoteAddr(),
-		localAddr:  qconn.LocalAddr(),
-		quicConn:   qconn,
-		cancel: &httpStreamCancel{
-			cancel: streamCancel,
-			closeRead: func(error) error {
-				stream.CancelRead(0)
-				return resp.Body.Close()
-			},
-			closeWrite: func(err error) error {
-				if err != nil {
-					stream.CancelWrite(0)
-				}
-				return stream.Close()
-			},
+	return &http3Datagram{
+		stream: stream,
+		conn:   qconn,
+		cancel: streamCancel,
+		closeRead: func(error) error {
+			stream.CancelRead(0)
+			return resp.Body.Close()
+		},
+		closeWrite: func(err error) error {
+			if err != nil {
+				stream.CancelWrite(0)
+			}
+			return stream.Close()
 		},
 	}, nil
 }
@@ -505,20 +501,24 @@ func (c *http3Stream) closeWithError(err error) error {
 	return errors.Join(closeReadErr, closeWriteErr)
 }
 
-type http3UDPConn struct {
-	stream *http3.RequestStream
+type http3Datagram struct {
+	stream     *http3.RequestStream
+	conn       *quic.Conn
+	cancel     context.CancelFunc
+	closeRead  func(error) error
+	closeWrite func(error) error
 
-	remoteAddr net.Addr
-	localAddr  net.Addr
-	quicConn   *quic.Conn
-	cancel     *httpStreamCancel
+	mu       sync.Mutex
+	closed   bool
+	readErr  error
+	writeErr error
 }
 
-func (c *http3UDPConn) Read(b []byte) (int, error) {
+func (c *http3Datagram) Read(b []byte) (int, error) {
 	for {
 		data, err := c.stream.ReceiveDatagram(context.Background())
 		if err != nil {
-			return 0, c.cancel.ReadError(err)
+			return 0, c.readError(err)
 		}
 		contextID, n, err := quicvarint.Parse(data)
 		if err != nil || contextID != 0 {
@@ -528,7 +528,7 @@ func (c *http3UDPConn) Read(b []byte) (int, error) {
 	}
 }
 
-func (c *http3UDPConn) Write(b []byte) (int, error) {
+func (c *http3Datagram) Write(b []byte) (int, error) {
 	data := make([]byte, len(b)+1)
 	copy(data[1:], b)
 	if err := c.stream.SendDatagram(data); err != nil {
@@ -536,35 +536,97 @@ func (c *http3UDPConn) Write(b []byte) (int, error) {
 		if errors.As(err, &dtle) {
 			return 0, err
 		}
-		return 0, c.cancel.WriteError(err)
+		return 0, c.writeError(err)
 	}
 	return len(b), nil
 }
 
-func (c *http3UDPConn) Close() error {
-	return c.cancel.Close()
+func (c *http3Datagram) Close() error {
+	return c.closeWithError(net.ErrClosed)
 }
 
-func (c *http3UDPConn) RemoteAddr() net.Addr {
-	return c.remoteAddr
+func (c *http3Datagram) RemoteAddr() net.Addr {
+	return c.conn.RemoteAddr()
 }
 
-func (c *http3UDPConn) LocalAddr() net.Addr {
-	return c.localAddr
+func (c *http3Datagram) LocalAddr() net.Addr {
+	return c.conn.RemoteAddr()
 }
 
-func (c *http3UDPConn) SetDeadline(t time.Time) error {
-	return c.cancel.SetDeadline(t)
+func (c *http3Datagram) SetDeadline(t time.Time) error {
+	return nil
 }
 
-func (c *http3UDPConn) SetReadDeadline(t time.Time) error {
-	return c.cancel.SetReadDeadline(t)
+func (c *http3Datagram) SetReadDeadline(t time.Time) error {
+	return nil
 }
 
-func (c *http3UDPConn) SetWriteDeadline(t time.Time) error {
-	return c.cancel.SetWriteDeadline(t)
+func (c *http3Datagram) SetWriteDeadline(t time.Time) error {
+	return nil
 }
 
-func (c *http3UDPConn) QuicConn() *quic.Conn {
-	return c.quicConn
+func (c *http3Datagram) QuicConn() *quic.Conn {
+	return c.conn
+}
+
+func (c *http3Datagram) readError(err error) error {
+	if err == nil {
+		return nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.readErr != nil {
+		return c.readErr
+	}
+	if c.closed {
+		return net.ErrClosed
+	}
+	return err
+}
+
+func (c *http3Datagram) writeError(err error) error {
+	if err == nil {
+		return nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.writeErr != nil {
+		return c.writeErr
+	}
+	if c.closed {
+		return net.ErrClosed
+	}
+	return err
+}
+
+func (c *http3Datagram) closeWithError(err error) error {
+	if err == nil {
+		err = net.ErrClosed
+	}
+
+	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return nil
+	}
+	c.closed = true
+	c.readErr = err
+	c.writeErr = err
+	cancel := c.cancel
+	closeRead := c.closeRead
+	closeWrite := c.closeWrite
+	c.mu.Unlock()
+
+	if cancel != nil {
+		cancel()
+	}
+
+	var closeReadErr, closeWriteErr error
+	if closeRead != nil {
+		closeReadErr = closeRead(err)
+	}
+	if closeWrite != nil {
+		closeWriteErr = closeWrite(err)
+	}
+	return errors.Join(closeReadErr, closeWriteErr)
 }
