@@ -98,6 +98,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	// exit handlers
+	atexit := map[string]func() error{}
+
 	// log broadcaster
 	memoryLogWriter := ringbuffer.New(8192)
 
@@ -159,6 +162,9 @@ func main() {
 		}
 		// stderr redirection
 		RedirectOutputToFile(filepath.Join(logDir, logName+".error.log"))
+		// at exit
+		atexit["01-close-default-logger"] = log.DefaultLogger.Writer.(*log.FileWriter).Close
+		atexit["02-close-dta-logger"] = log.DefaultLogger.Writer.(*log.FileWriter).Close
 	}
 
 	slog.SetDefault(log.DefaultLogger.Slog())
@@ -506,7 +512,6 @@ func main() {
 	}
 
 	memoryDialers := &MemoryDialers{xsync.NewMap[string, *MemoryDialer]()}
-	unloadHandlers := []interface{ Unload() error }{}
 
 	// tls inspector
 	tlsConfigurator := &TLSInspector{
@@ -1011,7 +1016,7 @@ func main() {
 	}
 
 	// tun handler
-	for _, tunConfig := range config.Tun {
+	for i, tunConfig := range config.Tun {
 		tunResolver := dnsResolver
 		if server := strings.TrimSpace(tunConfig.DnsServer); server != "" {
 			tunResolver, err = dnsResolverPool.Get(server, 600*time.Second)
@@ -1034,8 +1039,10 @@ func main() {
 		}
 
 		log.Info().Str("version", version).Str("tun_name", h.name).Int("tun_mtu", h.mtu).Msg("liner create and serve tun")
-		unloadHandlers = append(unloadHandlers, h)
+
 		go h.Serve(context.Background())
+		// at exit
+		atexit["10-unload-tun-device-"+strconv.Itoa(i+1)] = h.Unload
 	}
 
 	// ssh handler
@@ -1218,17 +1225,9 @@ func main() {
 
 	<-ctx.Done()
 
-	log.Info().Msg("liner unload handlers and flush logs.")
-	for _, h := range slices.Backward(unloadHandlers) {
-		h.Unload()
+	log.Info().Msg("liner start exiting...")
+	for _, name := range slices.Backward(slices.Sorted(maps.Keys(atexit))) {
+		log.Info().Str("exit_name", name).Err(atexit[name]()).Msg("liner exit")
 	}
-	for _, w := range []log.Writer{
-		dataLogger.Writer,
-		log.DefaultLogger.Writer,
-	} {
-		if c, ok := w.(io.Closer); ok {
-			c.Close()
-		}
-	}
-	log.Info().Msg("liner server shutdown")
+	log.Info().Msg("liner exited.")
 }
