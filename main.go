@@ -396,6 +396,11 @@ func main() {
 				Logger:                slog.Default(),
 				Dialer:                underlay,
 			}
+		case "wireguard", "wg":
+			return &WireGuardDialer{
+				URL:         u.String(),
+				DnsResolver: dnsResolver,
+			}
 		default:
 			log.Fatal().Str("dialer_scheme", u.Scheme).Msgf("unsupported dialer=%+v", u)
 		}

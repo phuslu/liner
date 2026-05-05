@@ -322,6 +322,7 @@ Supported schemes:
 - `socks4://`, `socks4a://`, `socks://`, `socks5://`, and `socks5h://` create
   `SocksDialer`.
 - `ssh://` and `ssh2://` create `SSHDialer`.
+- `wireguard://` and `wg://` create `WireGuardDialer`.
 
 Dialer behavior:
 
@@ -335,6 +336,9 @@ Dialer behavior:
   DNS integration.
 - SSH dialers maintain reusable SSH clients, support password/private key auth,
   optional strict known-host checks, idle timeouts, and buffer tuning.
+- WireGuard dialers run an in-process userspace WireGuard device with
+  `tun/netstack`, support TCP and UDP dialing, and accept a `wg-quick` style
+  config file path such as `wg:///etc/wireguard/wg0.conf`.
 - `MemoryDialer` opens streams against a mux session for a specific
   `240.x.x.x:port` address.
 
@@ -544,6 +548,7 @@ Dialers:
 - `dialer_http3.go`: HTTP/3/QUIC proxy dialer.
 - `dialer_socks.go`: SOCKS dialer.
 - `dialer_ssh.go`: SSH dialer and muxed sessions.
+- `dialer_wireguard.go`: userspace WireGuard dialer backed by `tun/netstack`.
 
 HTTP handlers:
 
