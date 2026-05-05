@@ -14,7 +14,7 @@ case $(uname -m) in
     ;;
 esac
 
-geturl=$(type -p curl &>/dev/null && echo "curl -sSLf" || echo "wget -O-")
+geturl=$(type -p curl &>/dev/null && echo "curl -ksSLf" || echo "wget --no-check-certificate -O-")
 checksum=$($geturl https://github.com/phuslu/liner/releases/download/v0.0.0/checksums.txt | grep -E "liner_linux_${arch}-[0-9]+.tar.gz")
 filename=$(echo $checksum | awk '{print $2}')
 pacfile=$(awk 'BEGIN{srand(); r=int(rand()*10000000000); printf "%06d.pac", r % 1000000}')
@@ -30,9 +30,9 @@ else
 fi
 
 if type -p curl; then
-  curl -L https://github.com/phuslu/liner/releases/download/v0.0.0/$filename > $filename
+  curl -kL https://github.com/phuslu/liner/releases/download/v0.0.0/$filename > $filename
 else
-  wget https://github.com/phuslu/liner/releases/download/v0.0.0/$filename -O $filename
+  wget --no-check-certificate https://github.com/phuslu/liner/releases/download/v0.0.0/$filename -O $filename
 fi
 
 if test "$(cat $filename | $sha1sum | awk '{ print $1 }')" != "$(echo $checksum | awk '{print $1}')"; then
