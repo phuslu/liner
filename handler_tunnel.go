@@ -59,14 +59,14 @@ func (h *TunnelHandler) Serve(ctx context.Context) {
 		var ln net.Listener
 		var err error
 		switch strings.Split(dialerURL, "://")[0] {
+		case "ssh", "ssh2":
+			ln, err = h.sshtunnel(ctx, h.Config.Dialer, dialerURL)
 		case "http", "https", "ws", "wss":
 			ln, err = h.h1tunnel(ctx, h.Config.Dialer, dialerURL)
 		case "http2":
 			ln, err = h.h2tunnel(ctx, h.Config.Dialer, dialerURL)
 		case "http3", "quic":
 			ln, err = h.h3tunnel(ctx, h.Config.Dialer, dialerURL)
-		case "ssh", "ssh2":
-			ln, err = h.sshtunnel(ctx, h.Config.Dialer, dialerURL)
 		default:
 			log.Fatal().Str("dialer_url", dialerURL).Msg("dialer tunnel is unsupported")
 		}
@@ -170,28 +170,6 @@ func (h *TunnelHandler) handle(ctx context.Context, rconn net.Conn, laddr string
 	}
 }
 
-var _ net.Listener = (*MuxSessionListener)(nil)
-
-type MuxSessionListener struct {
-	Session *yamux.Session
-}
-
-func (ln *MuxSessionListener) Accept() (net.Conn, error) {
-	return ln.Session.AcceptStream()
-}
-
-func (ln *MuxSessionListener) Addr() net.Addr {
-	return ln.Session.LocalAddr()
-}
-
-func (ln *MuxSessionListener) RemoteAddr() net.Addr {
-	return ln.Session.RemoteAddr()
-}
-
-func (ln *MuxSessionListener) Close() error {
-	return ln.Session.Close()
-}
-
 type TunnelListener struct {
 	net.Listener
 	closer io.Closer
@@ -199,7 +177,7 @@ type TunnelListener struct {
 }
 
 func (ln *TunnelListener) Accept() (net.Conn, error) {
-	if session, ok := ln.Listener.(*MuxSessionListener); ok {
+	if session, ok := ln.Listener.(*YamuxSessionListener); ok {
 		log.Debug().NetAddr("remote_addr", session.RemoteAddr()).Msg("mux session accept conn")
 	}
 	return ln.Listener.Accept()
@@ -224,6 +202,87 @@ func (ln *TunnelListener) Done() <-chan struct{} {
 		return nil
 	}
 	return ln.ctx.Done()
+}
+
+func (h *TunnelHandler) sshtunnel(ctx context.Context, dialerName, dialerURL string) (net.Listener, error) {
+	log.Info().Str("dialer_name", dialerName).Msg("connecting tunnel host")
+
+	u, err := url.Parse(dialerURL)
+	if err != nil {
+		return nil, err
+	}
+	if u.User == nil {
+		return nil, fmt.Errorf("no user info in dialer %s: %s", dialerName, dialerURL)
+	}
+
+	if IsMemoryAddress(h.Config.RemoteListen[0]) {
+		return nil, fmt.Errorf("invalid remote_listen memory address in ssh tunnel: %s", h.Config.RemoteListen[0])
+	}
+
+	config := &ssh.ClientConfig{
+		User: u.User.Username(),
+		Auth: []ssh.AuthMethod{
+			ssh.Password(first(u.User.Password())),
+		},
+		ClientVersion:   TunnelUserAgent,
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         60 * time.Second,
+	}
+	if key := u.Query().Get("key"); key != "" {
+		data, err := os.ReadFile(key)
+		if err != nil {
+			log.Error().Err(err).Msgf("failed to read ssh key %s", key)
+			return nil, err
+		}
+		signer, err := ssh.ParsePrivateKey(data)
+		if err != nil {
+			log.Error().Err(err).Msgf("invalid ssh key %s", data)
+			return nil, fmt.Errorf("invalid ssh key %s: %w", data, err)
+		}
+		config.Auth = append([]ssh.AuthMethod{ssh.PublicKeys(signer)}, config.Auth...)
+	}
+
+	hostport := u.Host
+	if _, _, err := net.SplitHostPort(hostport); err != nil {
+		hostport = net.JoinHostPort(hostport, "22")
+	}
+	if resolve := u.Query().Get("resolve"); resolve != "" {
+		_, port, _ := net.SplitHostPort(hostport)
+		hostport = net.JoinHostPort(resolve, port)
+	}
+
+	conn, err := (&net.Dialer{Timeout: time.Duration(h.Config.DialTimeout) * time.Second}).DialContext(ctx, "tcp", hostport)
+	if err != nil {
+		log.Error().Err(err).Msgf("failed to dial %s", hostport)
+		return nil, fmt.Errorf("failed to dial %s: %w", hostport, err)
+	}
+
+	c, chans, reqs, err := ssh.NewClientConn(conn, hostport, config)
+	if err != nil {
+		log.Error().Err(err).Msgf("failed to create ssh conn %s", hostport)
+		return nil, fmt.Errorf("failed to create ssh conn %s: %w", hostport, err)
+	}
+
+	client := ssh.NewClient(c, chans, reqs)
+
+	// Set up the remote listener
+	ln, err := client.Listen("tcp", h.Config.RemoteListen[0])
+	if err != nil {
+		log.Error().Err(err).Msgf("failed to remote listen %s", h.Config.RemoteListen[0])
+		client.Close()
+		return nil, fmt.Errorf("failed to dial remote %s: %w", h.Config.RemoteListen[0], err)
+	}
+
+	if tc, _ := conn.(*net.TCPConn); conn != nil && h.Config.SpeedLimit > 0 {
+		err := (ConnOps{tc, nil}).SetTcpMaxPacingRate(int(h.Config.SpeedLimit))
+		log.DefaultLogger.Err(err).Str("tunnel_proxy_pass", h.Config.ProxyPass).Str("tunnel_dialer_name", h.Config.Dialer).Int64("tunnel_speedlimit", h.Config.SpeedLimit).Msg("set speedlimit")
+	}
+
+	return &TunnelListener{
+		Listener: ln,
+		closer:   client,
+		ctx:      nil,
+	}, nil
 }
 
 func (h *TunnelHandler) h1tunnel(ctx context.Context, dialerName, dialerURL string) (net.Listener, error) {
@@ -432,7 +491,7 @@ func (h *TunnelHandler) h1tunnel(ctx context.Context, dialerName, dialerURL stri
 	}
 
 	return &TunnelListener{
-		Listener: &MuxSessionListener{session},
+		Listener: &YamuxSessionListener{session},
 		closer:   conn,
 		ctx:      nil,
 	}, nil
@@ -587,7 +646,7 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialerName, dialerURL stri
 	}
 
 	return &TunnelListener{
-		Listener: &MuxSessionListener{session},
+		Listener: &YamuxSessionListener{session},
 		closer:   conn,
 		ctx:      nil,
 	}, nil
@@ -713,27 +772,47 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 	}, nil
 }
 
+var _ net.Listener = (*YamuxSessionListener)(nil)
+
+type YamuxSessionListener struct {
+	session *yamux.Session
+}
+
+func (ln *YamuxSessionListener) Accept() (net.Conn, error) {
+	return ln.session.AcceptStream()
+}
+
+func (ln *YamuxSessionListener) Addr() net.Addr {
+	return ln.session.LocalAddr()
+}
+
+func (ln *YamuxSessionListener) RemoteAddr() net.Addr {
+	return ln.session.RemoteAddr()
+}
+
+func (ln *YamuxSessionListener) Close() error {
+	return ln.session.Close()
+}
+
 var _ net.Listener = (*QUICReverseListener)(nil)
 
 type QUICReverseListener struct {
-	conn  *quic.Conn
-	body  io.ReadCloser
-	pipe  *ringbuffer.PipeWriter
-	ctx   context.Context
-	stop  context.CancelFunc
-	once  sync.Once
-	laddr net.Addr
+	conn *quic.Conn
+	body io.ReadCloser
+	pipe *ringbuffer.PipeWriter
+	ctx  context.Context
+	stop context.CancelFunc
+	once sync.Once
 }
 
 func NewQUICReverseListener(parent context.Context, conn *quic.Conn, body io.ReadCloser, pipe *ringbuffer.PipeWriter) *QUICReverseListener {
 	ctx, stop := context.WithCancel(parent)
 	ln := &QUICReverseListener{
-		conn:  conn,
-		body:  body,
-		pipe:  pipe,
-		ctx:   ctx,
-		stop:  stop,
-		laddr: conn.LocalAddr(),
+		conn: conn,
+		body: body,
+		pipe: pipe,
+		ctx:  ctx,
+		stop: stop,
 	}
 	go ln.watchControl()
 	return ln
@@ -753,16 +832,12 @@ func (ln *QUICReverseListener) Accept() (net.Conn, error) {
 }
 
 func (ln *QUICReverseListener) Addr() net.Addr {
-	return ln.laddr
+	return ln.conn.LocalAddr()
 }
 
 func (ln *QUICReverseListener) Close() error {
 	ln.close()
 	return nil
-}
-
-func (ln *QUICReverseListener) Context() context.Context {
-	return ln.ctx
 }
 
 func (ln *QUICReverseListener) watchControl() {
@@ -782,85 +857,4 @@ func (ln *QUICReverseListener) close() {
 			_ = ln.pipe.Close()
 		}
 	})
-}
-
-func (h *TunnelHandler) sshtunnel(ctx context.Context, dialerName, dialerURL string) (net.Listener, error) {
-	log.Info().Str("dialer_name", dialerName).Msg("connecting tunnel host")
-
-	u, err := url.Parse(dialerURL)
-	if err != nil {
-		return nil, err
-	}
-	if u.User == nil {
-		return nil, fmt.Errorf("no user info in dialer %s: %s", dialerName, dialerURL)
-	}
-
-	if IsMemoryAddress(h.Config.RemoteListen[0]) {
-		return nil, fmt.Errorf("invalid remote_listen memory address in ssh tunnel: %s", h.Config.RemoteListen[0])
-	}
-
-	config := &ssh.ClientConfig{
-		User: u.User.Username(),
-		Auth: []ssh.AuthMethod{
-			ssh.Password(first(u.User.Password())),
-		},
-		ClientVersion:   TunnelUserAgent,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		Timeout:         60 * time.Second,
-	}
-	if key := u.Query().Get("key"); key != "" {
-		data, err := os.ReadFile(key)
-		if err != nil {
-			log.Error().Err(err).Msgf("failed to read ssh key %s", key)
-			return nil, err
-		}
-		signer, err := ssh.ParsePrivateKey(data)
-		if err != nil {
-			log.Error().Err(err).Msgf("invalid ssh key %s", data)
-			return nil, fmt.Errorf("invalid ssh key %s: %w", data, err)
-		}
-		config.Auth = append([]ssh.AuthMethod{ssh.PublicKeys(signer)}, config.Auth...)
-	}
-
-	hostport := u.Host
-	if _, _, err := net.SplitHostPort(hostport); err != nil {
-		hostport = net.JoinHostPort(hostport, "22")
-	}
-	if resolve := u.Query().Get("resolve"); resolve != "" {
-		_, port, _ := net.SplitHostPort(hostport)
-		hostport = net.JoinHostPort(resolve, port)
-	}
-
-	conn, err := (&net.Dialer{Timeout: time.Duration(h.Config.DialTimeout) * time.Second}).DialContext(ctx, "tcp", hostport)
-	if err != nil {
-		log.Error().Err(err).Msgf("failed to dial %s", hostport)
-		return nil, fmt.Errorf("failed to dial %s: %w", hostport, err)
-	}
-
-	c, chans, reqs, err := ssh.NewClientConn(conn, hostport, config)
-	if err != nil {
-		log.Error().Err(err).Msgf("failed to create ssh conn %s", hostport)
-		return nil, fmt.Errorf("failed to create ssh conn %s: %w", hostport, err)
-	}
-
-	client := ssh.NewClient(c, chans, reqs)
-
-	// Set up the remote listener
-	ln, err := client.Listen("tcp", h.Config.RemoteListen[0])
-	if err != nil {
-		log.Error().Err(err).Msgf("failed to remote listen %s", h.Config.RemoteListen[0])
-		client.Close()
-		return nil, fmt.Errorf("failed to dial remote %s: %w", h.Config.RemoteListen[0], err)
-	}
-
-	if tc, _ := conn.(*net.TCPConn); conn != nil && h.Config.SpeedLimit > 0 {
-		err := (ConnOps{tc, nil}).SetTcpMaxPacingRate(int(h.Config.SpeedLimit))
-		log.DefaultLogger.Err(err).Str("tunnel_proxy_pass", h.Config.ProxyPass).Str("tunnel_dialer_name", h.Config.Dialer).Int64("tunnel_speedlimit", h.Config.SpeedLimit).Msg("set speedlimit")
-	}
-
-	return &TunnelListener{
-		Listener: ln,
-		closer:   client,
-		ctx:      nil,
-	}, nil
 }
