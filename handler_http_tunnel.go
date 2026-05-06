@@ -252,6 +252,11 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		defer ln.Close()
 	}
 
+	if req.ProtoMajor == 3 && strings.Contains(req.UserAgent(), " quic-go/v") {
+		h.serveHTTP3(rw, req, ri, addrport, ln)
+		return
+	}
+
 	var conn net.Conn
 
 	if req.ProtoAtLeast(2, 0) {

@@ -33,9 +33,7 @@ import (
 	"golang.org/x/net/http2"
 )
 
-var TunnelUserAgent = "Liner/" + version + " (" + runtime.GOOS + "; " + runtime.GOARCH + "; " + runtime.Version() + ") " + "yamux/v5"
-
-var TunnelHTTP3Transports = xsync.NewMap[string, *http3.Transport]()
+var TunnelUserAgent = "Liner/" + version + " (" + runtime.GOOS + "; " + runtime.GOARCH + "; " + runtime.Version() + ") yamux/v5 quic-go/v0"
 
 type TunnelHandler struct {
 	Config          TunnelConfig
@@ -43,16 +41,12 @@ type TunnelHandler struct {
 	DnsResolver     *DnsResolver
 	LocalDialer     Dialer
 	Dialers         map[string]string
-
-	transport3 *xsync.Map[string, *http3.Transport] // key: dialer name
 }
 
 func (h *TunnelHandler) Load() error {
 	if len(h.Config.RemoteListen) != 1 {
 		return fmt.Errorf("invalid tunnel remote listen: %v", h.Config.RemoteListen)
 	}
-
-	h.transport3 = TunnelHTTP3Transports
 
 	return nil
 }
@@ -211,11 +205,15 @@ func (ln *TunnelListener) Accept() (net.Conn, error) {
 }
 
 func (ln *TunnelListener) Close() (err error) {
-	if e := ln.Listener.Close(); e != nil {
-		err = e
+	if ln.Listener != nil {
+		if e := ln.Listener.Close(); e != nil {
+			err = e
+		}
 	}
-	if e := ln.closer.Close(); e != nil {
-		err = e
+	if ln.closer != nil {
+		if e := ln.closer.Close(); e != nil {
+			err = e
+		}
 	}
 	return
 }
@@ -605,37 +603,35 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 		return nil, fmt.Errorf("no user info in dialer %s: %s", dialerName, dialerURL)
 	}
 
-	transport, _ := h.transport3.LoadOrCompute(dialerName, func() (*http3.Transport, bool) {
-		return &http3.Transport{
-			DisableCompression: false,
-			EnableDatagrams:    true,
-			Dial: func(ctx context.Context, addr string, tlsConf *tls.Config, conf *quic.Config) (*quic.Conn, error) {
-				ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-				defer cancel()
-				conn, err := quic.DialAddrEarly(ctx,
-					net.JoinHostPort(cmp.Or(u.Query().Get("resolve"), u.Hostname()), cmp.Or(u.Port(), "443")),
-					&tls.Config{
-						NextProtos:         []string{"h3"},
-						InsecureSkipVerify: u.Query().Get("insecure") == "true",
-						ServerName:         u.Hostname(),
-					},
-					&quic.Config{
-						DisablePathMTUDiscovery:    false,
-						EnableDatagrams:            true,
-						MaxIdleTimeout:             45 * time.Second,
-						MaxIncomingUniStreams:      200,
-						MaxIncomingStreams:         200,
-						MaxStreamReceiveWindow:     6 * 1024 * 1024,
-						MaxConnectionReceiveWindow: 100 * 1024 * 1024,
-					},
-				)
-				if err != nil {
-					return nil, err
-				}
-				return conn, nil
-			},
-		}, false
-	})
+	transport := &http3.Transport{
+		DisableCompression: false,
+		EnableDatagrams:    true,
+		Dial: func(ctx context.Context, addr string, tlsConf *tls.Config, conf *quic.Config) (*quic.Conn, error) {
+			ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			defer cancel()
+			conn, err := quic.DialAddrEarly(ctx,
+				net.JoinHostPort(cmp.Or(u.Query().Get("resolve"), u.Hostname()), cmp.Or(u.Port(), "443")),
+				&tls.Config{
+					NextProtos:         []string{"h3"},
+					InsecureSkipVerify: u.Query().Get("insecure") == "true",
+					ServerName:         u.Hostname(),
+				},
+				&quic.Config{
+					DisablePathMTUDiscovery:    false,
+					EnableDatagrams:            true,
+					MaxIdleTimeout:             45 * time.Second,
+					MaxIncomingUniStreams:      200,
+					MaxIncomingStreams:         200,
+					MaxStreamReceiveWindow:     6 * 1024 * 1024,
+					MaxConnectionReceiveWindow: 100 * 1024 * 1024,
+				},
+			)
+			if err != nil {
+				return nil, err
+			}
+			return conn, nil
+		},
+	}
 
 	targetHost, targetPort, err := net.SplitHostPort(h.Config.RemoteListen[0])
 	if err != nil {
@@ -691,9 +687,8 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 	if err != nil {
 		if errmsg := err.Error(); strings.Contains(errmsg, "timeout: ") || strings.Contains(errmsg, "context deadline exceeded") || strings.Contains(errmsg, "context canceled") {
 			log.Warn().Err(err).Msg("close underlying http3 connection")
-			h.transport3.Delete(dialerName)
-			transport.Close()
 		}
+		transport.Close()
 		return nil, err
 	}
 
@@ -709,51 +704,11 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 		remoteAddr, localAddr = &net.UDPAddr{}, &net.UDPAddr{}
 	}
 
-	conn := &http3Stream{
-		body: resp.Body,
-		pipe: pw,
-		conn: quicConn,
-		closeRead: func(error) error {
-			return resp.Body.Close()
-		},
-		closeWrite: func(err error) error {
-			if err != nil {
-				return pw.CloseWithError(err)
-			}
-			return pw.Close()
-		},
-		cancel: nil,
-	}
-
-	session, err := yamux.Server(conn, &yamux.Config{
-		AcceptBacklog:           256,
-		PingBacklog:             32,
-		EnableKeepAlive:         false,
-		KeepAliveInterval:       30 * time.Second,
-		MeasureRTTInterval:      30 * time.Second,
-		ConnectionWriteTimeout:  10 * time.Second,
-		MaxIncomingStreams:      1000,
-		InitialStreamWindowSize: 256 * 1024,
-		MaxStreamWindowSize:     16 * 1024 * 1024,
-		LogOutput:               SlogWriter{Logger: log.DefaultLogger.Slog()},
-		ReadBufSize:             4096,
-		MaxMessageSize:          64 * 1024,
-		WriteCoalesceDelay:      100 * time.Microsecond,
-	}, nil)
-	if err != nil {
-		_ = conn.Close()
-		return nil, fmt.Errorf("tunnel: open mux server on remote %s: %w", h.Config.RemoteListen[0], err)
-	}
-
-	var quicCtx context.Context
-	if quicConn != nil {
-		quicCtx = quicConn.Context()
-	}
-
+	ln := NewQUICReverseListener(ctx, quicConn, resp.Body, pw)
 	return &TunnelListener{
-		Listener: &MuxSessionListener{session},
-		closer:   conn,
-		ctx:      quicCtx,
+		Listener: ln,
+		closer:   transport,
+		ctx:      quicConn.Context(),
 	}, nil
 }
 

@@ -339,8 +339,8 @@ Dialer behavior:
 - WireGuard dialers run an in-process userspace WireGuard device with
   `tun/netstack`, support TCP and UDP dialing, and accept a `wg-quick` style
   config file path such as `wg:///etc/wireguard/wg0.conf`.
-- `MemoryDialer` opens streams against a mux session for a specific
-  `240.x.x.x:port` address.
+- `MemoryDialer` opens streams through a `Session.Open(ctx)` provider for a
+  specific `240.x.x.x:port` address.
 
 ### Context Keys
 
@@ -572,9 +572,9 @@ Other handlers:
 - `handler_dns.go`: DNS server.
 - `handler_redsocks.go`: Linux transparent proxy.
 - `handler_tun.go`: TUN device and gVisor stack forwarding.
-- `handler_tunnel.go`, `handler_tunnel_http.go`, `handler_tunnel_http2.go`,
-  `handler_tunnel_http3.go`, `handler_tunnel_ssh.go`: remote tunnel client
-  transports.
+- `handler_tunnel.go`, `handler_tunnel_http.go`, `handler_tunnel_http2.go`, and
+  `handler_tunnel_ssh.go`: remote tunnel client transports. HTTP/3 reverse
+  tunnel raw stream support is colocated with the HTTP tunnel handler.
 
 Resolvers, auth, TLS, and utilities:
 
