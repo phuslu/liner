@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -100,12 +99,10 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 		}
 	}
 
-	var remoteAddr, localAddr net.Addr
 	var quicConn *quic.Conn
 
 	req = req.WithContext(httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
 		GotConn: func(connInfo httptrace.GotConnInfo) {
-			remoteAddr, localAddr = connInfo.Conn.RemoteAddr(), connInfo.Conn.LocalAddr()
 			// see https://github.com/quic-go/quic-go/blob/master/http3/trace.go
 			if data := (*[2]unsafe.Pointer)(unsafe.Pointer(&connInfo.Conn))[1]; data != nil {
 				type fakeConn struct{ conn *quic.Conn }
@@ -126,15 +123,11 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 
 	log.Debug().Int("resp_statuscode", resp.StatusCode).Any("resp_header", resp.Header).Msg("http3dialer websocket response")
 
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusSwitchingProtocols {
+	if (resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusSwitchingProtocols) || quicConn == nil {
 		data, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
 		reqCancel()
-		return nil, errors.New("proxy: read from " + u.Host + " error: " + resp.Status + ": " + string(data))
-	}
-
-	if remoteAddr == nil || localAddr == nil {
-		remoteAddr, localAddr = &net.UDPAddr{}, &net.UDPAddr{}
+		return nil, fmt.Errorf("http3tunnel: read from %s(%+v) error: %v: %s", u.Host, quicConn, resp.Status, data)
 	}
 
 	ln := NewQUICReverseListener(ctx, quicConn, resp.Body, reqCancel)
