@@ -9,144 +9,11 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
-	"sync"
 	"time"
 
 	"github.com/phuslu/log"
 	"github.com/quic-go/quic-go"
-	"github.com/smallnest/ringbuffer"
 )
-
-var _ net.Conn = (*quicStreamConn)(nil)
-
-type quicStreamConn struct {
-	stream *quic.Stream
-	conn   *quic.Conn
-}
-
-func (c *quicStreamConn) Read(b []byte) (int, error) {
-	return c.stream.Read(b)
-}
-
-func (c *quicStreamConn) Write(b []byte) (int, error) {
-	return c.stream.Write(b)
-}
-
-func (c *quicStreamConn) Close() error {
-	c.stream.CancelRead(0)
-	return c.stream.Close()
-}
-
-func (c *quicStreamConn) LocalAddr() net.Addr {
-	return c.conn.LocalAddr()
-}
-
-func (c *quicStreamConn) RemoteAddr() net.Addr {
-	return c.conn.RemoteAddr()
-}
-
-func (c *quicStreamConn) SetDeadline(t time.Time) error {
-	return c.stream.SetDeadline(t)
-}
-
-func (c *quicStreamConn) SetReadDeadline(t time.Time) error {
-	return c.stream.SetReadDeadline(t)
-}
-
-func (c *quicStreamConn) SetWriteDeadline(t time.Time) error {
-	return c.stream.SetWriteDeadline(t)
-}
-
-type quicMemorySession struct {
-	conn *quic.Conn
-}
-
-func (s quicMemorySession) Open(ctx context.Context) (net.Conn, error) {
-	stream, err := s.conn.OpenStreamSync(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return &quicStreamConn{stream: stream, conn: s.conn}, nil
-}
-
-var _ net.Listener = (*QUICReverseListener)(nil)
-
-type QUICReverseListener struct {
-	conn  *quic.Conn
-	body  io.ReadCloser
-	pipe  *ringbuffer.PipeWriter
-	ctx   context.Context
-	stop  context.CancelFunc
-	once  sync.Once
-	laddr net.Addr
-}
-
-type multiCloser []io.Closer
-
-func (cs multiCloser) Close() (err error) {
-	for _, c := range cs {
-		if c == nil {
-			continue
-		}
-		err = errors.Join(err, c.Close())
-	}
-	return err
-}
-
-func NewQUICReverseListener(parent context.Context, conn *quic.Conn, body io.ReadCloser, pipe *ringbuffer.PipeWriter) *QUICReverseListener {
-	ctx, stop := context.WithCancel(parent)
-	ln := &QUICReverseListener{
-		conn:  conn,
-		body:  body,
-		pipe:  pipe,
-		ctx:   ctx,
-		stop:  stop,
-		laddr: conn.LocalAddr(),
-	}
-	go ln.watchControl()
-	return ln
-}
-
-func (ln *QUICReverseListener) Accept() (net.Conn, error) {
-	stream, err := ln.conn.AcceptStream(ln.ctx)
-	if err != nil {
-		return nil, err
-	}
-	log.Debug().NetAddr("remote_addr", ln.conn.RemoteAddr()).Int64("quic_stream_id", int64(stream.StreamID())).Msg("quic reverse stream accept conn")
-	return &quicStreamConn{stream: stream, conn: ln.conn}, nil
-}
-
-func (ln *QUICReverseListener) Addr() net.Addr {
-	return ln.laddr
-}
-
-func (ln *QUICReverseListener) Close() error {
-	ln.close()
-	return nil
-}
-
-func (ln *QUICReverseListener) Context() context.Context {
-	return ln.ctx
-}
-
-func (ln *QUICReverseListener) watchControl() {
-	if ln.body != nil {
-		_, _ = io.Copy(io.Discard, ln.body)
-	}
-	ln.close()
-}
-
-func (ln *QUICReverseListener) close() {
-	ln.once.Do(func() {
-		ln.stop()
-		if ln.body != nil {
-			_ = ln.body.Close()
-		}
-		if ln.pipe != nil {
-			_ = ln.pipe.Close()
-		}
-	})
-}
 
 func (h *HTTPTunnelHandler) serveHTTP3(rw http.ResponseWriter, req *http.Request, ri *HTTPRequestInfo, addrport netip.AddrPort, ln net.Listener) {
 	qconn := ri.ClientConnOps.qc
@@ -193,16 +60,35 @@ func (h *HTTPTunnelHandler) serveHTTP3(rw http.ResponseWriter, req *http.Request
 				return
 			}
 
-			lconn := &quicStreamConn{stream: stream, conn: qconn}
+			lconn := &QuicStreamConn{
+				stream: stream,
+				laddr:  qconn.LocalAddr(),
+				raddr:  qconn.RemoteAddr(),
+			}
 			log.Info().NetAddr("remote_addr", rconn.RemoteAddr()).NetAddr("local_addr", qconn.RemoteAddr()).Int64("quic_stream_id", int64(stream.StreamID())).Msg("tunnel forwarding")
 
-			go tunnelCopy(lconn, rconn)
+			go func() {
+				defer rconn.Close()
+				defer lconn.Close()
+				go func() {
+					defer rconn.Close()
+					defer lconn.Close()
+					_, err := io.Copy(rconn, lconn)
+					if err != nil {
+						log.Error().Err(err).NetAddr("src_addr", lconn.RemoteAddr()).NetAddr("dest_addr", rconn.RemoteAddr()).Msg("tunnel forwarding error")
+					}
+				}()
+				_, err := io.Copy(lconn, rconn)
+				if err != nil {
+					log.Error().Err(err).NetAddr("src_addr", rconn.RemoteAddr()).NetAddr("dest_addr", lconn.RemoteAddr()).Msg("tunnel forwarding error")
+				}
+			}()
 		}
 	}()
 
 	md := &MemoryDialer{
 		Address:   addrport.String(),
-		Session:   quicMemorySession{conn: qconn},
+		Session:   QuicMemorySession{conn: qconn},
 		CreatedAt: time.Now().UnixNano(),
 	}
 
@@ -227,19 +113,18 @@ func (h *HTTPTunnelHandler) serveHTTP3(rw http.ResponseWriter, req *http.Request
 	}
 }
 
-func tunnelCopy(c1, c2 net.Conn) {
-	defer c1.Close()
-	defer c2.Close()
-	go func() {
-		defer c1.Close()
-		defer c2.Close()
-		_, err := io.Copy(c1, c2)
-		if err != nil {
-			log.Error().Err(err).NetAddr("src_addr", c2.RemoteAddr()).NetAddr("dest_addr", c1.RemoteAddr()).Msg("tunnel forwarding error")
-		}
-	}()
-	_, err := io.Copy(c2, c1)
+type QuicMemorySession struct {
+	conn *quic.Conn
+}
+
+func (s QuicMemorySession) Open(ctx context.Context) (net.Conn, error) {
+	stream, err := s.conn.OpenStreamSync(ctx)
 	if err != nil {
-		log.Error().Err(err).NetAddr("src_addr", c1.RemoteAddr()).NetAddr("dest_addr", c2.RemoteAddr()).Msg("tunnel forwarding error")
+		return nil, err
 	}
+	return &QuicStreamConn{
+		stream: stream,
+		laddr:  s.conn.LocalAddr(),
+		raddr:  s.conn.RemoteAddr(),
+	}, nil
 }

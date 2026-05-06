@@ -661,6 +661,47 @@ func (stream HTTPRequestStream) SetWriteDeadline(t time.Time) error {
 	return nil
 }
 
+var _ net.Conn = (*QuicStreamConn)(nil)
+
+type QuicStreamConn struct {
+	stream *quic.Stream
+	laddr  net.Addr
+	raddr  net.Addr
+}
+
+func (c *QuicStreamConn) Read(b []byte) (int, error) {
+	return c.stream.Read(b)
+}
+
+func (c *QuicStreamConn) Write(b []byte) (int, error) {
+	return c.stream.Write(b)
+}
+
+func (c *QuicStreamConn) Close() error {
+	c.stream.CancelRead(0)
+	return c.stream.Close()
+}
+
+func (c *QuicStreamConn) LocalAddr() net.Addr {
+	return c.laddr
+}
+
+func (c *QuicStreamConn) RemoteAddr() net.Addr {
+	return c.raddr
+}
+
+func (c *QuicStreamConn) SetDeadline(t time.Time) error {
+	return c.stream.SetDeadline(t)
+}
+
+func (c *QuicStreamConn) SetReadDeadline(t time.Time) error {
+	return c.stream.SetReadDeadline(t)
+}
+
+func (c *QuicStreamConn) SetWriteDeadline(t time.Time) error {
+	return c.stream.SetWriteDeadline(t)
+}
+
 type TCPListener struct {
 	*net.TCPListener
 	KeepAlivePeriod time.Duration

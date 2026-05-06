@@ -19,6 +19,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unsafe"
 
@@ -710,6 +711,77 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 		closer:   transport,
 		ctx:      quicConn.Context(),
 	}, nil
+}
+
+var _ net.Listener = (*QUICReverseListener)(nil)
+
+type QUICReverseListener struct {
+	conn  *quic.Conn
+	body  io.ReadCloser
+	pipe  *ringbuffer.PipeWriter
+	ctx   context.Context
+	stop  context.CancelFunc
+	once  sync.Once
+	laddr net.Addr
+}
+
+func NewQUICReverseListener(parent context.Context, conn *quic.Conn, body io.ReadCloser, pipe *ringbuffer.PipeWriter) *QUICReverseListener {
+	ctx, stop := context.WithCancel(parent)
+	ln := &QUICReverseListener{
+		conn:  conn,
+		body:  body,
+		pipe:  pipe,
+		ctx:   ctx,
+		stop:  stop,
+		laddr: conn.LocalAddr(),
+	}
+	go ln.watchControl()
+	return ln
+}
+
+func (ln *QUICReverseListener) Accept() (net.Conn, error) {
+	stream, err := ln.conn.AcceptStream(ln.ctx)
+	if err != nil {
+		return nil, err
+	}
+	log.Debug().NetAddr("remote_addr", ln.conn.RemoteAddr()).Int64("quic_stream_id", int64(stream.StreamID())).Msg("quic reverse stream accept conn")
+	return &QuicStreamConn{
+		stream: stream,
+		laddr:  ln.conn.LocalAddr(),
+		raddr:  ln.conn.RemoteAddr(),
+	}, nil
+}
+
+func (ln *QUICReverseListener) Addr() net.Addr {
+	return ln.laddr
+}
+
+func (ln *QUICReverseListener) Close() error {
+	ln.close()
+	return nil
+}
+
+func (ln *QUICReverseListener) Context() context.Context {
+	return ln.ctx
+}
+
+func (ln *QUICReverseListener) watchControl() {
+	if ln.body != nil {
+		_, _ = io.Copy(io.Discard, ln.body)
+	}
+	ln.close()
+}
+
+func (ln *QUICReverseListener) close() {
+	ln.once.Do(func() {
+		ln.stop()
+		if ln.body != nil {
+			_ = ln.body.Close()
+		}
+		if ln.pipe != nil {
+			_ = ln.pipe.Close()
+		}
+	})
 }
 
 func (h *TunnelHandler) sshtunnel(ctx context.Context, dialerName, dialerURL string) (net.Listener, error) {
