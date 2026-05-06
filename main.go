@@ -163,8 +163,8 @@ func main() {
 		// stderr redirection
 		RedirectOutputToFile(filepath.Join(logDir, logName+".error.log"))
 		// at exit
-		atexit["01-close-default-logger"] = log.DefaultLogger.Writer.(*log.FileWriter).Close
-		atexit["02-close-dta-logger"] = log.DefaultLogger.Writer.(*log.FileWriter).Close
+		atexit["01-close-default-logger"] = log.DefaultLogger.Writer.(*log.MultiEntryWriter).Close
+		atexit["02-close-data-logger"] = dataLogger.Writer.(*log.AsyncWriter).Close
 	}
 
 	slog.SetDefault(log.DefaultLogger.Slog())
@@ -1016,7 +1016,7 @@ func main() {
 	}
 
 	// tun handler
-	for i, tunConfig := range config.Tun {
+	for _, tunConfig := range config.Tun {
 		tunResolver := dnsResolver
 		if server := strings.TrimSpace(tunConfig.DnsServer); server != "" {
 			tunResolver, err = dnsResolverPool.Get(server, 600*time.Second)
@@ -1042,7 +1042,7 @@ func main() {
 
 		go h.Serve(context.Background())
 		// at exit
-		atexit["10-unload-tun-device-"+strconv.Itoa(i+1)] = h.Unload
+		atexit["10-unload-tun-device-"+tunConfig.Name] = h.Unload
 	}
 
 	// ssh handler
