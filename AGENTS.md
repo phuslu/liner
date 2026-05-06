@@ -68,11 +68,59 @@ The module is `liner` and the repository currently targets `go 1.26`.
   current code shape and may be referenced by logs or surrounding code.
 - If adding a config key, update `Config` in `config.go`, parsing/merge logic in
   `NewConfig`, runtime wiring in `main.go`, examples, and this document.
+- Treat recent high-churn areas as intentional architecture, not cleanup
+  targets: the split tunnel client files, raw HTTP/3 reverse tunnel path,
+  WireGuard dialer, and TUN forwarding hot path all encode current design
+  tradeoffs.
+- Keep setup contexts and stream lifetimes separate in tunnel/dialer code where
+  the current implementation does so. Do not reattach returned streams to a
+  request context that is only meant to bound setup.
+- Prefer the current Go 1.26 style already present in the tree (`cmp.Or`,
+  `slices`, `maps`, `strings.Lines`, `strings.SplitSeq`, `sync.WaitGroup.Go`)
+  where it naturally fits, but do not churn old code just to modernize it.
 
 ## Tacit Codebase Conventions
 
 These conventions are inferred from the existing codebase. They are not always
 spelled out in comments, but following them keeps new work native to Liner.
+
+### Design intent behind the style
+
+- Liner's essential complexity is external protocol complexity: HTTP/2, HTTP/3,
+  QUIC, MASQUE-like tunnels, SOCKS, SSH, DNS, WireGuard, TUN, platform sockets,
+  auth tables, shell execution, and operator YAML. The code style intentionally
+  avoids adding a second layer of internal framework complexity on top of those
+  protocols.
+- The repeated Listen -> Handle -> Dial shape is a cognitive compression
+  device. After reading one handler or dialer, the next one should look familiar;
+  the differences should be real protocol differences, not different local
+  architecture.
+- Feature files co-locate parsing, auth, policy execution, routing, logging,
+  copying, and cleanup so the trust boundary is inspectable in one place. Do not
+  split that flow into services or registries unless the existing code already
+  proves the boundary is shared.
+- Direct control flow is a security and operations choice, not just brevity. It
+  makes it clear who owns a `net.Conn`, which context bounds setup, which user
+  info authorizes an action, which log fields are emitted, and where credentials
+  or command output could leak.
+- Config is an operator-facing API. Explicit structs, switches, URL query
+  parsing, and manual overlay behavior make compatibility impact visible in a
+  diff. Generic config registries or reflective extension systems would hide
+  breakage and are out of character here.
+- Thin interfaces and standard-library contracts let protocol libraries carry
+  wire-format complexity while Liner keeps control over policy, dialing,
+  logging, cancellation, and performance boundaries.
+- Hot-path code is intentionally mechanical. Buffers, pools, append-style
+  parsing, goroutine lifetimes, close paths, and zero-copy conversions should be
+  auditable from nearby code. A cleaner abstraction that hides allocation or
+  ownership is a regression unless the change is measured and documented.
+- Consistent names, file shapes, and even imperfect spellings are part of
+  grepability and deployment continuity. They help future patches stay local and
+  make accidental cross-protocol behavior changes stand out.
+- Before changing code, identify which contract the change touches: wire
+  protocol, operator config, auth/trust boundary, log surface, hot path, or
+  runtime lifetime. If that cannot be answered from nearby code, read more
+  before editing.
 
 ### Minimal code style
 
@@ -81,6 +129,8 @@ spelled out in comments, but following them keeps new work native to Liner.
 - Keep code direct. A small local closure, a short helper, or a straightforward
   switch is preferred over a new abstraction when the behavior is used in one
   place.
+- Keep feature-local state in feature files. Prefer file-local helpers and
+  narrow structs over new exported package-level abstractions.
 - Avoid ceremony. Do not add service objects, registries, builders, option
   structs, or interfaces unless the existing code already needs polymorphism at
   that point.
@@ -120,6 +170,12 @@ spelled out in comments, but following them keeps new work native to Liner.
 - Prefer `cmp.Or`, `first`, `must`, small closures, and existing helper types
   where the codebase already uses them. Do not introduce a competing helper for
   the same idea.
+- Follow the existing template pattern: parse templates in `Load(ctx)`, execute
+  them against small request-shaped structs in normal paths, and preserve the
+  explicit map-based shape used in obfuscated or dynamic paths.
+- Parse dialer-template output with the established plain-name, query-string,
+  and JSON-object forms. Use `url.ParseQuery` and `json.Unmarshal` rather than
+  custom split logic when options are involved.
 - Use standard library types for contracts: `context.Context`, `net.Conn`,
   `net.Listener`, `http.Handler`, `http.RoundTripper`, `io.Reader`, and
   `io.Writer`.
@@ -149,6 +205,10 @@ spelled out in comments, but following them keeps new work native to Liner.
   dialer, host/port, user name, network, and relevant config name.
 - Do not log payloads or headers by default. If existing code logs headers in a
   path, be especially careful before adding more sensitive material.
+- Do not copy permissive logging from one protocol into another. Some existing
+  debug or tunnel paths expose more request metadata than new code should add;
+  tighten new logs instead of expanding credential, header, cookie, command, or
+  payload visibility.
 - Treat close, EOF, and cancellation as normal where the protocol expects them.
   Avoid noisy error logs for ordinary connection teardown.
 - When wrapping accepted connections, keep ownership obvious with `defer
@@ -167,6 +227,9 @@ spelled out in comments, but following them keeps new work native to Liner.
   dialer inspection. Reflection is not a general extension mechanism here.
 - Keep goroutine lifetimes tied to contexts, listeners, connections, or explicit
   done channels.
+- In HTTP/2, HTTP/3, QUIC, yamux, and TUN paths, preserve current buffer,
+  batching, deadline, and cancellation behavior unless you are deliberately
+  changing the transport contract and can validate the effect.
 - Use deadlines for external network operations when a config timeout exists or
   the surrounding code already sets one.
 - Prefer streaming over buffering. Do not read whole request or tunnel bodies
@@ -187,6 +250,26 @@ spelled out in comments, but following them keeps new work native to Liner.
   runtime checks. Linux-only features must fail clearly on unsupported systems.
 - Keep build constraints and c-shared entry points intact when touching
   `liner-dll.go`, `liner-py.go`, or platform helpers.
+
+### Current high-churn surfaces
+
+These areas changed recently and should be treated as source-aligned anchors for
+future edits:
+
+- HTTP/3 reverse tunnels are split from the HTTP/1.1 and HTTP/2 yamux path. The
+  client lives in `handler_tunnel_http3.go`; the server path remains in
+  `handler_http_tunnel.go` so auth and allow-list checks stay shared.
+- HTTP/2 and HTTP/3 stream wrappers intentionally have minimal deadline support
+  and separate setup cancellation from returned stream lifetime.
+- HTTP/3 UDP forwarding uses `CONNECT-UDP`, HTTP datagrams, and datagram context
+  ID 0. Keep server `EnableDatagrams` wiring in sync with dialer behavior.
+- TUN forwarding now emphasizes throughput: high default MTU, route/bypass
+  lists, setup-only dial timeouts, batched packet I/O, no GSO path, and special
+  DNS forwarding through `tun.dns_server`.
+- WireGuard is a first-class dialer backed by userspace `tun/netstack`, lazy
+  initialization, `wg-quick` config parsing, and resolver-aware TCP/UDP dialing.
+- Dialers reject unsupported network types with `errors.ErrUnsupported`; do not
+  silently coerce UDP to TCP or vice versa.
 
 ## Runtime Startup Flow
 
@@ -261,10 +344,14 @@ stream copying.
   `reset`/`close`, empty, or `proxy_pass`. Other non-control names such as
   `verify_auth` continue into the normal proxy-auth path. Dialer templates can
   return a dialer name, query string (`dialer=...&disable_ipv6=true`), or JSON
-  object.
+  object. HTTP/3 `CONNECT-UDP` forwarding depends on HTTP/3 datagrams and uses
+  datagram context ID 0.
 - `HTTPTunnelHandler` (`handler_http_tunnel.go`) handles MASQUE-like connect
   paths and reverse tunnel paths. It enforces `auth_table`, `allow_tunnel`,
-  `allow_listens`, speed limits, and optional TCP congestion settings.
+  `allow_listens`, speed limits, and optional TCP congestion settings. HTTP/1.1
+  and HTTP/2 reverse tunnels use yamux over the request stream. HTTP/3 reverse
+  tunnels use raw QUIC streams with the shared `HTTP3TunnelOpenFrame` marker and
+  are intentionally separate from the yamux path.
 - `HTTPWebHandler` (`handler_http_web.go`) routes web subfeatures by location:
   static index, WebDAV, DoH, reverse proxy, web shell, and logtail. It also
   wires CDNJS, auth table, TinyAuth, and forward-auth middleware.
@@ -294,10 +381,14 @@ stream copying.
   configured dialers.
 - `TunHandler` creates a TUN device, configures routes/bypass routes, forwards
   TCP/UDP through a gVisor stack, handles DNS specially on port 53, and supports
-  template-selected dialers.
+  template-selected dialers. It uses batched device reads/writes, copy-buffer
+  pools, a default MTU tuned for throughput, and no GSO path in the current
+  implementation.
 - `TunnelHandler` is the remote tunnel client. It connects to an HTTP, HTTP/2,
   HTTP/3/QUIC, WebSocket, or SSH tunnel endpoint and forwards accepted remote
-  connections to `proxy_pass` or a `MemoryListener`.
+  connections to `proxy_pass` or a `MemoryListener`. Protocol-specific client
+  transports live in `handler_tunnel_http*.go` and `handler_tunnel_ssh.go`;
+  HTTP/3 uses a `QuicTunnelListener` over raw QUIC streams.
 
 ### Dialers
 
@@ -332,13 +423,18 @@ Dialer behavior:
 - HTTP dialers support auth, PSK, WebSocket, ECH, CA/client certificates,
   `resolve=`, custom user-agent, and per-request headers from context.
 - HTTP/2 and HTTP/3 dialers reuse transports and tune stream/window behavior.
+  Their returned stream connections are allowed to outlive the setup request
+  context. HTTP/2 supports `resolve=` like HTTP/1.1. HTTP/3 supports
+  `CONNECT-UDP` through HTTP datagrams and currently dials QUIC endpoints
+  directly rather than composing through the previous named underlay dialer.
 - SOCKS dialers support SOCKS4/4a/5, SOCKS5H remote resolution, auth, PSK, and
   DNS integration.
 - SSH dialers maintain reusable SSH clients, support password/private key auth,
   optional strict known-host checks, idle timeouts, and buffer tuning.
-- WireGuard dialers run an in-process userspace WireGuard device with
-  `tun/netstack`, support TCP and UDP dialing, and accept a `wg-quick` style
-  config file path such as `wg:///etc/wireguard/wg0.conf`.
+- WireGuard dialers lazily start an in-process userspace WireGuard device with
+  `tun/netstack`, support TCP and UDP dialing, parse `wg-quick` style config
+  files such as `wg:///etc/wireguard/wg0.conf`, and honor DNS plus IPv4/IPv6
+  preference context where applicable.
 - `MemoryDialer` opens streams through a `Session.Open(ctx)` provider for a
   specific `240.x.x.x:port` address.
 
@@ -386,12 +482,20 @@ Important global options:
 Current include behavior:
 
 - Config files can be YAML or JSON.
-- Matching `.d` overlay directories are appended by `NewConfig`.
-- `@file` expansion is implemented for selected policy/dialer/header/body/pass
-  fields. Do not assume every string field supports it.
+- Matching `.d` overlay directories are appended by `NewConfig` only for the
+  current supported sections: `cron`, `dialer`, `https`, `http`, `socks`,
+  `tunnel`, `stream`, `tun`, `dns`, and `ssh`. `global`, `sni`, and `redsocks`
+  are not overlay-merged in the current implementation.
+- `@file` expansion is implemented only for selected fields: HTTP/HTTPS forward
+  `policy`, `dialer`, and `tcp_congestion`; web index `headers` and `body`; web
+  proxy `pass` and `set_headers`; SOCKS forward `policy` and `dialer`; and TUN
+  forward `dialer`. Do not assume every string field supports it.
 - HTTPS handlers reject `psk`; PSK wrapping is valid on plain HTTP listeners and
   compatible client dialers.
 - `cron` is top-level, not under `global`.
+- TUN `routes` accepts normal route prefixes and `-prefix` bypass entries. DNS
+  on port 53 is intercepted and sent through `tun.dns_server` when configured,
+  instead of always following the normal forward dialer.
 
 ### Policy Templates
 
@@ -488,7 +592,7 @@ tun:
     routes:
       - 0.0.0.0/0
       - -192.168.0.0/16
-    mtu: 1420
+    mtu: 9000
     dns_server: https://1.1.1.1/dns-query
     forward:
       dialer: proxy1
@@ -572,9 +676,10 @@ Other handlers:
 - `handler_dns.go`: DNS server.
 - `handler_redsocks.go`: Linux transparent proxy.
 - `handler_tun.go`: TUN device and gVisor stack forwarding.
-- `handler_tunnel.go`, `handler_tunnel_http.go`, `handler_tunnel_http2.go`, and
-  `handler_tunnel_ssh.go`: remote tunnel client transports. HTTP/3 reverse
-  tunnel raw stream support is colocated with the HTTP tunnel handler.
+- `handler_tunnel.go`, `handler_tunnel_http.go`, `handler_tunnel_http2.go`,
+  `handler_tunnel_http3.go`, and `handler_tunnel_ssh.go`: remote tunnel client
+  transports. HTTP/3 reverse tunnel server logic is colocated with the HTTP
+  tunnel handler because it shares auth and allow-list enforcement.
 
 Resolvers, auth, TLS, and utilities:
 
@@ -611,12 +716,16 @@ runtime state.
 
 1. Study the closest existing dialer.
 2. Implement `DialContext(ctx, network, addr)` in `dialer_<name>.go`.
-3. Thread the underlay dialer through the new type if it chains.
-4. Register the URL scheme in the `dialerof` switch in `main.go`.
-5. Parse options from `url.Query()` consistently with existing dialers.
-6. Respect context cancellation, deadlines, memory dialers, TLS cache, DNS
+3. Return `errors.ErrUnsupported` for unsupported network families and preserve
+   context cancellation during setup.
+4. Thread the underlay dialer through the new type if it chains. Do not assume
+   every existing dialer composes through underlay; HTTP/3 currently dials QUIC
+   endpoints directly.
+5. Register the URL scheme in the `dialerof` switch in `main.go`.
+6. Parse options from `url.Query()` consistently with existing dialers.
+7. Respect context cancellation, deadlines, memory dialers, TLS cache, DNS
    resolver, IPv6 flags, and structured logging as applicable.
-7. Add config examples and focused tests when practical.
+8. Add config examples and focused tests when practical.
 
 ### Add or modify a handler
 
@@ -637,6 +746,49 @@ runtime state.
 4. Decide middleware support explicitly: CDNJS, auth table, TinyAuth,
    forward-auth, or none.
 5. Ensure location matching, prefix stripping, and auth attributes are documented.
+
+### Modify reverse tunnels or HTTP/3 tunnels
+
+1. Keep HTTP/1.1 and HTTP/2 yamux behavior separate from HTTP/3 raw QUIC stream
+   behavior unless the task explicitly changes the transport contract.
+2. Preserve `HTTP3TunnelOpenFrame` symmetry between client and server.
+3. Keep HTTP/3 tunnel auth, `allow_listens`, and remote-listen validation in the
+   same trust boundary as the existing HTTP tunnel handler.
+4. Ensure HTTP/3 server datagrams remain enabled when changing `CONNECT-UDP`.
+5. Validate behavior with focused tunnel tests or manual loopback configs when
+   automated coverage is not practical.
+
+### Modify TUN forwarding
+
+1. Study `handler_tun.go` and the platform helper for the target OS.
+2. Preserve DNS port 53 interception, static-vs-template dialer selection,
+   route bypass behavior, and setup-only dial timeout unless the task changes
+   them deliberately.
+3. Keep packet handling allocation-aware: batched device I/O, copy-buffer pools,
+   and append-style helpers are part of the performance design.
+4. Update Linux, Darwin, Windows, and fallback behavior when a route or device
+   change crosses platform boundaries.
+5. Recheck privileged/manual validation requirements before claiming full TUN
+   coverage.
+
+### Add or modify a config key
+
+1. Add the field to the correct config struct in `config.go`.
+2. Update `NewConfig` loading, `.d` overlay behavior, `@file` expansion, and
+   validation only where the new key should actually participate.
+3. Wire runtime construction in `main.go` or the owning handler/dialer `Load`.
+4. Update examples and this file.
+5. Preserve compatibility for existing YAML, URL query strings, auth attrs, and
+   template outputs.
+
+### Modify shell or command execution
+
+1. Treat cron, GOSH, SSH shell, web shell, auth commands, `fetch`, `readfile`,
+   and `savefile` as explicit trust-boundary code.
+2. Keep environment inheritance, working directory, user-supplied arguments, and
+   command output handling deliberate and documented.
+3. Avoid adding logs that expose command text, credentials, or output unless the
+   existing feature explicitly requires it.
 
 ### Add a template helper
 
@@ -672,12 +824,13 @@ Password formats:
 
 Common user attributes:
 
-- `speed_limit`: positive value overrides handler speed limit; negative value
-  means privileged/no limit in HTTP tunnel and forward handlers.
+- `speed_limit`: positive value overrides handler speed limit where supported;
+  negative value means privileged/no limit in HTTP tunnel and forward handlers.
 - `no_log=1`: disables per-user forward logging where supported.
 - `allow_client`: HTTP forward client gating.
 - `allow_tunnel`: HTTP tunnel permission; `0` denies, `-1` can bypass some
-  allow-list checks.
+  allow-list checks. Preserve the current distinction between proxy-auth user
+  info and tunnel authorization user info when changing this path.
 - `allow_webdav`, `allow_index`, `allow_proxy`, `allow_webshell`,
   `allow_logtail`: web feature gates.
 - `allow_ssh`: SSH server permission.
@@ -689,7 +842,9 @@ Common user attributes:
 - Respect context cancellation and deadlines to avoid goroutine leaks.
 - Use `io.Copy` or existing copy helpers for streaming paths unless a protocol
   requires framing.
-- Preserve connection reuse for HTTP/2, HTTP/3, SSH, DNS, and tunnel muxes.
+- Preserve connection reuse for HTTP/2, HTTP/3, SSH, DNS, and tunnel muxes. For
+  HTTP/2 and HTTP/3 tunnel streams, do not reintroduce deadline or cancellation
+  behavior that the current stream wrappers intentionally avoid.
 - Be careful with log volume in packet or stream loops. Use data logs only where
   the handler already supports them.
 - Keep DNS, GeoIP, regex, fetch, and file checks cached when repeated per
@@ -698,6 +853,9 @@ Common user attributes:
   isolating the impact.
 - Memory listeners/dialers are used to avoid kernel round trips; preserve this
   behavior when changing tunnel, SSH, HTTP, or local dialer code.
+- QUIC, HTTP/3 datagrams, yamux sessions, and WireGuard netstack state are
+  long-lived resources. Keep close paths idempotent and tolerate ordinary
+  `EOF`, cancellation, and closed-connection errors.
 - Linux TCP pacing and congestion hooks may be unsupported on other platforms.
   Keep unsupported paths explicit and non-fatal unless the feature requires them.
 
@@ -710,6 +868,8 @@ Common user attributes:
 - Do not allow HTTPS listener PSK; `NewConfig` intentionally rejects it.
 - Keep `allow_listens` enforcement for reverse tunnels. Memory addresses are not
   automatically safe just because they are in-process.
+- Do not weaken HTTP/3 reverse tunnel gating. The raw QUIC stream path must keep
+  the same auth and listen-target checks as the HTTP/1.1 and HTTP/2 tunnel path.
 - Be cautious with `X-Forwarded-For`: HTTP only trusts it for authenticated users
   or loopback clients.
 - Avoid adding request dumps that include credentials, cookies, auth headers, or
@@ -774,12 +934,22 @@ GOCACHE=/tmp/liner-go-build go test ./...
 - Top-level `tunnel` is the remote client. Server-side reverse tunnel handling is
   configured under `http[].tunnel` or `https[].tunnel`.
 - `remote_listen` currently expects exactly one address in `TunnelHandler.Load`.
+- HTTP/3 reverse tunnels do not use yamux. Client and server must agree on
+  `HTTP3TunnelOpenFrame`, and the server-side raw stream path is intentionally
+  colocated with `HTTPTunnelHandler`.
+- HTTP/3 `CONNECT-UDP` requires HTTP/3 datagrams to be enabled on the server and
+  is not an HTTP/1.1 or HTTP/2 feature.
+- HTTP/3 dialers currently dial QUIC endpoints directly; do not assume they
+  inherit the previous named underlay dialer in a multi-line dialer chain.
 - TUN default address is `198.18.0.1/15`, default MTU is `9000` except `4064`
   on macOS, default stack queue size is `1024`, and negative route entries mean
   bypass prefixes.
   Windows adds a high-metric `0.0.0.0/0` fallback when `routes` is empty so
   source-bound clients such as `curl --interface 198.18.0.1` can select the TUN
   without replacing normal default routing.
+- TUN DNS traffic on port 53 is intercepted and sent through `tun.dns_server`
+  when configured. Do not route it through the normal TCP/UDP forward path by
+  accident.
 - The reserved memory address range is `240.0.0.0/8`; ensure uniqueness of
   memory listener addresses across HTTP, SSH, and tunnels.
 - Config overlay merge behavior is manual in `NewConfig`; new top-level fields
