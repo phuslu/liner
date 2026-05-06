@@ -683,10 +683,10 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 					EnableDatagrams:            true,
 					KeepAlivePeriod:            15 * time.Second,
 					MaxIdleTimeout:             46 * time.Second,
-					MaxIncomingUniStreams:      200,
-					MaxIncomingStreams:         200,
-					MaxStreamReceiveWindow:     6 * 1024 * 1024,
-					MaxConnectionReceiveWindow: 100 * 1024 * 1024,
+					MaxIncomingUniStreams:      128,
+					MaxIncomingStreams:         1024,
+					MaxStreamReceiveWindow:     2 * 1024 * 1024,
+					MaxConnectionReceiveWindow: 256 * 1024 * 1024,
 				},
 			)
 			if err != nil {

@@ -752,7 +752,7 @@ func main() {
 					Allow0RTT:                  true,
 					DisablePathMTUDiscovery:    false,
 					EnableDatagrams:            true,
-					MaxIncomingStreams:         100,
+					MaxIncomingStreams:         2000,
 					MaxStreamReceiveWindow:     12 * 1024 * 1024,
 					MaxConnectionReceiveWindow: 200 * 1024 * 1024,
 				},
