@@ -679,7 +679,8 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 				&quic.Config{
 					DisablePathMTUDiscovery:    false,
 					EnableDatagrams:            true,
-					MaxIdleTimeout:             45 * time.Second,
+					KeepAlivePeriod:            15 * time.Second,
+					MaxIdleTimeout:             46 * time.Second,
 					MaxIncomingUniStreams:      200,
 					MaxIncomingStreams:         200,
 					MaxStreamReceiveWindow:     6 * 1024 * 1024,
