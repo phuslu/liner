@@ -826,6 +826,17 @@ func (ln *QUICReverseListener) Accept() (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
+	var b [4]byte
+	if _, err := io.ReadFull(stream, b[:]); err != nil {
+		stream.CancelRead(0)
+		_ = stream.Close()
+		return nil, err
+	}
+	if b != [4]byte{'L', 'Q', 1, 0} {
+		stream.CancelRead(0)
+		_ = stream.Close()
+		return nil, fmt.Errorf("quic reverse stream: invalid open frame %x", b)
+	}
 	log.Debug().NetAddr("remote_addr", ln.conn.RemoteAddr()).Int64("quic_stream_id", int64(stream.StreamID())).Msg("quic reverse stream accept conn")
 	return &QuicStreamConn{
 		stream: stream,

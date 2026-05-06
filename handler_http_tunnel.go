@@ -485,6 +485,14 @@ func (h *HTTPTunnelHandler) serveHTTP3(rw http.ResponseWriter, req *http.Request
 				exit <- err
 				return
 			}
+			if _, err := stream.Write([]byte{'L', 'Q', 1, 0}); err != nil {
+				_ = rconn.Close()
+				stream.CancelRead(0)
+				_ = stream.Close()
+				log.Error().Err(err).Msg("failed to write quic reverse stream open frame")
+				exit <- err
+				return
+			}
 
 			lconn := &QuicStreamConn{
 				stream: stream,
@@ -546,6 +554,11 @@ type QuicMemorySession struct {
 func (s QuicMemorySession) Open(ctx context.Context) (net.Conn, error) {
 	stream, err := s.conn.OpenStreamSync(ctx)
 	if err != nil {
+		return nil, err
+	}
+	if _, err := stream.Write([]byte{'L', 'Q', 1, 0}); err != nil {
+		stream.CancelRead(0)
+		_ = stream.Close()
 		return nil, err
 	}
 	return &QuicStreamConn{
