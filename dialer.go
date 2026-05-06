@@ -7,7 +7,6 @@ import (
 	"net/netip"
 	"strings"
 
-	"github.com/libp2p/go-yamux/v5"
 	"github.com/puzpuzpuz/xsync/v4"
 )
 
@@ -41,8 +40,10 @@ func IsMemoryAddress[Addr string | netip.Addr](ip Addr) bool {
 var _ Dialer = (*MemoryDialer)(nil)
 
 type MemoryDialer struct {
-	Address   string
-	Session   *yamux.Session
+	Address string
+	Session interface {
+		Open(context.Context) (net.Conn, error)
+	}
 	CreatedAt int64
 }
 
@@ -58,7 +59,10 @@ func (d *MemoryDialer) DialContext(ctx context.Context, network, address string)
 		return nil, net.InvalidAddrError("memory dialer network mismatched: " + address + " != " + d.Address)
 	}
 
-	return d.Session.OpenStream(ctx)
+	if d.Session == nil {
+		return nil, net.ErrClosed
+	}
+	return d.Session.Open(ctx)
 }
 
 type MemoryDialers struct {
