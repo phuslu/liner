@@ -112,8 +112,11 @@ func (h *SshHandler) Load(ctx context.Context) error {
 					}
 					getrtt := func(conn net.Conn) func() (time.Duration, error) {
 						return func() (time.Duration, error) {
-							if s, ok := conn.(*yamux.Stream); ok {
-								return s.Session().RTT(), nil
+							switch c := conn.(type) {
+							case *QuicStreamConn:
+								return c.QuicConn().ConnectionStats().SmoothedRTT, nil
+							case *yamux.Stream:
+								return c.Session().RTT(), nil
 							}
 							for {
 								c, ok := conn.(interface {
