@@ -15,6 +15,8 @@ import (
 	"github.com/quic-go/quic-go"
 )
 
+const HTTP3TunnelOpenFrame = "LQ\x01\x00"
+
 func (h *HTTPTunnelHandler) serveHTTP3(rw http.ResponseWriter, req *http.Request, ri *HTTPRequestInfo, addrport netip.AddrPort, ln net.Listener) {
 	qconn := ri.ClientConnOps.qc
 	if qconn == nil {
@@ -59,7 +61,7 @@ func (h *HTTPTunnelHandler) serveHTTP3(rw http.ResponseWriter, req *http.Request
 				exit <- err
 				return
 			}
-			if _, err := stream.Write([]byte{'L', 'Q', 1, 0}); err != nil {
+			if _, err := stream.Write(s2b(HTTP3TunnelOpenFrame)); err != nil {
 				_ = rconn.Close()
 				stream.CancelRead(0)
 				_ = stream.Close()
@@ -130,7 +132,7 @@ func (s QuicMemorySession) Open(ctx context.Context) (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := stream.Write([]byte{'L', 'Q', 1, 0}); err != nil {
+	if _, err := stream.Write(s2b(HTTP3TunnelOpenFrame)); err != nil {
 		stream.CancelRead(0)
 		_ = stream.Close()
 		return nil, err

@@ -180,7 +180,7 @@ func (ln *QUICReverseListener) Accept() (net.Conn, error) {
 		_ = stream.Close()
 		return nil, err
 	}
-	if b != [4]byte{'L', 'Q', 1, 0} {
+	if b2s(b[:]) != HTTP3TunnelOpenFrame {
 		stream.CancelRead(0)
 		_ = stream.Close()
 		return nil, fmt.Errorf("quic reverse stream: invalid open frame %x", b)
