@@ -101,7 +101,7 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 
 	var quicConn *quic.Conn
 
-	req = req.WithContext(httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+	req = req.WithContext(httptrace.WithClientTrace(reqCtx, &httptrace.ClientTrace{
 		GotConn: func(connInfo httptrace.GotConnInfo) {
 			// see https://github.com/quic-go/quic-go/blob/master/http3/trace.go
 			if data := (*[2]unsafe.Pointer)(unsafe.Pointer(&connInfo.Conn))[1]; data != nil {
@@ -130,7 +130,17 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 		return nil, fmt.Errorf("http3tunnel: read from %s(%+v) error: %v: %s", u.Host, quicConn, resp.Status, data)
 	}
 
-	ln := NewQUICReverseListener(ctx, quicConn, resp.Body, reqCancel)
+	ctx, stop := context.WithCancel(ctx)
+	ln := &QuicTunnelListener{
+		conn:   quicConn,
+		body:   resp.Body,
+		cancel: reqCancel,
+		ctx:    ctx,
+		stop:   stop,
+	}
+
+	go ln.drain()
+
 	return &TunnelListener{
 		Listener: ln,
 		closer:   transport,
@@ -138,9 +148,9 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 	}, nil
 }
 
-var _ net.Listener = (*QUICReverseListener)(nil)
+var _ net.Listener = (*QuicTunnelListener)(nil)
 
-type QUICReverseListener struct {
+type QuicTunnelListener struct {
 	conn   *quic.Conn
 	body   io.ReadCloser
 	cancel context.CancelFunc
@@ -149,20 +159,15 @@ type QUICReverseListener struct {
 	once   sync.Once
 }
 
-func NewQUICReverseListener(parent context.Context, conn *quic.Conn, body io.ReadCloser, cancel context.CancelFunc) *QUICReverseListener {
-	ctx, stop := context.WithCancel(parent)
-	ln := &QUICReverseListener{
-		conn:   conn,
-		body:   body,
-		cancel: cancel,
-		ctx:    ctx,
-		stop:   stop,
+// drain drains the HTTP/3 reverse tunnel control body and closes the listener when it ends.
+func (ln *QuicTunnelListener) drain() {
+	if ln.body != nil {
+		_, _ = io.Copy(io.Discard, ln.body)
 	}
-	go ln.watchControl()
-	return ln
+	ln.Close()
 }
 
-func (ln *QUICReverseListener) Accept() (net.Conn, error) {
+func (ln *QuicTunnelListener) Accept() (net.Conn, error) {
 	stream, err := ln.conn.AcceptStream(ln.ctx)
 	if err != nil {
 		return nil, err
@@ -186,23 +191,11 @@ func (ln *QUICReverseListener) Accept() (net.Conn, error) {
 	}, nil
 }
 
-func (ln *QUICReverseListener) Addr() net.Addr {
+func (ln *QuicTunnelListener) Addr() net.Addr {
 	return ln.conn.LocalAddr()
 }
 
-func (ln *QUICReverseListener) Close() error {
-	ln.close()
-	return nil
-}
-
-func (ln *QUICReverseListener) watchControl() {
-	if ln.body != nil {
-		_, _ = io.Copy(io.Discard, ln.body)
-	}
-	ln.close()
-}
-
-func (ln *QUICReverseListener) close() {
+func (ln *QuicTunnelListener) Close() error {
 	ln.once.Do(func() {
 		ln.stop()
 		if ln.cancel != nil {
@@ -212,4 +205,5 @@ func (ln *QUICReverseListener) close() {
 			_ = ln.body.Close()
 		}
 	})
+	return nil
 }
