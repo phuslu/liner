@@ -177,8 +177,10 @@ type TunnelListener struct {
 }
 
 func (ln *TunnelListener) Accept() (net.Conn, error) {
-	if session, ok := ln.Listener.(*YamuxSessionListener); ok {
-		log.Debug().NetAddr("remote_addr", session.RemoteAddr()).Msg("mux session accept conn")
+	if session, ok := ln.Listener.(interface {
+		RemoteAddr() net.Addr
+	}); ok {
+		log.Debug().Type("listen_type", ln.Listener).NetAddr("remote_addr", session.RemoteAddr()).Msg("tunnel listener accept conn")
 	}
 	return ln.Listener.Accept()
 }
