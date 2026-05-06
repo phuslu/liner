@@ -168,17 +168,13 @@ func (ln *TunnelListener) Accept() (net.Conn, error) {
 }
 
 func (ln *TunnelListener) Close() (err error) {
-	if ln.Listener != nil {
-		if e := ln.Listener.Close(); e != nil {
-			err = e
+	var errs []error
+	for _, closer := range []io.Closer{ln.Listener, ln.closer} {
+		if closer != nil {
+			errs = append(errs, closer.Close())
 		}
 	}
-	if ln.closer != nil {
-		if e := ln.closer.Close(); e != nil {
-			err = e
-		}
-	}
-	return
+	return errors.Join(errs...)
 }
 
 func (ln *TunnelListener) Done() <-chan struct{} {
