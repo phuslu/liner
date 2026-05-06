@@ -127,7 +127,7 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 		data, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
 		reqCancel()
-		return nil, fmt.Errorf("http3tunnel: read from %s(%+v) error: %v: %s", u.Host, quicConn, resp.Status, data)
+		return nil, fmt.Errorf("http3tunnel: read from %s %s error: %v: %s", u.Host, quicConn.RemoteAddr(), resp.Status, data)
 	}
 
 	ctx, stop := context.WithCancel(ctx)
