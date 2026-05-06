@@ -84,19 +84,17 @@ func (h *HTTPTunnelHandler) Load(ctx context.Context) error {
 func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	ri := req.Context().Value(HTTPRequestInfoContextKey).(*HTTPRequestInfo)
 
-	user := ri.AuthUserInfo
-
-	if user.Username == "" || user.Password == "" || h.userchecker == nil {
-		log.Error().Context(ri.LogContext).Str("username", user.Username).Msg("tunnel user authorization required")
+	if ri.AuthUserInfo.Username == "" || ri.AuthUserInfo.Password == "" || h.userchecker == nil {
+		log.Error().Context(ri.LogContext).Str("username", ri.AuthUserInfo.Username).Msg("tunnel user authorization required")
 		http.Error(rw, "Authorization Required", http.StatusUnauthorized)
 		return
 	}
 
-	log.Info().Context(ri.LogContext).Str("username", user.Username).Str("password", user.Password).Msg("tunnel verify user")
+	log.Info().Context(ri.LogContext).Str("username", ri.AuthUserInfo.Username).Str("password", ri.AuthUserInfo.Password).Msg("tunnel verify user")
 
-	err := h.userchecker.CheckAuthUser(req.Context(), &user)
+	err := h.userchecker.CheckAuthUser(req.Context(), &ri.AuthUserInfo)
 	if err != nil {
-		log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Msg("tunnel user auth failed")
+		log.Error().Err(err).Context(ri.LogContext).Str("username", ri.AuthUserInfo.Username).Msg("tunnel user auth failed")
 		http.Error(rw, err.Error(), http.StatusUnauthorized)
 		return
 	}
@@ -200,9 +198,9 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		}
 	}
 
-	allow := user.Attrs["allow_tunnel"]
+	allow := ri.AuthUserInfo.Attrs["allow_tunnel"]
 	if allow == "0" {
-		log.Error().Context(ri.LogContext).Str("username", user.Username).Str("allow_tunnel", allow).Msg("tunnel user permission denied")
+		log.Error().Context(ri.LogContext).Str("username", ri.AuthUserInfo.Username).Str("allow_tunnel", allow).Msg("tunnel user permission denied")
 		http.Error(rw, "permission denied", http.StatusForbidden)
 		return
 	}
@@ -212,14 +210,14 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	parts := strings.Split(req.URL.Path, "/")
 	addrport, err := netip.ParseAddrPort(net.JoinHostPort(parts[len(parts)-3], parts[len(parts)-2]))
 	if err != nil {
-		log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Msg("tunnel parse tcp listener error")
+		log.Error().Err(err).Context(ri.LogContext).Str("username", ri.AuthUserInfo.Username).Msg("tunnel parse tcp listener error")
 		http.Error(rw, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	if h.listens != nil && allow != "-1" {
 		if !h.listens.Contains(addrport.Addr()) {
-			log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Msg("tunnel allow tcp listener error")
+			log.Error().Err(err).Context(ri.LogContext).Str("username", ri.AuthUserInfo.Username).Msg("tunnel allow tcp listener error")
 			http.Error(rw, "tunnel listen addr is not allow", http.StatusForbidden)
 			return
 		}
@@ -230,7 +228,7 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	if IsMemoryAddress(addrport.Addr()) {
 		if _, ok := h.MemoryDialers.Load(addrport.String()); ok && allow != "-1" {
 			err := errors.New("bind address " + addrport.String() + " is inuse")
-			log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Msg("tunnel open memory listener error")
+			log.Error().Err(err).Context(ri.LogContext).Str("username", ri.AuthUserInfo.Username).Msg("tunnel open memory listener error")
 			http.Error(rw, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -243,18 +241,18 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 			},
 		}).Listen(req.Context(), "tcp", addrport.String())
 		if err != nil {
-			log.Error().Err(err).Context(ri.LogContext).Str("username", user.Username).Msg("tunnel open tcp listener error")
+			log.Error().Err(err).Context(ri.LogContext).Str("username", ri.AuthUserInfo.Username).Msg("tunnel open tcp listener error")
 			http.Error(rw, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		log.Info().Context(ri.LogContext).Str("username", user.Username).NetAddr("addr", ln.Addr()).Msg("tunnel open tcp listener")
+		log.Info().Context(ri.LogContext).Str("username", ri.AuthUserInfo.Username).NetAddr("addr", ln.Addr()).Msg("tunnel open tcp listener")
 
 		defer ln.Close()
 	}
 
 	if req.ProtoMajor == 3 && strings.Contains(req.UserAgent(), " quic-go/v") {
-		h.serveHTTP3(rw, req, ri, addrport, ln)
+		h.h3tunnel(rw, req, ri, addrport, ln)
 	} else {
 		h.h2tunnel(rw, req, ri, addrport, ln)
 	}
@@ -442,12 +440,12 @@ func (h *HTTPTunnelHandler) h2tunnel(rw http.ResponseWriter, req *http.Request, 
 		}
 	}
 
-	log.Info().Err(err).Msg("tunnel forwarding exit.")
+	log.Info().Err(err).Msg("http tunnel forwarding exit.")
 }
 
 const HTTP3TunnelOpenFrame = "LQ\x01\x00"
 
-func (h *HTTPTunnelHandler) serveHTTP3(rw http.ResponseWriter, req *http.Request, ri *HTTPRequestInfo, addrport netip.AddrPort, ln net.Listener) {
+func (h *HTTPTunnelHandler) h3tunnel(rw http.ResponseWriter, req *http.Request, ri *HTTPRequestInfo, addrport netip.AddrPort, ln net.Listener) {
 	qconn := ri.ClientConnOps.qc
 	if qconn == nil {
 		http.Error(rw, "http3 quic connection is unavailable", http.StatusBadRequest)
