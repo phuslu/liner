@@ -701,14 +701,13 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 		return nil, fmt.Errorf("invalid remote_listen addr: %s", h.Config.RemoteListen[0])
 	}
 
-	pr, pw := ringbuffer.New(8192).Pipe()
-
 	// see https://www.ietf.org/archive/id/draft-kazuho-httpbis-reverse-tunnel-00.html
-	req, err := http.NewRequestWithContext(ctx, http.MethodConnect, "https://"+u.Host, pr)
+	reqCtx, reqCancel := context.WithCancel(ctx)
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodConnect, "https://"+u.Host, nil)
 	if err != nil {
+		reqCancel()
 		return nil, err
 	}
-	req.ContentLength = -1
 	req.Header.Set("location", HTTPTunnelReverseTCPPathPrefix+targetHost+"/"+targetPort+"/")
 	req.Header.Set("content-type", "application/octet-stream")
 	req.Header.Set("user-agent", TunnelUserAgent)
@@ -751,6 +750,7 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 		if errmsg := err.Error(); strings.Contains(errmsg, "timeout: ") || strings.Contains(errmsg, "context deadline exceeded") || strings.Contains(errmsg, "context canceled") {
 			log.Warn().Err(err).Msg("close underlying http3 connection")
 		}
+		reqCancel()
 		transport.Close()
 		return nil, err
 	}
@@ -760,6 +760,7 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusSwitchingProtocols {
 		data, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
+		reqCancel()
 		return nil, errors.New("proxy: read from " + u.Host + " error: " + resp.Status + ": " + string(data))
 	}
 
@@ -767,7 +768,7 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 		remoteAddr, localAddr = &net.UDPAddr{}, &net.UDPAddr{}
 	}
 
-	ln := NewQUICReverseListener(ctx, quicConn, resp.Body, pw)
+	ln := NewQUICReverseListener(ctx, quicConn, resp.Body, reqCancel)
 	return &TunnelListener{
 		Listener: ln,
 		closer:   transport,
@@ -800,22 +801,22 @@ func (ln *YamuxSessionListener) Close() error {
 var _ net.Listener = (*QUICReverseListener)(nil)
 
 type QUICReverseListener struct {
-	conn *quic.Conn
-	body io.ReadCloser
-	pipe *ringbuffer.PipeWriter
-	ctx  context.Context
-	stop context.CancelFunc
-	once sync.Once
+	conn   *quic.Conn
+	body   io.ReadCloser
+	cancel context.CancelFunc
+	ctx    context.Context
+	stop   context.CancelFunc
+	once   sync.Once
 }
 
-func NewQUICReverseListener(parent context.Context, conn *quic.Conn, body io.ReadCloser, pipe *ringbuffer.PipeWriter) *QUICReverseListener {
+func NewQUICReverseListener(parent context.Context, conn *quic.Conn, body io.ReadCloser, cancel context.CancelFunc) *QUICReverseListener {
 	ctx, stop := context.WithCancel(parent)
 	ln := &QUICReverseListener{
-		conn: conn,
-		body: body,
-		pipe: pipe,
-		ctx:  ctx,
-		stop: stop,
+		conn:   conn,
+		body:   body,
+		cancel: cancel,
+		ctx:    ctx,
+		stop:   stop,
 	}
 	go ln.watchControl()
 	return ln
@@ -864,11 +865,11 @@ func (ln *QUICReverseListener) watchControl() {
 func (ln *QUICReverseListener) close() {
 	ln.once.Do(func() {
 		ln.stop()
+		if ln.cancel != nil {
+			ln.cancel()
+		}
 		if ln.body != nil {
 			_ = ln.body.Close()
-		}
-		if ln.pipe != nil {
-			_ = ln.pipe.Close()
 		}
 	})
 }
