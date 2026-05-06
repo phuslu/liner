@@ -186,8 +186,7 @@ func (ln *QuicTunnelListener) Accept() (net.Conn, error) {
 	log.Debug().NetAddr("remote_addr", ln.conn.RemoteAddr()).Int64("quic_stream_id", int64(stream.StreamID())).Msg("quic reverse stream accept conn")
 	return &QuicStreamConn{
 		stream: stream,
-		laddr:  ln.conn.LocalAddr(),
-		raddr:  ln.conn.RemoteAddr(),
+		conn:   ln.conn,
 	}, nil
 }
 

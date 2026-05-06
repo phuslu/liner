@@ -500,8 +500,7 @@ func (h *HTTPTunnelHandler) h3tunnel(rw http.ResponseWriter, req *http.Request, 
 
 			lconn := &QuicStreamConn{
 				stream: stream,
-				laddr:  qconn.LocalAddr(),
-				raddr:  qconn.RemoteAddr(),
+				conn:   qconn,
 			}
 			log.Info().NetAddr("remote_addr", rconn.RemoteAddr()).NetAddr("local_addr", qconn.RemoteAddr()).Int64("quic_stream_id", int64(stream.StreamID())).Msg("tunnel forwarding")
 
@@ -586,7 +585,6 @@ func (s QuicMemorySession) Open(ctx context.Context) (net.Conn, error) {
 	}
 	return &QuicStreamConn{
 		stream: stream,
-		laddr:  s.conn.LocalAddr(),
-		raddr:  s.conn.RemoteAddr(),
+		conn:   s.conn,
 	}, nil
 }

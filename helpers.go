@@ -665,8 +665,7 @@ var _ net.Conn = (*QuicStreamConn)(nil)
 
 type QuicStreamConn struct {
 	stream *quic.Stream
-	laddr  net.Addr
-	raddr  net.Addr
+	conn   *quic.Conn
 }
 
 func (c *QuicStreamConn) Read(b []byte) (int, error) {
@@ -683,11 +682,11 @@ func (c *QuicStreamConn) Close() error {
 }
 
 func (c *QuicStreamConn) LocalAddr() net.Addr {
-	return c.laddr
+	return c.conn.LocalAddr()
 }
 
 func (c *QuicStreamConn) RemoteAddr() net.Addr {
-	return c.raddr
+	return c.conn.RemoteAddr()
 }
 
 func (c *QuicStreamConn) SetDeadline(t time.Time) error {
@@ -700,6 +699,10 @@ func (c *QuicStreamConn) SetReadDeadline(t time.Time) error {
 
 func (c *QuicStreamConn) SetWriteDeadline(t time.Time) error {
 	return c.stream.SetWriteDeadline(t)
+}
+
+func (c *QuicStreamConn) QuicConn() *quic.Conn {
+	return c.conn
 }
 
 type TCPListener struct {
