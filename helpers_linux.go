@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
@@ -101,6 +102,13 @@ func (dc DailerController) Control(network, addr string, c syscall.RawConn) (err
 }
 
 type TCPInfo syscall.TCPInfo
+
+func (tcpinfo *TCPInfo) RTT() time.Duration {
+	if tcpinfo == nil || tcpinfo.Rtt == 0 {
+		return 0
+	}
+	return time.Duration(tcpinfo.Rtt) * time.Microsecond
+}
 
 func (ops ConnOps) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
 	if ops.tc == nil {

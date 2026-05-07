@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/netip"
 	"syscall"
+	"time"
 )
 
 type ListenConfig struct {
@@ -38,6 +39,10 @@ func (dc DailerController) Control(network, address string, c syscall.RawConn) e
 }
 
 type TCPInfo struct{}
+
+func (tcpinfo *TCPInfo) RTT() time.Duration {
+	return 0
+}
 
 func (ops ConnOps) GetTcpInfo() (*TCPInfo, error) {
 	return nil, errors.ErrUnsupported

@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -214,6 +215,13 @@ type TCPInfo struct {
 
 	SynRetrans uint8   // UCHAR
 	_          [3]byte // padding (结构体对齐)
+}
+
+func (tcpinfo *TCPInfo) RTT() time.Duration {
+	if tcpinfo == nil || tcpinfo.RttUs == 0 {
+		return 0
+	}
+	return time.Duration(tcpinfo.RttUs) * time.Microsecond
 }
 
 func (ops ConnOps) GetTcpInfo() (tcpinfo *TCPInfo, err error) {

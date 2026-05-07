@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
@@ -170,7 +171,20 @@ func (dc DailerController) Control(network, addr string, c syscall.RawConn) (err
 	return controlErr
 }
 
-type TCPInfo = unix.TCPConnectionInfo
+type TCPInfo unix.TCPConnectionInfo
+
+func (tcpinfo *TCPInfo) RTT() time.Duration {
+	if tcpinfo == nil {
+		return 0
+	}
+	if tcpinfo.Srtt > 0 {
+		return time.Duration(tcpinfo.Srtt) * time.Millisecond
+	}
+	if tcpinfo.Rttcur > 0 {
+		return time.Duration(tcpinfo.Rttcur) * time.Millisecond
+	}
+	return 0
+}
 
 func (ops ConnOps) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
 	if ops.tc == nil {
@@ -182,7 +196,13 @@ func (ops ConnOps) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
 		return
 	}
 	err = c.Control(func(fd uintptr) {
-		tcpinfo, err = unix.GetsockoptTCPConnectionInfo(int(fd), syscall.IPPROTO_TCP, unix.TCP_CONNECTION_INFO)
+		var info *unix.TCPConnectionInfo
+		info, err = unix.GetsockoptTCPConnectionInfo(int(fd), syscall.IPPROTO_TCP, unix.TCP_CONNECTION_INFO)
+		if err != nil {
+			return
+		}
+		v := TCPInfo(*info)
+		tcpinfo = &v
 	})
 	return
 }

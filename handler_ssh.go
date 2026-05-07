@@ -14,7 +14,6 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
-	"reflect"
 	"runtime"
 	"slices"
 	"strings"
@@ -134,11 +133,7 @@ func (h *SshHandler) Load(ctx context.Context) error {
 							}
 							if tc, ok := conn.(*net.TCPConn); ok {
 								if tcpinfo, err := (ConnOps{tc: tc}).GetTcpInfo(); err == nil && tcpinfo != nil {
-									v := reflect.ValueOf(tcpinfo).Elem().FieldByName("Rtt")
-									if !v.IsValid() {
-										return 0, fmt.Errorf("getrtt: tcpinfo %#v has no Rtt field", tcpinfo)
-									}
-									return time.Duration(v.Uint()) * time.Microsecond, nil
+									return tcpinfo.RTT(), nil
 								}
 							}
 							return 0, nil
