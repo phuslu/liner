@@ -14,6 +14,8 @@ import (
 	"strings"
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/unix"
 )
 
 type ListenConfig struct {
@@ -168,42 +170,9 @@ func (dc DailerController) Control(network, addr string, c syscall.RawConn) (err
 	return controlErr
 }
 
-// TCPInfo mirrors the tcp_connection_info struct from macOS <netinet/tcp.h>.
-// This is a subset of what Linux exposes; unmapped fields are simply absent.
-type TCPInfo struct {
-	State               uint8
-	Snd_wscale          uint8
-	Rcv_wscale          uint8
-	_                   uint8
-	Options             uint32
-	Flags               uint32
-	Rto                 uint32
-	Maxseg              uint32
-	Snd_ssthresh        uint32
-	Snd_cwnd            uint32
-	Snd_wnd             uint32
-	Snd_sbbytes         uint32
-	Rcv_wnd             uint32
-	Rttcur              uint32
-	Srtt                uint32
-	Rttvar              uint32
-	_                   [4]byte
-	Txpackets           uint64
-	Txbytes             uint64
-	Txretransmitbytes   uint64
-	Rxpackets           uint64
-	Rxbytes             uint64
-	Rxoutoforderbytes   uint64
-	Txretransmitpackets uint64
-}
+type TCPInfo = unix.TCPConnectionInfo
 
 func (ops ConnOps) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
-	const (
-		// TCP_INFO is not exported by the darwin syscall package but the kernel supports it.
-		// Value from /usr/include/netinet/tcp.h
-		TCP_INFO = 0x200
-	)
-
 	if ops.tc == nil {
 		return
 	}
@@ -213,22 +182,7 @@ func (ops ConnOps) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
 		return
 	}
 	err = c.Control(func(fd uintptr) {
-		var info TCPInfo
-		size := uint32(unsafe.Sizeof(info))
-		_, _, errno := syscall.Syscall6(
-			syscall.SYS_GETSOCKOPT,
-			fd,
-			uintptr(syscall.IPPROTO_TCP),
-			uintptr(TCP_INFO),
-			uintptr(unsafe.Pointer(&info)),
-			uintptr(unsafe.Pointer(&size)),
-			0,
-		)
-		if errno != 0 {
-			err = errno
-		} else {
-			tcpinfo = &info
-		}
+		tcpinfo, err = unix.GetsockoptTCPConnectionInfo(int(fd), syscall.IPPROTO_TCP, unix.TCP_CONNECTION_INFO)
 	})
 	return
 }
