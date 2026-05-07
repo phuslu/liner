@@ -35,6 +35,7 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialerName, dialerURL stri
 
 	transport := &http2.Transport{
 		MaxReadFrameSize:   1024 * 1024, // 1MB read frame, https://github.com/golang/go/issues/47840
+		IdleConnTimeout:    90 * time.Second,
 		DisableCompression: false,
 		DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
 			hostport := net.JoinHostPort(cmp.Or(u.Query().Get("resolve"), u.Hostname()), cmp.Or(u.Port(), "443"))
