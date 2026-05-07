@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/bits"
 	"net"
 	"net/netip"
 	"os"
@@ -159,7 +160,7 @@ indicesReady:
 	setIPv4 := family != 6 && ipv4Idx != 0
 	setIPv6 := family != 4 && ipv6Idx != 0
 	if setIPv4 {
-		if err := windows.SetsockoptInt(handle, int(syscall.IPPROTO_IP), IP_UNICAST_IF, int(ipv4Idx)); err != nil {
+		if err := windows.SetsockoptInt(handle, int(syscall.IPPROTO_IP), IP_UNICAST_IF, int(bits.ReverseBytes32(ipv4Idx))); err != nil {
 			switch err {
 			case windows.WSAEINVAL, windows.WSAENOPROTOOPT, windows.WSAEFAULT:
 				// ignored; OS doesn't support the option for this socket
