@@ -73,10 +73,11 @@ func gosh(stdin, stdout, stderr *os.File) error {
 	parser := syntax.NewParser()
 	history := &goshHistory{limit: goshResolveHistoryLimit()}
 	bindings := &goshKeyBindingManager{entries: make(map[string]*goKeyBindingEntry)}
-	runner, err := interp.New(
+	var runner *interp.Runner
+	runner, err = interp.New(
 		interp.Interactive(true),
 		interp.StdIO(stdin, stdout, stderr),
-		interp.CallHandler(goshCallHandler(history, bindings)),
+		interp.CallHandler(goshCallHandler(func() *interp.Runner { return runner }, history, bindings)),
 	)
 	if err != nil {
 		return err
@@ -988,7 +989,7 @@ func (p *goshPromptState) escapeDouble(s string) string {
 	return s
 }
 
-func goshCallHandler(history *goshHistory, bindings *goshKeyBindingManager) interp.CallHandlerFunc {
+func goshCallHandler(runner func() *interp.Runner, history *goshHistory, bindings *goshKeyBindingManager) interp.CallHandlerFunc {
 	return func(ctx context.Context, args []string) ([]string, error) {
 		if len(args) == 0 {
 			return args, nil
@@ -1026,6 +1027,22 @@ func goshCallHandler(history *goshHistory, bindings *goshKeyBindingManager) inte
 				return []string{"false"}, nil
 			}
 			return []string{":"}, nil
+		case "kill", "newgrp":
+			var r *interp.Runner
+			if runner != nil {
+				r = runner()
+			}
+			if r != nil && r.Funcs[args[0]] != nil {
+				return args, nil
+			}
+			hc := interp.HandlerCtx(ctx)
+			path, err := interp.LookPathDir(hc.Dir, hc.Env, args[0])
+			if err != nil {
+				return args, nil
+			}
+			next := slices.Clone(args)
+			next[0] = path
+			return next, nil
 		default:
 			return args, nil
 		}
