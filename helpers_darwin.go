@@ -247,7 +247,11 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 			exec.Command("route", append(args, dst, "-interface", name)...).Run()
 		}
 		for _, prefix := range addedBypass {
-			exec.Command("route", "-n", "delete", "-host", prefix.Addr().String()).Run()
+			args := []string{"-n", "delete", "-host", prefix.Addr().String()}
+			if prefix.Bits() != 32 {
+				args = []string{"-n", "delete", "-net", prefix.Masked().String()}
+			}
+			exec.Command("route", args...).Run()
 		}
 	}
 	ok := false
@@ -290,6 +294,9 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 			return nil, fmt.Errorf("set tun bypass route: route to %s already uses %s", prefix.Addr(), name)
 		}
 		args = []string{"-n", "add", "-host", prefix.Addr().String()}
+		if prefix.Bits() != 32 {
+			args = []string{"-n", "add", "-net", prefix.Masked().String()}
+		}
 		if gateway != "" && !strings.HasPrefix(gateway, "link#") {
 			args = append(args, gateway)
 		} else if iface != "" {
