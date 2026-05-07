@@ -358,6 +358,7 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 	if len(bypassPrefixes) > 0 {
 		size := uint32(15 * 1024)
 		names := make(map[uint32]string)
+		metrics := make(map[uint32]uint32)
 		for {
 			buf := make([]byte, size)
 			adapter := (*windows.IpAdapterAddresses)(unsafe.Pointer(&buf[0]))
@@ -366,6 +367,7 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 				for aa := adapter; aa != nil; aa = aa.Next {
 					if aa.IfIndex != 0 {
 						names[aa.IfIndex] = windows.UTF16PtrToString(aa.FriendlyName)
+						metrics[aa.IfIndex] = aa.Ipv4Metric
 					}
 				}
 				break
@@ -375,32 +377,58 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 			}
 		}
 
-		var iface, gateway string
-		bestMetric := ^uint32(0)
 		var table *windows.MibIpForwardTable2
 		if err := windows.GetIpForwardTable2(syscall.AF_INET, &table); err != nil {
 			return nil, os.NewSyscallError("GetIpForwardTable2", err)
 		}
 		defer windows.FreeMibTable(unsafe.Pointer(table))
-		for _, row := range table.Rows() {
-			if row.DestinationPrefix.PrefixLength != 0 {
-				continue
+
+		addrFromSockaddr := func(sa windows.RawSockaddrInet, allowUnspecified bool) (netip.Addr, bool) {
+			if sa.Family == 0 && allowUnspecified {
+				return netip.AddrFrom4([4]byte{}), true
 			}
-			dst := (*windows.RawSockaddrInet4)(unsafe.Pointer(&row.DestinationPrefix.Prefix))
-			next := (*windows.RawSockaddrInet4)(unsafe.Pointer(&row.NextHop))
-			if dst.Family != syscall.AF_INET || next.Family != syscall.AF_INET || strings.EqualFold(names[row.InterfaceIndex], name) {
-				continue
+			if sa.Family != syscall.AF_INET {
+				return netip.Addr{}, false
 			}
-			if row.Metric < bestMetric {
-				iface = cmp.Or(names[row.InterfaceIndex], fmt.Sprint(row.InterfaceIndex))
-				gateway = netip.AddrFrom4(next.Addr).String()
-				bestMetric = row.Metric
-			}
+			raw := (*windows.RawSockaddrInet4)(unsafe.Pointer(&sa))
+			return netip.AddrFrom4(raw.Addr), true
 		}
-		if iface == "" {
-			bypassPrefixes = nil
+		routeTo := func(prefix netip.Prefix) (iface, gateway string, ok bool) {
+			bestBits := -1
+			bestMetric := ^uint64(0)
+			for _, row := range table.Rows() {
+				if row.DestinationPrefix.PrefixLength > 32 || strings.EqualFold(names[row.InterfaceIndex], name) {
+					continue
+				}
+				dst, ok := addrFromSockaddr(row.DestinationPrefix.Prefix, false)
+				if !ok {
+					continue
+				}
+				route := netip.PrefixFrom(dst, int(row.DestinationPrefix.PrefixLength)).Masked()
+				if !route.Contains(prefix.Addr()) {
+					continue
+				}
+				next, ok := addrFromSockaddr(row.NextHop, true)
+				if !ok {
+					continue
+				}
+				bits := int(row.DestinationPrefix.PrefixLength)
+				metric := uint64(row.Metric) + uint64(metrics[row.InterfaceIndex])
+				if bits < bestBits || bits == bestBits && metric >= bestMetric {
+					continue
+				}
+				iface = cmp.Or(names[row.InterfaceIndex], fmt.Sprint(row.InterfaceIndex))
+				gateway = next.String()
+				bestBits = bits
+				bestMetric = metric
+			}
+			return iface, gateway, iface != ""
 		}
 		for _, prefix := range bypassPrefixes {
+			iface, gateway, ok := routeTo(prefix)
+			if !ok {
+				continue
+			}
 			args = []string{"interface", "ipv4", "add", "route", "prefix=" + prefix.Masked().String(), "interface=" + iface, "metric=1", "store=active"}
 			if gateway != "" && gateway != "0.0.0.0" {
 				args = append(args, "nexthop="+gateway)
