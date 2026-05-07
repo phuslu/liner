@@ -1,16 +1,16 @@
 #!/bin/bash
 
 if [[ $BASH_VERSION == *-gosh && $- == *i* ]]; then
-    bind "\e[1~": beginning-of-line
-    bind "\e[4~": end-of-line
-    bind "\e[5~": previous-screen
-    bind "\e[6~": next-screen
-    bind "\e[F": end-of-line
-    bind "\e[H": beginning-of-line
-    bind "\eOF": end-of-line
-    bind "\eOH": beginning-of-line
-    bind "\e[B": history-search-forward
-    bind "\e[A": history-search-backward
+    bind '"\e[1~": beginning-of-line'
+    bind '"\e[4~": end-of-line'
+    bind '"\e[5~": previous-screen'
+    bind '"\e[6~": next-screen'
+    bind '"\e[F": end-of-line'
+    bind '"\e[H": beginning-of-line'
+    bind '"\eOF": end-of-line'
+    bind '"\eOH": beginning-of-line'
+    bind '"\e[B": history-search-forward'
+    bind '"\e[A": history-search-backward'
 fi
 
 if [[ " xterm xterm-color xterm-256color screen screen-256color tmux-256color " == *" $TERM "* ]]; then
