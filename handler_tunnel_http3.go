@@ -52,8 +52,8 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 				}
 				connc := make(chan *connerr, concurrency)
 				conns := make([]*connerr, 0, concurrency)
-				for i := range concurrency {
-					go func(i int) {
+				for range concurrency {
+					go func() {
 						hostport := net.JoinHostPort(cmp.Or(u.Query().Get("resolve"), u.Hostname()), cmp.Or(u.Port(), "443"))
 						conn, err := quic.DialAddrEarly(ctx,
 							hostport,
@@ -79,11 +79,35 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 							log.Info().Str("hostport", hostport).Dur("conn_rtt", conn.ConnectionStats().SmoothedRTT).Msg("dial quic conn ok")
 						}
 						connc <- &connerr{conn, err}
-					}(i)
+					}()
 				}
 				for range concurrency {
-					conns = append(conns, <-connc)
+					c := <-connc
+					conns = append(conns, c)
+					if c.err != nil {
+						continue
+					}
+					timer := time.NewTimer(200 * time.Millisecond)
+					defer timer.Stop()
+					for range concurrency - len(conns) {
+						select {
+						case c := <-connc:
+							conns = append(conns, c)
+						case <-timer.C:
+							go func(n int) {
+								for range n {
+									c := <-connc
+									if c.conn != nil {
+										c.conn.CloseWithError(0, "")
+									}
+								}
+							}(concurrency - len(conns))
+							goto scoring
+						}
+					}
+					goto scoring
 				}
+			scoring:
 				slices.SortStableFunc(conns, func(c1, c2 *connerr) int {
 					switch {
 					case c1.err != nil && c2.err != nil:
