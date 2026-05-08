@@ -9,22 +9,16 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/http/httptrace"
 	"net/url"
 	"slices"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
-	"unsafe"
 
 	"github.com/phuslu/log"
-	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 )
-
-var TunnelHTTP3Transports = xsync.NewMap[string, *http3.Transport]()
 
 func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL string) (net.Listener, error) {
 	log.Info().Str("dialer_name", dialerName).Msg("connecting tunnel host")
@@ -37,101 +31,16 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 		return nil, fmt.Errorf("no user info in dialer %s: %s", dialerName, dialerURL)
 	}
 
-	transportKey := dialerName + h.Config.RemoteListen[0]
-	transport, _ := TunnelHTTP3Transports.LoadOrCompute(transportKey, func() (*http3.Transport, bool) {
-		return &http3.Transport{
-			DisableCompression: false,
-			EnableDatagrams:    true,
-			Dial: func(ctx context.Context, addr string, tlsConf *tls.Config, conf *quic.Config) (*quic.Conn, error) {
-				ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-				defer cancel()
-				const concurrency = 4
-				type connerr struct {
-					conn *quic.Conn
-					err  error
-				}
-				connc := make(chan *connerr, concurrency)
-				conns := make([]*connerr, 0, concurrency)
-				for range concurrency {
-					go func() {
-						hostport := net.JoinHostPort(cmp.Or(u.Query().Get("resolve"), u.Hostname()), cmp.Or(u.Port(), "443"))
-						conn, err := quic.DialAddrEarly(ctx,
-							hostport,
-							&tls.Config{
-								NextProtos:         []string{"h3"},
-								InsecureSkipVerify: u.Query().Get("insecure") == "true",
-								ServerName:         u.Hostname(),
-							},
-							&quic.Config{
-								DisablePathMTUDiscovery:    false,
-								EnableDatagrams:            true,
-								KeepAlivePeriod:            15 * time.Second,
-								MaxIdleTimeout:             46 * time.Second,
-								MaxIncomingUniStreams:      128,
-								MaxIncomingStreams:         1024,
-								MaxStreamReceiveWindow:     2 * 1024 * 1024,
-								MaxConnectionReceiveWindow: 256 * 1024 * 1024,
-							},
-						)
-						if err != nil {
-							log.Info().Err(err).Str("hostport", hostport).Msg("dial quic conn error")
-						} else {
-							log.Info().Str("hostport", hostport).Dur("conn_rtt", conn.ConnectionStats().SmoothedRTT).Msg("dial quic conn ok")
-						}
-						connc <- &connerr{conn, err}
-					}()
-				}
-				for range concurrency {
-					c := <-connc
-					conns = append(conns, c)
-					if c.err != nil {
-						continue
-					}
-					timer := time.NewTimer(200 * time.Millisecond)
-					defer timer.Stop()
-					for range concurrency - len(conns) {
-						select {
-						case c := <-connc:
-							conns = append(conns, c)
-						case <-timer.C:
-							go func(n int) {
-								for range n {
-									c := <-connc
-									if c.conn != nil {
-										c.conn.CloseWithError(0, "")
-									}
-								}
-							}(concurrency - len(conns))
-							goto scoring
-						}
-					}
-					goto scoring
-				}
-			scoring:
-				slices.SortStableFunc(conns, func(c1, c2 *connerr) int {
-					switch {
-					case c1.err != nil && c2.err != nil:
-						return 0
-					case c1.err != nil:
-						return 1
-					case c2.err != nil:
-						return -1
-					default:
-						return cmp.Compare(c1.conn.ConnectionStats().SmoothedRTT, c2.conn.ConnectionStats().SmoothedRTT)
-					}
-				})
-				for _, c := range conns[1:] {
-					if c.conn != nil {
-						c.conn.CloseWithError(0, "")
-					}
-				}
-				if c := conns[0].conn; c != nil {
-					log.Info().NetAddr("remote_addr", c.RemoteAddr()).NetAddr("local_addr", c.LocalAddr()).Dur("conn_rtt", c.ConnectionStats().SmoothedRTT).Msg("dial and pick quic conn ok")
-				}
-				return conns[0].conn, conns[0].err
-			},
-		}, false
-	})
+	quicConn, err := dialHTTP3TunnelQUIC(ctx, u)
+	if err != nil {
+		return nil, err
+	}
+	closeConn := true
+	defer func() {
+		if closeConn {
+			_ = quicConn.CloseWithError(0, "")
+		}
+	}()
 
 	targetHost, targetPort, err := net.SplitHostPort(h.Config.RemoteListen[0])
 	if err != nil {
@@ -168,35 +77,44 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 		}
 	}
 
-	var quicConn *quic.Conn
+	cc := (&http3.Transport{
+		DisableCompression: false,
+		EnableDatagrams:    true,
+	}).NewClientConn(quicConn)
 
-	req = req.WithContext(httptrace.WithClientTrace(reqCtx, &httptrace.ClientTrace{
-		GotConn: func(connInfo httptrace.GotConnInfo) {
-			// see https://github.com/quic-go/quic-go/blob/master/http3/trace.go
-			if data := (*[2]unsafe.Pointer)(unsafe.Pointer(&connInfo.Conn))[1]; data != nil {
-				type fakeConn struct{ conn *quic.Conn }
-				quicConn = (*fakeConn)(data).conn
-			}
-		},
-	}))
-
-	resp, err := transport.RoundTripOpt(req, http3.RoundTripOpt{OnlyCachedConn: false})
-	if err != nil {
-		if errmsg := err.Error(); strings.Contains(errmsg, "timeout: ") || strings.Contains(errmsg, "context deadline exceeded") || strings.Contains(errmsg, "context canceled") {
-			log.Warn().Err(err).Msg("close underlying http3 connection")
-		}
+	select {
+	case <-quicConn.HandshakeComplete():
+	case <-reqCtx.Done():
 		reqCancel()
-		TunnelHTTP3Transports.Delete(transportKey)
-		transport.Close()
+		return nil, reqCtx.Err()
+	case <-quicConn.Context().Done():
+		reqCancel()
+		return nil, context.Cause(quicConn.Context())
+	}
+
+	stream, err := cc.OpenRequestStream(reqCtx)
+	if err != nil {
+		reqCancel()
+		return nil, err
+	}
+
+	if err := stream.SendRequestHeader(req); err != nil {
+		reqCancel()
+		stream.CancelRead(0)
+		stream.CancelWrite(0)
+		return nil, err
+	}
+	_ = stream.Close()
+
+	resp, err := stream.ReadResponse()
+	if err != nil {
+		reqCancel()
+		stream.CancelRead(0)
+		stream.CancelWrite(0)
 		return nil, err
 	}
 
 	log.Debug().Int("resp_statuscode", resp.StatusCode).Any("resp_header", resp.Header).Msg("http3dialer websocket response")
-
-	if quicConn == nil {
-		reqCancel()
-		return nil, fmt.Errorf("http3tunnel: got nil conn from %v", u.Host)
-	}
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusSwitchingProtocols {
 		data, _ := io.ReadAll(resp.Body)
@@ -216,11 +134,103 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 
 	go ln.drain()
 
+	closeConn = false
 	return &TunnelListener{
 		Listener: ln,
-		closer:   transport,
 		ctx:      quicConn.Context(),
 	}, nil
+}
+
+func dialHTTP3TunnelQUIC(ctx context.Context, u *url.URL) (*quic.Conn, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	const concurrency = 4
+	type connerr struct {
+		conn *quic.Conn
+		err  error
+	}
+
+	hostport := net.JoinHostPort(cmp.Or(u.Query().Get("resolve"), u.Hostname()), cmp.Or(u.Port(), "443"))
+	connc := make(chan *connerr, concurrency)
+	conns := make([]*connerr, 0, concurrency)
+	for range concurrency {
+		go func() {
+			conn, err := quic.DialAddrEarly(ctx,
+				hostport,
+				&tls.Config{
+					NextProtos:         []string{"h3"},
+					InsecureSkipVerify: u.Query().Get("insecure") == "true",
+					ServerName:         u.Hostname(),
+				},
+				&quic.Config{
+					DisablePathMTUDiscovery:    false,
+					EnableDatagrams:            true,
+					KeepAlivePeriod:            15 * time.Second,
+					MaxIdleTimeout:             46 * time.Second,
+					MaxIncomingUniStreams:      128,
+					MaxIncomingStreams:         1024,
+					MaxStreamReceiveWindow:     2 * 1024 * 1024,
+					MaxConnectionReceiveWindow: 256 * 1024 * 1024,
+				},
+			)
+			if err != nil {
+				log.Info().Err(err).Str("hostport", hostport).Msg("dial quic conn error")
+			} else {
+				log.Info().Str("hostport", hostport).Dur("conn_rtt", conn.ConnectionStats().SmoothedRTT).Msg("dial quic conn ok")
+			}
+			connc <- &connerr{conn, err}
+		}()
+	}
+	for range concurrency {
+		c := <-connc
+		conns = append(conns, c)
+		if c.err != nil {
+			continue
+		}
+		timer := time.NewTimer(200 * time.Millisecond)
+		defer timer.Stop()
+		for range concurrency - len(conns) {
+			select {
+			case c := <-connc:
+				conns = append(conns, c)
+			case <-timer.C:
+				go func(n int) {
+					for range n {
+						c := <-connc
+						if c.conn != nil {
+							c.conn.CloseWithError(0, "")
+						}
+					}
+				}(concurrency - len(conns))
+				goto scoring
+			}
+		}
+		goto scoring
+	}
+
+scoring:
+	slices.SortStableFunc(conns, func(c1, c2 *connerr) int {
+		switch {
+		case c1.err != nil && c2.err != nil:
+			return 0
+		case c1.err != nil:
+			return 1
+		case c2.err != nil:
+			return -1
+		default:
+			return cmp.Compare(c1.conn.ConnectionStats().SmoothedRTT, c2.conn.ConnectionStats().SmoothedRTT)
+		}
+	})
+	for _, c := range conns[1:] {
+		if c.conn != nil {
+			c.conn.CloseWithError(0, "")
+		}
+	}
+	if c := conns[0].conn; c != nil {
+		log.Info().NetAddr("remote_addr", c.RemoteAddr()).NetAddr("local_addr", c.LocalAddr()).Dur("conn_rtt", c.ConnectionStats().SmoothedRTT).Msg("dial and pick quic conn ok")
+	}
+	return conns[0].conn, conns[0].err
 }
 
 var _ net.Listener = (*QuicTunnelListener)(nil)
@@ -270,6 +280,7 @@ func (ln *QuicTunnelListener) Addr() net.Addr {
 }
 
 func (ln *QuicTunnelListener) Close() error {
+	var err error
 	ln.once.Do(func() {
 		ln.stop()
 		if ln.cancel != nil {
@@ -278,6 +289,7 @@ func (ln *QuicTunnelListener) Close() error {
 		if ln.body != nil {
 			_ = ln.body.Close()
 		}
+		err = ln.conn.CloseWithError(0, "")
 	})
-	return nil
+	return err
 }
