@@ -11,17 +11,14 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"net/http/httptrace"
 	"net/url"
 	"strings"
 	"sync"
 	"time"
-	"unsafe"
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/quic-go/quicvarint"
-	"github.com/smallnest/ringbuffer"
 )
 
 var _ Dialer = (*HTTP3Dialer)(nil)
@@ -40,8 +37,8 @@ type HTTP3Dialer struct {
 
 	mu        sync.Mutex
 	transport *http3.Transport
-	udpClient *http3.ClientConn
-	udpConn   *quic.Conn
+	client    *http3.ClientConn
+	conn      *quic.Conn
 }
 
 func (d *HTTP3Dialer) init() {
@@ -103,7 +100,6 @@ func (d *HTTP3Dialer) DialContext(ctx context.Context, network, addr string) (ne
 }
 
 func (d *HTTP3Dialer) dialTCP(ctx context.Context, network, addr string) (net.Conn, error) {
-	pr, pw := ringbuffer.New(32 * 1024).Pipe()
 	req := &http.Request{
 		ProtoMajor: 3,
 		Method:     http.MethodConnect,
@@ -117,8 +113,6 @@ func (d *HTTP3Dialer) dialTCP(ctx context.Context, network, addr string) (net.Co
 			"user-agent":          []string{d.UserAgent},
 			"x-forwarded-network": []string{network},
 		},
-		Body:          pr,
-		ContentLength: -1,
 	}
 	if header, _ := ctx.Value(DialerHTTPHeaderContextKey).(http.Header); header != nil {
 		if d.Logger != nil {
@@ -152,41 +146,61 @@ func (d *HTTP3Dialer) dialTCP(ctx context.Context, network, addr string) (net.Co
 		}
 	}
 
-	var quicConn *quic.Conn
+	cc, qconn, err := d.http3ClientConn(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	select {
+	case <-qconn.HandshakeComplete():
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-qconn.Context().Done():
+		d.closeHTTP3ClientConn(qconn)
+		return nil, context.Cause(qconn.Context())
+	}
+
 	// The caller context bounds CONNECT setup; the returned stream must outlive it.
 	streamCtx, streamCancel := context.WithCancel(context.WithoutCancel(ctx))
 	stopDialCancel := context.AfterFunc(ctx, streamCancel)
 
-	req = req.WithContext(httptrace.WithClientTrace(streamCtx, &httptrace.ClientTrace{
-		GotConn: func(connInfo httptrace.GotConnInfo) {
-			// see https://github.com/quic-go/quic-go/blob/master/http3/trace.go
-			if data := (*[2]unsafe.Pointer)(unsafe.Pointer(&connInfo.Conn))[1]; data != nil {
-				type fakeConn struct{ conn *quic.Conn }
-				quicConn = (*fakeConn)(data).conn
-			}
-		},
-	}))
-
-	resp, err := d.transport.RoundTripOpt(req, http3.RoundTripOpt{OnlyCachedConn: false})
+	stream, err := cc.OpenRequestStream(streamCtx)
 	if err != nil {
 		stopDialCancel()
 		streamCancel()
-		_ = pw.CloseWithError(err)
-		// if errmsg := err.Error(); strings.Contains(errmsg, "timeout: ") || strings.Contains(errmsg, "context deadline exceeded") || strings.Contains(errmsg, "context canceled") {
-		// 	if d.Logger != nil {
-		// 		d.Logger.Warn("close underlying http3 connection", "error", err)
-		// 	}
-		// }
+		if qconn.Context().Err() != nil {
+			d.closeHTTP3ClientConn(qconn)
+		} else {
+			d.forgetHTTP3ClientConn(qconn)
+		}
 		return nil, err
 	}
+
+	req = req.WithContext(streamCtx)
+	if err := stream.SendRequestHeader(req); err != nil {
+		stopDialCancel()
+		streamCancel()
+		stream.CancelRead(0)
+		stream.CancelWrite(0)
+		return nil, err
+	}
+
+	resp, err := stream.ReadResponse()
+	if err != nil {
+		stopDialCancel()
+		streamCancel()
+		stream.CancelRead(0)
+		stream.CancelWrite(0)
+		return nil, err
+	}
+
 	if !stopDialCancel() {
 		_ = resp.Body.Close()
 		streamCancel()
+		stream.CancelWrite(0)
 		if err := ctx.Err(); err != nil {
-			_ = pw.CloseWithError(err)
 			return nil, err
 		}
-		_ = pw.CloseWithError(context.Canceled)
 		return nil, context.Canceled
 	}
 
@@ -198,23 +212,24 @@ func (d *HTTP3Dialer) dialTCP(ctx context.Context, network, addr string) (net.Co
 		data, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
 		streamCancel()
+		stream.CancelWrite(0)
 		err := errors.New("proxy: read from " + d.Host + " error: " + resp.Status + ": " + string(data))
-		_ = pw.CloseWithError(err)
 		return nil, err
 	}
 
 	return &http3Stream{
 		body: resp.Body,
-		pipe: pw,
-		conn: quicConn,
+		pipe: stream,
+		conn: qconn,
 		closeRead: func(error) error {
+			stream.CancelRead(0)
 			return resp.Body.Close()
 		},
 		closeWrite: func(err error) error {
 			if err != nil {
-				return pw.CloseWithError(err)
+				stream.CancelWrite(0)
 			}
-			return pw.Close()
+			return stream.Close()
 		},
 		cancel: streamCancel,
 	}, nil
@@ -289,7 +304,11 @@ func (d *HTTP3Dialer) dialUDP(ctx context.Context, network, addr string) (net.Co
 	if err != nil {
 		stopDialCancel()
 		streamCancel()
-		d.closeHTTP3ClientConn(qconn)
+		if qconn.Context().Err() != nil {
+			d.closeHTTP3ClientConn(qconn)
+		} else {
+			d.forgetHTTP3ClientConn(qconn)
+		}
 		return nil, err
 	}
 	req = req.WithContext(streamCtx)
@@ -353,8 +372,8 @@ func (d *HTTP3Dialer) http3ClientConn(ctx context.Context) (*http3.ClientConn, *
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	if d.udpClient != nil && d.udpConn != nil && d.udpConn.Context().Err() == nil {
-		return d.udpClient, d.udpConn, nil
+	if d.client != nil && d.conn != nil && d.conn.Context().Err() == nil {
+		return d.client, d.conn, nil
 	}
 
 	qconn, err := d.dialQUIC(ctx)
@@ -362,18 +381,22 @@ func (d *HTTP3Dialer) http3ClientConn(ctx context.Context) (*http3.ClientConn, *
 		return nil, nil, err
 	}
 	cc := d.transport.NewClientConn(qconn)
-	d.udpClient = cc
-	d.udpConn = qconn
+	d.client = cc
+	d.conn = qconn
 	return cc, qconn, nil
 }
 
-func (d *HTTP3Dialer) closeHTTP3ClientConn(conn *quic.Conn) {
+func (d *HTTP3Dialer) forgetHTTP3ClientConn(conn *quic.Conn) {
 	d.mu.Lock()
-	if d.udpConn == conn {
-		d.udpClient = nil
-		d.udpConn = nil
+	if d.conn == conn {
+		d.client = nil
+		d.conn = nil
 	}
 	d.mu.Unlock()
+}
+
+func (d *HTTP3Dialer) closeHTTP3ClientConn(conn *quic.Conn) {
+	d.forgetHTTP3ClientConn(conn)
 	_ = conn.CloseWithError(0, "")
 }
 
