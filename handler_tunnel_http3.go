@@ -31,7 +31,7 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 		return nil, fmt.Errorf("no user info in dialer %s: %s", dialerName, dialerURL)
 	}
 
-	quicConn, err := dialHTTP3TunnelQUIC(ctx, u)
+	quicConn, err := h.h3dail(ctx, u)
 	if err != nil {
 		return nil, err
 	}
@@ -82,16 +82,6 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 		EnableDatagrams:    true,
 	}).NewClientConn(quicConn)
 
-	select {
-	case <-quicConn.HandshakeComplete():
-	case <-reqCtx.Done():
-		reqCancel()
-		return nil, reqCtx.Err()
-	case <-quicConn.Context().Done():
-		reqCancel()
-		return nil, context.Cause(quicConn.Context())
-	}
-
 	stream, err := cc.OpenRequestStream(reqCtx)
 	if err != nil {
 		reqCancel()
@@ -141,7 +131,7 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 	}, nil
 }
 
-func dialHTTP3TunnelQUIC(ctx context.Context, u *url.URL) (*quic.Conn, error) {
+func (h *TunnelHandler) h3dail(ctx context.Context, u *url.URL) (*quic.Conn, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
@@ -177,7 +167,22 @@ func dialHTTP3TunnelQUIC(ctx context.Context, u *url.URL) (*quic.Conn, error) {
 			if err != nil {
 				log.Info().Err(err).Str("hostport", hostport).Msg("dial quic conn error")
 			} else {
-				log.Info().Str("hostport", hostport).Dur("conn_rtt", conn.ConnectionStats().SmoothedRTT).Msg("dial quic conn ok")
+				select {
+				case <-conn.HandshakeComplete():
+					log.Info().Str("hostport", hostport).Dur("conn_rtt", conn.ConnectionStats().SmoothedRTT).Msg("dial quic conn ok")
+				case <-conn.Context().Done():
+					err = context.Cause(conn.Context())
+					if err == nil {
+						err = cmp.Or(conn.Context().Err(), context.Canceled)
+					}
+					conn = nil
+					log.Info().Err(err).Str("hostport", hostport).Msg("dial quic conn handshake error")
+				case <-ctx.Done():
+					err = ctx.Err()
+					_ = conn.CloseWithError(0, "")
+					conn = nil
+					log.Info().Err(err).Str("hostport", hostport).Msg("dial quic conn handshake error")
+				}
 			}
 			connc <- &connerr{conn, err}
 		}()
