@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -330,6 +331,7 @@ func (d *HTTP3Dialer) dialUDP(ctx context.Context, network, addr string) (net.Co
 	return &http3Datagram{
 		stream: stream,
 		conn:   qconn,
+		ctx:    streamCtx,
 		cancel: streamCancel,
 		closeRead: func(error) error {
 			stream.CancelRead(0)
@@ -613,9 +615,12 @@ func (c *http3Stream) closeWithError(err error) error {
 type http3Datagram struct {
 	stream     *http3.RequestStream
 	conn       *quic.Conn
+	ctx        context.Context
 	cancel     context.CancelFunc
 	closeRead  func(error) error
 	closeWrite func(error) error
+
+	readDeadline atomic.Int64
 
 	mu       sync.Mutex
 	closed   bool
@@ -624,9 +629,19 @@ type http3Datagram struct {
 }
 
 func (c *http3Datagram) Read(b []byte) (int, error) {
+	ctx, cancel, expired := c.readContext()
+	if expired {
+		return 0, c.readError(os.ErrDeadlineExceeded)
+	}
+	if cancel != nil {
+		defer cancel()
+	}
 	for {
-		data, err := c.stream.ReceiveDatagram(context.Background())
+		data, err := c.stream.ReceiveDatagram(ctx)
 		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				err = os.ErrDeadlineExceeded
+			}
 			return 0, c.readError(err)
 		}
 		contextID, n, err := quicvarint.Parse(data)
@@ -635,6 +650,23 @@ func (c *http3Datagram) Read(b []byte) (int, error) {
 		}
 		return copy(b, data[n:]), nil
 	}
+}
+
+func (c *http3Datagram) readContext() (context.Context, context.CancelFunc, bool) {
+	ctx := c.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ns := c.readDeadline.Load()
+	if ns == 0 {
+		return ctx, nil, false
+	}
+	deadline := time.Unix(0, ns)
+	if !deadline.After(time.Now()) {
+		return ctx, nil, true
+	}
+	ctx, cancel := context.WithDeadline(ctx, deadline)
+	return ctx, cancel, false
 }
 
 func (c *http3Datagram) Write(b []byte) (int, error) {
@@ -663,10 +695,20 @@ func (c *http3Datagram) LocalAddr() net.Addr {
 }
 
 func (c *http3Datagram) SetDeadline(t time.Time) error {
+	if t.IsZero() {
+		c.readDeadline.Store(0)
+	} else {
+		c.readDeadline.Store(t.UnixNano())
+	}
 	return c.stream.SetDeadline(t)
 }
 
 func (c *http3Datagram) SetReadDeadline(t time.Time) error {
+	if t.IsZero() {
+		c.readDeadline.Store(0)
+	} else {
+		c.readDeadline.Store(t.UnixNano())
+	}
 	return c.stream.SetReadDeadline(t)
 }
 
