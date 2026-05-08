@@ -86,12 +86,14 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 				}
 				slices.SortStableFunc(conns, func(c1, c2 *connerr) int {
 					switch {
+					case c1.err != nil && c2.err != nil:
+						return 0
 					case c1.err != nil:
 						return 1
 					case c2.err != nil:
 						return -1
 					default:
-						return int(c1.conn.ConnectionStats().SmoothedRTT - c2.conn.ConnectionStats().SmoothedRTT)
+						return cmp.Compare(c1.conn.ConnectionStats().SmoothedRTT, c2.conn.ConnectionStats().SmoothedRTT)
 					}
 				})
 				for _, c := range conns[1:] {
