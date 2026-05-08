@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/quic-go/quic-go"
@@ -35,7 +36,11 @@ type HTTP3Dialer struct {
 	TLSCache  *TLSClientSessionCache
 	Logger    *slog.Logger
 
-	mu     sync.Mutex
+	mu   sync.Mutex
+	conn atomic.Pointer[http3ClientConn]
+}
+
+type http3ClientConn struct {
 	client *http3.ClientConn
 	conn   *quic.Conn
 }
@@ -313,11 +318,15 @@ func (d *HTTP3Dialer) dialUDP(ctx context.Context, network, addr string) (net.Co
 }
 
 func (d *HTTP3Dialer) dialClientConn(ctx context.Context) (*http3.ClientConn, *quic.Conn, error) {
+	if c := d.conn.Load(); c != nil && c.conn.Context().Err() == nil {
+		return c.client, c.conn, nil
+	}
+
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	if d.client != nil && d.conn != nil && d.conn.Context().Err() == nil {
-		return d.client, d.conn, nil
+	if c := d.conn.Load(); c != nil && c.conn.Context().Err() == nil {
+		return c.client, c.conn, nil
 	}
 
 	qconn, err := d.dialQUICConn(ctx)
@@ -328,8 +337,7 @@ func (d *HTTP3Dialer) dialClientConn(ctx context.Context) (*http3.ClientConn, *q
 		DisableCompression: false,
 		EnableDatagrams:    true,
 	}).NewClientConn(qconn)
-	d.client = cc
-	d.conn = qconn
+	d.conn.Store(&http3ClientConn{client: cc, conn: qconn})
 	return cc, qconn, nil
 }
 
@@ -445,12 +453,15 @@ scoring:
 }
 
 func (d *HTTP3Dialer) forgetHTTP3ClientConn(conn *quic.Conn) {
-	d.mu.Lock()
-	if d.conn == conn {
-		d.client = nil
-		d.conn = nil
+	for {
+		c := d.conn.Load()
+		if c == nil || c.conn != conn {
+			return
+		}
+		if d.conn.CompareAndSwap(c, nil) {
+			return
+		}
 	}
-	d.mu.Unlock()
 }
 
 func (d *HTTP3Dialer) closeHTTP3ClientConn(conn *quic.Conn) {
