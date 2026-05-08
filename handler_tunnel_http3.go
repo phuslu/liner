@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptrace"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -44,28 +45,64 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 			Dial: func(ctx context.Context, addr string, tlsConf *tls.Config, conf *quic.Config) (*quic.Conn, error) {
 				ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 				defer cancel()
-				conn, err := quic.DialAddrEarly(ctx,
-					net.JoinHostPort(cmp.Or(u.Query().Get("resolve"), u.Hostname()), cmp.Or(u.Port(), "443")),
-					&tls.Config{
-						NextProtos:         []string{"h3"},
-						InsecureSkipVerify: u.Query().Get("insecure") == "true",
-						ServerName:         u.Hostname(),
-					},
-					&quic.Config{
-						DisablePathMTUDiscovery:    false,
-						EnableDatagrams:            true,
-						KeepAlivePeriod:            15 * time.Second,
-						MaxIdleTimeout:             46 * time.Second,
-						MaxIncomingUniStreams:      128,
-						MaxIncomingStreams:         1024,
-						MaxStreamReceiveWindow:     2 * 1024 * 1024,
-						MaxConnectionReceiveWindow: 256 * 1024 * 1024,
-					},
-				)
-				if err != nil {
-					return nil, err
+				const concurrency = 4
+				type connerr struct {
+					conn *quic.Conn
+					err  error
 				}
-				return conn, nil
+				conns := make([]*connerr, concurrency)
+				var wg sync.WaitGroup
+				wg.Add(concurrency)
+				for i := range concurrency {
+					go func(i int) {
+						defer wg.Done()
+						hostport := net.JoinHostPort(cmp.Or(u.Query().Get("resolve"), u.Hostname()), cmp.Or(u.Port(), "443"))
+						conn, err := quic.DialAddrEarly(ctx,
+							hostport,
+							&tls.Config{
+								NextProtos:         []string{"h3"},
+								InsecureSkipVerify: u.Query().Get("insecure") == "true",
+								ServerName:         u.Hostname(),
+							},
+							&quic.Config{
+								DisablePathMTUDiscovery:    false,
+								EnableDatagrams:            true,
+								KeepAlivePeriod:            15 * time.Second,
+								MaxIdleTimeout:             46 * time.Second,
+								MaxIncomingUniStreams:      128,
+								MaxIncomingStreams:         1024,
+								MaxStreamReceiveWindow:     2 * 1024 * 1024,
+								MaxConnectionReceiveWindow: 256 * 1024 * 1024,
+							},
+						)
+						if err != nil {
+							log.Info().Err(err).Str("hostport", hostport).Msg("dial quic conn error")
+						} else {
+							log.Info().Str("hostport", hostport).Dur("conn_rtt", conn.ConnectionStats().SmoothedRTT).Msg("dial quic conn ok")
+						}
+						conns[i] = &connerr{conn, err}
+					}(i)
+				}
+				wg.Wait()
+				slices.SortStableFunc(conns, func(c1, c2 *connerr) int {
+					switch {
+					case c1.err != nil:
+						return 1
+					case c2.err != nil:
+						return -1
+					default:
+						return int(c1.conn.ConnectionStats().SmoothedRTT - c2.conn.ConnectionStats().SmoothedRTT)
+					}
+				})
+				for _, c := range conns[1:] {
+					if c.conn != nil {
+						c.conn.CloseWithError(0, "")
+					}
+				}
+				if c := conns[0].conn; c != nil {
+					log.Info().NetAddr("remote_addr", c.RemoteAddr()).NetAddr("local_addr", c.LocalAddr()).Dur("conn_rtt", c.ConnectionStats().SmoothedRTT).Msg("dial and pick quic conn ok")
+				}
+				return conns[0].conn, conns[0].err
 			},
 		}, false
 	})
