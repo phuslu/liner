@@ -169,9 +169,9 @@ func (d *HTTP3Dialer) dialTCP(ctx context.Context, network, addr string) (net.Co
 	}
 
 	return &http3Stream{
-		body: resp.Body,
-		pipe: stream,
-		conn: qconn,
+		body:   resp.Body,
+		stream: stream,
+		conn:   qconn,
 		closeRead: func(error) error {
 			stream.CancelRead(0)
 			return resp.Body.Close()
@@ -471,7 +471,7 @@ func (d *HTTP3Dialer) closeHTTP3ClientConn(conn *quic.Conn) {
 
 type http3Stream struct {
 	body       io.ReadCloser
-	pipe       io.Writer
+	stream     *http3.RequestStream
 	conn       *quic.Conn
 	closeRead  func(error) error
 	closeWrite func(error) error
@@ -489,7 +489,7 @@ func (c *http3Stream) Read(b []byte) (n int, err error) {
 }
 
 func (c *http3Stream) Write(b []byte) (n int, err error) {
-	n, err = c.pipe.Write(b)
+	n, err = c.stream.Write(b)
 	return n, c.writeError(err)
 }
 
@@ -506,15 +506,15 @@ func (c *http3Stream) LocalAddr() net.Addr {
 }
 
 func (c *http3Stream) SetDeadline(t time.Time) error {
-	return nil
+	return c.stream.SetDeadline(t)
 }
 
 func (c *http3Stream) SetReadDeadline(t time.Time) error {
-	return nil
+	return c.stream.SetReadDeadline(t)
 }
 
 func (c *http3Stream) SetWriteDeadline(t time.Time) error {
-	return nil
+	return c.stream.SetWriteDeadline(t)
 }
 
 func (c *http3Stream) QuicConn() *quic.Conn {
@@ -636,15 +636,15 @@ func (c *http3Datagram) LocalAddr() net.Addr {
 }
 
 func (c *http3Datagram) SetDeadline(t time.Time) error {
-	return nil
+	return c.stream.SetDeadline(t)
 }
 
 func (c *http3Datagram) SetReadDeadline(t time.Time) error {
-	return nil
+	return c.stream.SetReadDeadline(t)
 }
 
 func (c *http3Datagram) SetWriteDeadline(t time.Time) error {
-	return nil
+	return c.stream.SetWriteDeadline(t)
 }
 
 func (c *http3Datagram) QuicConn() *quic.Conn {
