@@ -169,7 +169,7 @@ func (h *TunnelHandler) h3dail(ctx context.Context, u *url.URL) (*quic.Conn, err
 			} else {
 				select {
 				case <-conn.HandshakeComplete():
-					log.Info().Str("hostport", hostport).Dur("conn_rtt", conn.ConnectionStats().SmoothedRTT).Msg("dial quic conn ok")
+					log.Info().NetAddr("remote_addr", conn.RemoteAddr()).NetAddr("local_addr", conn.LocalAddr()).Dur("conn_rtt", conn.ConnectionStats().SmoothedRTT).Msg("dial quic conn ok")
 				case <-conn.Context().Done():
 					err = context.Cause(conn.Context())
 					if err == nil {
