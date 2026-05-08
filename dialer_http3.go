@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
-	"strings"
 	"sync"
 	"time"
 
@@ -36,35 +35,9 @@ type HTTP3Dialer struct {
 	TLSCache  *TLSClientSessionCache
 	Logger    *slog.Logger
 
-	mu        sync.Mutex
-	transport *http3.Transport
-	client    *http3.ClientConn
-	conn      *quic.Conn
-}
-
-func (d *HTTP3Dialer) init() {
-	if d.transport != nil {
-		return
-	}
-
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	if d.transport != nil {
-		return
-	}
-
-	d.transport = &http3.Transport{
-		DisableCompression: false,
-		EnableDatagrams:    true,
-		Dial: func(ctx context.Context, addr string, tlsConf *tls.Config, conf *quic.Config) (*quic.Conn, error) {
-			return d.dialQUIC(ctx)
-		},
-	}
-
-	if d.UserAgent == "" {
-		d.UserAgent = DefaultUserAgent
-	}
+	mu     sync.Mutex
+	client *http3.ClientConn
+	conn   *quic.Conn
 }
 
 func (d *HTTP3Dialer) dialQUIC(ctx context.Context) (*quic.Conn, error) {
@@ -179,8 +152,6 @@ scoring:
 }
 
 func (d *HTTP3Dialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
-	d.init()
-
 	switch network {
 	case "tcp", "tcp4", "tcp6":
 		return d.dialTCP(ctx, network, addr)
@@ -202,7 +173,7 @@ func (d *HTTP3Dialer) dialTCP(ctx context.Context, network, addr string) (net.Co
 		Host: addr,
 		Header: http.Header{
 			"content-type":        []string{"application/octet-stream"},
-			"user-agent":          []string{d.UserAgent},
+			"user-agent":          []string{cmp.Or(d.UserAgent, DefaultUserAgent)},
 			"x-forwarded-network": []string{network},
 		},
 	}
@@ -223,9 +194,12 @@ func (d *HTTP3Dialer) dialTCP(ctx context.Context, network, addr string) (net.Co
 
 	if d.Websocket {
 		// see https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-connect-tcp-05
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return nil, err
+		}
 		key := base64.StdEncoding.EncodeToString(fmt.Appendf(nil, "%x%x\n", fastrandn(1<<32-1), fastrandn(1<<32-1)))
-		i := strings.LastIndexByte(addr, ':')
-		req.URL.Path = fmt.Sprintf(HTTPTunnelConnectTCPPathPrefix+"%s/%s/", addr[:i], addr[i+1:])
+		req.URL.Path = fmt.Sprintf(HTTPTunnelConnectTCPPathPrefix+"%s/%s/", host, port)
 		req.URL.Host = d.Host
 		req.Host = d.Host
 		req.Method = http.MethodConnect
@@ -241,15 +215,6 @@ func (d *HTTP3Dialer) dialTCP(ctx context.Context, network, addr string) (net.Co
 	cc, qconn, err := d.http3ClientConn(ctx)
 	if err != nil {
 		return nil, err
-	}
-
-	select {
-	case <-qconn.HandshakeComplete():
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case <-qconn.Context().Done():
-		d.closeHTTP3ClientConn(qconn)
-		return nil, context.Cause(qconn.Context())
 	}
 
 	// The caller context bounds CONNECT setup; the returned stream must outlive it.
@@ -369,7 +334,7 @@ func (d *HTTP3Dialer) dialUDP(ctx context.Context, network, addr string) (net.Co
 		},
 		Host: d.Host,
 		Header: http.Header{
-			"user-agent":                []string{d.UserAgent},
+			"user-agent":                []string{cmp.Or(d.UserAgent, DefaultUserAgent)},
 			"x-forwarded-network":       []string{network},
 			http3.CapsuleProtocolHeader: []string{"?1"},
 		},
@@ -459,8 +424,6 @@ func (d *HTTP3Dialer) dialUDP(ctx context.Context, network, addr string) (net.Co
 }
 
 func (d *HTTP3Dialer) http3ClientConn(ctx context.Context) (*http3.ClientConn, *quic.Conn, error) {
-	d.init()
-
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -472,7 +435,10 @@ func (d *HTTP3Dialer) http3ClientConn(ctx context.Context) (*http3.ClientConn, *
 	if err != nil {
 		return nil, nil, err
 	}
-	cc := d.transport.NewClientConn(qconn)
+	cc := (&http3.Transport{
+		DisableCompression: false,
+		EnableDatagrams:    true,
+	}).NewClientConn(qconn)
 	d.client = cc
 	d.conn = qconn
 	return cc, qconn, nil
