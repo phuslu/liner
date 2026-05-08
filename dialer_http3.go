@@ -126,28 +126,41 @@ func (d *HTTP3Dialer) dialTCP(ctx context.Context, network, addr string) (net.Co
 		}
 		return nil, err
 	}
-
-	req = req.WithContext(streamCtx)
-	if err := stream.SendRequestHeader(req); err != nil {
-		stopDialCancel()
+	stopDialCancel()
+	stopRequestCancel := context.AfterFunc(ctx, func() {
 		streamCancel()
 		stream.CancelRead(0)
 		stream.CancelWrite(0)
+	})
+
+	req = req.WithContext(streamCtx)
+	if err := stream.SendRequestHeader(req); err != nil {
+		stopRequestCancel()
+		streamCancel()
+		stream.CancelRead(0)
+		stream.CancelWrite(0)
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		return nil, err
 	}
 
 	resp, err := stream.ReadResponse()
 	if err != nil {
-		stopDialCancel()
+		stopRequestCancel()
 		streamCancel()
 		stream.CancelRead(0)
 		stream.CancelWrite(0)
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		return nil, err
 	}
 
-	if !stopDialCancel() {
+	if !stopRequestCancel() {
 		_ = resp.Body.Close()
 		streamCancel()
+		stream.CancelRead(0)
 		stream.CancelWrite(0)
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -262,26 +275,40 @@ func (d *HTTP3Dialer) dialUDP(ctx context.Context, network, addr string) (net.Co
 		}
 		return nil, err
 	}
-	req = req.WithContext(streamCtx)
-	if err := stream.SendRequestHeader(req); err != nil {
-		stopDialCancel()
+	stopDialCancel()
+	stopRequestCancel := context.AfterFunc(ctx, func() {
 		streamCancel()
 		stream.CancelRead(0)
 		stream.CancelWrite(0)
+	})
+	req = req.WithContext(streamCtx)
+	if err := stream.SendRequestHeader(req); err != nil {
+		stopRequestCancel()
+		streamCancel()
+		stream.CancelRead(0)
+		stream.CancelWrite(0)
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		return nil, err
 	}
 
 	resp, err := stream.ReadResponse()
 	if err != nil {
-		stopDialCancel()
+		stopRequestCancel()
 		streamCancel()
 		stream.CancelRead(0)
 		stream.CancelWrite(0)
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		return nil, err
 	}
-	if !stopDialCancel() {
+	if !stopRequestCancel() {
 		_ = resp.Body.Close()
 		streamCancel()
+		stream.CancelRead(0)
+		stream.CancelWrite(0)
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}

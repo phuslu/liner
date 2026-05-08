@@ -48,6 +48,8 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 	}
 
 	// see https://www.ietf.org/archive/id/draft-kazuho-httpbis-reverse-tunnel-00.html
+	setupCtx, setupCancel := context.WithTimeout(ctx, time.Duration(cmp.Or(h.Config.DialTimeout, 10))*time.Second)
+	defer setupCancel()
 	reqCtx, reqCancel := context.WithCancel(ctx)
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodConnect, "https://"+u.Host, nil)
 	if err != nil {
@@ -82,26 +84,48 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 		EnableDatagrams:    true,
 	}).NewClientConn(quicConn)
 
-	stream, err := cc.OpenRequestStream(reqCtx)
+	stream, err := cc.OpenRequestStream(setupCtx)
 	if err != nil {
 		reqCancel()
 		return nil, err
 	}
+	stopRequestCancel := context.AfterFunc(setupCtx, func() {
+		stream.CancelRead(0)
+		stream.CancelWrite(0)
+	})
 
 	if err := stream.SendRequestHeader(req); err != nil {
+		stopRequestCancel()
 		reqCancel()
 		stream.CancelRead(0)
 		stream.CancelWrite(0)
+		if err := setupCtx.Err(); err != nil {
+			return nil, err
+		}
 		return nil, err
 	}
 	_ = stream.Close()
 
 	resp, err := stream.ReadResponse()
 	if err != nil {
+		stopRequestCancel()
 		reqCancel()
 		stream.CancelRead(0)
 		stream.CancelWrite(0)
+		if err := setupCtx.Err(); err != nil {
+			return nil, err
+		}
 		return nil, err
+	}
+	if !stopRequestCancel() {
+		_ = resp.Body.Close()
+		reqCancel()
+		stream.CancelRead(0)
+		stream.CancelWrite(0)
+		if err := setupCtx.Err(); err != nil {
+			return nil, err
+		}
+		return nil, context.Canceled
 	}
 
 	log.Debug().Int("resp_statuscode", resp.StatusCode).Any("resp_header", resp.Header).Msg("http3dialer websocket response")
