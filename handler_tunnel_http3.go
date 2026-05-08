@@ -167,7 +167,12 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 
 	log.Debug().Int("resp_statuscode", resp.StatusCode).Any("resp_header", resp.Header).Msg("http3dialer websocket response")
 
-	if (resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusSwitchingProtocols) || quicConn == nil {
+	if quicConn == nil {
+		reqCancel()
+		return nil, fmt.Errorf("http3tunnel: got nil conn from %v", u.Host)
+	}
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusSwitchingProtocols {
 		data, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
 		reqCancel()
