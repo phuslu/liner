@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -67,23 +68,114 @@ func (d *HTTP3Dialer) init() {
 }
 
 func (d *HTTP3Dialer) dialQUIC(ctx context.Context) (*quic.Conn, error) {
-	return quic.DialAddrEarly(ctx,
-		net.JoinHostPort(cmp.Or(d.Resolve, d.Host), cmp.Or(d.Port, "443")),
-		&tls.Config{
-			NextProtos:         []string{"h3"},
-			InsecureSkipVerify: d.Insecure,
-			ServerName:         d.Host,
-			ClientSessionCache: d.TLSCache,
-		},
-		&quic.Config{
-			DisablePathMTUDiscovery:    false,
-			EnableDatagrams:            true,
-			MaxIncomingUniStreams:      200,
-			MaxIncomingStreams:         200,
-			MaxStreamReceiveWindow:     12 * 1024 * 1024,
-			MaxConnectionReceiveWindow: 100 * 1024 * 1024,
-		},
-	)
+	const concurrency = 2
+	type connerr struct {
+		conn *quic.Conn
+		err  error
+	}
+
+	hostport := net.JoinHostPort(cmp.Or(d.Resolve, d.Host), cmp.Or(d.Port, "443"))
+	connc := make(chan *connerr, concurrency)
+	conns := make([]*connerr, 0, concurrency)
+	for range concurrency {
+		go func() {
+			conn, err := quic.DialAddrEarly(ctx,
+				hostport,
+				&tls.Config{
+					NextProtos:         []string{"h3"},
+					InsecureSkipVerify: d.Insecure,
+					ServerName:         d.Host,
+					ClientSessionCache: d.TLSCache,
+				},
+				&quic.Config{
+					DisablePathMTUDiscovery:    false,
+					EnableDatagrams:            true,
+					MaxIncomingUniStreams:      200,
+					MaxIncomingStreams:         200,
+					MaxStreamReceiveWindow:     12 * 1024 * 1024,
+					MaxConnectionReceiveWindow: 100 * 1024 * 1024,
+				},
+			)
+			if err != nil {
+				if d.Logger != nil {
+					d.Logger.Debug("dial quic conn error", "hostport", hostport, "error", err)
+				}
+			} else {
+				select {
+				case <-conn.HandshakeComplete():
+					if d.Logger != nil {
+						d.Logger.Debug("dial quic conn ok", "hostport", hostport, "conn_rtt", conn.ConnectionStats().SmoothedRTT)
+					}
+				case <-conn.Context().Done():
+					err = context.Cause(conn.Context())
+					if err == nil {
+						err = cmp.Or(conn.Context().Err(), context.Canceled)
+					}
+					conn = nil
+					if d.Logger != nil {
+						d.Logger.Debug("dial quic conn handshake error", "hostport", hostport, "error", err)
+					}
+				case <-ctx.Done():
+					err = ctx.Err()
+					_ = conn.CloseWithError(0, "")
+					conn = nil
+					if d.Logger != nil {
+						d.Logger.Debug("dial quic conn handshake error", "hostport", hostport, "error", err)
+					}
+				}
+			}
+			connc <- &connerr{conn, err}
+		}()
+	}
+	for range concurrency {
+		c := <-connc
+		conns = append(conns, c)
+		if c.err != nil {
+			continue
+		}
+		timer := time.NewTimer(200 * time.Millisecond)
+		defer timer.Stop()
+		for range concurrency - len(conns) {
+			select {
+			case c := <-connc:
+				conns = append(conns, c)
+			case <-timer.C:
+				go func(n int) {
+					for range n {
+						c := <-connc
+						if c.conn != nil {
+							_ = c.conn.CloseWithError(0, "")
+						}
+					}
+				}(concurrency - len(conns))
+				goto scoring
+			}
+		}
+		goto scoring
+	}
+
+scoring:
+	slices.SortStableFunc(conns, func(c1, c2 *connerr) int {
+		switch {
+		case c1.err != nil && c2.err != nil:
+			return 0
+		case c1.err != nil:
+			return 1
+		case c2.err != nil:
+			return -1
+		default:
+			return cmp.Compare(c1.conn.ConnectionStats().SmoothedRTT, c2.conn.ConnectionStats().SmoothedRTT)
+		}
+	})
+	for _, c := range conns[1:] {
+		if c.conn != nil {
+			_ = c.conn.CloseWithError(0, "")
+		}
+	}
+	if c := conns[0].conn; c != nil && d.Logger != nil {
+		d.Logger.Debug("dial and pick quic conn ok", "remote_addr", c.RemoteAddr(), "local_addr", c.LocalAddr(), "conn_rtt", c.ConnectionStats().SmoothedRTT)
+	}
+	return conns[0].conn, conns[0].err
 }
 
 func (d *HTTP3Dialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
