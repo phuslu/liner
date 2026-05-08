@@ -289,6 +289,9 @@ func (ln *QuicTunnelListener) Accept() (net.Conn, error) {
 		return nil, err
 	}
 	var b [4]byte
+	if ln.idle > 0 {
+		_ = stream.SetReadDeadline(time.Now().Add(ln.idle))
+	}
 	if _, err := io.ReadFull(stream, b[:]); err != nil {
 		stream.CancelRead(0)
 		_ = stream.Close()
