@@ -50,12 +50,10 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 					conn *quic.Conn
 					err  error
 				}
-				conns := make([]*connerr, concurrency)
-				var wg sync.WaitGroup
-				wg.Add(concurrency)
+				connc := make(chan *connerr, concurrency)
+				conns := make([]*connerr, 0, concurrency)
 				for i := range concurrency {
 					go func(i int) {
-						defer wg.Done()
 						hostport := net.JoinHostPort(cmp.Or(u.Query().Get("resolve"), u.Hostname()), cmp.Or(u.Port(), "443"))
 						conn, err := quic.DialAddrEarly(ctx,
 							hostport,
@@ -80,10 +78,12 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 						} else {
 							log.Info().Str("hostport", hostport).Dur("conn_rtt", conn.ConnectionStats().SmoothedRTT).Msg("dial quic conn ok")
 						}
-						conns[i] = &connerr{conn, err}
+						connc <- &connerr{conn, err}
 					}(i)
 				}
-				wg.Wait()
+				for range concurrency {
+					conns = append(conns, <-connc)
+				}
 				slices.SortStableFunc(conns, func(c1, c2 *connerr) int {
 					switch {
 					case c1.err != nil:
