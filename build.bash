@@ -242,8 +242,8 @@ EOF
 function liner::release() {
 	if ls python/liner_py-*.whl 2>/dev/null; then
 		pushd python
-		gh release view v0.0.0 --json assets --jq .assets[].name | egrep "^liner_py-.+$(ls liner_py-*_*.whl | awk -F- '{print $NF}')$" | xargs -i gh release delete-asset v0.0.0 {} --yes
-		gh release upload v0.0.0 liner_py-*.whl --clobber
+		# gh release view v0.0.0 --json assets --jq .assets[].name | egrep "^liner_py-.+$(ls liner_py-*_*.whl | awk -F- '{print $NF}')$" | xargs -i gh release delete-asset v0.0.0 {} --yes
+		# gh release upload v0.0.0 liner_py-*.whl --clobber
 		if git log -1 --oneline | grep -q ' +pypi$'; then
 			apt install -yq python3-virtualenv
 			virtualenv ~/.venv
