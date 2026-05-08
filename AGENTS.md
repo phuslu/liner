@@ -492,6 +492,9 @@ Current include behavior:
   forward `dialer`. Do not assume every string field supports it.
 - HTTPS handlers reject `psk`; PSK wrapping is valid on plain HTTP listeners and
   compatible client dialers.
+- HTTP/3 reverse tunnel stream idle cleanup is controlled by
+  `http[].tunnel.idle_timeout` or top-level `tunnel[].idle_timeout`; the default
+  is 900 seconds.
 - `cron` is top-level, not under `global`.
 - TUN `routes` accepts normal route prefixes and `-prefix` bypass entries. DNS
   on port 53 is intercepted and sent through `tun.dns_server` when configured,
@@ -552,6 +555,7 @@ http:
       enabled: true
       auth_table: users.csv
       allow_listens: ["127.0.0.1", "240.0.0.0/8"]
+      idle_timeout: 900
       log: true
 ```
 
@@ -567,6 +571,7 @@ tunnel:
     resolver: "https://8.8.8.8/dns-query"
     dialer: cloud
     dial_timeout: 5
+    idle_timeout: 900
 ```
 
 ### SOCKS proxy

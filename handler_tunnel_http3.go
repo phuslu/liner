@@ -120,6 +120,7 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 		cancel: reqCancel,
 		ctx:    ctx,
 		stop:   stop,
+		idle:   time.Duration(cmp.Or(h.Config.IdleTimeout, 900)) * time.Second,
 	}
 
 	go ln.drain()
@@ -247,6 +248,7 @@ type QuicTunnelListener struct {
 	ctx    context.Context
 	stop   context.CancelFunc
 	once   sync.Once
+	idle   time.Duration
 }
 
 // drain drains the HTTP/3 reverse tunnel control body and closes the listener when it ends.
@@ -277,6 +279,7 @@ func (ln *QuicTunnelListener) Accept() (net.Conn, error) {
 	return &QuicStreamConn{
 		stream: stream,
 		conn:   ln.conn,
+		idle:   ln.idle,
 	}, nil
 }
 

@@ -666,14 +666,33 @@ var _ net.Conn = (*QuicStreamConn)(nil)
 type QuicStreamConn struct {
 	stream *quic.Stream
 	conn   *quic.Conn
+	idle   time.Duration
+
+	// internal absolute timestamp
+	deadline atomic.Int64
 }
 
 func (c *QuicStreamConn) Read(b []byte) (int, error) {
+	c.touch()
 	return c.stream.Read(b)
 }
 
 func (c *QuicStreamConn) Write(b []byte) (int, error) {
+	c.touch()
 	return c.stream.Write(b)
+}
+
+func (c *QuicStreamConn) touch() {
+	if c.idle <= 0 {
+		return
+	}
+	now := time.Now()
+	ts := now.Unix()
+	last := c.deadline.Load()
+	if ts <= last || !c.deadline.CompareAndSwap(last, ts) {
+		return
+	}
+	_ = c.stream.SetDeadline(now.Add(c.idle))
 }
 
 func (c *QuicStreamConn) Close() error {

@@ -501,6 +501,7 @@ func (h *HTTPTunnelHandler) h3tunnel(rw http.ResponseWriter, req *http.Request, 
 			lconn := &QuicStreamConn{
 				stream: stream,
 				conn:   qconn,
+				idle:   time.Duration(cmp.Or(h.Config.Tunnel.IdleTimeout, 900)) * time.Second,
 			}
 			log.Info().NetAddr("remote_addr", rconn.RemoteAddr()).NetAddr("local_addr", qconn.RemoteAddr()).Int64("quic_stream_id", int64(stream.StreamID())).Msg("tunnel forwarding")
 
@@ -524,8 +525,11 @@ func (h *HTTPTunnelHandler) h3tunnel(rw http.ResponseWriter, req *http.Request, 
 	}()
 
 	md := &MemoryDialer{
-		Address:   addrport.String(),
-		Session:   QuicMemorySession{conn: qconn},
+		Address: addrport.String(),
+		Session: QuicMemorySession{
+			conn: qconn,
+			idle: time.Duration(cmp.Or(h.Config.Tunnel.IdleTimeout, 900)) * time.Second,
+		},
 		CreatedAt: time.Now().UnixNano(),
 	}
 
@@ -571,6 +575,7 @@ func (c *AutoCloseConn) Write(b []byte) (n int, err error) {
 
 type QuicMemorySession struct {
 	conn *quic.Conn
+	idle time.Duration
 }
 
 func (s QuicMemorySession) Open(ctx context.Context) (net.Conn, error) {
@@ -586,5 +591,6 @@ func (s QuicMemorySession) Open(ctx context.Context) (net.Conn, error) {
 	return &QuicStreamConn{
 		stream: stream,
 		conn:   s.conn,
+		idle:   s.idle,
 	}, nil
 }
