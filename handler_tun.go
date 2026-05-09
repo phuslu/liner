@@ -668,8 +668,8 @@ func (h *TunHandler) forwardTCP(r *tcp.ForwarderRequest) {
 
 	h.logForward(req, dialerName)
 
-	go io.Copy(rconn, lconn)
-	_, _ = io.Copy(lconn, rconn)
+	go tunCopyConn(rconn, lconn)
+	tunCopyConn(lconn, rconn)
 
 	h.logData(context.Background(), req, dialerName)
 }
@@ -916,6 +916,12 @@ func tunGetCopyBuffer(size int) []byte {
 		return make([]byte, size)
 	}
 	return b[:size]
+}
+
+func tunCopyConn(dst, src net.Conn) {
+	buf := tunGetCopyBuffer(tunCopyBufferSize)
+	defer tunPutCopyBuffer(buf)
+	_, _ = io.CopyBuffer(dst, src, buf)
 }
 
 func tunPacketHeadroomSlice(pkt *stack.PacketBuffer, pktSize int) ([]byte, bool) {
