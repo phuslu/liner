@@ -226,6 +226,7 @@ tun:
     mtu: 4064
     forward:
       dialer: proxy1
+      disable_ipv6: true
       dial_timeout: 10
       udp_timeout: 120
       log: true

@@ -22,6 +22,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/phuslu/fastdns"
 	"github.com/phuslu/log"
 	"github.com/valyala/bytebufferpool"
 	"golang.zx2c4.com/wireguard/tun"
@@ -515,6 +516,11 @@ func (h *TunHandler) forwardTCP(r *tcp.ForwarderRequest) {
 		Port:       id.LocalPort,
 		TraceID:    log.NewXID(),
 	}
+	if h.Config.Forward.DisableIpv6 && req.ServerAddr.Addr().Is6() {
+		log.Debug().Xid("trace_id", req.TraceID).Str("tun_name", h.name).Str("tun_network", req.Network).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Msg("reject tun ipv6 request")
+		r.Complete(true)
+		return
+	}
 
 	var (
 		wq        waiter.Queue
@@ -635,6 +641,17 @@ func (h *TunHandler) forwardUDP(r *udp.ForwarderRequest) {
 		Host:       serverIP.String(),
 		Port:       id.LocalPort,
 		TraceID:    log.NewXID(),
+	}
+	if h.Config.Forward.DisableIpv6 && req.ServerAddr.Addr().Is6() {
+		log.Debug().Xid("trace_id", req.TraceID).Str("tun_name", h.name).Str("tun_network", req.Network).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Msg("reject tun ipv6 request")
+		var wq waiter.Queue
+		ep, tcpipErr := r.CreateEndpoint(&wq)
+		if tcpipErr != nil {
+			log.Error().Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Str("error", tcpipErr.String()).Msg("tun udp create endpoint error")
+		} else {
+			ep.Close()
+		}
+		return
 	}
 
 	var wq waiter.Queue
@@ -779,6 +796,15 @@ func (h *TunHandler) serveTCPDNS(req TunRequest, lconn net.Conn) {
 }
 
 func (h *TunHandler) exchangeTunDNS(req TunRequest, query, response []byte) (int, error) {
+	if h.Config.Forward.DisableIpv6 {
+		var msg fastdns.Message
+		msg.Raw = query
+		if err := fastdns.ParseMessage(&msg, query, false); err == nil && msg.Question.Type == fastdns.TypeAAAA {
+			msg.SetResponseHeader(fastdns.RcodeNoError, 0)
+			return copy(response, msg.Raw), nil
+		}
+	}
+
 	client := h.DnsResolver.Client
 	ctx := context.Background()
 	cancel := func() {}

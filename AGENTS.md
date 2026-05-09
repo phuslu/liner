@@ -498,7 +498,10 @@ Current include behavior:
 - `cron` is top-level, not under `global`.
 - TUN `routes` accepts normal route prefixes and `-prefix` bypass entries. DNS
   on port 53 is intercepted and sent through `tun.dns_server` when configured,
-  instead of always following the normal forward dialer.
+  instead of always following the normal forward dialer. When
+  `tun[].forward.disable_ipv6` is true, TUN rejects IPv6 TCP/UDP destinations
+  and answers intercepted AAAA DNS queries with empty NoError responses so
+  clients can fall back to IPv4.
 
 ### Policy Templates
 
@@ -954,7 +957,8 @@ GOCACHE=/tmp/liner-go-build go test ./...
   without replacing normal default routing.
 - TUN DNS traffic on port 53 is intercepted and sent through `tun.dns_server`
   when configured. Do not route it through the normal TCP/UDP forward path by
-  accident.
+  accident. When `tun[].forward.disable_ipv6` is enabled, keep the local empty
+  AAAA response path before upstream DNS dialing.
 - The reserved memory address range is `240.0.0.0/8`; ensure uniqueness of
   memory listener addresses across HTTP, SSH, and tunnels.
 - Config overlay merge behavior is manual in `NewConfig`; new top-level fields
