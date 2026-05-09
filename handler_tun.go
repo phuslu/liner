@@ -207,17 +207,15 @@ func (h *TunHandler) Load(ctx context.Context) error {
 		// TUN source address. Keep it as a high-metric /0 so normal routing wins.
 		routePrefixes = append(routePrefixes, netip.PrefixFrom(netip.AddrFrom4([4]byte{}), 0))
 	}
-	hasDefaultRoute := slices.ContainsFunc(h.Config.Routes, func(route string) bool {
-		return strings.TrimSpace(route) == "0.0.0.0/0"
-	})
-	if h.Config.Forward.DisableIpv6 && hasDefaultRoute {
-		for _, prefix := range []netip.Prefix{netip.MustParsePrefix("::/1"), netip.MustParsePrefix("8000::/1")} {
-			if !slices.Contains(routePrefixes, prefix) {
-				routePrefixes = append(routePrefixes, prefix)
+	// has default route
+	if slices.ContainsFunc(h.Config.Routes, func(route string) bool { return strings.TrimSpace(route) == "0.0.0.0/0" }) {
+		if h.Config.DisableIpv6 {
+			for _, prefix := range []netip.Prefix{netip.MustParsePrefix("::/1"), netip.MustParsePrefix("8000::/1")} {
+				if !slices.Contains(routePrefixes, prefix) {
+					routePrefixes = append(routePrefixes, prefix)
+				}
 			}
 		}
-	}
-	if hasDefaultRoute {
 		for _, dialer := range h.Dialers {
 			for dialer != nil {
 				v := reflect.ValueOf(dialer)
@@ -523,7 +521,7 @@ func (h *TunHandler) forwardTCP(r *tcp.ForwarderRequest) {
 		Port:       id.LocalPort,
 		TraceID:    log.NewXID(),
 	}
-	if h.Config.Forward.DisableIpv6 && req.ServerAddr.Addr().Is6() {
+	if h.Config.DisableIpv6 && req.ServerAddr.Addr().Is6() {
 		log.Debug().Xid("trace_id", req.TraceID).Str("tun_name", h.name).Str("tun_network", req.Network).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Msg("reject tun ipv6 request")
 		r.Complete(true)
 		return
@@ -649,7 +647,7 @@ func (h *TunHandler) forwardUDP(r *udp.ForwarderRequest) {
 		Port:       id.LocalPort,
 		TraceID:    log.NewXID(),
 	}
-	if h.Config.Forward.DisableIpv6 && req.ServerAddr.Addr().Is6() {
+	if h.Config.DisableIpv6 && req.ServerAddr.Addr().Is6() {
 		log.Debug().Xid("trace_id", req.TraceID).Str("tun_name", h.name).Str("tun_network", req.Network).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Msg("reject tun ipv6 request")
 		var wq waiter.Queue
 		ep, tcpipErr := r.CreateEndpoint(&wq)
@@ -803,7 +801,7 @@ func (h *TunHandler) serveTCPDNS(req TunRequest, lconn net.Conn) {
 }
 
 func (h *TunHandler) exchangeTunDNS(req TunRequest, query, response []byte) (int, error) {
-	if h.Config.Forward.DisableIpv6 {
+	if h.Config.DisableIpv6 {
 		var msg fastdns.Message
 		msg.Raw = query
 		if err := fastdns.ParseMessage(&msg, query, false); err == nil && msg.Question.Type == fastdns.TypeAAAA {
@@ -908,7 +906,7 @@ func tunPutCopyBuffer(b []byte) {
 
 func (h *TunHandler) parseForwardDialer(dialerValue string) (Dialer, string, bool, bool, error) {
 	dialerName := dialerValue
-	disableIPv6 := h.Config.Forward.DisableIpv6
+	disableIPv6 := cmp.Or(h.Config.Forward.DisableIpv6, h.Config.DisableIpv6)
 	preferIPv6 := h.Config.Forward.PreferIpv6
 	switch {
 	case strings.HasPrefix(dialerValue, "{\""):
