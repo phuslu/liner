@@ -176,8 +176,15 @@ func (h *TunHandler) Load(ctx context.Context) error {
 	}
 
 	routes := h.Config.Routes[:]
-	if len(routes) > 0 && strings.TrimSpace(routes[0]) == "0.0.0.0/0" && runtime.GOOS == "windows" {
-		routes = append([]string{"0.0.0.0/1", "128.0.0.0/1"}, routes[1:]...)
+	if slices.ContainsFunc(routes, func(route string) bool { return strings.TrimSpace(route) == "0.0.0.0/0" }) {
+		routes = make([]string, 0, len(h.Config.Routes)+1)
+		for _, route := range h.Config.Routes {
+			if strings.TrimSpace(route) == "0.0.0.0/0" {
+				routes = append(routes, "0.0.0.0/1", "128.0.0.0/1")
+			} else {
+				routes = append(routes, route)
+			}
+		}
 	}
 	for _, route := range routes {
 		route = strings.TrimSpace(route)

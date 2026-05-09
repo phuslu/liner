@@ -121,7 +121,7 @@ https:
       enabled: true
       auth_table: authuser.csv
       allow_listens: ["127.0.0.1"]
-      idle_timeout: 3600
+      idle_timeout: 900
       log: true
     web:
       - location: /dns-query
@@ -216,12 +216,12 @@ redsocks:
 tun:
   - name: utun53
     address: 198.18.0.1/15
-    dns_server: https://8.8.8.8/dns-query
     routes: []
     # routes:
     #   - 0.0.0.0/0
-    #   - -10.0.0.0/8
     #   - -192.168.0.0/16
+    #   - -172.16.0.0/12
+    #   - -10.0.0.0/8
     route_metric: 32767
     mtu: 4064
     forward:
