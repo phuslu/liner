@@ -453,6 +453,8 @@ func (h *TunHandler) Serve(ctx context.Context) {
 		batchSize := cmp.Or(h.device.BatchSize(), 1)
 		pkts := make([]*stack.PacketBuffer, 0, batchSize)
 		bufs := make([][]byte, 0, batchSize)
+		copyBufs := make([][]byte, 0, batchSize)
+		writePkts := make([]*stack.PacketBuffer, 0, batchSize)
 		for {
 			pkt := h.endpoint.ReadContext(ctx)
 			if pkt == nil {
@@ -470,22 +472,32 @@ func (h *TunHandler) Serve(ctx context.Context) {
 			}
 
 			bufs = bufs[:0]
+			copyBufs = copyBufs[:0]
+			writePkts = writePkts[:0]
 			for _, pkt := range pkts {
 				pktSize := pkt.Size()
 				if pktSize == 0 {
 					pkt.DecRef()
 					continue
 				}
-				buf := tunGetCopyBuffer(tunPacketOffset + pktSize)
-				n := tunPacketOffset + tunCopyPacket(buf[tunPacketOffset:tunPacketOffset+pktSize], pkt)
-				pkt.DecRef()
-				bufs = append(bufs, buf[:n])
+				if buf, ok := tunPacketHeadroomSlice(pkt, pktSize); ok {
+					bufs = append(bufs, buf)
+				} else {
+					buf := tunGetCopyBuffer(tunPacketOffset + pktSize)
+					n := tunPacketOffset + tunCopyPacket(buf[tunPacketOffset:tunPacketOffset+pktSize], pkt)
+					bufs = append(bufs, buf[:n])
+					copyBufs = append(copyBufs, buf)
+				}
+				writePkts = append(writePkts, pkt)
 			}
 			if len(bufs) == 0 {
 				continue
 			}
 			_, err := h.device.Write(bufs, tunPacketOffset)
-			for _, buf := range bufs {
+			for _, pkt := range writePkts {
+				pkt.DecRef()
+			}
+			for _, buf := range copyBufs {
 				tunPutCopyBuffer(buf)
 			}
 			if err != nil {
@@ -904,6 +916,22 @@ func tunGetCopyBuffer(size int) []byte {
 		return make([]byte, size)
 	}
 	return b[:size]
+}
+
+func tunPacketHeadroomSlice(pkt *stack.PacketBuffer, pktSize int) ([]byte, bool) {
+	views, offset := pkt.AsViewList()
+	for v := views.Front(); v != nil; v = v.Next() {
+		s := v.AsSlice()
+		if offset >= len(s) {
+			offset -= len(s)
+			continue
+		}
+		if offset < tunPacketOffset || len(s)-offset < pktSize {
+			return nil, false
+		}
+		return s[offset-tunPacketOffset : offset+pktSize], true
+	}
+	return nil, false
 }
 
 func tunCopyPacket(dst []byte, pkt *stack.PacketBuffer) int {
