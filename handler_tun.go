@@ -312,7 +312,7 @@ func (h *TunHandler) Load(ctx context.Context) error {
 		return fmt.Errorf("set tcp receive buffer size: %s", err)
 	}
 
-	ep = channel.New(cmp.Or(h.Config.StackQueueSize, 1024), uint32(h.mtu), "")
+	ep = channel.New(cmp.Or(h.Config.StackQueueSize, 4096), uint32(h.mtu), "")
 	ep.LinkEPCapabilities = stack.CapabilityRXChecksumOffload
 	if err := s.CreateNIC(1, ep); err != nil {
 		return fmt.Errorf("create tun stack nic: %s", err)
