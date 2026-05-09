@@ -968,7 +968,8 @@ func tunPutCopyBuffer(b []byte) {
 
 func (h *TunHandler) parseForwardDialer(dialerValue string) (Dialer, string, bool, bool, error) {
 	dialerName := dialerValue
-	disableIPv6 := cmp.Or(h.Config.Forward.DisableIpv6, h.Config.DisableIpv6)
+	// disableIPv6 := cmp.Or(h.Config.Forward.DisableIpv6, h.Config.DisableIpv6)
+	disableIPv6 := h.Config.Forward.DisableIpv6
 	preferIPv6 := h.Config.Forward.PreferIpv6
 	switch {
 	case strings.HasPrefix(dialerValue, "{\""):
