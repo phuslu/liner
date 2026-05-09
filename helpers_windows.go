@@ -310,11 +310,6 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 	if !addressPrefix.Addr().Is4() {
 		return nil, errors.ErrUnsupported
 	}
-	for _, prefix := range routePrefixes {
-		if !prefix.Addr().Is4() {
-			return nil, errors.ErrUnsupported
-		}
-	}
 	for _, prefix := range bypassPrefixes {
 		if !prefix.Addr().Is4() {
 			return nil, errors.ErrUnsupported
@@ -330,7 +325,11 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 	cleanup := func() {
 		for i := len(addedRoutes) - 1; i >= 0; i-- {
 			route := addedRoutes[i]
-			exec.Command("netsh", "interface", "ipv4", "delete", "route", "prefix="+route.String(), "interface="+name).Run()
+			if route.Addr().Is4() {
+				exec.Command("netsh", "interface", "ipv4", "delete", "route", "prefix="+route.String(), "interface="+name).Run()
+			} else {
+				exec.Command("netsh", "interface", "ipv6", "delete", "route", "prefix="+route.String(), "interface="+name).Run()
+			}
 		}
 		for _, prefix := range addedBypass {
 			exec.Command("netsh", "interface", "ipv4", "delete", "route", "prefix="+prefix.Masked().String()).Run()
@@ -453,11 +452,15 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 
 	for _, route := range routePrefixes {
 		route = route.Masked()
-		exec.Command("netsh", "interface", "ipv4", "delete", "route", "prefix="+route.String(), "interface="+name).Run()
-		args = []string{"interface", "ipv4", "add", "route", "prefix=" + route.String(), "interface=" + name, fmt.Sprintf("metric=%d", metric), "store=active"}
+		family := "ipv4"
+		if route.Addr().Is6() {
+			family = "ipv6"
+		}
+		exec.Command("netsh", "interface", family, "delete", "route", "prefix="+route.String(), "interface="+name).Run()
+		args = []string{"interface", family, "add", "route", "prefix=" + route.String(), "interface=" + name, fmt.Sprintf("metric=%d", metric), "store=active"}
 		if msg, err := run(args...); err != nil {
 			if strings.Contains(strings.ToLower(msg), "exist") {
-				args = []string{"interface", "ipv4", "set", "route", "prefix=" + route.String(), "interface=" + name, fmt.Sprintf("metric=%d", metric), "store=active"}
+				args = []string{"interface", family, "set", "route", "prefix=" + route.String(), "interface=" + name, fmt.Sprintf("metric=%d", metric), "store=active"}
 				if msg, err = run(args...); err != nil {
 					return nil, fmt.Errorf("set tun route: netsh %s: %w: %s", strings.Join(args, " "), err, msg)
 				}

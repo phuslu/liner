@@ -314,11 +314,6 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 	if !addressPrefix.Addr().Is4() {
 		return nil, errors.ErrUnsupported
 	}
-	for _, prefix := range routePrefixes {
-		if !prefix.Addr().Is4() {
-			return nil, errors.ErrUnsupported
-		}
-	}
 	for _, prefix := range bypassPrefixes {
 		if !prefix.Addr().Is4() {
 			return nil, errors.ErrUnsupported
@@ -332,7 +327,11 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 	var addedRoutes []netip.Prefix
 	cleanup := func() {
 		for i := len(addedRoutes) - 1; i >= 0; i-- {
-			exec.Command("ip", "-4", "route", "delete", addedRoutes[i].String(), "dev", name).Run()
+			family := "-4"
+			if addedRoutes[i].Addr().Is6() {
+				family = "-6"
+			}
+			exec.Command("ip", family, "route", "delete", addedRoutes[i].String(), "dev", name).Run()
 		}
 		for _, prefix := range addedBypass {
 			exec.Command("ip", "-4", "route", "delete", prefix.Masked().String()).Run()
@@ -498,8 +497,12 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 	if len(routePrefixes) > 0 {
 		for _, route := range routePrefixes {
 			route = route.Masked()
+			family := uint8(unix.AF_INET)
+			if route.Addr().Is6() {
+				family = unix.AF_INET6
+			}
 			rmsg := unix.RtMsg{
-				Family:   unix.AF_INET,
+				Family:   family,
 				Dst_len:  uint8(route.Bits()),
 				Table:    unix.RT_TABLE_MAIN,
 				Protocol: unix.RTPROT_STATIC,
@@ -511,8 +514,16 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 				attrs = append(attrs, uint32attr(unix.RTA_PRIORITY, uint32(metric)))
 			}
 			if route.Bits() > 0 {
-				ip4 = route.Addr().As4()
-				attrs = append(attrs, attr(unix.RTA_DST, ip4[:]))
+				if route.Addr().Is4() {
+					ip4 = route.Addr().As4()
+					attrs = append(attrs, attr(unix.RTA_DST, ip4[:]))
+				} else {
+					ip6 := route.Addr().As16()
+					attrs = append(attrs, attr(unix.RTA_DST, ip6[:]))
+				}
+			}
+			if route.Addr().Is6() {
+				exec.Command("ip", "-6", "route", "delete", route.String(), "dev", name).Run()
 			}
 			err = update(unix.RTM_NEWROUTE, unix.NLM_F_ACK|unix.NLM_F_CREATE|unix.NLM_F_EXCL, unsafe.Slice((*byte)(unsafe.Pointer(&rmsg)), unix.SizeofRtMsg), attrs...)
 			if err != nil && !errors.Is(err, unix.EEXIST) {

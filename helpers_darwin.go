@@ -235,11 +235,6 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 	if !addressPrefix.Addr().Is4() {
 		return nil, errors.ErrUnsupported
 	}
-	for _, prefix := range routePrefixes {
-		if !prefix.Addr().Is4() {
-			return nil, errors.ErrUnsupported
-		}
-	}
 	for _, prefix := range bypassPrefixes {
 		if !prefix.Addr().Is4() {
 			return nil, errors.ErrUnsupported
@@ -260,7 +255,11 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 		for i := len(addedRoutes) - 1; i >= 0; i-- {
 			route := addedRoutes[i]
 			dst := route.prefix.Masked().String()
-			args := []string{"-n", "delete", "-net"}
+			args := []string{"-n", "delete"}
+			if route.prefix.Addr().Is6() {
+				args = append(args, "-inet6")
+			}
+			args = append(args, "-net")
 			if route.scoped {
 				args = append(args, "-ifscope", name)
 			}
@@ -340,11 +339,20 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 	}
 	for _, route := range routes {
 		for _, scoped := range scopes {
-			args = []string{"-n", "add", "-net"}
+			args = []string{"-n", "add"}
+			if route.Addr().Is6() {
+				args = append(args, "-inet6")
+			}
+			args = append(args, "-net")
 			if scoped {
 				args = append(args, "-ifscope", name)
 			}
 			args = append(args, route.String(), "-interface", name)
+			if route.Addr().Is6() {
+				delargs := append([]string(nil), args...)
+				delargs[1] = "delete"
+				exec.Command("route", delargs...).Run()
+			}
 			if msg, err := run("route", args...); err != nil {
 				if strings.Contains(msg, "File exists") {
 					continue

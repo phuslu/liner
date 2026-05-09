@@ -501,7 +501,9 @@ Current include behavior:
   instead of always following the normal forward dialer. When
   `tun[].forward.disable_ipv6` is true, TUN rejects IPv6 TCP/UDP destinations
   and answers intercepted AAAA DNS queries with empty NoError responses so
-  clients can fall back to IPv4.
+  clients can fall back to IPv4. On Linux, macOS, and Windows, this also
+  installs IPv6 split default routes when `routes` contains `0.0.0.0/0`, so
+  native IPv6 default routing does not bypass the TUN.
 
 ### Policy Templates
 
@@ -958,7 +960,10 @@ GOCACHE=/tmp/liner-go-build go test ./...
 - TUN DNS traffic on port 53 is intercepted and sent through `tun.dns_server`
   when configured. Do not route it through the normal TCP/UDP forward path by
   accident. When `tun[].forward.disable_ipv6` is enabled, keep the local empty
-  AAAA response path before upstream DNS dialing.
+  AAAA response path before upstream DNS dialing. Keep automatic IPv6 split
+  default routes in sync with the IPv4 default route case on supported
+  platforms, and delete stale split routes before adding them, so IPv6 traffic
+  reaches the reject path instead of escaping through the host route.
 - The reserved memory address range is `240.0.0.0/8`; ensure uniqueness of
   memory listener addresses across HTTP, SSH, and tunnels.
 - Config overlay merge behavior is manual in `NewConfig`; new top-level fields

@@ -210,6 +210,13 @@ func (h *TunHandler) Load(ctx context.Context) error {
 	hasDefaultRoute := slices.ContainsFunc(h.Config.Routes, func(route string) bool {
 		return strings.TrimSpace(route) == "0.0.0.0/0"
 	})
+	if h.Config.Forward.DisableIpv6 && hasDefaultRoute {
+		for _, prefix := range []netip.Prefix{netip.MustParsePrefix("::/1"), netip.MustParsePrefix("8000::/1")} {
+			if !slices.Contains(routePrefixes, prefix) {
+				routePrefixes = append(routePrefixes, prefix)
+			}
+		}
+	}
 	if hasDefaultRoute {
 		for _, dialer := range h.Dialers {
 			for dialer != nil {
