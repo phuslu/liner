@@ -374,8 +374,14 @@ func (h *TunHandler) Serve(ctx context.Context) {
 		batchSize := cmp.Or(h.device.BatchSize(), 1)
 		bufs := make([][]byte, batchSize)
 		sizes := make([]int, batchSize)
-		for i := range bufs {
-			bufs[i] = make([]byte, 64*1024)
+		views := make([]*buffer.View, batchSize)
+		releaseViews := func() {
+			for i, view := range views {
+				if view != nil {
+					view.Release()
+					views[i] = nil
+				}
+			}
 		}
 
 		for {
@@ -386,21 +392,39 @@ func (h *TunHandler) Serve(ctx context.Context) {
 			default:
 			}
 
+			size := tunPacketOffset + cmp.Or(h.mtu, 1500)
+			for i := range views {
+				view := buffer.NewViewSize(size)
+				views[i] = view
+				bufs[i] = view.AsSlice()
+				sizes[i] = 0
+			}
+
 			n, err := h.device.Read(bufs, sizes, tunPacketOffset)
 			if errors.Is(err, tun.ErrTooManySegments) {
+				releaseViews()
 				log.Warn().Err(err).Str("tun_name", h.name).Msg("tun read too many segments")
 				continue
 			}
 			if err != nil {
+				releaseViews()
 				errc <- err
 				return
 			}
 
 			for i := 0; i < n; i++ {
+				view := views[i]
+				views[i] = nil
 				if sizes[i] == 0 {
+					view.Release()
 					continue
 				}
-				packet := bufs[i][tunPacketOffset : tunPacketOffset+sizes[i]]
+				if tunPacketOffset+sizes[i] > view.Size() {
+					log.Debug().Str("tun_name", h.name).Int("packet_size", sizes[i]).Int("buffer_size", view.Size()-tunPacketOffset).Msg("tun drop oversized packet")
+					view.Release()
+					continue
+				}
+				packet := view.AsSlice()[tunPacketOffset : tunPacketOffset+sizes[i]]
 				var network tcpip.NetworkProtocolNumber
 				switch packet[0] >> 4 {
 				case 4:
@@ -409,16 +433,20 @@ func (h *TunHandler) Serve(ctx context.Context) {
 					network = header.IPv6ProtocolNumber
 				default:
 					log.Debug().Str("tun_name", h.name).Int("packet_size", len(packet)).Msg("tun drop unknown ip packet")
+					view.Release()
 					continue
 				}
+				view.CapLength(tunPacketOffset + sizes[i])
+				view.TrimFront(tunPacketOffset)
 				pkt := stack.NewPacketBuffer(stack.PacketBufferOptions{
-					Payload: buffer.MakeWithData(packet),
+					Payload: buffer.MakeWithView(view),
 				})
 				pkt.NetworkProtocolNumber = network
 				pkt.RXChecksumValidated = true
 				h.endpoint.InjectInbound(network, pkt)
 				pkt.DecRef()
 			}
+			releaseViews()
 		}
 	}()
 	go func() {
