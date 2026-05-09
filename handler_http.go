@@ -240,6 +240,8 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		Str("remote_connection_type", ri.GeoIPInfo.ConnectionType).
 		Value()
 
+	log.Debug().Context(ri.LogContext).Msg("start http handler")
+
 	req = req.WithContext(context.WithValue(req.Context(), HTTPRequestInfoContextKey, ri))
 
 	hostname := req.Host
