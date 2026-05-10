@@ -84,13 +84,13 @@ GOOS=linux GOARCH=arm GOARM=7 \
 
 GOOS=darwin GOARCH=amd64 \
 	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -o build/liner_darwin_amd64/liner && \
-	cp example.yaml build/changelog.txt build/liner_darwin_amd64/ && \
+	cp liner.command example.yaml build/changelog.txt build/liner_darwin_amd64/ && \
 	cd build/liner_darwin_amd64 && \
 	tar cv * | gzip -9 >../liner_darwin_amd64-${REVSION}.tar.gz
 
 GOOS=darwin GOARCH=arm64 \
 	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -o build/liner_darwin_arm64/liner && \
-	cp example.yaml build/changelog.txt build/liner_darwin_arm64/ && \
+	cp liner.command example.yaml build/changelog.txt build/liner_darwin_arm64/ && \
 	cd build/liner_darwin_arm64 && \
 	tar cv * | gzip -9 >../liner_darwin_arm64-${REVSION}.tar.gz
 

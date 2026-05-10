@@ -1,1004 +1,940 @@
-#!/usr/bin/env swift
-//
-// Liner macOS 状态栏托盘程序 —— Swift 单文件脚本版
-//
-// 用法：
-//   chmod +x liner.command
-//   ./liner.command                 # 命令行运行
-//   双击 liner.command              # Finder 中双击启动
-//
-// 同目录下需有 `liner` 可执行二进制，本脚本作为它的 GUI 外壳。
-//
-// 依赖：macOS 自带 Swift 工具链（首次会触发 Xcode CLT 安装提示，
-// 一次性 `xcode-select --install` 即可，无 pip / brew 依赖）。
-//
+(/usr/bin/python3 -x "$0" >/dev/null 2>&1 &); exit
+#!/usr/bin/python3
+#
+# Liner macOS 状态栏托盘程序 —— Python 3.9 单文件脚本版
+#
+# 用法：
+#   bash liner.command
+#
+# 同目录下需有 `liner` 可执行二进制，本脚本作为它的 GUI 外壳。
+#
+# 依赖：macOS 自带 /usr/bin/python3，以及 PyObjC 的 Cocoa/
+# SystemConfiguration/Security 桥接。部分 macOS/Xcode CLT 环境不预装
+# PyObjC；若导入失败，用下面命令安装到当前用户环境：
+#   /usr/bin/python3 -m pip install --user \
+#     'pyobjc-core==11.1' \
+#     'pyobjc-framework-Cocoa==11.1' \
+#     'pyobjc-framework-SystemConfiguration==11.1' \
+#     'pyobjc-framework-Security==11.1'
+# 不要安装名为 `AppKit` 的 PyPI 包；这里需要的是 PyObjC 提供的
+# `from AppKit import ...` 模块。
 
-import Cocoa
-import Darwin
-import Foundation
-import Security
-import SystemConfiguration
+from __future__ import annotations
 
-// ============================================================
-// 常量
-// ============================================================
+import os
+import queue
+import signal
+import subprocess
+import sys
+import threading
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-// 子进程二进制名（与本脚本同目录）
-let CHILD_BIN = "liner"
+try:
+    import objc
+    from AppKit import *  # noqa: F401,F403
+    from Foundation import *  # noqa: F401,F403
+    from Security import *  # noqa: F401,F403
+    from SystemConfiguration import *  # noqa: F401,F403
+except Exception as exc:  # pragma: no cover - only meaningful on non-macOS hosts.
+    sys.stderr.write(
+        "liner.command requires macOS /usr/bin/python3 with PyObjC bindings.\n"
+        f"Current Python: {sys.executable}\n"
+        "If you installed with /usr/bin/python3 -m pip, run this script with:\n"
+        "  /usr/bin/python3 liner.command\n"
+        "or execute it directly so the shebang is used:\n"
+        "  ./liner.command\n"
+        "For Apple's Python 3.9, install:\n"
+        "  /usr/bin/python3 -m pip install --user "
+        "'pyobjc-core==11.1' 'pyobjc-framework-Cocoa==11.1' "
+        "'pyobjc-framework-SystemConfiguration==11.1' "
+        "'pyobjc-framework-Security==11.1'\n"
+        "Do not install the unrelated PyPI package named AppKit.\n"
+        f"Import error: {exc}\n"
+    )
+    sys.exit(1)
 
-// 应用显示名 / 默认窗口标题 / tooltip
-let APP_TITLE = "Liner"
 
-// 系统代理入口默认从 ENV 对应的 YAML 里第一个 http.listen 推断。
-// 也可用环境变量或同目录 .env 覆盖：
-//   LINER_PROXY_HOST=127.0.0.1
-//   LINER_PROXY_PORT=8080
-//   LINER_PAC_URL=http://127.0.0.1:8080/proxy.pac
-// 解析不到 http.listen 时使用下面的兜底值。
-let DEFAULT_PROXY_HOST = "127.0.0.1"
-let DEFAULT_PROXY_PORT = "8080"
-let DEFAULT_PAC_PATH = "/proxy.pac"
+# ============================================================
+# 常量
+# ============================================================
 
-// 控制台最多保留的 UTF-16 code units，避免长时间运行后 NSTextView 无限增长。
-let CONSOLE_MAX_LENGTH = 2_000_000
-let CONSOLE_TRIM_EXTRA = 100_000
+CHILD_BIN = "liner"
+APP_TITLE = "Liner"
 
-// 重启/退出时等待 liner 优雅退出的最长时间。
-let CHILD_STOP_TIMEOUT: TimeInterval = 5.0
+DEFAULT_PROXY_HOST = "127.0.0.1"
+DEFAULT_PROXY_PORT = "8080"
+DEFAULT_PAC_PATH = "/proxy.pac"
 
-// ANSI 颜色 → NSColor，索引 0..7 对应 ANSI 30..37
-let ansiColors: [NSColor] = [
-    .white,
-    NSColor(deviceRed: 0.7578, green: 0.2109, blue: 0.1289, alpha: 1.0),
-    NSColor(deviceRed: 0.1445, green: 0.7344, blue: 0.1406, alpha: 1.0),
-    NSColor(deviceRed: 0.6758, green: 0.6758, blue: 0.1523, alpha: 1.0),
-    NSColor(deviceRed: 0.2852, green: 0.1797, blue: 0.8789, alpha: 1.0),
-    NSColor(deviceRed: 0.8242, green: 0.2188, blue: 0.8242, alpha: 1.0),
-    NSColor(deviceRed: 0.1992, green: 0.7305, blue: 0.7813, alpha: 1.0),
-    NSColor(deviceRed: 0.7930, green: 0.7969, blue: 0.8008, alpha: 1.0),
+CONSOLE_MAX_LENGTH = 2_000_000
+CONSOLE_TRIM_EXTRA = 100_000
+CHILD_STOP_TIMEOUT = 5.0
+
+
+def appkit_constant(names: Iterable[str], default: Any = None) -> Any:
+    for name in names:
+        if name in globals():
+            return globals()[name]
+    return default
+
+
+WINDOW_STYLE_MASK = (
+    appkit_constant(("NSWindowStyleMaskTitled", "NSTitledWindowMask"), 1 << 0)
+    | appkit_constant(("NSWindowStyleMaskClosable", "NSClosableWindowMask"), 1 << 1)
+    | appkit_constant(("NSWindowStyleMaskResizable", "NSResizableWindowMask"), 1 << 3)
+)
+STATUS_ITEM_SQUARE_LENGTH = appkit_constant(("NSSquareStatusItemLength",), -2.0)
+ACTIVATION_POLICY_ACCESSORY = appkit_constant(
+    ("NSApplicationActivationPolicyAccessory",), 1
+)
+FONT_WEIGHT_HEAVY = appkit_constant(("NSFontWeightHeavy",), 0.8)
+COMPOSITING_DESTINATION_OUT = appkit_constant(
+    ("NSCompositingOperationDestinationOut", "NSCompositeDestinationOut"), 8
+)
+MENU_STATE_ON = appkit_constant(("NSControlStateValueOn", "NSOnState"), 1)
+MENU_STATE_OFF = appkit_constant(("NSControlStateValueOff", "NSOffState"), 0)
+
+
+def rgb(red: float, green: float, blue: float):
+    return NSColor.colorWithDeviceRed_green_blue_alpha_(red, green, blue, 1.0)
+
+
+ANSI_COLORS = [
+    NSColor.whiteColor(),
+    rgb(0.7578, 0.2109, 0.1289),
+    rgb(0.1445, 0.7344, 0.1406),
+    rgb(0.6758, 0.6758, 0.1523),
+    rgb(0.2852, 0.1797, 0.8789),
+    rgb(0.8242, 0.2188, 0.8242),
+    rgb(0.1992, 0.7305, 0.7813),
+    rgb(0.7930, 0.7969, 0.8008),
 ]
 
 
-// ============================================================
-// AppDelegate
-// ============================================================
+@dataclass
+class ProxySettings:
+    host: str
+    port: str
+    pac_url: str
 
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+    @property
+    def address(self) -> str:
+        return f"{self.url_host(self.host)}:{self.port}"
 
-    var statusItem: NSStatusItem!
-    var consoleWindow: NSWindow!
-    var consoleView: NSTextView!
-    var childProcess: Process?
-    var authorization: AuthorizationRef?
-    var signalSources = [DispatchSourceSignal]()
-    var expectedTerminationPids = Set<Int32>()
-    var currentColor: NSColor = ansiColors[0]
-    let consoleFont = NSFont(name: "Monaco", size: 12.0)
-                       ?? NSFont.userFixedPitchFont(ofSize: 12.0)!
-    lazy var dotEnv = readDotEnv()
+    @classmethod
+    def default_for(cls, host: str, port: str) -> "ProxySettings":
+        return cls(
+            host=host,
+            port=port,
+            pac_url=f"http://{cls.url_host(host)}:{port}{DEFAULT_PAC_PATH}",
+        )
 
-    // 脚本所在目录，用于定位同目录下的子进程二进制
-    let workDir: String = {
-        let fm = FileManager.default
-        let base = URL(fileURLWithPath: fm.currentDirectoryPath)
-        let script = URL(fileURLWithPath: CommandLine.arguments[0],
-                         relativeTo: base)
-            .standardized
-            .resolvingSymlinksInPath()
-        return script.deletingLastPathComponent().path
-    }()
+    @staticmethod
+    def url_host(host: str) -> str:
+        if ":" in host and not host.startswith("[") and not host.endswith("]"):
+            return f"[{host}]"
+        return host
 
-    // ----- App lifecycle -----
 
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        // 把 cwd 切到脚本所在目录，让子进程默认从这里读相对路径资源
-        FileManager.default.changeCurrentDirectoryPath(workDir)
+class AppDelegate(NSObject):
+    def init(self):
+        self = objc.super(AppDelegate, self).init()
+        if self is None:
+            return None
 
-        setupStatusItem()
-        setupConsoleWindow()
-        if startChild() {
-            sendNotification(title: APP_TITLE, body: "Started.")
-        } else {
-            showConsole(nil)
-            sendNotification(title: APP_TITLE,
-                             body: "Failed to start. Check the console.")
-        }
-        installSignalHandlers()
-    }
+        self.status_item = None
+        self.console_window = None
+        self.console_view = None
+        self.child_process = None
+        self.authorization = None
+        self.expected_termination_pids = set()
+        self.current_color = ANSI_COLORS[0]
+        self.event_queue: "queue.Queue[Tuple[Any, ...]]" = queue.Queue()
+        self.event_timer = None
+        self.terminating_from_signal = False
+        self.proxy_menu = None
+        self.proxy_disable_item = None
+        self.proxy_pac_item = None
+        self.proxy_manual_item = None
 
-    func applicationWillTerminate(_ notification: Notification) {
-        _ = stopChild()
-    }
+        self.console_font = (
+            NSFont.fontWithName_size_("Monaco", 12.0)
+            or NSFont.userFixedPitchFontOfSize_(12.0)
+        )
+        self.work_dir = self.resolve_work_dir()
+        self.dot_env = self.read_dot_env()
+        return self
 
-    // 关闭日志窗口时只隐藏，不退出整个 App
-    func windowShouldClose(_ sender: NSWindow) -> Bool {
-        sender.orderOut(nil)
-        return false
-    }
+    # ----- App lifecycle -----
 
-    // ----- 状态栏 -----
+    def applicationDidFinishLaunching_(self, notification):
+        os.chdir(self.work_dir)
 
-    /// 用 Core Graphics 绘制一个 18×18 的圆角矩形 + 镂空 P 模板图。
-    /// template=true 后，系统会按菜单栏前景色填充（深色模式自动反色），
-    /// 视觉重量与系统模板图标（钥匙、A、显示器等）一致。
-    func makeTrayIcon() -> NSImage {
-        let size = NSSize(width: 18, height: 18)
-        let image = NSImage(size: size, flipped: false) { rect in
-            // 1. 圆角矩形底
-            let inset: CGFloat = 1
-            let bgRect = rect.insetBy(dx: inset, dy: inset)
-            let bg = NSBezierPath(roundedRect: bgRect, xRadius: 3.5, yRadius: 3.5)
-            NSColor.black.setFill()  // template 模式下颜色不重要，系统会替换
+        self.setup_status_item()
+        self.setup_console_window()
+        self.setup_event_timer()
+        if self.start_child():
+            self.send_notification(APP_TITLE, "Started.")
+        else:
+            self.showConsole_(None)
+            self.send_notification(APP_TITLE, "Failed to start. Check the console.")
+        self.install_signal_handlers()
+
+    def applicationWillTerminate_(self, notification):
+        self.stop_child()
+
+    def windowShouldClose_(self, sender):
+        sender.orderOut_(None)
+        return False
+
+    @staticmethod
+    def resolve_work_dir() -> str:
+        script = Path(sys.argv[0])
+        if not script.is_absolute():
+            script = Path.cwd() / script
+        return str(script.resolve().parent)
+
+    # ----- 状态栏 -----
+
+    def make_tray_icon(self):
+        image = NSImage.alloc().initWithSize_(NSMakeSize(18.0, 18.0))
+        image.lockFocus()
+        try:
+            rect = NSMakeRect(0.0, 0.0, 18.0, 18.0)
+            bg_rect = NSMakeRect(1.0, 1.0, 16.0, 16.0)
+            bg = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
+                bg_rect, 3.5, 3.5
+            )
+            NSColor.blackColor().setFill()
             bg.fill()
 
-            // 2. 在底色上"挖"出一个 P 字
-            //    关键：用 capHeight 做视觉居中，而不是 text.size().height ——
-            //    后者包含 ascent/descent/leading，直接拿来居中会让字形偏下。
-            //    正确做法是把基线放在 (rect.height - capHeight) / 2 处。
-            let font = NSFont.systemFont(ofSize: 14, weight: .heavy)
-            let capHeight = font.capHeight
-            let baselineY = (rect.height - capHeight) / 2
+            if hasattr(NSFont, "systemFontOfSize_weight_"):
+                font = NSFont.systemFontOfSize_weight_(14.0, FONT_WEIGHT_HEAVY)
+            else:
+                font = NSFont.boldSystemFontOfSize_(14.0)
 
-            let attrs: [NSAttributedString.Key: Any] = [
-                .font: font,
-                .foregroundColor: NSColor.black,
-            ]
-            let text = NSAttributedString(string: "P", attributes: attrs)
-            let textWidth = text.size().width
-
-            // NSAttributedString.draw(at:) 中 at 是字形左下角（基线下移 descender 的位置），
-            // 所以最终 y = baselineY - descender。descender 是负数。
-            let drawPoint = NSPoint(
-                x: rect.midX - textWidth / 2,
-                y: baselineY + font.descender  // descender 为负，相当于减
+            attrs = {
+                NSFontAttributeName: font,
+                NSForegroundColorAttributeName: NSColor.blackColor(),
+            }
+            text = NSAttributedString.alloc().initWithString_attributes_("P", attrs)
+            text_width = text.size().width
+            baseline_y = (rect.size.height - font.capHeight()) / 2.0
+            draw_point = NSMakePoint(
+                rect.origin.x + rect.size.width / 2.0 - text_width / 2.0,
+                baseline_y + font.descender(),
             )
 
-            if let ctx = NSGraphicsContext.current?.cgContext {
-                ctx.saveGState()
-                ctx.setBlendMode(.destinationOut)
-                text.draw(at: drawPoint)
-                ctx.restoreGState()
-            }
-            return true
-        }
-        image.isTemplate = true
+            ctx = NSGraphicsContext.currentContext()
+            if ctx is not None:
+                ctx.saveGraphicsState()
+                try:
+                    ctx.setCompositingOperation_(COMPOSITING_DESTINATION_OUT)
+                    text.drawAtPoint_(draw_point)
+                finally:
+                    ctx.restoreGraphicsState()
+        finally:
+            image.unlockFocus()
+
+        image.setTemplate_(True)
         return image
-    }
 
-    func setupStatusItem() {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-
-        // 状态栏旁边的系统图标（钥匙、A、显示器等）都是"实心填充"的模板图，
-        // 裸字符在视觉重量上追不上。所以画一个圆角矩形底 + 镂空 P 的模板图标，
-        // template=true 让系统自动按菜单栏前景色（Light/Dark 自适应）填充。
-        statusItem.button?.image = makeTrayIcon()
-        statusItem.button?.toolTip = APP_TITLE
-
-        // 菜单
-        let menu = NSMenu()
-
-        menu.addItem(makeItem(title: "Show Console",
-                              action: #selector(showConsole(_:))))
-        menu.addItem(makeItem(title: "Hide Console",
-                              action: #selector(hideConsole(_:))))
-
-        menu.addItem(NSMenuItem.separator())
-
-        // System Proxy 子菜单
-        let proxySettings = resolveProxySettings()
-        let proxyItem = NSMenuItem(title: "System Proxy", action: nil, keyEquivalent: "")
-        let submenu = NSMenu()
-
-        let disableItem = makeItem(title: "Disable",
-                                   action: #selector(setProxyOff(_:)))
-        submenu.addItem(disableItem)
-
-        let pacItem = makeItem(title: "Auto Configuration (PAC)",
-                               action: #selector(setProxyPac(_:)))
-        pacItem.toolTip = proxySettings.pacURL
-        submenu.addItem(pacItem)
-
-        let manualItem = makeItem(title: "Manual (HTTP/HTTPS)",
-                                  action: #selector(setProxyHttp(_:)))
-        manualItem.toolTip = proxySettings.address
-        submenu.addItem(manualItem)
-
-        proxyItem.submenu = submenu
-        menu.addItem(proxyItem)
-
-        menu.addItem(NSMenuItem.separator())
-
-        menu.addItem(makeItem(title: "Restart",
-                              action: #selector(reload(_:))))
-        menu.addItem(makeItem(title: "Quit \(APP_TITLE)",
-                              action: #selector(quit(_:))))
-
-        statusItem.menu = menu
-    }
-
-    private func makeItem(title: String, action: Selector) -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
-        item.target = self
-        return item
-    }
-
-    // ----- 控制台窗口 -----
-
-    func setupConsoleWindow() {
-        let frame = NSRect(x: 0, y: 0, width: 640, height: 480)
-        consoleWindow = NSWindow(
-            contentRect: frame,
-            styleMask: [.titled, .closable, .resizable],
-            backing: .buffered,
-            defer: false
+    def setup_status_item(self):
+        self.status_item = NSStatusBar.systemStatusBar().statusItemWithLength_(
+            STATUS_ITEM_SQUARE_LENGTH
         )
-        consoleWindow.title = APP_TITLE
-        consoleWindow.delegate = self
-        consoleWindow.isReleasedWhenClosed = false  // 关闭后能重新显示
 
-        let scroll = NSScrollView(frame: frame)
-        scroll.borderType = .noBorder
-        scroll.hasVerticalScroller = true
-        scroll.hasHorizontalScroller = false
-        scroll.autoresizingMask = [.width, .height]
+        button = self.status_item.button()
+        if button is not None:
+            button.setImage_(self.make_tray_icon())
+            button.setToolTip_(APP_TITLE)
 
-        consoleView = NSTextView(frame: frame)
-        consoleView.backgroundColor = .black
-        consoleView.isRichText = true
-        consoleView.isEditable = false
-        consoleView.isVerticallyResizable = true
-        consoleView.isHorizontallyResizable = false
-        consoleView.autoresizingMask = [.width]
-        consoleView.font = consoleFont
+        menu = NSMenu.alloc().init()
+        menu.addItem_(self.make_item("Show Console", "showConsole:"))
+        menu.addItem_(self.make_item("Hide Console", "hideConsole:"))
+        menu.addItem_(NSMenuItem.separatorItem())
 
-        scroll.documentView = consoleView
-        consoleWindow.contentView?.addSubview(scroll)
-    }
+        proxy_settings = self.resolve_proxy_settings()
+        proxy_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            "System Proxy", None, ""
+        )
+        submenu = NSMenu.alloc().init()
+        submenu.setDelegate_(self)
+        self.proxy_menu = submenu
 
-    // ----- 子进程 -----
+        disable_item = self.make_item("Disable", "setProxyOff:")
+        self.proxy_disable_item = disable_item
+        submenu.addItem_(disable_item)
 
-    struct ProxySettings {
-        let host: String
-        let port: String
-        let pacURL: String
+        pac_item = self.make_item("Auto Configuration (PAC)", "setProxyPac:")
+        self.proxy_pac_item = pac_item
+        pac_item.setToolTip_(proxy_settings.pac_url)
+        submenu.addItem_(pac_item)
 
-        var address: String {
-            "\(ProxySettings.urlHost(host)):\(port)"
-        }
+        manual_item = self.make_item("Manual (HTTP/HTTPS)", "setProxyHttp:")
+        self.proxy_manual_item = manual_item
+        manual_item.setToolTip_(proxy_settings.address)
+        submenu.addItem_(manual_item)
 
-        static func defaultFor(host: String, port: String) -> ProxySettings {
-            ProxySettings(host: host,
-                          port: port,
-                          pacURL: "http://\(urlHost(host)):\(port)\(DEFAULT_PAC_PATH)")
-        }
+        proxy_item.setSubmenu_(submenu)
+        menu.addItem_(proxy_item)
+        menu.addItem_(NSMenuItem.separatorItem())
+        menu.addItem_(self.make_item("Edit Config", "editConfig:"))
+        menu.addItem_(self.make_item("Restart", "reload:"))
+        menu.addItem_(self.make_item(f"Quit {APP_TITLE}", "quit:"))
 
-        static func urlHost(_ host: String) -> String {
-            if host.contains(":") &&
-               !host.hasPrefix("[") &&
-               !host.hasSuffix("]") {
-                return "[\(host)]"
-            }
-            return host
-        }
-    }
+        self.status_item.setMenu_(menu)
+        self.update_proxy_menu_state()
 
-    // 解析同目录 .env，支持 `KEY=value` 和 `export KEY=value`。
-    func readDotEnv() -> [String: String] {
-        guard let content = try? String(contentsOfFile: workDir + "/.env",
-                                        encoding: .utf8) else {
-            return [:]
-        }
+    def make_item(self, title: str, action: str):
+        item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, action, "")
+        item.setTarget_(self)
+        return item
 
-        var values = [String: String]()
-        for rawLine in content.components(separatedBy: .newlines) {
-            var line = rawLine.trimmingCharacters(in: .whitespaces)
-            if line.isEmpty || line.hasPrefix("#") { continue }
-            if line.hasPrefix("export ") {
-                line = String(line.dropFirst("export ".count))
-                       .trimmingCharacters(in: .whitespaces)
-            }
+    def menuNeedsUpdate_(self, menu):
+        if menu == self.proxy_menu:
+            self.update_proxy_menu_state()
 
-            let parts = line.split(separator: "=", maxSplits: 1)
-            guard parts.count == 2 else { continue }
+    # ----- 控制台窗口 -----
 
-            let key = String(parts[0]).trimmingCharacters(in: .whitespaces)
-            let value = stripMatchingQuotes(
-                String(parts[1]).trimmingCharacters(in: .whitespaces))
-            if !key.isEmpty && !value.isEmpty {
-                values[key] = value
-            }
-        }
-        return values
-    }
+    def setup_console_window(self):
+        frame = NSMakeRect(0.0, 0.0, 640.0, 480.0)
+        self.console_window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
+            frame, WINDOW_STYLE_MASK, NSBackingStoreBuffered, False
+        )
+        self.console_window.setTitle_(APP_TITLE)
+        self.console_window.setDelegate_(self)
+        self.console_window.setReleasedWhenClosed_(False)
 
-    func resolveSetting(_ keys: [String]) -> String? {
-        let env = ProcessInfo.processInfo.environment
-        for key in keys {
-            if let value = env[key], !value.isEmpty {
-                return value
-            }
-        }
+        scroll = NSScrollView.alloc().initWithFrame_(frame)
+        scroll.setBorderType_(NSNoBorder)
+        scroll.setHasVerticalScroller_(True)
+        scroll.setHasHorizontalScroller_(False)
+        scroll.setAutoresizingMask_(NSViewWidthSizable | NSViewHeightSizable)
 
-        for key in keys {
-            if let value = dotEnv[key], !value.isEmpty {
-                return value
-            }
-        }
-        return nil
-    }
+        self.console_view = NSTextView.alloc().initWithFrame_(frame)
+        self.console_view.setBackgroundColor_(NSColor.blackColor())
+        self.console_view.setRichText_(True)
+        self.console_view.setEditable_(False)
+        self.console_view.setVerticallyResizable_(True)
+        self.console_view.setHorizontallyResizable_(False)
+        self.console_view.setAutoresizingMask_(NSViewWidthSizable)
+        self.console_view.setFont_(self.console_font)
 
-    // 解析 ENV：先看进程环境变量，再读同目录 .env
-    // 返回 nil 表示两处都没拿到
-    func resolveEnvName() -> String? {
-        resolveSetting(["ENV"])
-    }
+        scroll.setDocumentView_(self.console_view)
+        self.console_window.contentView().addSubview_(scroll)
 
-    func resolveProxySettings() -> ProxySettings {
-        let inferred = inferProxySettingsFromConfig()
-                       ?? ProxySettings.defaultFor(host: DEFAULT_PROXY_HOST,
-                                                   port: DEFAULT_PROXY_PORT)
-        let host = resolveSetting(["LINER_PROXY_HOST", "PROXY_HOST"]) ?? inferred.host
-        let port = resolveSetting(["LINER_PROXY_PORT", "PROXY_PORT"]) ?? inferred.port
-        let defaultPacURL = "http://\(ProxySettings.urlHost(host)):\(port)\(DEFAULT_PAC_PATH)"
-        let pacURL = resolveSetting(["LINER_PAC_URL", "PAC_URL"])
-                     ?? defaultPacURL
-        return ProxySettings(host: host, port: port, pacURL: pacURL)
-    }
+    def setup_event_timer(self):
+        self.event_timer = NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
+            0.05, self, "drainEvents:", None, True
+        )
 
-    func inferProxySettingsFromConfig() -> ProxySettings? {
-        guard let envName = resolveEnvName() else {
-            return nil
-        }
-
-        let configFile = "\(envName).yaml"
-        let configPath = workDir + "/" + configFile
-        for path in configDataPaths(configPath: configPath) {
-            guard let content = try? String(contentsOfFile: path,
-                                            encoding: .utf8) else {
-                continue
-            }
-            if let listen = firstHTTPListen(in: content),
-               let settings = proxySettings(fromListen: listen) {
-                return settings
-            }
-        }
-        return nil
-    }
-
-    private func configDataPaths(configPath: String) -> [String] {
-        let overlayDir = (configPath as NSString).deletingPathExtension + ".d"
-        let overlays = (try? FileManager.default.contentsOfDirectory(atPath: overlayDir))?
-            .sorted()
-            .filter { $0.hasSuffix(".yaml") }
-            .map { (overlayDir as NSString).appendingPathComponent($0) } ?? []
-        return [configPath] + overlays
-    }
-
-    private func firstHTTPListen(in yaml: String) -> String? {
-        var inHTTP = false
-        var inListenBlock = false
-
-        for rawLine in yaml.components(separatedBy: .newlines) {
-            let trimmed = rawLine.trimmingCharacters(in: .whitespaces)
-            if trimmed.isEmpty { continue }
-            if trimmed.hasPrefix("#") { continue }
-
-            if !inHTTP {
-                if trimmed == "http:" || trimmed.hasPrefix("http: ") {
-                    inHTTP = true
-                }
-                continue
-            }
-
-            // 只扫 http: 顶层块，遇到下一个顶层 key 就停止。
-            if let first = rawLine.first,
-               !first.isWhitespace,
-               !trimmed.hasPrefix("- ") {
+    def drainEvents_(self, timer):
+        for _ in range(1000):
+            try:
+                event = self.event_queue.get_nowait()
+            except queue.Empty:
                 break
-            }
 
-            if inListenBlock {
-                if trimmed.hasPrefix("- "),
-                   let value = cleanYAMLScalar(String(trimmed.dropFirst(2))) {
-                    return value
-                }
-                if !trimmed.hasPrefix("#") {
-                    inListenBlock = false
-                }
-            }
+            kind = event[0]
+            if kind == "output":
+                self.handle_incoming(event[1])
+            elif kind == "terminated":
+                _, process, return_code = event
+                self.child_did_terminate(process, return_code)
+            elif kind == "signal":
+                self.terminate_from_signal(event[1])
 
-            let candidate = trimmed.hasPrefix("- ")
-                ? String(trimmed.dropFirst(2)).trimmingCharacters(in: .whitespaces)
-                : trimmed
-            guard candidate.hasPrefix("listen:") else {
+    # ----- 配置 / .env / 系统代理推断 -----
+
+    def read_dot_env(self) -> Dict[str, str]:
+        path = os.path.join(self.work_dir, ".env")
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read()
+        except OSError:
+            return {}
+
+        values: Dict[str, str] = {}
+        for raw_line in content.splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
                 continue
-            }
+            if line.startswith("export "):
+                line = line[len("export ") :].strip()
 
-            let rawValue = String(candidate.dropFirst("listen:".count))
-                .trimmingCharacters(in: .whitespaces)
-            if rawValue.isEmpty {
-                inListenBlock = true
-            } else {
-                return firstListenScalar(rawValue)
-            }
-        }
+            key, sep, raw_value = line.partition("=")
+            if not sep:
+                continue
+            key = key.strip()
+            value = self.strip_matching_quotes(raw_value.strip())
+            if key and value:
+                values[key] = value
+        return values
 
-        return nil
-    }
+    def resolve_setting(self, keys: List[str]) -> Optional[str]:
+        for key in keys:
+            value = os.environ.get(key, "")
+            if value:
+                return value
 
-    private func firstListenScalar(_ raw: String) -> String? {
-        var value = stripYAMLComment(raw)
-        if value.hasPrefix("[") && value.hasSuffix("]") {
-            value = value
-                .trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
-                .split(separator: ",", maxSplits: 1)
-                .first
-                .map(String.init) ?? ""
-        }
-        return cleanYAMLScalar(value)
-    }
+        for key in keys:
+            value = self.dot_env.get(key, "")
+            if value:
+                return value
+        return None
 
-    private func cleanYAMLScalar(_ raw: String) -> String? {
-        let value = stripYAMLComment(raw)
-        guard !value.isEmpty && value != "|" && value != ">" else {
-            return nil
-        }
-        return stripMatchingQuotes(value).trimmingCharacters(in: .whitespaces)
-    }
+    def resolve_env_name(self) -> Optional[str]:
+        return self.resolve_setting(["ENV"])
 
-    private func stripYAMLComment(_ raw: String) -> String {
-        raw.split(separator: "#", maxSplits: 1)
-            .first
-            .map(String.init)?
-            .trimmingCharacters(in: .whitespaces) ?? ""
-    }
+    def resolve_proxy_settings(self) -> ProxySettings:
+        inferred = self.infer_proxy_settings_from_config() or ProxySettings.default_for(
+            DEFAULT_PROXY_HOST, DEFAULT_PROXY_PORT
+        )
+        host = self.resolve_setting(["LINER_PROXY_HOST", "PROXY_HOST"]) or inferred.host
+        port = self.resolve_setting(["LINER_PROXY_PORT", "PROXY_PORT"]) or inferred.port
+        default_pac_url = f"http://{ProxySettings.url_host(host)}:{port}{DEFAULT_PAC_PATH}"
+        pac_url = self.resolve_setting(["LINER_PAC_URL", "PAC_URL"]) or default_pac_url
+        return ProxySettings(host=host, port=port, pac_url=pac_url)
 
-    private func stripMatchingQuotes(_ value: String) -> String {
-        guard value.count >= 2,
-              let first = value.first,
-              let last = value.last,
-              first == last,
-              (first == "\"" || first == "'") else {
-            return value
-        }
-        return String(value.dropFirst().dropLast())
-    }
+    def infer_proxy_settings_from_config(self) -> Optional[ProxySettings]:
+        env_name = self.resolve_env_name()
+        if not env_name:
+            return None
 
-    private func proxySettings(fromListen rawListen: String) -> ProxySettings? {
-        var listen = rawListen.trimmingCharacters(in: .whitespaces)
-        if let scheme = listen.range(of: "://") {
-            listen = String(listen[scheme.upperBound...])
-        }
-        if let slash = listen.firstIndex(of: "/") {
-            listen = String(listen[..<slash])
-        }
-        if let question = listen.firstIndex(of: "?") {
-            listen = String(listen[..<question])
-        }
+        config_file = f"{env_name}.yaml"
+        config_path = os.path.join(self.work_dir, config_file)
+        for path in self.config_data_paths(config_path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    content = f.read()
+            except OSError:
+                continue
+            listen = self.first_http_listen(content)
+            if listen:
+                settings = self.proxy_settings_from_listen(listen)
+                if settings is not None:
+                    return settings
+        return None
 
-        let host: String
-        let port: String
-        if listen.hasPrefix("["),
-           let close = listen.firstIndex(of: "]") {
-            host = String(listen[listen.index(after: listen.startIndex)..<close])
-            let rest = listen[listen.index(after: close)...]
-            guard rest.hasPrefix(":") else { return nil }
-            port = String(rest.dropFirst())
-        } else if let colon = listen.lastIndex(of: ":") {
-            host = String(listen[..<colon])
-            port = String(listen[listen.index(after: colon)...])
-        } else if Int(listen) != nil {
+    @staticmethod
+    def config_data_paths(config_path: str) -> List[str]:
+        base, _ = os.path.splitext(config_path)
+        overlay_dir = base + ".d"
+        overlays: List[str] = []
+        try:
+            entries = sorted(os.listdir(overlay_dir))
+        except OSError:
+            entries = []
+
+        for entry in entries:
+            if entry.endswith(".yaml"):
+                overlays.append(os.path.join(overlay_dir, entry))
+        return [config_path] + overlays
+
+    def first_http_listen(self, yaml_text: str) -> Optional[str]:
+        in_http = False
+        in_listen_block = False
+
+        for raw_line in yaml_text.splitlines():
+            trimmed = raw_line.strip()
+            if not trimmed or trimmed.startswith("#"):
+                continue
+
+            if not in_http:
+                if trimmed == "http:" or trimmed.startswith("http: "):
+                    in_http = True
+                continue
+
+            if raw_line and not raw_line[0].isspace() and not trimmed.startswith("- "):
+                break
+
+            if in_listen_block:
+                if trimmed.startswith("- "):
+                    value = self.clean_yaml_scalar(trimmed[2:])
+                    if value:
+                        return value
+                if not trimmed.startswith("#"):
+                    in_listen_block = False
+
+            candidate = trimmed[2:].strip() if trimmed.startswith("- ") else trimmed
+            if not candidate.startswith("listen:"):
+                continue
+
+            raw_value = candidate[len("listen:") :].strip()
+            if not raw_value:
+                in_listen_block = True
+            else:
+                return self.first_listen_scalar(raw_value)
+
+        return None
+
+    def first_listen_scalar(self, raw: str) -> Optional[str]:
+        value = self.strip_yaml_comment(raw)
+        if value.startswith("[") and value.endswith("]"):
+            value = value.strip("[]")
+            value = value.split(",", 1)[0] if value else ""
+        return self.clean_yaml_scalar(value)
+
+    def clean_yaml_scalar(self, raw: str) -> Optional[str]:
+        value = self.strip_yaml_comment(raw)
+        if not value or value in ("|", ">"):
+            return None
+        return self.strip_matching_quotes(value).strip()
+
+    @staticmethod
+    def strip_yaml_comment(raw: str) -> str:
+        return raw.split("#", 1)[0].strip()
+
+    @staticmethod
+    def strip_matching_quotes(value: str) -> str:
+        if (
+            len(value) >= 2
+            and value[0] == value[-1]
+            and value[0] in ("'", '"')
+        ):
+            return value[1:-1]
+        return value
+
+    def proxy_settings_from_listen(self, raw_listen: str) -> Optional[ProxySettings]:
+        listen = raw_listen.strip()
+        if "://" in listen:
+            listen = listen.split("://", 1)[1]
+        if "/" in listen:
+            listen = listen.split("/", 1)[0]
+        if "?" in listen:
+            listen = listen.split("?", 1)[0]
+
+        host = ""
+        port = ""
+        if listen.startswith("[") and "]" in listen:
+            close = listen.find("]")
+            host = listen[1:close]
+            rest = listen[close + 1 :]
+            if not rest.startswith(":"):
+                return None
+            port = rest[1:]
+        elif ":" in listen:
+            host, port = listen.rsplit(":", 1)
+        elif listen.isdigit():
             host = DEFAULT_PROXY_HOST
             port = listen
-        } else {
-            return nil
-        }
+        else:
+            return None
 
-        guard let portNumber = Int(port),
-              (1...65535).contains(portNumber) else {
-            return nil
-        }
+        try:
+            port_number = int(port)
+        except ValueError:
+            return None
+        if not 1 <= port_number <= 65535:
+            return None
 
-        let normalizedHost = proxyHostForListenHost(host)
-        return ProxySettings.defaultFor(host: normalizedHost,
-                                        port: String(portNumber))
-    }
+        normalized_host = self.proxy_host_for_listen_host(host)
+        return ProxySettings.default_for(normalized_host, str(port_number))
 
-    private func proxyHostForListenHost(_ host: String) -> String {
-        let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty ||
-           trimmed == "*" ||
-           trimmed == "0.0.0.0" ||
-           trimmed == "::" ||
-           trimmed == "::0" {
+    @staticmethod
+    def proxy_host_for_listen_host(host: str) -> str:
+        trimmed = host.strip()
+        if trimmed in ("", "*", "0.0.0.0", "::", "::0"):
             return DEFAULT_PROXY_HOST
-        }
         return trimmed
-    }
 
-    @discardableResult
-    func startChild() -> Bool {
-        appendToConsole("Working directory: \(workDir)\n",
-                        color: ansiColors[7])
+    # ----- 子进程 -----
 
-        if let p = childProcess, p.isRunning {
-            appendToConsole("\(CHILD_BIN) is already running.\n",
-                            color: ansiColors[3])
-            return true
-        }
+    def start_child(self) -> bool:
+        self.append_to_console(f"Working directory: {self.work_dir}\n", ANSI_COLORS[7])
 
-        let binPath = workDir + "/" + CHILD_BIN
-        guard FileManager.default.isExecutableFile(atPath: binPath) else {
-            appendToConsole("Cannot find executable: \(binPath)\n",
-                            color: ansiColors[1])
-            return false
-        }
+        if self.child_process is not None and self.child_process.poll() is None:
+            self.append_to_console(f"{CHILD_BIN} is already running.\n", ANSI_COLORS[3])
+            return True
 
-        guard let envName = resolveEnvName() else {
-            appendToConsole(
-                "ENV not set. Define `ENV` in environment or in \(workDir)/.env\n",
-                color: ansiColors[1])
-            return false
-        }
+        bin_path = os.path.join(self.work_dir, CHILD_BIN)
+        if not os.access(bin_path, os.X_OK):
+            self.append_to_console(f"Cannot find executable: {bin_path}\n", ANSI_COLORS[1])
+            return False
 
-        let configFile = "\(envName).yaml"
-        let configPath = workDir + "/" + configFile
-        guard FileManager.default.fileExists(atPath: configPath) else {
-            appendToConsole("Config file not found: \(configPath)\n",
-                            color: ansiColors[1])
-            return false
-        }
+        env_name = self.resolve_env_name()
+        if not env_name:
+            self.append_to_console(
+                f"ENV not set. Define `ENV` in environment or in {self.work_dir}/.env\n",
+                ANSI_COLORS[1],
+            )
+            return False
 
-        appendToConsole("Starting: \(CHILD_BIN) \(configFile)\n",
-                        color: ansiColors[2])
+        config_file = f"{env_name}.yaml"
+        config_path = os.path.join(self.work_dir, config_file)
+        if not os.path.exists(config_path):
+            self.append_to_console(f"Config file not found: {config_path}\n", ANSI_COLORS[1])
+            return False
 
-        let p = Process()
-        p.currentDirectoryURL = URL(fileURLWithPath: workDir)
-        p.executableURL = URL(fileURLWithPath: binPath)
-        p.arguments = [configFile]
-        var environment = ProcessInfo.processInfo.environment
+        self.append_to_console(f"Starting: {CHILD_BIN} {config_file}\n", ANSI_COLORS[2])
+
+        environment = dict(os.environ)
         environment["LINER_LOG_TO_STDERR"] = "1"
-        p.environment = environment
+        try:
+            process = subprocess.Popen(
+                [bin_path, config_file],
+                cwd=self.work_dir,
+                env=environment,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                bufsize=0,
+            )
+        except Exception as exc:
+            self.append_to_console(f"Failed to start {CHILD_BIN}: {exc}\n", ANSI_COLORS[1])
+            return False
 
-        let outPipe = Pipe()
-        let errPipe = Pipe()
-        p.standardOutput = outPipe
-        p.standardError = errPipe
-        p.standardInput = FileHandle.nullDevice
-        p.terminationHandler = { [weak self] process in
-            DispatchQueue.main.async {
-                self?.childDidTerminate(process)
-            }
-        }
+        self.child_process = process
+        self.start_reading(process.stdout)
+        self.start_reading(process.stderr)
+        self.start_watching(process)
+        return True
 
-        self.childProcess = p
-        do {
-            restoreSignalHandlersForChild()
-            try p.run()
-            restoreSignalHandlersForApp()
-        } catch {
-            restoreSignalHandlersForApp()
-            if self.childProcess === p {
-                self.childProcess = nil
-            }
-            appendToConsole("Failed to start \(CHILD_BIN): \(error)\n",
-                            color: ansiColors[1])
-            return false
-        }
-
-        // 后台读 stdout / stderr，都 merge 到控制台
-        startReading(handle: outPipe.fileHandleForReading)
-        startReading(handle: errPipe.fileHandleForReading)
-        return true
-    }
-
-    private func startReading(handle: FileHandle) {
-        handle.readabilityHandler = { [weak self] h in
-            let data = h.availableData
-            guard !data.isEmpty else {
-                h.readabilityHandler = nil
-                return
-            }
-            DispatchQueue.main.async {
-                self?.handleIncoming(String(decoding: data, as: UTF8.self))
-            }
-        }
-    }
-
-    private func installSignalHandlers() {
-        guard signalSources.isEmpty else { return }
-
-        for sig in [SIGINT, SIGTERM] {
-            signal(sig, SIG_IGN)
-            let source = DispatchSource.makeSignalSource(signal: sig,
-                                                         queue: .main)
-            source.setEventHandler { [weak self] in
-                self?.terminateFromSignal(sig)
-            }
-            source.resume()
-            signalSources.append(source)
-        }
-    }
-
-    private func restoreSignalHandlersForChild() {
-        guard !signalSources.isEmpty else { return }
-        signal(SIGINT, SIG_DFL)
-        signal(SIGTERM, SIG_DFL)
-    }
-
-    private func restoreSignalHandlersForApp() {
-        guard !signalSources.isEmpty else { return }
-        signal(SIGINT, SIG_IGN)
-        signal(SIGTERM, SIG_IGN)
-    }
-
-    private func terminateFromSignal(_ sig: Int32) {
-        appendToConsole("\nReceived signal \(sig), stopping \(CHILD_BIN)...\n",
-                        color: ansiColors[3])
-        _ = stopChild()
-        NSApp.terminate(nil)
-    }
-
-    @discardableResult
-    func stopChild() -> Bool {
-        guard let p = childProcess else {
-            return true
-        }
-
-        expectedTerminationPids.insert(p.processIdentifier)
-        if p.isRunning {
-            p.terminate()
-
-            if !waitForExit(p, timeout: CHILD_STOP_TIMEOUT) {
-                appendToConsole(
-                    "\(CHILD_BIN) did not exit after \(Int(CHILD_STOP_TIMEOUT))s; killing it.\n",
-                    color: ansiColors[3])
-                Darwin.kill(p.processIdentifier, SIGKILL)
-                _ = waitForExit(p, timeout: 2.0)
-            }
-        }
-
-        if childProcess === p {
-            childProcess = nil
-        }
-        return !p.isRunning
-    }
-
-    private func waitForExit(_ process: Process, timeout: TimeInterval) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while process.isRunning && Date() < deadline {
-            RunLoop.current.run(mode: .default,
-                                before: Date().addingTimeInterval(0.05))
-        }
-        return !process.isRunning
-    }
-
-    private func childDidTerminate(_ process: Process) {
-        let expected = expectedTerminationPids.remove(process.processIdentifier) != nil
-        if childProcess === process {
-            childProcess = nil
-        }
-        guard !expected else { return }
-
-        let status = process.terminationStatus
-        let reason: String
-        switch process.terminationReason {
-        case .exit:
-            reason = "exit status \(status)"
-        case .uncaughtSignal:
-            reason = "signal \(status)"
-        @unknown default:
-            reason = "status \(status)"
-        }
-
-        appendToConsole("\n\(CHILD_BIN) exited unexpectedly: \(reason)\n",
-                        color: ansiColors[1])
-        statusItem.button?.toolTip = "\(APP_TITLE) stopped: \(reason)"
-        showConsole(nil)
-        sendNotification(title: APP_TITLE,
-                         body: "\(CHILD_BIN) stopped: \(reason)")
-    }
-
-    // ----- 输出解析与渲染 -----
-
-    private func applyANSICodes(_ codeStr: String) {
-        let parts = codeStr.split(separator: ";", omittingEmptySubsequences: false)
-        if parts.isEmpty {
-            currentColor = ansiColors[0]
+    def start_reading(self, pipe):
+        if pipe is None:
             return
-        }
 
-        for part in parts {
-            let code = Int(String(part)) ?? 0
-            if (30..<38).contains(code) {
-                currentColor = ansiColors[code - 30]
-            } else if code == 0 || code == 39 {
-                currentColor = ansiColors[0]
-            }
-        }
-    }
+        def reader():
+            try:
+                fd = pipe.fileno()
+                while True:
+                    data = os.read(fd, 4096)
+                    if not data:
+                        break
+                    self.event_queue.put(
+                        ("output", data.decode("utf-8", errors="replace"))
+                    )
+            except Exception as exc:
+                self.event_queue.put(("output", f"\nconsole reader error: {exc}\n"))
+            finally:
+                try:
+                    pipe.close()
+                except OSError:
+                    pass
 
-    func handleIncoming(_ raw: String) {
-        var line = raw
+        threading.Thread(target=reader, daemon=True).start()
 
-        // OSC 标题序列：\x1b]2;<title>\x07
-        while let escIdx = line.range(of: "\u{1b}]2;"),
-              let bellIdx = line.range(of: "\u{07}",
-                                       range: escIdx.upperBound..<line.endIndex) {
-            let title = String(line[escIdx.upperBound..<bellIdx.lowerBound])
-            statusItem.button?.toolTip = title
-            consoleWindow.title = title
-            line.removeSubrange(escIdx.lowerBound..<bellIdx.upperBound)
-        }
+    def start_watching(self, process):
+        def watcher():
+            return_code = process.wait()
+            self.event_queue.put(("terminated", process, return_code))
 
-        // CSI 颜色序列：\x1b[<n>m
-        var idx = line.startIndex
-        var pendingText = ""
-        while idx < line.endIndex {
-            if line[idx] == "\u{1b}",
-               line.distance(from: idx, to: line.endIndex) >= 2,
-               line[line.index(after: idx)] == "[" {
-                let codeStart = line.index(idx, offsetBy: 2)
-                if let mRange = line.range(of: "m", range: codeStart..<line.endIndex) {
-                    // 先把累积文本写出
-                    if !pendingText.isEmpty {
-                        appendToConsole(pendingText, color: currentColor)
-                        pendingText = ""
-                    }
-                    let codeStr = String(line[codeStart..<mRange.lowerBound])
-                    applyANSICodes(codeStr)
-                    idx = mRange.upperBound
+        threading.Thread(target=watcher, daemon=True).start()
+
+    def install_signal_handlers(self):
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            signal.signal(sig, self.queue_signal)
+
+    def queue_signal(self, signum, frame):
+        self.event_queue.put(("signal", signum))
+
+    def terminate_from_signal(self, signum: int):
+        if self.terminating_from_signal:
+            return
+        self.terminating_from_signal = True
+        self.append_to_console(
+            f"\nReceived signal {signum}, stopping {CHILD_BIN}...\n", ANSI_COLORS[3]
+        )
+        self.stop_child()
+        NSApplication.sharedApplication().terminate_(None)
+
+    def stop_child(self) -> bool:
+        process = self.child_process
+        if process is None:
+            return True
+
+        self.expected_termination_pids.add(process.pid)
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=CHILD_STOP_TIMEOUT)
+            except subprocess.TimeoutExpired:
+                self.append_to_console(
+                    f"{CHILD_BIN} did not exit after {int(CHILD_STOP_TIMEOUT)}s; "
+                    "killing it.\n",
+                    ANSI_COLORS[3],
+                )
+                process.kill()
+                try:
+                    process.wait(timeout=2.0)
+                except subprocess.TimeoutExpired:
+                    pass
+
+        if self.child_process is process:
+            self.child_process = None
+        return process.poll() is not None
+
+    def child_did_terminate(self, process, return_code: int):
+        expected = process.pid in self.expected_termination_pids
+        self.expected_termination_pids.discard(process.pid)
+        if self.child_process is process:
+            self.child_process = None
+        if expected:
+            return
+
+        if return_code is not None and return_code < 0:
+            reason = f"signal {-return_code}"
+        else:
+            reason = f"exit status {return_code}"
+
+        self.append_to_console(f"\n{CHILD_BIN} exited unexpectedly: {reason}\n", ANSI_COLORS[1])
+        button = self.status_item.button() if self.status_item is not None else None
+        if button is not None:
+            button.setToolTip_(f"{APP_TITLE} stopped: {reason}")
+        self.showConsole_(None)
+        self.send_notification(APP_TITLE, f"{CHILD_BIN} stopped: {reason}")
+
+    # ----- 输出解析与渲染 -----
+
+    def apply_ansi_codes(self, code_str: str):
+        parts = code_str.split(";") if code_str else [""]
+        for part in parts:
+            try:
+                code = int(part)
+            except ValueError:
+                code = 0
+            if 30 <= code < 38:
+                self.current_color = ANSI_COLORS[code - 30]
+            elif code in (0, 39):
+                self.current_color = ANSI_COLORS[0]
+
+    def handle_incoming(self, raw: str):
+        line = raw
+
+        while True:
+            esc_idx = line.find("\x1b]2;")
+            if esc_idx < 0:
+                break
+            bell_idx = line.find("\x07", esc_idx + 4)
+            if bell_idx < 0:
+                break
+            title = line[esc_idx + 4 : bell_idx]
+            button = self.status_item.button() if self.status_item is not None else None
+            if button is not None:
+                button.setToolTip_(title)
+            self.console_window.setTitle_(title)
+            line = line[:esc_idx] + line[bell_idx + 1 :]
+
+        idx = 0
+        pending: List[str] = []
+        while idx < len(line):
+            if line[idx] == "\x1b" and idx + 1 < len(line) and line[idx + 1] == "[":
+                code_start = idx + 2
+                m_idx = line.find("m", code_start)
+                if m_idx >= 0:
+                    if pending:
+                        self.append_to_console("".join(pending), self.current_color)
+                        pending = []
+                    self.apply_ansi_codes(line[code_start:m_idx])
+                    idx = m_idx + 1
                     continue
-                }
-            }
-            pendingText.append(line[idx])
-            idx = line.index(after: idx)
-        }
-        if !pendingText.isEmpty {
-            appendToConsole(pendingText, color: currentColor)
-        }
-    }
 
-    func appendToConsole(_ text: String, color: NSColor) {
-        // 自动滚到底部（仅当用户已在底部时，避免打断阅读）
-        let needScroll = NSMaxY(consoleView.visibleRect)
-                       >= NSMaxY(consoleView.bounds) - 20
+            pending.append(line[idx])
+            idx += 1
 
-        let attrs: [NSAttributedString.Key: Any] = [
-            .foregroundColor: color,
-            .font: consoleFont,
-        ]
-        let attr = NSAttributedString(string: text, attributes: attrs)
-        consoleView.textStorage?.append(attr)
-        trimConsoleIfNeeded()
+        if pending:
+            self.append_to_console("".join(pending), self.current_color)
 
-        if needScroll {
-            consoleView.scrollRangeToVisible(
-                NSRange(location: consoleView.string.utf16.count, length: 0)
-            )
-        }
-    }
-
-    private func trimConsoleIfNeeded() {
-        guard let storage = consoleView.textStorage else { return }
-        let overflow = storage.length - CONSOLE_MAX_LENGTH
-        guard overflow > 0 else { return }
-
-        var deleteLength = min(storage.length,
-                               overflow + CONSOLE_TRIM_EXTRA)
-        if deleteLength < storage.length {
-            let string = storage.string as NSString
-            let searchRange = NSRange(
-                location: deleteLength,
-                length: min(4096, storage.length - deleteLength)
-            )
-            let newline = string.range(of: "\n", options: [], range: searchRange)
-            if newline.location != NSNotFound {
-                deleteLength = newline.location + newline.length
-            }
-        }
-
-        storage.deleteCharacters(in: NSRange(location: 0,
-                                             length: deleteLength))
-    }
-
-    // ----- 通知 -----
-    private func appleScriptStringLiteral(_ value: String) -> String {
-        let escaped = value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-        return "\"\(escaped)\""
-    }
-
-    // 用 osascript 投递系统通知。比 NSUserNotification 简单，且不依赖
-    // app bundle（单文件脚本走不了 UNUserNotificationCenter，因为没有 bundle id）。
-    func sendNotification(title: String, body: String) {
-        let script = "display notification \(appleScriptStringLiteral(body)) " +
-                     "with title \(appleScriptStringLiteral(title)) " +
-                     "sound name \"default\""
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        task.arguments = ["-e", script]
-        try? task.run()
-    }
-
-    // ----- 菜单 actions -----
-
-    @objc func showConsole(_ sender: Any?) {
-        consoleWindow.center()
-        consoleWindow.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-    }
-
-    @objc func hideConsole(_ sender: Any?) {
-        consoleWindow.orderOut(nil)
-    }
-
-    enum ProxyMode {
-        case off
-        case pac
-        case http
-    }
-
-    @objc func setProxyOff(_ sender: Any?) {
-        applyProxyMode(.off)
-    }
-
-    @objc func setProxyPac(_ sender: Any?) {
-        applyProxyMode(.pac)
-    }
-
-    @objc func setProxyHttp(_ sender: Any?) {
-        applyProxyMode(.http)
-    }
-
-    @objc func reload(_ sender: Any?) {
-        showConsole(sender)
-        guard stopChild() else {
-            appendToConsole("Restart aborted: \(CHILD_BIN) is still running.\n",
-                            color: ansiColors[1])
+    def append_to_console(self, text: str, color):
+        if self.console_view is None:
             return
-        }
-        consoleView.string = ""
-        if startChild() {
-            sendNotification(title: APP_TITLE, body: "Restarted.")
-        } else {
-            showConsole(nil)
-            sendNotification(title: APP_TITLE,
-                             body: "Restart failed. Check the console.")
-        }
-    }
 
-    @objc func quit(_ sender: Any?) {
-        stopChild()
-        NSApp.terminate(nil)
-    }
+        visible = self.console_view.visibleRect()
+        bounds = self.console_view.bounds()
+        need_scroll = self.rect_max_y(visible) >= self.rect_max_y(bounds) - 20.0
 
-    private func applyProxyMode(_ mode: ProxyMode) {
-        let settings = resolveProxySettings()
-        let modeName: String
-        switch mode {
-        case .off:
-            modeName = "Disable"
-        case .pac:
-            modeName = "PAC \(settings.pacURL)"
-        case .http:
-            modeName = "HTTP/HTTPS \(settings.address)"
+        attrs = {
+            NSForegroundColorAttributeName: color,
+            NSFontAttributeName: self.console_font,
         }
+        attr = NSAttributedString.alloc().initWithString_attributes_(text, attrs)
+        storage = self.console_view.textStorage()
+        storage.appendAttributedString_(attr)
+        self.trim_console_if_needed()
 
-        do {
-            let services = try setSystemProxy(mode: mode, settings: settings)
-            appendToConsole(
-                "Applied System Proxy '\(modeName)' to: \(services.joined(separator: ", "))\n",
-                color: ansiColors[2])
-        } catch {
-            appendToConsole("System proxy update failed: \(error.localizedDescription)\n",
-                            color: ansiColors[1])
-            showConsole(nil)
-        }
-    }
+        if need_scroll:
+            storage = self.console_view.textStorage()
+            self.console_view.scrollRangeToVisible_(NSMakeRange(storage.length(), 0))
 
-    private func setSystemProxy(mode: ProxyMode,
-                                settings: ProxySettings) throws -> [String] {
-        let prefs = try authorizedPreferences()
-        guard let set = SCNetworkSetCopyCurrent(prefs),
-              let services = SCNetworkSetCopyServices(set) as? [SCNetworkService] else {
-            throw scError("read network services")
-        }
+    @staticmethod
+    def rect_max_y(rect) -> float:
+        return rect.origin.y + rect.size.height
 
-        var changed = [String]()
-        for service in services where SCNetworkServiceGetEnabled(service) {
-            guard let proto = SCNetworkServiceCopyProtocol(
-                service, kSCNetworkProtocolTypeProxies) else {
+    def trim_console_if_needed(self):
+        storage = self.console_view.textStorage()
+        if storage is None:
+            return
+        overflow = storage.length() - CONSOLE_MAX_LENGTH
+        if overflow <= 0:
+            return
+
+        delete_length = min(storage.length(), overflow + CONSOLE_TRIM_EXTRA)
+        if delete_length < storage.length():
+            ns_string = NSString.stringWithString_(storage.string())
+            search_range = NSMakeRange(
+                delete_length,
+                min(4096, storage.length() - delete_length),
+            )
+            newline = ns_string.rangeOfString_options_range_("\n", 0, search_range)
+            if newline.location != NSNotFound:
+                delete_length = newline.location + newline.length
+
+        storage.deleteCharactersInRange_(NSMakeRange(0, delete_length))
+
+    # ----- 通知 -----
+
+    @staticmethod
+    def apple_script_string_literal(value: str) -> str:
+        escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+        return f'"{escaped}"'
+
+    def send_notification(self, title: str, body: str):
+        script = (
+            f"display notification {self.apple_script_string_literal(body)} "
+            f"with title {self.apple_script_string_literal(title)} "
+            'sound name "default"'
+        )
+        try:
+            subprocess.Popen(
+                ["/usr/bin/osascript", "-e", script],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except OSError:
+            pass
+
+    # ----- 菜单 actions -----
+
+    def showConsole_(self, sender):
+        self.console_window.center()
+        self.console_window.makeKeyAndOrderFront_(None)
+        NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+
+    def hideConsole_(self, sender):
+        self.console_window.orderOut_(None)
+
+    def setProxyOff_(self, sender):
+        self.apply_proxy_mode("off")
+
+    def setProxyPac_(self, sender):
+        self.apply_proxy_mode("pac")
+
+    def setProxyHttp_(self, sender):
+        self.apply_proxy_mode("http")
+
+    def editConfig_(self, sender):
+        env_name = self.resolve_env_name()
+        if not env_name:
+            self.append_to_console(
+                f"ENV not set. Define `ENV` in environment or in {self.work_dir}/.env\n",
+                ANSI_COLORS[1],
+            )
+            self.showConsole_(None)
+            return
+
+        config_path = os.path.join(self.work_dir, f"{env_name}.yaml")
+        if not os.path.exists(config_path):
+            self.append_to_console(f"Config file not found: {config_path}\n", ANSI_COLORS[1])
+            self.showConsole_(None)
+            return
+
+        try:
+            subprocess.Popen(
+                ["/usr/bin/open", "-e", config_path],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception as exc:
+            self.append_to_console(f"Open config failed: {exc}\n", ANSI_COLORS[1])
+            self.showConsole_(None)
+
+    def reload_(self, sender):
+        self.showConsole_(sender)
+        if not self.stop_child():
+            self.append_to_console(
+                f"Restart aborted: {CHILD_BIN} is still running.\n", ANSI_COLORS[1]
+            )
+            return
+        self.console_view.setString_("")
+        if self.start_child():
+            self.send_notification(APP_TITLE, "Restarted.")
+        else:
+            self.showConsole_(None)
+            self.send_notification(APP_TITLE, "Restart failed. Check the console.")
+
+    def quit_(self, sender):
+        self.stop_child()
+        NSApplication.sharedApplication().terminate_(None)
+
+    def apply_proxy_mode(self, mode: str):
+        settings = self.resolve_proxy_settings()
+        if mode == "off":
+            mode_name = "Disable"
+        elif mode == "pac":
+            mode_name = f"PAC {settings.pac_url}"
+        else:
+            mode_name = f"HTTP/HTTPS {settings.address}"
+
+        try:
+            services = self.set_system_proxy(mode, settings)
+            self.update_proxy_menu_state()
+            self.append_to_console(
+                f"Applied System Proxy '{mode_name}' to: {', '.join(services)}\n",
+                ANSI_COLORS[2],
+            )
+        except Exception as exc:
+            self.append_to_console(f"System proxy update failed: {exc}\n", ANSI_COLORS[1])
+            self.showConsole_(None)
+
+    def update_proxy_menu_state(self):
+        if not all(
+            (
+                self.proxy_disable_item,
+                self.proxy_pac_item,
+                self.proxy_manual_item,
+            )
+        ):
+            return
+
+        settings = self.resolve_proxy_settings()
+        self.proxy_pac_item.setToolTip_(settings.pac_url)
+        self.proxy_manual_item.setToolTip_(settings.address)
+
+        mode = None
+        try:
+            mode = self.current_system_proxy_mode()
+        except Exception:
+            pass
+
+        self.proxy_disable_item.setState_(
+            MENU_STATE_ON if mode == "off" else MENU_STATE_OFF
+        )
+        self.proxy_pac_item.setState_(
+            MENU_STATE_ON if mode == "pac" else MENU_STATE_OFF
+        )
+        self.proxy_manual_item.setState_(
+            MENU_STATE_ON if mode == "http" else MENU_STATE_OFF
+        )
+
+    def current_system_proxy_mode(self) -> Optional[str]:
+        prefs = SCPreferencesCreate(None, APP_TITLE, None)
+        if not prefs:
+            raise self.sc_error("open network preferences")
+
+        network_set = SCNetworkSetCopyCurrent(prefs)
+        if not network_set:
+            raise self.sc_error("read current network set")
+
+        services = SCNetworkSetCopyServices(network_set)
+        if services is None:
+            raise self.sc_error("read network services")
+
+        primary_service_id = self.current_primary_service_id()
+        service_modes: List[str] = []
+        for service in services:
+            if not SCNetworkServiceGetEnabled(service):
                 continue
-            }
 
-            var config = (SCNetworkProtocolGetConfiguration(proto)
-                          as? [String: Any]) ?? [:]
-            applyProxyConfig(&config, mode: mode, settings: settings)
-
-            guard SCNetworkProtocolSetConfiguration(proto, config as CFDictionary) else {
-                throw scError("set proxy protocol")
-            }
-            changed.append((SCNetworkServiceGetName(service) as String?) ?? "Unknown")
-        }
-
-        guard !changed.isEmpty else {
-            throw simpleError("no enabled network services found")
-        }
-        guard SCPreferencesCommitChanges(prefs) else {
-            throw scError("commit proxy settings")
-        }
-        guard SCPreferencesApplyChanges(prefs) else {
-            throw scError("apply proxy settings")
-        }
-        return changed
-    }
-
-    private func applyProxyConfig(_ config: inout [String: Any],
-                                  mode: ProxyMode,
-                                  settings: ProxySettings) {
-        config[kSCPropNetProxiesHTTPEnable as String] = mode == .http ? 1 : 0
-        config[kSCPropNetProxiesHTTPSEnable as String] = mode == .http ? 1 : 0
-        config[kSCPropNetProxiesProxyAutoConfigEnable as String] = mode == .pac ? 1 : 0
-
-        if mode == .http {
-            let port = Int(settings.port) ?? 0
-            config[kSCPropNetProxiesHTTPProxy as String] = settings.host
-            config[kSCPropNetProxiesHTTPPort as String] = port
-            config[kSCPropNetProxiesHTTPSProxy as String] = settings.host
-            config[kSCPropNetProxiesHTTPSPort as String] = port
-        } else if mode == .pac {
-            config[kSCPropNetProxiesProxyAutoConfigURLString as String] = settings.pacURL
-        }
-    }
-
-    private func authorizedPreferences() throws -> SCPreferences {
-        if authorization == nil {
-            var auth: AuthorizationRef?
-            let flags: AuthorizationFlags = [
-                .interactionAllowed,
-                .extendRights,
-                .preAuthorize,
-            ]
-            let status = AuthorizationCreate(nil, nil, flags, &auth)
-            guard status == errAuthorizationSuccess, let auth = auth else {
-                throw authorizationError(status)
-            }
-            authorization = auth
-        }
-
-        guard let prefs = SCPreferencesCreateWithAuthorization(
-            nil, APP_TITLE as CFString, nil, authorization) else {
-            throw scError("open network preferences")
-        }
-        return prefs
-    }
-
-    private func authorizationError(_ status: OSStatus) -> Error {
-        let message = SecCopyErrorMessageString(status, nil) as String?
-        return simpleError(message ?? "authorization failed: \(status)")
-    }
-
-    private func scError(_ context: String) -> Error {
-        simpleError("\(context): \(String(cString: SCErrorString(SCError())))")
-    }
-
-    private func simpleError(_ message: String) -> Error {
-        NSError(domain: APP_TITLE,
-                code: 1,
-                userInfo: [NSLocalizedDescriptionKey: message])
-    }
-}
-
-
-// ============================================================
-// 启动
-// ============================================================
-
-let app = NSApplication.shared
-let delegate = AppDelegate()
-app.delegate = delegate
-// .accessory：无 Dock 图标，但仍能接收事件 / 显示窗口
-app.setActivationPolicy(.accessory)
-app.run()
+            proto = SCNetworkServiceCopyProtocol(service, kSCNetworkProtocolTypePro                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  
