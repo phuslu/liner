@@ -179,6 +179,8 @@ func (f *Functions) geoip(ip any) (info GeoIPInfo) {
 				ipStr = host
 			}
 		}
+	default:
+		return
 	}
 	if ip, err := netip.ParseAddr(ipStr); err == nil {
 		info = f.GeoResolver.GetGeoIPInfo(f.ctx, ip)
