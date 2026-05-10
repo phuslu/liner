@@ -51,7 +51,9 @@ func (d *LocalDialer) dialContext(ctx context.Context, network, address string, 
 		break
 	case "udp", "udp6", "udp4":
 		dailer := &net.Dialer{}
-		if d.Interface != "" {
+		if bindIP, _ := netip.ParseAddr(d.Interface); bindIP.IsValid() {
+			dailer.LocalAddr = net.UDPAddrFromAddrPort(netip.AddrPortFrom(bindIP.Unmap(), 0))
+		} else if d.Interface != "" {
 			dailer.Control = (&DailerController{Interface: d.Interface}).Control
 		}
 		return dailer.DialContext(ctx, network, address)
@@ -133,7 +135,15 @@ func (d *LocalDialer) dialContext(ctx context.Context, network, address string, 
 }
 
 func (d *LocalDialer) dialSerial(ctx context.Context, network, hostname string, ips []netip.Addr, port uint16, tlsConfig *tls.Config) (conn net.Conn, err error) {
+	bindIP, _ := netip.ParseAddr(d.Interface)
+	if bindIP.Is4In6() {
+		bindIP = bindIP.Unmap()
+	}
+
 	for i, ip := range ips {
+		if ip.Is4In6() {
+			ip = ip.Unmap()
+		}
 		if IsMemoryAddress(ip) {
 			return nil, net.InvalidAddrError("reserved address is unreachable: " + ip.String())
 		}
@@ -143,11 +153,21 @@ func (d *LocalDialer) dialSerial(ctx context.Context, network, hostname string, 
 		}
 
 		dailer := &net.Dialer{}
-		if d.Interface != "" {
+		laddr := netip.AddrPort{}
+		if bindIP.IsValid() {
+			if bindIP.Is4() != ip.Is4() {
+				err = net.InvalidAddrError("bind address family mismatched: " + bindIP.String() + " -> " + ip.String())
+				if i < len(ips)-1 {
+					continue
+				}
+				return nil, err
+			}
+			laddr = netip.AddrPortFrom(bindIP, 0)
+		} else if d.Interface != "" {
 			dailer.Control = (&DailerController{Interface: d.Interface}).Control
 		}
 
-		conn, err := dailer.DialTCP(ctx, network, netip.AddrPort{}, netip.AddrPortFrom(ip, port))
+		conn, err := dailer.DialTCP(ctx, network, laddr, netip.AddrPortFrom(ip, port))
 		if err != nil {
 			if i < len(ips)-1 {
 				continue
@@ -197,6 +217,11 @@ func (d *LocalDialer) dialParallel(ctx context.Context, network, hostname string
 		Err  error
 	}
 
+	bindIP, _ := netip.ParseAddr(d.Interface)
+	if bindIP.Is4In6() {
+		bindIP = bindIP.Unmap()
+	}
+
 	level := len(ips)
 	if level > d.Concurrency {
 		level = d.Concurrency
@@ -206,6 +231,9 @@ func (d *LocalDialer) dialParallel(ctx context.Context, network, hostname string
 	lane := make(chan dialResult, level)
 	for i := 0; i < level; i++ {
 		go func(ip netip.Addr, port uint16, tlsConfig *tls.Config) {
+			if ip.Is4In6() {
+				ip = ip.Unmap()
+			}
 			if IsMemoryAddress(ip) {
 				lane <- dialResult{nil, net.InvalidAddrError("reserved address is unreachable: " + ip.String())}
 				return
@@ -215,10 +243,17 @@ func (d *LocalDialer) dialParallel(ctx context.Context, network, hostname string
 				return
 			}
 			dailer := &net.Dialer{}
-			if d.Interface != "" {
+			laddr := netip.AddrPort{}
+			if bindIP.IsValid() {
+				if bindIP.Is4() != ip.Is4() {
+					lane <- dialResult{nil, net.InvalidAddrError("bind address family mismatched: " + bindIP.String() + " -> " + ip.String())}
+					return
+				}
+				laddr = netip.AddrPortFrom(bindIP, 0)
+			} else if d.Interface != "" {
 				dailer.Control = (&DailerController{Interface: d.Interface}).Control
 			}
-			conn, err := dailer.DialTCP(ctx, network, netip.AddrPort{}, netip.AddrPortFrom(ip, port))
+			conn, err := dailer.DialTCP(ctx, network, laddr, netip.AddrPortFrom(ip, port))
 			if err != nil {
 				lane <- dialResult{nil, err}
 				return
