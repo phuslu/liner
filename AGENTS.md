@@ -419,7 +419,8 @@ Dialer behavior:
 
 - `LocalDialer` handles direct socket dialing, DNS resolution, IPv4/IPv6
   selection, local address/device binding, TCP keepalive, buffer sizing, local
-  address forbidding, and memory dialer short-circuiting.
+  address forbidding, and memory dialer short-circuiting. Interface-bound local
+  dialers apply the binding to TCP and UDP sockets.
 - HTTP dialers support auth, PSK, WebSocket, ECH, CA/client certificates,
   `resolve=`, custom user-agent, and per-request headers from context.
 - HTTP/2 and HTTP/3 dialers reuse transports and tune stream/window behavior.
@@ -503,7 +504,9 @@ Current include behavior:
   and answers intercepted AAAA DNS queries with empty NoError responses so
   clients can fall back to IPv4. On Linux, macOS, and Windows, this also
   installs IPv6 split default routes when `routes` contains `0.0.0.0/0`, so
-  native IPv6 default routing does not bypass the TUN.
+  native IPv6 default routing does not bypass the TUN. Destinations inside the
+  configured TUN `address` prefix are rejected in the forwarding path and must
+  not be treated as upstream targets.
 
 ### Policy Templates
 
@@ -957,6 +960,10 @@ GOCACHE=/tmp/liner-go-build go test ./...
   Windows adds a high-metric `0.0.0.0/0` fallback when `routes` is empty so
   source-bound clients such as `curl --interface 198.18.0.1` can select the TUN
   without replacing normal default routing.
+- TUN forwarding rejects destinations inside the configured TUN address prefix,
+  plus limited broadcast, unspecified, and multicast addresses. This prevents
+  local system broadcasts such as Windows NetBIOS traffic to `198.19.255.255`
+  from being proxied back into the TUN path.
 - TUN DNS traffic on port 53 is intercepted and sent through `tun.dns_server`
   when configured. Do not route it through the normal TCP/UDP forward path by
   accident. When `tun[].forward.disable_ipv6` is enabled, keep the local empty

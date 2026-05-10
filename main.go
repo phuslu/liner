@@ -1024,12 +1024,16 @@ func main() {
 				log.Fatal().Err(err).Str("tun_name", tunConfig.Name).Str("dns_server", tunConfig.DnsServer).Msg("tun dns_server load error")
 			}
 		}
+		localdialer := *dialer
+		if ip, err := GetPreferedLocalIP("1.1.1.1"); err == nil {
+			localdialer.Interface = ip.String()
+		}
 		h := &TunHandler{
 			Config:      tunConfig,
 			DataLogger:  dataLogger,
 			GeoResolver: geoResolver,
 			DnsResolver: tunResolver,
-			LocalDialer: dialer,
+			LocalDialer: &localdialer,
 			Dialers:     dialers,
 			Functions:   functions,
 		}

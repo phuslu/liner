@@ -49,6 +49,12 @@ func (d *LocalDialer) dialContext(ctx context.Context, network, address string, 
 	switch network {
 	case "tcp", "tcp6", "tcp4":
 		break
+	case "udp", "udp6", "udp4":
+		dailer := &net.Dialer{}
+		if d.Interface != "" {
+			dailer.Control = (&DailerController{Interface: d.Interface}).Control
+		}
+		return dailer.DialContext(ctx, network, address)
 	default:
 		return (&net.Dialer{}).DialContext(ctx, network, address)
 	}

@@ -66,6 +66,7 @@ type TunHandler struct {
 	mtu      int
 	cleanup  func()
 	once     sync.Once
+	address  netip.Prefix
 
 	dialer *template.Template
 	static struct {
@@ -117,6 +118,7 @@ func (h *TunHandler) Load(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("parse tun address: %w", err)
 	}
+	h.address = addressPrefix
 
 	routePrefixes := make([]netip.Prefix, 0)
 	bypassPrefixes := make([]netip.Prefix, 0)
@@ -566,6 +568,11 @@ func (h *TunHandler) forwardTCP(r *tcp.ForwarderRequest) {
 		r.Complete(true)
 		return
 	}
+	if addr := req.ServerAddr.Addr(); !addr.IsValid() || addr.IsUnspecified() || addr.IsMulticast() || addr.Is4() && addr.As4() == [4]byte{255, 255, 255, 255} || h.address.Contains(addr) {
+		log.Debug().Xid("trace_id", req.TraceID).Str("tun_name", h.name).Str("tun_network", req.Network).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Msg("reject tun local request")
+		r.Complete(true)
+		return
+	}
 
 	var (
 		wq        waiter.Queue
@@ -689,6 +696,17 @@ func (h *TunHandler) forwardUDP(r *udp.ForwarderRequest) {
 	}
 	if h.Config.DisableIpv6 && req.ServerAddr.Addr().Is6() {
 		log.Debug().Xid("trace_id", req.TraceID).Str("tun_name", h.name).Str("tun_network", req.Network).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Msg("reject tun ipv6 request")
+		var wq waiter.Queue
+		ep, tcpipErr := r.CreateEndpoint(&wq)
+		if tcpipErr != nil {
+			log.Error().Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Str("error", tcpipErr.String()).Msg("tun udp create endpoint error")
+		} else {
+			ep.Close()
+		}
+		return
+	}
+	if addr := req.ServerAddr.Addr(); !addr.IsValid() || addr.IsUnspecified() || addr.IsMulticast() || addr.Is4() && addr.As4() == [4]byte{255, 255, 255, 255} || h.address.Contains(addr) {
+		log.Debug().Xid("trace_id", req.TraceID).Str("tun_name", h.name).Str("tun_network", req.Network).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Msg("reject tun local request")
 		var wq waiter.Queue
 		ep, tcpipErr := r.CreateEndpoint(&wq)
 		if tcpipErr != nil {
