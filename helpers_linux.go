@@ -71,30 +71,10 @@ type DailerController struct {
 func (dc DailerController) Control(network, addr string, c syscall.RawConn) (err error) {
 	c.Control(func(fd uintptr) {
 		if ip, _ := netip.ParseAddr(dc.Interface); ip.IsValid() {
-			var sa syscall.Sockaddr
-			if ip.Is4() {
-				ip4 := ip.As4()
-				sa = &syscall.SockaddrInet4{
-					Addr: [4]byte{ip4[0], ip4[1], ip4[2], ip4[3]},
-				}
-			} else {
-				ip6 := ip.As16()
-				sa = &syscall.SockaddrInet6{
-					Addr: [16]byte{
-						ip6[0], ip6[1], ip6[2], ip6[3],
-						ip6[4], ip6[5], ip6[6], ip6[7],
-						ip6[8], ip6[9], ip6[10], ip6[11],
-						ip6[12], ip6[13], ip6[14], ip6[15],
-					},
-				}
-			}
-			const IP_BIND_ADDRESS_NO_PORT = 24
-			err = syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IP, IP_BIND_ADDRESS_NO_PORT, 1)
-			if err != nil {
-				return
-			}
-			err = syscall.Bind(int(fd), sa)
-		} else if dc.Interface != "" {
+			// LocalDialer passes IP bindings through net.Dialer.LocalAddr.
+			return
+		}
+		if dc.Interface != "" {
 			err = syscall.BindToDevice(int(fd), dc.Interface)
 		}
 	})

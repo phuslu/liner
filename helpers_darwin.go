@@ -58,32 +58,8 @@ func (dc DailerController) Control(network, addr string, c syscall.RawConn) (err
 
 	text := strings.TrimSpace(dc.Interface)
 	if ip, parseErr := netip.ParseAddr(text); parseErr == nil && ip.IsValid() {
-		var bindErr error
-		if err = c.Control(func(fd uintptr) {
-			var sa syscall.Sockaddr
-			switch {
-			case ip.Is4():
-				addr := ip.As4()
-				sa = &syscall.SockaddrInet4{Addr: addr}
-			case ip.Is4In6():
-				addr := ip.Unmap().As4()
-				sa = &syscall.SockaddrInet4{Addr: addr}
-			case ip.Is6():
-				addr := ip.As16()
-				sa6 := &syscall.SockaddrInet6{}
-				copy(sa6.Addr[:], addr[:])
-				sa = sa6
-			default:
-				bindErr = errors.New("invalid ip address")
-				return
-			}
-			if err := syscall.Bind(int(fd), sa); err != nil {
-				bindErr = os.NewSyscallError("bind", err)
-			}
-		}); err != nil {
-			return err
-		}
-		return bindErr
+		// LocalDialer passes IP bindings through net.Dialer.LocalAddr.
+		return nil
 	}
 
 	ifi, err := net.InterfaceByName(text)
@@ -106,8 +82,8 @@ func (dc DailerController) Control(network, addr string, c syscall.RawConn) (err
 		if h, _, splitErr := net.SplitHostPort(addr); splitErr == nil {
 			host = h
 		}
-		if ipAddr, parseErr := netip.ParseAddr(host); parseErr == nil && ipAddr.IsValid() {
-			if ipAddr.Is6() && !ipAddr.Is4In6() {
+		if ip, err := netip.ParseAddr(host); err == nil && ip.IsValid() {
+			if ip.Is6() && !ip.Is4In6() {
 				family = 6
 			} else {
 				family = 4

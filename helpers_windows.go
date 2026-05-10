@@ -51,13 +51,9 @@ func (dc DailerController) Control(network, address string, c syscall.RawConn) (
 	}
 
 	if ip, _ := netip.ParseAddr(dc.Interface); ip.IsValid() {
-		var controlErr error
-		if err = c.Control(func(fd uintptr) {
-			controlErr = dc.bindHandleToIP(windows.Handle(fd), ip)
-		}); err != nil {
-			return err
-		}
-		return controlErr
+		// LocalDialer passes IP bindings through net.Dialer.LocalAddr.
+		// Binding here would conflict with Go's ConnectEx setup bind.
+		return nil
 	}
 
 	var controlErr error
@@ -67,33 +63,6 @@ func (dc DailerController) Control(network, address string, c syscall.RawConn) (
 		return err
 	}
 	return controlErr
-}
-
-func (dc DailerController) bindHandleToIP(handle windows.Handle, ip netip.Addr) error {
-	if !ip.IsValid() {
-		return errors.New("invalid ip address")
-	}
-	var sa windows.Sockaddr
-	switch {
-	case ip.Is4() || ip.Is4In6():
-		v4 := ip
-		if v4.Is4In6() {
-			v4 = v4.Unmap()
-		}
-		addr := v4.As4()
-		sa = &windows.SockaddrInet4{Addr: addr}
-	case ip.Is6():
-		addr := ip.As16()
-		sa6 := &windows.SockaddrInet6{}
-		sa6.Addr = addr
-		sa = sa6
-	default:
-		return errors.New("unsupported ip address family")
-	}
-	if err := windows.Bind(handle, sa); err != nil {
-		return os.NewSyscallError("bind", err)
-	}
-	return nil
 }
 
 func (dc DailerController) bindHandleToInterface(handle windows.Handle, network, address string) error {
