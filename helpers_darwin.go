@@ -245,6 +245,15 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 		data, err := exec.Command(command, args...).CombinedOutput()
 		return strings.TrimSpace(string(data)), err
 	}
+	routeProbeAddr := func(prefix netip.Prefix) netip.Addr {
+		addr := prefix.Addr()
+		if prefix.Bits() < addr.BitLen() {
+			if next := addr.Next(); next.IsValid() && prefix.Contains(next) {
+				addr = next
+			}
+		}
+		return addr
+	}
 	type tunRoute struct {
 		prefix netip.Prefix
 		scoped bool
@@ -292,9 +301,13 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 	}
 
 	for _, prefix := range bypassPrefixes {
-		msg, err := run("route", "-n", "get", prefix.Addr().String())
+		if prefix.Addr().IsLoopback() {
+			continue
+		}
+		probeAddr := routeProbeAddr(prefix)
+		msg, err := run("route", "-n", "get", probeAddr.String())
 		if err != nil {
-			return nil, fmt.Errorf("set tun bypass route: route -n get %s: %w: %s", prefix.Addr(), err, msg)
+			return nil, fmt.Errorf("set tun bypass route: route -n get %s: %w: %s", probeAddr, err, msg)
 		}
 		var gateway, iface string
 		for line := range strings.Lines(msg) {
@@ -307,10 +320,14 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 				gateway = strings.TrimSpace(value)
 			case "interface":
 				iface = strings.TrimSpace(value)
+			case "ifscope":
+				if iface == "" {
+					iface = strings.TrimSpace(value)
+				}
 			}
 		}
 		if iface == name {
-			return nil, fmt.Errorf("set tun bypass route: route to %s already uses %s", prefix.Addr(), name)
+			return nil, fmt.Errorf("set tun bypass route: route to %s already uses %s", probeAddr, name)
 		}
 		args = []string{"-n", "add", "-host", prefix.Addr().String()}
 		if prefix.Bits() != 32 {
@@ -320,8 +337,18 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 			args = append(args, gateway)
 		} else if iface != "" {
 			args = append(args, "-interface", iface)
+		} else if indexText, ok := strings.CutPrefix(gateway, "link#"); ok {
+			index, err := strconv.Atoi(indexText)
+			if err != nil {
+				return nil, fmt.Errorf("set tun bypass route: route to %s has invalid link gateway %s: %w", probeAddr, gateway, err)
+			}
+			ifi, err := net.InterfaceByIndex(index)
+			if err != nil {
+				return nil, fmt.Errorf("set tun bypass route: route to %s has invalid link gateway %s: %w", probeAddr, gateway, err)
+			}
+			args = append(args, "-interface", ifi.Name)
 		} else {
-			return nil, fmt.Errorf("set tun bypass route: route to %s has no gateway or interface", prefix.Addr())
+			return nil, fmt.Errorf("set tun bypass route: route to %s has no gateway or interface: %s", probeAddr, msg)
 		}
 		if msg, err := run("route", args...); err != nil {
 			if strings.Contains(msg, "File exists") {
