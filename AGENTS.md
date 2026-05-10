@@ -420,7 +420,9 @@ Dialer behavior:
 - `LocalDialer` handles direct socket dialing, DNS resolution, IPv4/IPv6
   selection, local address/device binding, TCP keepalive, buffer sizing, local
   address forbidding, and memory dialer short-circuiting. Interface-bound local
-  dialers apply the binding to TCP and UDP sockets.
+  dialers apply the binding to TCP and UDP sockets. IP-valued bindings are
+  passed as socket local addresses; interface-name bindings use platform socket
+  controls.
 - HTTP dialers support auth, PSK, WebSocket, ECH, CA/client certificates,
   `resolve=`, custom user-agent, and per-request headers from context.
 - HTTP/2 and HTTP/3 dialers reuse transports and tune stream/window behavior.
