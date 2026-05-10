@@ -748,7 +748,9 @@ func (h *TunHandler) serveUDP(req TunRequest, lconn net.Conn) {
 	rconn, err := dialer.DialContext(dialCtx, "udp", req.ServerAddr.String())
 	dialCancel()
 	if err != nil {
-		log.Error().Err(err).Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Str("forward_dialer_name", dialerName).Msg("tun udp dial error")
+		if !errors.Is(err, errors.ErrUnsupported) {
+			log.Error().Err(err).Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Str("forward_dialer_name", dialerName).Msg("tun udp dial error")
+		}
 		if rconn != nil {
 			rconn.Close()
 		}
