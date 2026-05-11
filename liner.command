@@ -27,9 +27,15 @@ import signal
 import subprocess
 import sys
 import threading
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
+
+if os.path.isfile('pyobjc.zip') and os.path.isdir:
+    with zipfile.ZipFile('pyobjc.zip', 'r') as zf:
+        zf.extractall('pyobjc')
+    sys.path.append('pyobjc')
 
 try:
     import objc
