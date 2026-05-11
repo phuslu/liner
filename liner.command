@@ -937,4 +937,162 @@ class AppDelegate(NSObject):
             if not SCNetworkServiceGetEnabled(service):
                 continue
 
-            proto = SCNetworkServiceCopyProtocol(service, kSCNetworkProtocolTypePro                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  
+            proto = SCNetworkServiceCopyProtocol(service, kSCNetworkProtocolTypeProxies)
+            if not proto:
+                continue
+
+            config = dict(SCNetworkProtocolGetConfiguration(proto) or {})
+            mode = self.proxy_mode_from_config(config)
+            service_modes.append(mode)
+
+            if primary_service_id:
+                service_id = SCNetworkServiceGetServiceID(service)
+                if service_id and str(service_id) == primary_service_id:
+                    return mode
+
+        if not service_modes:
+            return None
+
+        unique_modes = set(service_modes)
+        if len(unique_modes) == 1:
+            return service_modes[0]
+
+        enabled_modes = {mode for mode in service_modes if mode != "off"}
+        if len(enabled_modes) == 1:
+            return next(iter(enabled_modes))
+        return "mixed"
+
+    @staticmethod
+    def current_primary_service_id() -> Optional[str]:
+        store = SCDynamicStoreCreate(None, APP_TITLE, None, None)
+        if not store:
+            return None
+
+        for key in ("State:/Network/Global/IPv4", "State:/Network/Global/IPv6"):
+            state = SCDynamicStoreCopyValue(store, key)
+            if not state:
+                continue
+            service_id = dict(state).get("PrimaryService")
+            if service_id:
+                return str(service_id)
+        return None
+
+    @classmethod
+    def proxy_mode_from_config(cls, config: Dict[Any, Any]) -> str:
+        if cls.config_enabled(config, kSCPropNetProxiesProxyAutoConfigEnable):
+            return "pac"
+        if cls.config_enabled(config, kSCPropNetProxiesHTTPEnable) or cls.config_enabled(
+            config, kSCPropNetProxiesHTTPSEnable
+        ):
+            return "http"
+        return "off"
+
+    @staticmethod
+    def config_enabled(config: Dict[Any, Any], key) -> bool:
+        value = config.get(str(key))
+        if value is None:
+            value = config.get(key)
+        if value is None:
+            return False
+        if isinstance(value, bool):
+            return value
+        try:
+            return int(value) != 0
+        except (TypeError, ValueError):
+            return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+    def set_system_proxy(self, mode: str, settings: ProxySettings) -> List[str]:
+        prefs = self.authorized_preferences()
+        network_set = SCNetworkSetCopyCurrent(prefs)
+        if not network_set:
+            raise self.sc_error("read current network set")
+
+        services = SCNetworkSetCopyServices(network_set)
+        if services is None:
+            raise self.sc_error("read network services")
+
+        changed: List[str] = []
+        for service in services:
+            if not SCNetworkServiceGetEnabled(service):
+                continue
+
+            proto = SCNetworkServiceCopyProtocol(service, kSCNetworkProtocolTypeProxies)
+            if not proto:
+                continue
+
+            config = SCNetworkProtocolGetConfiguration(proto) or {}
+            config = dict(config)
+            self.apply_proxy_config(config, mode, settings)
+
+            if not SCNetworkProtocolSetConfiguration(proto, config):
+                raise self.sc_error("set proxy protocol")
+
+            name = SCNetworkServiceGetName(service) or "Unknown"
+            changed.append(str(name))
+
+        if not changed:
+            raise RuntimeError("no enabled network services found")
+        if not SCPreferencesCommitChanges(prefs):
+            raise self.sc_error("commit proxy settings")
+        if not SCPreferencesApplyChanges(prefs):
+            raise self.sc_error("apply proxy settings")
+        return changed
+
+    @staticmethod
+    def apply_proxy_config(config: Dict[Any, Any], mode: str, settings: ProxySettings):
+        config[str(kSCPropNetProxiesHTTPEnable)] = 1 if mode == "http" else 0
+        config[str(kSCPropNetProxiesHTTPSEnable)] = 1 if mode == "http" else 0
+        config[str(kSCPropNetProxiesProxyAutoConfigEnable)] = 1 if mode == "pac" else 0
+
+        if mode == "http":
+            port = int(settings.port)
+            config[str(kSCPropNetProxiesHTTPProxy)] = settings.host
+            config[str(kSCPropNetProxiesHTTPPort)] = port
+            config[str(kSCPropNetProxiesHTTPSProxy)] = settings.host
+            config[str(kSCPropNetProxiesHTTPSPort)] = port
+        elif mode == "pac":
+            config[str(kSCPropNetProxiesProxyAutoConfigURLString)] = settings.pac_url
+
+    def authorized_preferences(self):
+        if self.authorization is None:
+            flags = (
+                kAuthorizationFlagInteractionAllowed
+                | kAuthorizationFlagExtendRights
+                | kAuthorizationFlagPreAuthorize
+            )
+            try:
+                result = AuthorizationCreate(None, None, flags, None)
+            except TypeError:
+                result = AuthorizationCreate(None, None, flags)
+            if isinstance(result, tuple):
+                status = result[0]
+                auth = result[1] if len(result) > 1 else None
+            else:
+                status = result
+                auth = None
+            if status != errAuthorizationSuccess or auth is None:
+                raise self.authorization_error(status)
+            self.authorization = auth
+
+        prefs = SCPreferencesCreateWithAuthorization(
+            None, APP_TITLE, None, self.authorization
+        )
+        if not prefs:
+            raise self.sc_error("open network preferences")
+        return prefs
+
+    @staticmethod
+    def authorization_error(status) -> Exception:
+        message = SecCopyErrorMessageString(status, None)
+        return RuntimeError(str(message) if message else f"authorization failed: {status}")
+
+    @staticmethod
+    def sc_error(context: str) -> Exception:
+        return RuntimeError(f"{context}: {SCErrorString(SCError())}")
+
+
+app = NSApplication.sharedApplication()
+delegate = AppDelegate.alloc().init()
+app.setDelegate_(delegate)
+app.setActivationPolicy_(ACTIVATION_POLICY_ACCESSORY)
+app.run()
