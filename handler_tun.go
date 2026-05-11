@@ -563,17 +563,6 @@ func (h *TunHandler) forwardTCP(r *tcp.ForwarderRequest) {
 		Port:       id.LocalPort,
 		TraceID:    log.NewXID(),
 	}
-	if h.Config.DisableIpv6 && req.ServerAddr.Addr().Is6() {
-		log.Debug().Xid("trace_id", req.TraceID).Str("tun_name", h.name).Str("tun_network", req.Network).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Msg("reject tun ipv6 request")
-		r.Complete(true)
-		return
-	}
-	if addr := req.ServerAddr.Addr(); !addr.IsValid() || addr.IsUnspecified() || addr.IsMulticast() || addr.Is4() && addr.As4() == [4]byte{255, 255, 255, 255} || h.address.Contains(addr) {
-		log.Debug().Xid("trace_id", req.TraceID).Str("tun_name", h.name).Str("tun_network", req.Network).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Msg("reject tun local request")
-		r.Complete(true)
-		return
-	}
-
 	var (
 		wq        waiter.Queue
 		lconn     net.Conn
@@ -600,6 +589,31 @@ func (h *TunHandler) forwardTCP(r *tcp.ForwarderRequest) {
 		completed = true
 		lconn = gonet.NewTCPConn(&wq, ep)
 		return lconn, nil
+	}
+
+	addr := req.ServerAddr.Addr()
+	if !addr.IsValid() || addr.IsUnspecified() || addr.IsMulticast() || addr.Is4() && addr.As4() == [4]byte{255, 255, 255, 255} {
+		log.Debug().Xid("trace_id", req.TraceID).Str("tun_name", h.name).Str("tun_network", req.Network).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Msg("reject tun local request")
+		r.Complete(true)
+		return
+	}
+	if req.Port == 53 && h.DnsResolver != nil && h.DnsResolver.Client != nil {
+		if _, err := ensureLocalConn(); err != nil {
+			return
+		}
+		h.serveTCPDNS(req, lconn)
+		return
+	}
+
+	if h.Config.DisableIpv6 && req.ServerAddr.Addr().Is6() {
+		log.Debug().Xid("trace_id", req.TraceID).Str("tun_name", h.name).Str("tun_network", req.Network).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Msg("reject tun ipv6 request")
+		r.Complete(true)
+		return
+	}
+	if h.address.Contains(addr) {
+		log.Debug().Xid("trace_id", req.TraceID).Str("tun_name", h.name).Str("tun_network", req.Network).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Msg("reject tun local request")
+		r.Complete(true)
+		return
 	}
 
 	req.TLSClientHello = func() (*tls.ClientHelloInfo, error) {
@@ -636,14 +650,6 @@ func (h *TunHandler) forwardTCP(r *tcp.ForwarderRequest) {
 			}
 		}
 		return nil, nil
-	}
-
-	if req.Port == 53 && h.DnsResolver != nil && h.DnsResolver.Client != nil {
-		if _, err := ensureLocalConn(); err != nil {
-			return
-		}
-		h.serveTCPDNS(req, lconn)
-		return
 	}
 
 	ctx, dialer, dialerName, ok := h.prepareDial(req)
@@ -694,6 +700,29 @@ func (h *TunHandler) forwardUDP(r *udp.ForwarderRequest) {
 		Port:       id.LocalPort,
 		TraceID:    log.NewXID(),
 	}
+	addr := req.ServerAddr.Addr()
+	if !addr.IsValid() || addr.IsUnspecified() || addr.IsMulticast() || addr.Is4() && addr.As4() == [4]byte{255, 255, 255, 255} {
+		log.Debug().Xid("trace_id", req.TraceID).Str("tun_name", h.name).Str("tun_network", req.Network).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Msg("reject tun local request")
+		var wq waiter.Queue
+		ep, tcpipErr := r.CreateEndpoint(&wq)
+		if tcpipErr != nil {
+			log.Error().Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Str("error", tcpipErr.String()).Msg("tun udp create endpoint error")
+		} else {
+			ep.Close()
+		}
+		return
+	}
+	if req.Port == 53 && h.DnsResolver != nil && h.DnsResolver.Client != nil {
+		var wq waiter.Queue
+		ep, tcpipErr := r.CreateEndpoint(&wq)
+		if tcpipErr != nil {
+			log.Error().Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Str("error", tcpipErr.String()).Msg("tun udp create endpoint error")
+			return
+		}
+		lconn := gonet.NewUDPConn(&wq, ep)
+		go h.serveUDP(req, lconn)
+		return
+	}
 	if h.Config.DisableIpv6 && req.ServerAddr.Addr().Is6() {
 		log.Debug().Xid("trace_id", req.TraceID).Str("tun_name", h.name).Str("tun_network", req.Network).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Msg("reject tun ipv6 request")
 		var wq waiter.Queue
@@ -705,7 +734,7 @@ func (h *TunHandler) forwardUDP(r *udp.ForwarderRequest) {
 		}
 		return
 	}
-	if addr := req.ServerAddr.Addr(); !addr.IsValid() || addr.IsUnspecified() || addr.IsMulticast() || addr.Is4() && addr.As4() == [4]byte{255, 255, 255, 255} || h.address.Contains(addr) {
+	if h.address.Contains(addr) {
 		log.Debug().Xid("trace_id", req.TraceID).Str("tun_name", h.name).Str("tun_network", req.Network).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Msg("reject tun local request")
 		var wq waiter.Queue
 		ep, tcpipErr := r.CreateEndpoint(&wq)
