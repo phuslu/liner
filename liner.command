@@ -319,14 +319,23 @@ class AppDelegate(NSObject):
             button.setToolTip_(APP_TITLE)
 
         menu = NSMenu.alloc().init()
-        menu.addItem_(self.make_item("🖥️ Show Console", "showConsole:"))
-        menu.addItem_(self.make_item("➖ Hide Console", "hideConsole:"))
+        menu.addItem_(self.make_item("Console", "showConsole:", "terminal"))
         menu.addItem_(NSMenuItem.separatorItem())
+
+        profile_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            "Profiles", None, ""
+        )
+        self.set_item_symbol(profile_item, "square.stack", "Profiles")
+        self.profile_menu = NSMenu.alloc().init()
+        profile_item.setSubmenu_(self.profile_menu)
+        self.rebuild_profile_menu()
+        menu.addItem_(profile_item)
 
         proxy_settings = self.resolve_proxy_settings()
         proxy_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
-            "🌐 System Proxy", None, ""
+            "Network", None, ""
         )
+        self.set_item_symbol(proxy_item, "network", "Network")
         submenu = NSMenu.alloc().init()
         submenu.setDelegate_(self)
         self.proxy_menu = submenu
@@ -349,30 +358,49 @@ class AppDelegate(NSObject):
         menu.addItem_(proxy_item)
         menu.addItem_(NSMenuItem.separatorItem())
 
-        profile_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
-            "📂 Profiles", None, ""
+        menu.addItem_(
+            self.make_item("Preferences…", "editConfig:", "slider.horizontal.3")
         )
-        self.profile_menu = NSMenu.alloc().init()
-        profile_item.setSubmenu_(self.profile_menu)
-        self.rebuild_profile_menu()
-        menu.addItem_(profile_item)
         menu.addItem_(NSMenuItem.separatorItem())
 
-        menu.addItem_(self.make_item("📝 Edit Config", "editConfig:"))
-        self.start_stop_item = self.make_item("▶️ Start", "startChild:")
+        self.start_stop_item = self.make_item("Start", "startChild:", "play.circle")
         menu.addItem_(self.start_stop_item)
-        menu.addItem_(self.make_item("🔄 Restart", "reload:"))
-        menu.addItem_(self.make_item(f"🚪 Quit {APP_TITLE}", "quit:"))
+        menu.addItem_(self.make_item("Restart", "reload:", "arrow.clockwise"))
+        menu.addItem_(NSMenuItem.separatorItem())
+        menu.addItem_(self.make_item(f"Quit {APP_TITLE}", "quit:", "xmark.circle"))
 
         self.status_item.setMenu_(menu)
         self.update_proxy_menu_state()
         self.update_profile_menu_state()
         self.update_process_menu_state()
 
-    def make_item(self, title: str, action: str):
+    def make_item(self, title: str, action: str, symbol_name: Optional[str] = None):
         item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, action, "")
         item.setTarget_(self)
+        if symbol_name is not None:
+            self.set_item_symbol(item, symbol_name, title)
         return item
+
+    def set_item_symbol(self, item, symbol_name: str, description: str):
+        try:
+            item.setImage_(self.symbol_image(symbol_name, description))
+        except Exception:
+            pass
+
+    @staticmethod
+    def symbol_image(symbol_name: str, description: str):
+        method = getattr(
+            NSImage, "imageWithSystemSymbolName_accessibilityDescription_", None
+        )
+        if method is None:
+            return None
+        try:
+            image = method(symbol_name, description)
+        except Exception:
+            return None
+        if image is not None:
+            image.setTemplate_(True)
+        return image
 
     def menuNeedsUpdate_(self, menu):
         if menu == self.proxy_menu:
@@ -449,11 +477,13 @@ class AppDelegate(NSObject):
         if self.start_stop_item is None:
             return
         if self.is_child_running():
-            self.start_stop_item.setTitle_("⏹️ Stop")
+            self.start_stop_item.setTitle_("Stop")
             self.start_stop_item.setAction_("stopChild:")
+            self.set_item_symbol(self.start_stop_item, "stop.circle", "Stop")
         else:
-            self.start_stop_item.setTitle_("▶️ Start")
+            self.start_stop_item.setTitle_("Start")
             self.start_stop_item.setAction_("startChild:")
+            self.set_item_symbol(self.start_stop_item, "play.circle", "Start")
         self.start_stop_item.setTarget_(self)
 
     # ----- 控制台窗口 -----
@@ -991,9 +1021,6 @@ class AppDelegate(NSObject):
         self.console_window.center()
         self.console_window.makeKeyAndOrderFront_(None)
         NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
-
-    def hideConsole_(self, sender):
-        self.console_window.orderOut_(None)
 
     def setProxyOff_(self, sender):
         self.apply_proxy_mode("off")
