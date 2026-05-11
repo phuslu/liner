@@ -97,6 +97,7 @@ COMPOSITING_DESTINATION_OUT = appkit_constant(
 MENU_STATE_ON = appkit_constant(("NSControlStateValueOn", "NSOnState"), 1)
 MENU_STATE_OFF = appkit_constant(("NSControlStateValueOff", "NSOffState"), 0)
 CONSOLE_BORDER_WIDTH = 3.0
+IGNORED_PROFILE_FILES = {"example.yaml"}
 
 
 def rgb(red: float, green: float, blue: float):
@@ -198,6 +199,10 @@ class AppDelegate(NSObject):
         self.proxy_disable_item = None
         self.proxy_pac_item = None
         self.proxy_manual_item = None
+        self.profile_menu = None
+        self.profile_items: Dict[str, Any] = {}
+        self.profiles: List[str] = []
+        self.selected_profile: Optional[str] = None
         self.start_stop_item = None
 
         self.console_font = (
@@ -206,6 +211,7 @@ class AppDelegate(NSObject):
         )
         self.work_dir = self.resolve_work_dir()
         self.dot_env = self.read_dot_env()
+        self.load_profiles()
         return self
 
     # ----- App lifecycle -----
@@ -216,11 +222,8 @@ class AppDelegate(NSObject):
         self.setup_status_item()
         self.setup_console_window()
         self.setup_event_timer()
-        if self.start_child():
-            self.send_notification(APP_TITLE, "Started.")
-        else:
-            self.showConsole_(None)
-            self.send_notification(APP_TITLE, "Failed to start. Check the console.")
+        self.show_startup_prompt()
+        self.showConsole_(None)
         self.install_signal_handlers()
 
     def applicationWillTerminate_(self, notification):
@@ -236,6 +239,29 @@ class AppDelegate(NSObject):
         if not script.is_absolute():
             script = Path.cwd() / script
         return str(script.resolve().parent)
+
+    def show_startup_prompt(self):
+        self.append_to_console(f"Working directory: {self.work_dir}\n", ANSI_COLORS[7])
+        if not self.profiles:
+            self.append_to_console(
+                "No .yaml profiles found. Add a profile next to liner.command.\n",
+                ANSI_COLORS[3],
+            )
+            return
+
+        if self.selected_profile is not None:
+            self.append_to_console(
+                f"Selected profile: {self.selected_profile}\n", ANSI_COLORS[2]
+            )
+            self.append_to_console(
+                "Choose Start from the status menu to run liner.\n", ANSI_COLORS[3]
+            )
+            return
+
+        self.append_to_console(
+            "Select a profile from Profiles, then choose Start to run liner.\n",
+            ANSI_COLORS[3],
+        )
 
     # ----- 状态栏 -----
 
@@ -322,6 +348,16 @@ class AppDelegate(NSObject):
         proxy_item.setSubmenu_(submenu)
         menu.addItem_(proxy_item)
         menu.addItem_(NSMenuItem.separatorItem())
+
+        profile_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            "📂 Profiles", None, ""
+        )
+        self.profile_menu = NSMenu.alloc().init()
+        profile_item.setSubmenu_(self.profile_menu)
+        self.rebuild_profile_menu()
+        menu.addItem_(profile_item)
+        menu.addItem_(NSMenuItem.separatorItem())
+
         menu.addItem_(self.make_item("📝 Edit Config", "editConfig:"))
         self.start_stop_item = self.make_item("▶️ Start", "startChild:")
         menu.addItem_(self.start_stop_item)
@@ -330,6 +366,7 @@ class AppDelegate(NSObject):
 
         self.status_item.setMenu_(menu)
         self.update_proxy_menu_state()
+        self.update_profile_menu_state()
         self.update_process_menu_state()
 
     def make_item(self, title: str, action: str):
@@ -340,6 +377,55 @@ class AppDelegate(NSObject):
     def menuNeedsUpdate_(self, menu):
         if menu == self.proxy_menu:
             self.update_proxy_menu_state()
+
+    def load_profiles(self):
+        self.profiles = self.scan_profiles()
+        if len(self.profiles) == 1:
+            self.selected_profile = self.profiles[0]
+        elif self.selected_profile not in self.profiles:
+            self.selected_profile = None
+
+    def scan_profiles(self) -> List[str]:
+        try:
+            entries = sorted(os.listdir(self.work_dir))
+        except OSError:
+            return []
+        return [
+            entry
+            for entry in entries
+            if entry.endswith(".yaml")
+            and entry not in IGNORED_PROFILE_FILES
+            and os.path.isfile(os.path.join(self.work_dir, entry))
+        ]
+
+    def rebuild_profile_menu(self):
+        if self.profile_menu is None:
+            return
+
+        while self.profile_menu.numberOfItems() > 0:
+            self.profile_menu.removeItemAtIndex_(0)
+
+        self.profile_items = {}
+        if not self.profiles:
+            item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+                "No .yaml Profiles", None, ""
+            )
+            item.setEnabled_(False)
+            self.profile_menu.addItem_(item)
+            return
+
+        for profile in self.profiles:
+            item = self.make_item(profile, "selectProfile:")
+            item.setRepresentedObject_(profile)
+            self.profile_items[profile] = item
+            self.profile_menu.addItem_(item)
+        self.update_profile_menu_state()
+
+    def update_profile_menu_state(self):
+        for profile, item in self.profile_items.items():
+            item.setState_(
+                MENU_STATE_ON if profile == self.selected_profile else MENU_STATE_OFF
+            )
 
     def is_child_running(self) -> bool:
         process = self.child_process
@@ -460,9 +546,6 @@ class AppDelegate(NSObject):
                 return value
         return None
 
-    def resolve_env_name(self) -> Optional[str]:
-        return self.resolve_setting(["ENV"])
-
     def resolve_proxy_settings(self) -> ProxySettings:
         inferred = self.infer_proxy_settings_from_config() or ProxySettings.default_for(
             DEFAULT_PROXY_HOST, DEFAULT_PROXY_PORT
@@ -474,11 +557,10 @@ class AppDelegate(NSObject):
         return ProxySettings(host=host, port=port, pac_url=pac_url)
 
     def infer_proxy_settings_from_config(self) -> Optional[ProxySettings]:
-        env_name = self.resolve_env_name()
-        if not env_name:
+        config_file = self.selected_profile
+        if not config_file:
             return None
 
-        config_file = f"{env_name}.yaml"
         config_path = os.path.join(self.work_dir, config_file)
         for path in self.config_data_paths(config_path):
             try:
@@ -631,16 +713,15 @@ class AppDelegate(NSObject):
             self.update_process_menu_state()
             return False
 
-        env_name = self.resolve_env_name()
-        if not env_name:
+        config_file = self.selected_profile
+        if not config_file:
             self.append_to_console(
-                f"ENV not set. Define `ENV` in environment or in {self.work_dir}/.env\n",
+                "No profile selected. Choose one from Profiles in the status menu.\n",
                 ANSI_COLORS[1],
             )
             self.update_process_menu_state()
             return False
 
-        config_file = f"{env_name}.yaml"
         config_path = os.path.join(self.work_dir, config_file)
         if not os.path.exists(config_path):
             self.append_to_console(f"Config file not found: {config_path}\n", ANSI_COLORS[1])
@@ -909,17 +990,37 @@ class AppDelegate(NSObject):
     def setProxyHttp_(self, sender):
         self.apply_proxy_mode("http")
 
-    def editConfig_(self, sender):
-        env_name = self.resolve_env_name()
-        if not env_name:
+    def selectProfile_(self, sender):
+        profile = sender.representedObject()
+        if not profile:
+            return
+
+        profile = str(profile)
+        if profile not in self.profiles:
+            self.append_to_console(f"Profile not found: {profile}\n", ANSI_COLORS[1])
+            self.rebuild_profile_menu()
+            return
+
+        self.selected_profile = profile
+        self.update_profile_menu_state()
+        self.update_proxy_menu_state()
+        self.append_to_console(f"Selected profile: {profile}\n", ANSI_COLORS[2])
+        if self.is_child_running():
             self.append_to_console(
-                f"ENV not set. Define `ENV` in environment or in {self.work_dir}/.env\n",
+                "Restart liner to apply the selected profile.\n", ANSI_COLORS[3]
+            )
+
+    def editConfig_(self, sender):
+        config_file = self.selected_profile
+        if not config_file:
+            self.append_to_console(
+                "No profile selected. Choose one from Profiles in the status menu.\n",
                 ANSI_COLORS[1],
             )
             self.showConsole_(None)
             return
 
-        config_path = os.path.join(self.work_dir, f"{env_name}.yaml")
+        config_path = os.path.join(self.work_dir, config_file)
         if not os.path.exists(config_path):
             self.append_to_console(f"Config file not found: {config_path}\n", ANSI_COLORS[1])
             self.showConsole_(None)
