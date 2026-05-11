@@ -16,7 +16,7 @@ import (
 	"github.com/puzpuzpuz/xsync/v4"
 )
 
-var TunnelUserAgent = "Liner/" + version + " (" + runtime.GOOS + "; " + runtime.GOARCH + "; " + runtime.Version() + ") yamux/v5 quic-go/v0"
+var TunnelUserAgent = "Liner/" + version + " (" + runtime.GOOS + "; " + runtime.GOARCH + ") yamux/v5 quic-go/v0"
 
 type TunnelHandler struct {
 	Config          TunnelConfig

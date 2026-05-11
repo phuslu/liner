@@ -48,7 +48,7 @@ var (
 	garble     = ""
 	obfuscated = garble != ""
 
-	DefaultUserAgent = "Liner/" + version
+	DefaultUserAgent = "Liner/" + version + " (" + runtime.GOOS + "; " + runtime.GOARCH + ")"
 	ChromeUserAgent  = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + utls.HelloChrome_Auto.Version + ".0.0.0 Safari/537.36"
 )
 
