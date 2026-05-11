@@ -244,7 +244,7 @@ class AppDelegate(NSObject):
         self.append_to_console(f"Working directory: {self.work_dir}\n", ANSI_COLORS[7])
         if not self.profiles:
             self.append_to_console(
-                "No .yaml profiles found. Add a profile next to liner.command.\n",
+                "No Liner profiles found. Add a .yaml file starting with `global:`.\n",
                 ANSI_COLORS[3],
             )
             return
@@ -396,7 +396,21 @@ class AppDelegate(NSObject):
             if entry.endswith(".yaml")
             and entry not in IGNORED_PROFILE_FILES
             and os.path.isfile(os.path.join(self.work_dir, entry))
+            and self.is_liner_profile_file(os.path.join(self.work_dir, entry))
         ]
+
+    @staticmethod
+    def is_liner_profile_file(path: str) -> bool:
+        try:
+            with open(path, "r", encoding="utf-8-sig") as f:
+                for raw_line in f:
+                    line = raw_line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    return line.startswith("global:")
+        except OSError:
+            pass
+        return False
 
     def rebuild_profile_menu(self):
         if self.profile_menu is None:
@@ -408,7 +422,7 @@ class AppDelegate(NSObject):
         self.profile_items = {}
         if not self.profiles:
             item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
-                "No .yaml Profiles", None, ""
+                "No Liner Profiles", None, ""
             )
             item.setEnabled_(False)
             self.profile_menu.addItem_(item)
