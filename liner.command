@@ -96,11 +96,24 @@ COMPOSITING_DESTINATION_OUT = appkit_constant(
 )
 MENU_STATE_ON = appkit_constant(("NSControlStateValueOn", "NSOnState"), 1)
 MENU_STATE_OFF = appkit_constant(("NSControlStateValueOff", "NSOffState"), 0)
+CONSOLE_BORDER_WIDTH = 3.0
 
 
 def rgb(red: float, green: float, blue: float):
     return NSColor.colorWithDeviceRed_green_blue_alpha_(red, green, blue, 1.0)
 
+
+def nscolor(selector: str, fallback):
+    method = getattr(NSColor, selector, None)
+    if method is None:
+        return fallback
+    try:
+        return method()
+    except Exception:
+        return fallback
+
+
+CONSOLE_BORDER_COLOR = nscolor("windowFrameColor", rgb(0.2422, 0.2422, 0.25))
 
 ANSI_COLORS = [
     NSColor.whiteColor(),
@@ -112,6 +125,31 @@ ANSI_COLORS = [
     rgb(0.1992, 0.7305, 0.7813),
     rgb(0.7930, 0.7969, 0.8008),
 ]
+
+
+class ConsoleBorderView(NSView):
+    def isOpaque(self):
+        return True
+
+    def drawRect_(self, dirty_rect):
+        bounds = self.bounds()
+        x = bounds.origin.x
+        y = bounds.origin.y
+        width = bounds.size.width
+        height = bounds.size.height
+
+        NSColor.blackColor().setFill()
+        NSRectFill(bounds)
+
+        border_width = min(CONSOLE_BORDER_WIDTH, width / 2.0, height / 2.0)
+        if border_width <= 0:
+            return
+
+        CONSOLE_BORDER_COLOR.setFill()
+        NSRectFill(NSMakeRect(x, y, width, border_width))
+        NSRectFill(NSMakeRect(x, y + height - border_width, width, border_width))
+        NSRectFill(NSMakeRect(x, y, border_width, height))
+        NSRectFill(NSMakeRect(x + width - border_width, y, border_width, height))
 
 
 @dataclass
@@ -147,6 +185,7 @@ class AppDelegate(NSObject):
 
         self.status_item = None
         self.console_window = None
+        self.console_border_view = None
         self.console_view = None
         self.child_process = None
         self.authorization = None
@@ -309,13 +348,27 @@ class AppDelegate(NSObject):
         self.console_window.setDelegate_(self)
         self.console_window.setReleasedWhenClosed_(False)
 
-        scroll = NSScrollView.alloc().initWithFrame_(frame)
+        self.console_border_view = ConsoleBorderView.alloc().initWithFrame_(frame)
+        self.console_border_view.setAutoresizingMask_(
+            NSViewWidthSizable | NSViewHeightSizable
+        )
+
+        scroll_frame = NSMakeRect(
+            CONSOLE_BORDER_WIDTH,
+            CONSOLE_BORDER_WIDTH,
+            frame.size.width - CONSOLE_BORDER_WIDTH * 2.0,
+            frame.size.height - CONSOLE_BORDER_WIDTH * 2.0,
+        )
+        scroll = NSScrollView.alloc().initWithFrame_(scroll_frame)
         scroll.setBorderType_(NSNoBorder)
         scroll.setHasVerticalScroller_(True)
         scroll.setHasHorizontalScroller_(False)
         scroll.setAutoresizingMask_(NSViewWidthSizable | NSViewHeightSizable)
 
-        self.console_view = NSTextView.alloc().initWithFrame_(frame)
+        text_frame = NSMakeRect(
+            0.0, 0.0, scroll_frame.size.width, scroll_frame.size.height
+        )
+        self.console_view = NSTextView.alloc().initWithFrame_(text_frame)
         self.console_view.setBackgroundColor_(NSColor.blackColor())
         self.console_view.setRichText_(True)
         self.console_view.setEditable_(False)
@@ -325,7 +378,8 @@ class AppDelegate(NSObject):
         self.console_view.setFont_(self.console_font)
 
         scroll.setDocumentView_(self.console_view)
-        self.console_window.contentView().addSubview_(scroll)
+        self.console_border_view.addSubview_(scroll)
+        self.console_window.contentView().addSubview_(self.console_border_view)
 
     def setup_event_timer(self):
         self.event_timer = NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
