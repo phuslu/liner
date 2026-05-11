@@ -32,10 +32,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-if os.path.isfile('pyobjc.zip') and os.path.isdir:
-    with zipfile.ZipFile('pyobjc.zip', 'r') as zf:
-        zf.extractall('pyobjc')
-    sys.path.append('pyobjc')
+if os.path.isfile('pyobjc.zip') and not os.path.isdir('pyobjc'):
+    try:
+        import objc, SystemConfiguration
+    except ImportError:
+        with zipfile.ZipFile('pyobjc.zip', 'r') as zf:
+            zf.extractall('pyobjc')
+        sys.path.append('pyobjc')
 
 try:
     import objc
@@ -43,7 +46,7 @@ try:
     from Foundation import *  # noqa: F401,F403
     from Security import *  # noqa: F401,F403
     from SystemConfiguration import *  # noqa: F401,F403
-except Exception as exc:  # pragma: no cover - only meaningful on non-macOS hosts.
+except ImportError as error:  # pragma: no cover - only meaningful on non-macOS hosts.
     sys.stderr.write(
         "liner.command requires macOS /usr/bin/python3 with PyObjC bindings.\n"
         f"Current Python: {sys.executable}\n"
@@ -57,7 +60,7 @@ except Exception as exc:  # pragma: no cover - only meaningful on non-macOS host
         "'pyobjc-framework-SystemConfiguration==11.1' "
         "'pyobjc-framework-Security==11.1'\n"
         "Do not install the unrelated PyPI package named AppKit.\n"
-        f"Import error: {exc}\n"
+        f"Import error: {error}\n"
     )
     sys.exit(1)
 
