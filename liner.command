@@ -292,13 +292,13 @@ class AppDelegate(NSObject):
             button.setToolTip_(APP_TITLE)
 
         menu = NSMenu.alloc().init()
-        menu.addItem_(self.make_item("Show Console", "showConsole:"))
-        menu.addItem_(self.make_item("Hide Console", "hideConsole:"))
+        menu.addItem_(self.make_item("🖥️ Show Console", "showConsole:"))
+        menu.addItem_(self.make_item("➖ Hide Console", "hideConsole:"))
         menu.addItem_(NSMenuItem.separatorItem())
 
         proxy_settings = self.resolve_proxy_settings()
         proxy_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
-            "System Proxy", None, ""
+            "🌐 System Proxy", None, ""
         )
         submenu = NSMenu.alloc().init()
         submenu.setDelegate_(self)
@@ -321,9 +321,9 @@ class AppDelegate(NSObject):
         proxy_item.setSubmenu_(submenu)
         menu.addItem_(proxy_item)
         menu.addItem_(NSMenuItem.separatorItem())
-        menu.addItem_(self.make_item("Edit Config", "editConfig:"))
-        menu.addItem_(self.make_item("Restart", "reload:"))
-        menu.addItem_(self.make_item(f"Quit {APP_TITLE}", "quit:"))
+        menu.addItem_(self.make_item("📝 Edit Config", "editConfig:"))
+        menu.addItem_(self.make_item("🔄 Restart", "reload:"))
+        menu.addItem_(self.make_item(f"🚪 Quit {APP_TITLE}", "quit:"))
 
         self.status_item.setMenu_(menu)
         self.update_proxy_menu_state()
