@@ -198,6 +198,7 @@ class AppDelegate(NSObject):
         self.proxy_disable_item = None
         self.proxy_pac_item = None
         self.proxy_manual_item = None
+        self.start_stop_item = None
 
         self.console_font = (
             NSFont.fontWithName_size_("Monaco", 12.0)
@@ -322,11 +323,14 @@ class AppDelegate(NSObject):
         menu.addItem_(proxy_item)
         menu.addItem_(NSMenuItem.separatorItem())
         menu.addItem_(self.make_item("📝 Edit Config", "editConfig:"))
+        self.start_stop_item = self.make_item("▶️ Start", "startChild:")
+        menu.addItem_(self.start_stop_item)
         menu.addItem_(self.make_item("🔄 Restart", "reload:"))
         menu.addItem_(self.make_item(f"🚪 Quit {APP_TITLE}", "quit:"))
 
         self.status_item.setMenu_(menu)
         self.update_proxy_menu_state()
+        self.update_process_menu_state()
 
     def make_item(self, title: str, action: str):
         item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, action, "")
@@ -336,6 +340,21 @@ class AppDelegate(NSObject):
     def menuNeedsUpdate_(self, menu):
         if menu == self.proxy_menu:
             self.update_proxy_menu_state()
+
+    def is_child_running(self) -> bool:
+        process = self.child_process
+        return process is not None and process.poll() is None
+
+    def update_process_menu_state(self):
+        if self.start_stop_item is None:
+            return
+        if self.is_child_running():
+            self.start_stop_item.setTitle_("⏹️ Stop")
+            self.start_stop_item.setAction_("stopChild:")
+        else:
+            self.start_stop_item.setTitle_("▶️ Start")
+            self.start_stop_item.setAction_("startChild:")
+        self.start_stop_item.setTarget_(self)
 
     # ----- 控制台窗口 -----
 
@@ -603,11 +622,13 @@ class AppDelegate(NSObject):
 
         if self.child_process is not None and self.child_process.poll() is None:
             self.append_to_console(f"{CHILD_BIN} is already running.\n", ANSI_COLORS[3])
+            self.update_process_menu_state()
             return True
 
         bin_path = os.path.join(self.work_dir, CHILD_BIN)
         if not os.access(bin_path, os.X_OK):
             self.append_to_console(f"Cannot find executable: {bin_path}\n", ANSI_COLORS[1])
+            self.update_process_menu_state()
             return False
 
         env_name = self.resolve_env_name()
@@ -616,12 +637,14 @@ class AppDelegate(NSObject):
                 f"ENV not set. Define `ENV` in environment or in {self.work_dir}/.env\n",
                 ANSI_COLORS[1],
             )
+            self.update_process_menu_state()
             return False
 
         config_file = f"{env_name}.yaml"
         config_path = os.path.join(self.work_dir, config_file)
         if not os.path.exists(config_path):
             self.append_to_console(f"Config file not found: {config_path}\n", ANSI_COLORS[1])
+            self.update_process_menu_state()
             return False
 
         self.append_to_console(f"Starting: {CHILD_BIN} {config_file}\n", ANSI_COLORS[2])
@@ -640,12 +663,14 @@ class AppDelegate(NSObject):
             )
         except Exception as exc:
             self.append_to_console(f"Failed to start {CHILD_BIN}: {exc}\n", ANSI_COLORS[1])
+            self.update_process_menu_state()
             return False
 
         self.child_process = process
         self.start_reading(process.stdout)
         self.start_reading(process.stderr)
         self.start_watching(process)
+        self.update_process_menu_state()
         return True
 
     def start_reading(self, pipe):
@@ -699,6 +724,7 @@ class AppDelegate(NSObject):
     def stop_child(self) -> bool:
         process = self.child_process
         if process is None:
+            self.update_process_menu_state()
             return True
 
         self.expected_termination_pids.add(process.pid)
@@ -718,15 +744,18 @@ class AppDelegate(NSObject):
                 except subprocess.TimeoutExpired:
                     pass
 
-        if self.child_process is process:
+        stopped = process.poll() is not None
+        if self.child_process is process and stopped:
             self.child_process = None
-        return process.poll() is not None
+        self.update_process_menu_state()
+        return stopped
 
     def child_did_terminate(self, process, return_code: int):
         expected = process.pid in self.expected_termination_pids
         self.expected_termination_pids.discard(process.pid)
         if self.child_process is process:
             self.child_process = None
+        self.update_process_menu_state()
         if expected:
             return
 
@@ -919,6 +948,21 @@ class AppDelegate(NSObject):
         else:
             self.showConsole_(None)
             self.send_notification(APP_TITLE, "Restart failed. Check the console.")
+
+    def startChild_(self, sender):
+        self.showConsole_(sender)
+        if self.start_child():
+            self.send_notification(APP_TITLE, "Started.")
+        else:
+            self.showConsole_(None)
+            self.send_notification(APP_TITLE, "Failed to start. Check the console.")
+
+    def stopChild_(self, sender):
+        self.showConsole_(sender)
+        if self.stop_child():
+            self.append_to_console(f"{CHILD_BIN} stopped.\n", ANSI_COLORS[3])
+        else:
+            self.append_to_console(f"Failed to stop {CHILD_BIN}.\n", ANSI_COLORS[1])
 
     def quit_(self, sender):
         self.stop_child()
