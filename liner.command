@@ -301,7 +301,7 @@ class AppDelegate(NSObject):
     # ----- 控制台窗口 -----
 
     def setup_console_window(self):
-        frame = NSMakeRect(0.0, 0.0, 640.0, 480.0)
+        frame = NSMakeRect(0.0, 0.0, 800.0, 600.0)
         self.console_window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
             frame, WINDOW_STYLE_MASK, NSBackingStoreBuffered, False
         )
