@@ -4,9 +4,9 @@
 # Liner macOS 状态栏托盘程序 —— Python 3.9 单文件脚本版
 #
 # 用法：
-#   bash liner.command
+#   ./liner.command
 #
-# 同目录下需有 `liner` 可执行二进制，本脚本作为它的 GUI 外壳。
+# 同目录下需有同名的可执行二进制，本脚本作为它的 GUI 外壳。
 #
 # 依赖：macOS 自带 /usr/bin/python3，以及 PyObjC 的 Cocoa/
 # SystemConfiguration/Security 桥接。部分 macOS/Xcode CLT 环境不预装
@@ -32,13 +32,24 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+CHILD_BIN = os.path.splitext(os.path.basename(__file__))[0]
+APP_TITLE = CHILD_BIN.title()
+
+DEFAULT_PROXY_HOST = "127.0.0.1"
+DEFAULT_PROXY_PORT = "8080"
+DEFAULT_PAC_PATH = "/proxy.pac"
+
+CONSOLE_MAX_LENGTH = 2_000_000
+CONSOLE_TRIM_EXTRA = 100_000
+CHILD_STOP_TIMEOUT = 5.0
+
 if os.path.isfile('pyobjc.zip') and not os.path.isdir('pyobjc'):
     try:
         import objc, SystemConfiguration
     except ImportError:
         with zipfile.ZipFile('pyobjc.zip', 'r') as zf:
             zf.extractall('pyobjc')
-        sys.path.append('pyobjc')
+sys.path.append('pyobjc')
 
 try:
     import objc
@@ -48,12 +59,10 @@ try:
     from SystemConfiguration import *  # noqa: F401,F403
 except ImportError as error:  # pragma: no cover - only meaningful on non-macOS hosts.
     sys.stderr.write(
-        "liner.command requires macOS /usr/bin/python3 with PyObjC bindings.\n"
+        f"{CHILD_BIN}.command requires macOS /usr/bin/python3 with PyObjC bindings.\n"
         f"Current Python: {sys.executable}\n"
         "If you installed with /usr/bin/python3 -m pip, run this script with:\n"
-        "  /usr/bin/python3 liner.command\n"
-        "or execute it directly so the shebang is used:\n"
-        "  ./liner.command\n"
+        f"  /usr/bin/python3 {CHILD_BIN}.command\n"
         "For Apple's Python 3.9, install:\n"
         "  /usr/bin/python3 -m pip install --user "
         "'pyobjc-core==11.1' 'pyobjc-framework-Cocoa==11.1' "
@@ -63,22 +72,6 @@ except ImportError as error:  # pragma: no cover - only meaningful on non-macOS 
         f"Import error: {error}\n"
     )
     sys.exit(1)
-
-
-# ============================================================
-# 常量
-# ============================================================
-
-CHILD_BIN = "liner"
-APP_TITLE = "Liner"
-
-DEFAULT_PROXY_HOST = "127.0.0.1"
-DEFAULT_PROXY_PORT = "8080"
-DEFAULT_PAC_PATH = "/proxy.pac"
-
-CONSOLE_MAX_LENGTH = 2_000_000
-CONSOLE_TRIM_EXTRA = 100_000
-CHILD_STOP_TIMEOUT = 5.0
 
 
 def appkit_constant(names: Iterable[str], default: Any = None) -> Any:
