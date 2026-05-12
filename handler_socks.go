@@ -11,10 +11,13 @@ import (
 	"strconv"
 	"strings"
 	"text/template"
+	"time"
 
 	"github.com/phuslu/log"
 	"github.com/valyala/bytebufferpool"
 )
+
+const socksHandshakeTimeout = 10 * time.Second
 
 type SocksRequest struct {
 	RemoteAddr  netip.AddrPort
@@ -80,69 +83,192 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 	req.ServerAddr = AddrPortFromNetAddr(conn.LocalAddr())
 	req.TraceID = log.NewXID()
 
-	var b [512]byte
-	n, err := io.ReadAtLeast(conn, b[:], 2)
-	if err != nil || n == 0 {
+	handshakeCtx := ctx
+	var handshakeCancel context.CancelFunc
+	if socksHandshakeTimeout > 0 {
+		deadline := time.Now().Add(socksHandshakeTimeout)
+		_ = conn.SetDeadline(deadline)
+		handshakeCtx, handshakeCancel = context.WithDeadline(ctx, deadline)
+		defer handshakeCancel()
+	}
+
+	var b [513]byte
+	_, err := io.ReadFull(conn, b[:2])
+	if err != nil {
 		log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Msg("socks read handshake error")
 		return
 	}
 
 	req.Version = SocksVersion(b[0])
-	for i := 0; i < int(b[1]); i++ {
-		if b[i+2] == Socks5AuthMethodPassword {
+	switch req.Version {
+	case VersionSocks4:
+		conn.Write([]byte{0x00, byte(Socks4StatusConnectionForbidden), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00})
+		log.Error().NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Int("socks_version", int(req.Version)).Msg("socks version unsupported")
+		return
+	case VersionSocks5:
+	default:
+		log.Error().NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Int("socks_version", int(req.Version)).Msg("socks version unsupported")
+		return
+	}
+
+	nmethods := int(b[1])
+	if nmethods == 0 {
+		conn.Write([]byte{VersionSocks5, 0xff})
+		log.Error().NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Msg("socks empty auth methods")
+		return
+	}
+	_, err = io.ReadFull(conn, b[:nmethods])
+	if err != nil {
+		log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Msg("socks read auth methods error")
+		return
+	}
+
+	var supportNoAuth bool
+	for i := 0; i < nmethods; i++ {
+		switch b[i] {
+		case Socks5AuthMethodNone:
+			supportNoAuth = true
+		case Socks5AuthMethodPassword:
 			req.SupportAuth = true
-			break
 		}
 	}
 
 	if h.userchecker != nil {
 		if !req.SupportAuth {
+			conn.Write([]byte{VersionSocks5, 0xff})
 			log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Msg("socks client not support auth")
 			return
 		}
-		conn.Write([]byte{VersionSocks5, byte(Socks5AuthMethodPassword)})
-		n, err = io.ReadAtLeast(conn, b[:], 4)
-		if err != nil || n == 0 {
+		if _, err = conn.Write([]byte{VersionSocks5, Socks5AuthMethodPassword}); err != nil {
+			log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Msg("socks write auth method error")
+			return
+		}
+		if _, err = io.ReadFull(conn, b[:2]); err != nil {
 			log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Msg("socks read auth error")
 			return
 		}
-		// unpack username & password
-		req.User.Username = string(b[2 : 2+int(b[1])])
-		req.User.Password = string(b[3+int(b[1]) : 3+int(b[1])+int(b[2+int(b[1])])])
-		// auth plugin
-		err := h.userchecker.CheckAuthUser(ctx, &req.User)
+		if b[0] != 1 {
+			conn.Write([]byte{0x01, 0x01})
+			log.Error().NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Int("socks_auth_version", int(b[0])).Msg("socks auth version unsupported")
+			return
+		}
+		ulen := int(b[1])
+		if ulen == 0 {
+			conn.Write([]byte{0x01, 0x01})
+			log.Error().NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Msg("socks empty username")
+			return
+		}
+		if _, err = io.ReadFull(conn, b[:ulen]); err != nil {
+			log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Msg("socks read username error")
+			return
+		}
+		req.User.Username = string(b[:ulen])
+		if _, err = io.ReadFull(conn, b[:1]); err != nil {
+			log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Msg("socks read password length error")
+			return
+		}
+		plen := int(b[0])
+		if _, err = io.ReadFull(conn, b[:plen]); err != nil {
+			log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Msg("socks read password error")
+			return
+		}
+		req.User.Password = string(b[:plen])
+		err := h.userchecker.CheckAuthUser(handshakeCtx, &req.User)
 		if err != nil {
 			log.Warn().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Int("socks_version", int(req.Version)).Msg("auth error")
-			conn.Write([]byte{VersionSocks5, byte(Socks5StatusGeneralFailure)})
+			conn.Write([]byte{0x01, 0x01})
+			return
+		}
+		if _, err = conn.Write([]byte{0x01, 0x00}); err != nil {
+			log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("forward_policy", h.Config.Forward.Policy).Msg("socks write auth error")
+			return
+		}
+	} else {
+		if !supportNoAuth {
+			conn.Write([]byte{VersionSocks5, 0xff})
+			log.Error().NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Msg("socks client not support no-auth")
+			return
+		}
+		if _, err = conn.Write([]byte{VersionSocks5, Socks5AuthMethodNone}); err != nil {
+			log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("forward_policy", h.Config.Forward.Policy).Msg("socks write auth error")
 			return
 		}
 	}
 
-	// auth ok
-	n, err = conn.Write([]byte{VersionSocks5, Socks5AuthMethodNone})
-	if err != nil || n == 0 {
-		log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("forward_policy", h.Config.Forward.Policy).Msg("socks write auth error")
+	_, err = io.ReadFull(conn, b[:4])
+	if err != nil {
+		log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("forward_policy", h.Config.Forward.Policy).Msg("socks read address error")
 		return
 	}
-
-	n, err = io.ReadAtLeast(conn, b[:], 8)
-	if (err != nil && !strings.HasSuffix(err.Error(), " EOF")) || n == 0 {
-		log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("forward_policy", h.Config.Forward.Policy).Msg("socks read address error")
+	if SocksVersion(b[0]) != VersionSocks5 {
+		WriteSocks5Status(conn, Socks5StatusGeneralFailure)
+		log.Error().NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Int("socks_version", int(b[0])).Str("forward_policy", h.Config.Forward.Policy).Msg("socks request version unsupported")
+		return
+	}
+	if b[2] != 0 {
+		WriteSocks5Status(conn, Socks5StatusGeneralFailure)
+		log.Error().NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Int("socks_reserved", int(b[2])).Str("forward_policy", h.Config.Forward.Policy).Msg("socks request reserved byte invalid")
 		return
 	}
 
 	req.ConnectType = SocksCommand(b[1])
-
 	var addressType = Socks5AddressType(b[3])
 	switch addressType {
 	case Socks5IPv4Address:
-		req.Host = netip.AddrFrom4(*(*[4]byte)(b[4:8])).String()
+		if _, err = io.ReadFull(conn, b[:4]); err != nil {
+			log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("forward_policy", h.Config.Forward.Policy).Msg("socks read ipv4 address error")
+			return
+		}
+		req.Host = netip.AddrFrom4(*(*[4]byte)(b[:4])).String()
 	case Socks5DomainName:
-		req.Host = string(b[5 : 5+int(b[4])]) //b[4]表示域名的长度
+		if _, err = io.ReadFull(conn, b[:1]); err != nil {
+			log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("forward_policy", h.Config.Forward.Policy).Msg("socks read domain length error")
+			return
+		}
+		domainLen := int(b[0])
+		if domainLen == 0 {
+			WriteSocks5Status(conn, Socks5StatusAddressTypeNotSupported)
+			log.Error().NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("forward_policy", h.Config.Forward.Policy).Msg("socks empty domain")
+			return
+		}
+		if _, err = io.ReadFull(conn, b[:domainLen]); err != nil {
+			log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("forward_policy", h.Config.Forward.Policy).Msg("socks read domain error")
+			return
+		}
+		req.Host = string(b[:domainLen])
 	case Socks5IPv6Address:
-		req.Host = netip.AddrFrom16(*(*[16]byte)(b[4:20])).String()
+		if _, err = io.ReadFull(conn, b[:16]); err != nil {
+			log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("forward_policy", h.Config.Forward.Policy).Msg("socks read ipv6 address error")
+			return
+		}
+		req.Host = netip.AddrFrom16(*(*[16]byte)(b[:16])).String()
+	default:
+		WriteSocks5Status(conn, Socks5StatusAddressTypeNotSupported)
+		log.Error().NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Int("socks_address_type", int(addressType)).Str("forward_policy", h.Config.Forward.Policy).Msg("socks address type unsupported")
+		return
 	}
-	req.Port = int(b[n-2])<<8 | int(b[n-1])
+	if _, err = io.ReadFull(conn, b[:2]); err != nil {
+		log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("forward_policy", h.Config.Forward.Policy).Msg("socks read port error")
+		return
+	}
+	req.Port = int(b[0])<<8 | int(b[1])
+	_ = conn.SetDeadline(time.Time{})
+	if handshakeCancel != nil {
+		handshakeCancel()
+		handshakeCancel = nil
+	}
+
+	switch req.ConnectType {
+	case SocksCommandConnectTCP:
+	case SocksCommandConnectUDP:
+		WriteSocks5Status(conn, Socks5StatusCommandNotSupported)
+		log.Error().NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Int("socks_command", int(req.ConnectType)).Str("forward_policy", h.Config.Forward.Policy).Msg("socks udp associate unsupported")
+		return
+	default:
+		WriteSocks5Status(conn, Socks5StatusCommandNotSupported)
+		log.Error().NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Int("socks_command", int(req.ConnectType)).Str("forward_policy", h.Config.Forward.Policy).Msg("socks command unsupported")
+		return
+	}
 
 	var speedLimit int64
 	if s := req.User.Attrs["speed_limit"]; s != "" {
@@ -261,10 +387,6 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 	}
 
 	network := "tcp"
-	switch req.ConnectType {
-	case SocksCommandConnectUDP:
-		network = "udp"
-	}
 
 	log.Info().NetIPAddrPort("server_addr", req.ServerAddr).Int("socks_version", int(req.Version)).Str("username", req.User.Username).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("socks_network", network).Str("socks_host", req.Host).Int("socks_port", req.Port).Str("forward_policy_name", policyName).Str("forward_dialer_name", dialerName).Msg("forward socks request")
 
@@ -295,8 +417,19 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 		(ConnOps{tc, nil}).SetTcpMaxPacingRate(int(speedLimit))
 	}
 
-	go io.Copy(rconn, conn)
-	_, _ = io.Copy(conn, rconn)
+	done := make(chan struct{}, 2)
+	go func() {
+		_, _ = io.Copy(rconn, conn)
+		done <- struct{}{}
+	}()
+	go func() {
+		_, _ = io.Copy(conn, rconn)
+		done <- struct{}{}
+	}()
+	<-done
+	_ = conn.Close()
+	_ = rconn.Close()
+	<-done
 
 	if h.Config.Forward.Log {
 		var info GeoIPInfo

@@ -25,7 +25,8 @@ Core capabilities include:
   listeners.
 - MASQUE-style HTTP tunnels and reverse tunnels under `/.well-known/masque/*`
   and `/.well-known/reverse/*`.
-- SOCKS4, SOCKS4a, SOCKS5, and SOCKS5H server and dialer support.
+- SOCKS5 CONNECT server support and SOCKS4, SOCKS4a, SOCKS5, and SOCKS5H dialer
+  support.
 - SSH server and SSH dialer support, including shell, SFTP, direct-tcpip, and
   multiplexed transport.
 - Standalone DNS listeners for UDP, TCP, and DoT, plus DoH through the HTTP web
@@ -364,8 +365,9 @@ stream copying.
 - `HTTPWebShellHandler` serves PTY-backed shells over WebSocket.
 - `HTTPWebLogtailHandler` streams the in-memory ring buffer and requires
   `allow_logtail`.
-- `SocksHandler` implements SOCKS4/4a/5, username/password auth, PSK transport,
-  UDP associate, policy templates, speed limits, and IPv6 preference flags.
+- `SocksHandler` implements SOCKS5 CONNECT, username/password auth, PSK
+  transport, policy templates, speed limits, and IPv6 preference flags. SOCKS
+  UDP ASSOCIATE and non-SOCKS5 server commands are rejected explicitly.
 - `SniHandler` inspects TLS ClientHello SNI without terminating TLS and forwards
   to a template-selected host and dialer.
 - `StreamHandler` forwards raw TCP, optionally terminates TLS, injects proxy
