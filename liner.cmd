@@ -96,15 +96,11 @@ public static class LinerNativeMethods
 
 $script:ChildBin = 'liner.exe'
 $script:AppTitle = 'Liner'
-$script:DefaultProxyHost = '127.0.0.1'
-$script:DefaultProxyPort = '8080'
-$script:DefaultPacPath = '/proxy.pac'
 $script:IgnoredProfileFiles = @('example.yaml')
 $script:InternetSettingsPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings'
 $script:ChildStopTimeoutMs = 5000
 
 $script:WorkDir = Split-Path -Parent $script:ScriptPath
-$script:DotEnv = @{}
 $script:Profiles = @()
 $script:SelectedProfile = $null
 $script:ChildProcess = $null
@@ -204,59 +200,12 @@ function New-ProxySettings {
         [string]$Port,
         [string]$PacUrl
     )
-    if (-not $PacUrl) {
-        $PacUrl = 'http://{0}:{1}{2}' -f (Get-UrlHost $HostName), $Port, $script:DefaultPacPath
-    }
     [pscustomobject]@{
         Host = $HostName
         Port = $Port
         PacUrl = $PacUrl
         Address = ('{0}:{1}' -f (Get-UrlHost $HostName), $Port)
     }
-}
-
-function Read-DotEnv {
-    $path = Join-Path $script:WorkDir '.env'
-    $values = @{}
-    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
-        return $values
-    }
-
-    foreach ($rawLine in Get-Content -LiteralPath $path -Encoding UTF8) {
-        $line = $rawLine.Trim()
-        if (-not $line -or $line.StartsWith('#')) {
-            continue
-        }
-        if ($line.StartsWith('export ')) {
-            $line = $line.Substring(7).Trim()
-        }
-        $parts = $line -split '=', 2
-        if ($parts.Count -ne 2) {
-            continue
-        }
-        $key = $parts[0].Trim()
-        $value = Strip-MatchingQuotes $parts[1].Trim()
-        if ($key -and $value) {
-            $values[$key] = $value
-        }
-    }
-    return $values
-}
-
-function Resolve-Setting {
-    param([string[]]$Keys)
-    foreach ($key in $Keys) {
-        $value = [Environment]::GetEnvironmentVariable($key)
-        if ($value) {
-            return $value
-        }
-    }
-    foreach ($key in $Keys) {
-        if ($script:DotEnv.ContainsKey($key) -and $script:DotEnv[$key]) {
-            return $script:DotEnv[$key]
-        }
-    }
-    return $null
 }
 
 function Test-LinerProfileFile {
@@ -347,14 +296,14 @@ function Get-FirstHttpListen {
         }
 
         if ($rawLine.Length -gt 0 -and -not [char]::IsWhiteSpace($rawLine[0]) -and -not $trimmed.StartsWith('- ')) {
-            break
+            return [pscustomobject]@{ HasHttp = $true; Listen = $null }
         }
 
         if ($inListenBlock) {
             if ($trimmed.StartsWith('- ')) {
                 $value = Clean-YamlScalar $trimmed.Substring(2)
                 if ($value) {
-                    return $value
+                    return [pscustomobject]@{ HasHttp = $true; Listen = $value }
                 }
             }
             if (-not $trimmed.StartsWith('#')) {
@@ -375,8 +324,143 @@ function Get-FirstHttpListen {
         if (-not $rawValue) {
             $inListenBlock = $true
         } else {
-            return Get-FirstListenScalar $rawValue
+            return [pscustomobject]@{ HasHttp = $true; Listen = (Get-FirstListenScalar $rawValue) }
         }
+    }
+    return [pscustomobject]@{ HasHttp = $inHttp; Listen = $null }
+}
+
+function Get-LineIndent {
+    param([string]$RawLine)
+    return $RawLine.Length - $RawLine.TrimStart().Length
+}
+
+function Normalize-WebLocation {
+    param([string]$Location)
+    if (-not $Location.StartsWith('/')) {
+        return '/' + $Location
+    }
+    return $Location
+}
+
+function Test-PacLocation {
+    param([string]$Location)
+    if (-not $Location) {
+        return $false
+    }
+    $path = ($Location -split '\?', 2)[0].ToLowerInvariant()
+    return $path.EndsWith('.pac')
+}
+
+function Get-PacUrl {
+    param(
+        [string]$HostName,
+        [string]$Port,
+        [string]$Location
+    )
+    return 'http://{0}:{1}{2}' -f (Get-UrlHost $HostName), $Port, (Normalize-WebLocation $Location)
+}
+
+function Get-FirstHttpPacLocation {
+    param([string]$YamlText)
+    $inHttp = $false
+    $inWeb = $false
+    $webIndent = 0
+    $webItemIndent = $null
+    $webLocation = $null
+    $webFile = $null
+    $webHasIndex = $false
+
+    $flushWebItem = {
+        if (-not $webLocation -or -not $webHasIndex) {
+            return $null
+        }
+        if ((Test-PacLocation $webLocation) -or ($webFile -and (Test-PacLocation $webFile))) {
+            return Normalize-WebLocation $webLocation
+        }
+        return $null
+    }
+
+    foreach ($rawLine in ($YamlText -split "`r?`n")) {
+        $trimmed = $rawLine.Trim()
+        if (-not $trimmed -or $trimmed.StartsWith('#')) {
+            continue
+        }
+
+        $indent = Get-LineIndent $rawLine
+        if (-not $inHttp) {
+            if ($trimmed -eq 'http:' -or $trimmed.StartsWith('http: ')) {
+                $inHttp = $true
+            }
+            continue
+        }
+
+        if ($rawLine.Length -gt 0 -and -not [char]::IsWhiteSpace($rawLine[0]) -and -not $trimmed.StartsWith('- ')) {
+            return & $flushWebItem
+        }
+
+        if ($inWeb -and $indent -le $webIndent) {
+            $location = & $flushWebItem
+            if ($location) {
+                return $location
+            }
+            $inWeb = $false
+            $webItemIndent = $null
+            $webLocation = $null
+            $webFile = $null
+            $webHasIndex = $false
+        }
+
+        if ($trimmed.StartsWith('- ')) {
+            $candidate = $trimmed.Substring(2).Trim()
+        } else {
+            $candidate = $trimmed
+        }
+
+        if ($inWeb) {
+            if ($trimmed.StartsWith('- ') -and $indent -gt $webIndent) {
+                if ($null -eq $webItemIndent) {
+                    $webItemIndent = $indent
+                }
+                if ($indent -eq $webItemIndent) {
+                    $location = & $flushWebItem
+                    if ($location) {
+                        return $location
+                    }
+                    $webLocation = $null
+                    $webFile = $null
+                    $webHasIndex = $false
+                    $candidate = $trimmed.Substring(2).Trim()
+                }
+            }
+
+            if ($candidate.StartsWith('location:')) {
+                $webLocation = Clean-YamlScalar $candidate.Substring('location:'.Length).Trim()
+            } elseif ($candidate.StartsWith('index:')) {
+                $webHasIndex = $true
+            } elseif ($candidate.StartsWith('file:')) {
+                $webFile = Clean-YamlScalar $candidate.Substring('file:'.Length).Trim()
+            }
+
+            $location = & $flushWebItem
+            if ($location) {
+                return $location
+            }
+            continue
+        }
+
+        if ($candidate.StartsWith('web:')) {
+            $inWeb = $true
+            $webIndent = $indent
+            $webItemIndent = $null
+            $webLocation = $null
+            $webFile = $null
+            $webHasIndex = $false
+        }
+    }
+
+    if ($inHttp) {
+        return & $flushWebItem
     }
     return $null
 }
@@ -385,7 +469,7 @@ function Get-ProxyHostForListenHost {
     param([string]$HostName)
     $trimmed = $HostName.Trim()
     if (-not $trimmed -or $trimmed -eq '*' -or $trimmed -eq '0.0.0.0' -or $trimmed -eq '::' -or $trimmed -eq '::0') {
-        return $script:DefaultProxyHost
+        return '127.0.0.1'
     }
     return $trimmed
 }
@@ -418,7 +502,7 @@ function Get-ProxySettingsFromListen {
         $hostName = $listen.Substring(0, $index)
         $port = $listen.Substring($index + 1)
     } elseif ($listen -match '^\d+$') {
-        $hostName = $script:DefaultProxyHost
+        $hostName = ''
         $port = $listen
     } else {
         return $null
@@ -435,10 +519,29 @@ function Get-ProxySettingsFromListen {
     return New-ProxySettings (Get-ProxyHostForListenHost $hostName) ([string]$portNumber) $null
 }
 
-function Infer-ProxySettingsFromConfig {
+function Get-ProxySettingsUnavailableTooltip {
     if (-not $script:SelectedProfile) {
-        return $null
+        return 'No profile selected'
     }
+    $config = Inspect-ProxyConfig
+    if (-not $config.HasHttp) {
+        return 'No http: section in selected profile'
+    }
+    return 'No HTTP listen address found'
+}
+
+function Get-ProxyPacUnavailableTooltip {
+    return "No .pac web location in selected profile's http: section"
+}
+
+function Inspect-ProxyConfig {
+    if (-not $script:SelectedProfile) {
+        return [pscustomobject]@{ HasHttp = $false; Settings = $null }
+    }
+
+    $hasHttp = $false
+    $settings = $null
+    $pacLocation = $null
     $configPath = Join-Path $script:WorkDir $script:SelectedProfile
     foreach ($path in Get-ConfigDataPaths $configPath) {
         try {
@@ -446,36 +549,19 @@ function Infer-ProxySettingsFromConfig {
         } catch {
             continue
         }
-        $listen = Get-FirstHttpListen $content
-        if ($listen) {
-            $settings = Get-ProxySettingsFromListen $listen
-            if ($settings) {
-                return $settings
-            }
+        $listenInfo = Get-FirstHttpListen $content
+        $hasHttp = $hasHttp -or [bool]$listenInfo.HasHttp
+        if (-not $settings -and $listenInfo.Listen) {
+            $settings = Get-ProxySettingsFromListen $listenInfo.Listen
+        }
+        if (-not $pacLocation) {
+            $pacLocation = Get-FirstHttpPacLocation $content
         }
     }
-    return $null
-}
-
-function Resolve-ProxySettings {
-    $inferred = Infer-ProxySettingsFromConfig
-    if (-not $inferred) {
-        $inferred = New-ProxySettings $script:DefaultProxyHost $script:DefaultProxyPort $null
+    if ($settings -and $pacLocation) {
+        $settings.PacUrl = Get-PacUrl $settings.Host $settings.Port $pacLocation
     }
-
-    $hostName = Resolve-Setting @('LINER_PROXY_HOST', 'PROXY_HOST')
-    if (-not $hostName) {
-        $hostName = $inferred.Host
-    }
-    $port = Resolve-Setting @('LINER_PROXY_PORT', 'PROXY_PORT')
-    if (-not $port) {
-        $port = $inferred.Port
-    }
-    $pacUrl = Resolve-Setting @('LINER_PAC_URL', 'PAC_URL')
-    if (-not $pacUrl) {
-        $pacUrl = 'http://{0}:{1}{2}' -f (Get-UrlHost $hostName), $port, $script:DefaultPacPath
-    }
-    return New-ProxySettings $hostName $port $pacUrl
+    return [pscustomobject]@{ HasHttp = $hasHttp; Settings = $settings }
 }
 
 function Set-RegDword {
@@ -537,12 +623,18 @@ function Set-SystemProxy {
             Remove-RegValue 'AutoConfigURL'
         }
         'pac' {
+            if (-not $Settings -or -not $Settings.PacUrl) {
+                throw 'missing proxy settings'
+            }
             Set-RegDword 'ProxyEnable' 0
             Set-RegDword 'AutoDetect' 0
             Remove-RegValue 'ProxyServer'
             Set-RegString 'AutoConfigURL' $Settings.PacUrl
         }
         'http' {
+            if (-not $Settings) {
+                throw 'missing proxy settings'
+            }
             Set-RegDword 'ProxyEnable' 1
             Set-RegDword 'AutoDetect' 0
             Remove-RegValue 'AutoConfigURL'
@@ -759,9 +851,22 @@ function Update-ProxyMenuState {
         return
     }
 
-    $settings = Resolve-ProxySettings
-    $script:ProxyPacItem.ToolTipText = $settings.PacUrl
-    $script:ProxyManualItem.ToolTipText = $settings.Address
+    $config = Inspect-ProxyConfig
+    $settings = $config.Settings
+    $script:ProxyPacItem.Enabled = [bool]($settings -and $settings.PacUrl)
+    $script:ProxyManualItem.Enabled = [bool]$settings
+    if ($settings) {
+        if ($settings.PacUrl) {
+            $script:ProxyPacItem.ToolTipText = $settings.PacUrl
+        } else {
+            $script:ProxyPacItem.ToolTipText = Get-ProxyPacUnavailableTooltip
+        }
+        $script:ProxyManualItem.ToolTipText = $settings.Address
+    } else {
+        $tooltip = Get-ProxySettingsUnavailableTooltip
+        $script:ProxyPacItem.ToolTipText = $tooltip
+        $script:ProxyManualItem.ToolTipText = $tooltip
+    }
 
     $mode = $null
     try {
@@ -777,7 +882,15 @@ function Update-ProxyMenuState {
 
 function Apply-ProxyMode {
     param([string]$Mode)
-    $settings = Resolve-ProxySettings
+    if ($Mode -eq 'off') {
+        $settings = $null
+    } else {
+        $settings = (Inspect-ProxyConfig).Settings
+        if (-not $settings -or ($Mode -eq 'pac' -and -not $settings.PacUrl)) {
+            Update-ProxyMenuState
+            throw 'System proxy mode unavailable: selected profile has no usable proxy endpoint.'
+        }
+    }
     $services = Set-SystemProxy $Mode $settings
     Update-ProxyMenuState
     switch ($Mode) {
@@ -1066,7 +1179,6 @@ function Setup-Tray {
     Update-ProcessMenuState
 }
 
-$script:DotEnv = Read-DotEnv
 Load-Profiles
 
 $script:AppContext = New-Object System.Windows.Forms.ApplicationContext
