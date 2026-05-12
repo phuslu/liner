@@ -35,10 +35,6 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 CHILD_BIN = os.path.splitext(os.path.basename(__file__))[0]
 APP_TITLE = CHILD_BIN.title()
 
-DEFAULT_PROXY_HOST = "127.0.0.1"
-DEFAULT_PROXY_PORT = "8080"
-DEFAULT_PAC_PATH = "/proxy.pac"
-
 CONSOLE_MAX_LENGTH = 2_000_000
 CONSOLE_TRIM_EXTRA = 100_000
 CHILD_STOP_TIMEOUT = 5.0
@@ -157,19 +153,11 @@ class ConsoleBorderView(NSView):
 class ProxySettings:
     host: str
     port: str
-    pac_url: str
+    pac_url: Optional[str] = None
 
     @property
     def address(self) -> str:
         return f"{self.url_host(self.host)}:{self.port}"
-
-    @classmethod
-    def default_for(cls, host: str, port: str) -> "ProxySettings":
-        return cls(
-            host=host,
-            port=port,
-            pac_url=f"http://{cls.url_host(host)}:{port}{DEFAULT_PAC_PATH}",
-        )
 
     @staticmethod
     def url_host(host: str) -> str:
@@ -210,7 +198,6 @@ class AppDelegate(NSObject):
             or NSFont.userFixedPitchFontOfSize_(12.0)
         )
         self.work_dir = self.resolve_work_dir()
-        self.dot_env = self.read_dot_env()
         self.load_profiles()
         return self
 
@@ -331,12 +318,12 @@ class AppDelegate(NSObject):
         self.rebuild_profile_menu()
         menu.addItem_(profile_item)
 
-        proxy_settings = self.resolve_proxy_settings()
         proxy_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
             "Network", None, ""
         )
         self.set_item_symbol(proxy_item, "network", "Network")
         submenu = NSMenu.alloc().init()
+        submenu.setAutoenablesItems_(False)
         submenu.setDelegate_(self)
         self.proxy_menu = submenu
 
@@ -346,12 +333,10 @@ class AppDelegate(NSObject):
 
         pac_item = self.make_item("Auto Configuration (PAC)", "setProxyPac:")
         self.proxy_pac_item = pac_item
-        pac_item.setToolTip_(proxy_settings.pac_url)
         submenu.addItem_(pac_item)
 
         manual_item = self.make_item("Manual (HTTP/HTTPS)", "setProxyHttp:")
         self.proxy_manual_item = manual_item
-        manual_item.setToolTip_(proxy_settings.address)
         submenu.addItem_(manual_item)
 
         proxy_item.setSubmenu_(submenu)
@@ -551,60 +536,16 @@ class AppDelegate(NSObject):
             elif kind == "signal":
                 self.terminate_from_signal(event[1])
 
-    # ----- 配置 / .env / 系统代理推断 -----
+    # ----- 配置 / 系统代理推断 -----
 
-    def read_dot_env(self) -> Dict[str, str]:
-        path = os.path.join(self.work_dir, ".env")
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                content = f.read()
-        except OSError:
-            return {}
-
-        values: Dict[str, str] = {}
-        for raw_line in content.splitlines():
-            line = raw_line.strip()
-            if not line or line.startswith("#"):
-                continue
-            if line.startswith("export "):
-                line = line[len("export ") :].strip()
-
-            key, sep, raw_value = line.partition("=")
-            if not sep:
-                continue
-            key = key.strip()
-            value = self.strip_matching_quotes(raw_value.strip())
-            if key and value:
-                values[key] = value
-        return values
-
-    def resolve_setting(self, keys: List[str]) -> Optional[str]:
-        for key in keys:
-            value = os.environ.get(key, "")
-            if value:
-                return value
-
-        for key in keys:
-            value = self.dot_env.get(key, "")
-            if value:
-                return value
-        return None
-
-    def resolve_proxy_settings(self) -> ProxySettings:
-        inferred = self.infer_proxy_settings_from_config() or ProxySettings.default_for(
-            DEFAULT_PROXY_HOST, DEFAULT_PROXY_PORT
-        )
-        host = self.resolve_setting(["LINER_PROXY_HOST", "PROXY_HOST"]) or inferred.host
-        port = self.resolve_setting(["LINER_PROXY_PORT", "PROXY_PORT"]) or inferred.port
-        default_pac_url = f"http://{ProxySettings.url_host(host)}:{port}{DEFAULT_PAC_PATH}"
-        pac_url = self.resolve_setting(["LINER_PAC_URL", "PAC_URL"]) or default_pac_url
-        return ProxySettings(host=host, port=port, pac_url=pac_url)
-
-    def infer_proxy_settings_from_config(self) -> Optional[ProxySettings]:
+    def inspect_proxy_config(self) -> Tuple[bool, Optional[ProxySettings]]:
         config_file = self.selected_profile
         if not config_file:
-            return None
+            return False, None
 
+        has_http = False
+        settings = None
+        pac_location = None
         config_path = os.path.join(self.work_dir, config_file)
         for path in self.config_data_paths(config_path):
             try:
@@ -612,12 +553,28 @@ class AppDelegate(NSObject):
                     content = f.read()
             except OSError:
                 continue
-            listen = self.first_http_listen(content)
-            if listen:
+            found_http, listen = self.first_http_listen(content)
+            has_http = has_http or found_http
+            if settings is None and listen:
                 settings = self.proxy_settings_from_listen(listen)
-                if settings is not None:
-                    return settings
-        return None
+            if pac_location is None:
+                pac_location = self.first_http_pac_location(content)
+        if settings is not None and pac_location is not None:
+            settings.pac_url = self.pac_url_for(
+                settings.host, settings.port, pac_location
+            )
+        return has_http, settings
+
+    def proxy_settings_unavailable_tooltip(self) -> str:
+        if not self.selected_profile:
+            return "No profile selected"
+        has_http, _ = self.inspect_proxy_config()
+        if not has_http:
+            return "No http: section in selected profile"
+        return "No HTTP listen address found"
+
+    def proxy_pac_unavailable_tooltip(self) -> str:
+        return "No .pac web location in selected profile's http: section"
 
     @staticmethod
     def config_data_paths(config_path: str) -> List[str]:
@@ -634,7 +591,7 @@ class AppDelegate(NSObject):
                 overlays.append(os.path.join(overlay_dir, entry))
         return [config_path] + overlays
 
-    def first_http_listen(self, yaml_text: str) -> Optional[str]:
+    def first_http_listen(self, yaml_text: str) -> Tuple[bool, Optional[str]]:
         in_http = False
         in_listen_block = False
 
@@ -649,13 +606,13 @@ class AppDelegate(NSObject):
                 continue
 
             if raw_line and not raw_line[0].isspace() and not trimmed.startswith("- "):
-                break
+                return True, None
 
             if in_listen_block:
                 if trimmed.startswith("- "):
                     value = self.clean_yaml_scalar(trimmed[2:])
                     if value:
-                        return value
+                        return True, value
                 if not trimmed.startswith("#"):
                     in_listen_block = False
 
@@ -667,9 +624,109 @@ class AppDelegate(NSObject):
             if not raw_value:
                 in_listen_block = True
             else:
-                return self.first_listen_scalar(raw_value)
+                return True, self.first_listen_scalar(raw_value)
 
-        return None
+        return in_http, None
+
+    def first_http_pac_location(self, yaml_text: str) -> Optional[str]:
+        in_http = False
+        in_web = False
+        web_indent = 0
+        web_item_indent: Optional[int] = None
+        web_location: Optional[str] = None
+        web_file: Optional[str] = None
+        web_has_index = False
+
+        def flush_web_item() -> Optional[str]:
+            if not web_location or not web_has_index:
+                return None
+            if self.is_pac_location(web_location) or (
+                web_file is not None and self.is_pac_location(web_file)
+            ):
+                return self.normalize_web_location(web_location)
+            return None
+
+        for raw_line in yaml_text.splitlines():
+            trimmed = raw_line.strip()
+            if not trimmed or trimmed.startswith("#"):
+                continue
+
+            indent = self.line_indent(raw_line)
+            if not in_http:
+                if trimmed == "http:" or trimmed.startswith("http: "):
+                    in_http = True
+                continue
+
+            if raw_line and not raw_line[0].isspace() and not trimmed.startswith("- "):
+                return flush_web_item()
+
+            if in_web and indent <= web_indent:
+                location = flush_web_item()
+                if location:
+                    return location
+                in_web = False
+                web_item_indent = None
+                web_location = None
+                web_file = None
+                web_has_index = False
+
+            candidate = trimmed[2:].strip() if trimmed.startswith("- ") else trimmed
+            if in_web:
+                if trimmed.startswith("- ") and indent > web_indent:
+                    if web_item_indent is None:
+                        web_item_indent = indent
+                    if indent == web_item_indent:
+                        location = flush_web_item()
+                        if location:
+                            return location
+                        web_location = None
+                        web_file = None
+                        web_has_index = False
+                        candidate = trimmed[2:].strip()
+
+                if candidate.startswith("location:"):
+                    web_location = self.clean_yaml_scalar(
+                        candidate[len("location:") :].strip()
+                    )
+                elif candidate.startswith("index:"):
+                    web_has_index = True
+                elif candidate.startswith("file:"):
+                    web_file = self.clean_yaml_scalar(candidate[len("file:") :].strip())
+
+                location = flush_web_item()
+                if location:
+                    return location
+                continue
+
+            if candidate.startswith("web:"):
+                in_web = True
+                web_indent = indent
+                web_item_indent = None
+                web_location = None
+                web_file = None
+                web_has_index = False
+
+        return flush_web_item() if in_http else None
+
+    @staticmethod
+    def line_indent(raw_line: str) -> int:
+        return len(raw_line) - len(raw_line.lstrip())
+
+    @staticmethod
+    def normalize_web_location(location: str) -> str:
+        if not location.startswith("/"):
+            return "/" + location
+        return location
+
+    @staticmethod
+    def is_pac_location(location: str) -> bool:
+        path = location.split("?", 1)[0].lower()
+        return path.endswith(".pac")
+
+    @staticmethod
+    def pac_url_for(host: str, port: str, location: str) -> str:
+        path = AppDelegate.normalize_web_location(location)
+        return f"http://{ProxySettings.url_host(host)}:{port}{path}"
 
     def first_listen_scalar(self, raw: str) -> Optional[str]:
         value = self.strip_yaml_comment(raw)
@@ -719,7 +776,7 @@ class AppDelegate(NSObject):
         elif ":" in listen:
             host, port = listen.rsplit(":", 1)
         elif listen.isdigit():
-            host = DEFAULT_PROXY_HOST
+            host = ""
             port = listen
         else:
             return None
@@ -732,13 +789,13 @@ class AppDelegate(NSObject):
             return None
 
         normalized_host = self.proxy_host_for_listen_host(host)
-        return ProxySettings.default_for(normalized_host, str(port_number))
+        return ProxySettings(normalized_host, str(port_number))
 
     @staticmethod
     def proxy_host_for_listen_host(host: str) -> str:
         trimmed = host.strip()
         if trimmed in ("", "*", "0.0.0.0", "::", "::0"):
-            return DEFAULT_PROXY_HOST
+            return "127.0.0.1"
         return trimmed
 
     # ----- 子进程 -----
@@ -1111,13 +1168,23 @@ class AppDelegate(NSObject):
         NSApplication.sharedApplication().terminate_(None)
 
     def apply_proxy_mode(self, mode: str):
-        settings = self.resolve_proxy_settings()
         if mode == "off":
+            settings = None
             mode_name = "Disable"
-        elif mode == "pac":
-            mode_name = f"PAC {settings.pac_url}"
         else:
-            mode_name = f"HTTP/HTTPS {settings.address}"
+            _, settings = self.inspect_proxy_config()
+            if settings is None or (mode == "pac" and not settings.pac_url):
+                self.update_proxy_menu_state()
+                self.append_to_console(
+                    "System proxy mode unavailable: selected profile has no usable proxy endpoint.\n",
+                    ANSI_COLORS[1],
+                )
+                self.showConsole_(None)
+                return
+            if mode == "pac":
+                mode_name = f"PAC {settings.pac_url}"
+            else:
+                mode_name = f"HTTP/HTTPS {settings.address}"
 
         try:
             services = self.set_system_proxy(mode, settings)
@@ -1140,9 +1207,20 @@ class AppDelegate(NSObject):
         ):
             return
 
-        settings = self.resolve_proxy_settings()
-        self.proxy_pac_item.setToolTip_(settings.pac_url)
-        self.proxy_manual_item.setToolTip_(settings.address)
+        _, settings = self.inspect_proxy_config()
+        pac_enabled = settings is not None and settings.pac_url is not None
+        manual_enabled = settings is not None
+        self.proxy_pac_item.setEnabled_(pac_enabled)
+        self.proxy_manual_item.setEnabled_(manual_enabled)
+        if settings is None:
+            tooltip = self.proxy_settings_unavailable_tooltip()
+            self.proxy_pac_item.setToolTip_(tooltip)
+            self.proxy_manual_item.setToolTip_(tooltip)
+        else:
+            self.proxy_pac_item.setToolTip_(
+                settings.pac_url or self.proxy_pac_unavailable_tooltip()
+            )
+            self.proxy_manual_item.setToolTip_(settings.address)
 
         mode = None
         try:
@@ -1243,7 +1321,7 @@ class AppDelegate(NSObject):
         except (TypeError, ValueError):
             return str(value).strip().lower() in ("1", "true", "yes", "on")
 
-    def set_system_proxy(self, mode: str, settings: ProxySettings) -> List[str]:
+    def set_system_proxy(self, mode: str, settings: Optional[ProxySettings]) -> List[str]:
         prefs = self.authorized_preferences()
         network_set = SCNetworkSetCopyCurrent(prefs)
         if not network_set:
@@ -1281,18 +1359,24 @@ class AppDelegate(NSObject):
         return changed
 
     @staticmethod
-    def apply_proxy_config(config: Dict[Any, Any], mode: str, settings: ProxySettings):
+    def apply_proxy_config(
+        config: Dict[Any, Any], mode: str, settings: Optional[ProxySettings]
+    ):
         config[str(kSCPropNetProxiesHTTPEnable)] = 1 if mode == "http" else 0
         config[str(kSCPropNetProxiesHTTPSEnable)] = 1 if mode == "http" else 0
         config[str(kSCPropNetProxiesProxyAutoConfigEnable)] = 1 if mode == "pac" else 0
 
         if mode == "http":
+            if settings is None:
+                raise RuntimeError("missing proxy settings")
             port = int(settings.port)
             config[str(kSCPropNetProxiesHTTPProxy)] = settings.host
             config[str(kSCPropNetProxiesHTTPPort)] = port
             config[str(kSCPropNetProxiesHTTPSProxy)] = settings.host
             config[str(kSCPropNetProxiesHTTPSPort)] = port
         elif mode == "pac":
+            if settings is None or settings.pac_url is None:
+                raise RuntimeError("missing proxy settings")
             config[str(kSCPropNetProxiesProxyAutoConfigURLString)] = settings.pac_url
 
     def authorized_preferences(self):
