@@ -25,8 +25,8 @@ Core capabilities include:
   listeners.
 - MASQUE-style HTTP tunnels and reverse tunnels under `/.well-known/masque/*`
   and `/.well-known/reverse/*`.
-- SOCKS5 CONNECT server support and SOCKS4, SOCKS4a, SOCKS5, and SOCKS5H dialer
-  support.
+- SOCKS5 CONNECT and UDP ASSOCIATE server support, plus SOCKS4, SOCKS4a,
+  SOCKS5, and SOCKS5H dialer support.
 - SSH server and SSH dialer support, including shell, SFTP, direct-tcpip, and
   multiplexed transport.
 - Standalone DNS listeners for UDP, TCP, and DoT, plus DoH through the HTTP web
@@ -365,9 +365,12 @@ stream copying.
 - `HTTPWebShellHandler` serves PTY-backed shells over WebSocket.
 - `HTTPWebLogtailHandler` streams the in-memory ring buffer and requires
   `allow_logtail`.
-- `SocksHandler` implements SOCKS5 CONNECT, username/password auth, PSK
-  transport, policy templates, speed limits, and IPv6 preference flags. SOCKS
-  UDP ASSOCIATE and non-SOCKS5 server commands are rejected explicitly.
+- `SocksHandler` implements SOCKS5 CONNECT, UDP ASSOCIATE, username/password
+  auth, PSK transport, policy templates, speed limits, and IPv6 preference
+  flags. UDP ASSOCIATE creates a per-association UDP relay, reuses one upstream
+  UDP connection per target, drops unsupported SOCKS UDP fragmentation, and is
+  bounded by `socks[].forward.udp_timeout`. Non-SOCKS5 server commands are
+  rejected explicitly.
 - `SniHandler` inspects TLS ClientHello SNI without terminating TLS and forwards
   to a template-selected host and dialer.
 - `StreamHandler` forwards raw TCP, optionally terminates TLS, injects proxy
@@ -497,6 +500,9 @@ Current include behavior:
   forward `dialer`. Do not assume every string field supports it.
 - HTTPS handlers reject `psk`; PSK wrapping is valid on plain HTTP listeners and
   compatible client dialers.
+- SOCKS UDP ASSOCIATE relay idle cleanup is controlled by
+  `socks[].forward.udp_timeout`; the default is 120 seconds, and negative values
+  disable the idle timeout.
 - HTTP/3 reverse tunnel stream idle cleanup is controlled by
   `http[].tunnel.idle_timeout` or top-level `tunnel[].idle_timeout`; the default
   is 900 seconds.
@@ -597,6 +603,7 @@ socks:
       policy: |
         {{ if hasSuffix ".local" .Request.Host }}reject{{ end }}
       dialer: local
+      udp_timeout: 120
       log: true
 ```
 
