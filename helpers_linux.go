@@ -155,8 +155,6 @@ func (ops ConnOps) GetProcessInfo() (ConnProcessInfo, error) {
 	return linuxProcessInfoFromSocketInode(entry.inode)
 }
 
-const linuxProcessSnapshotTTL = 200 * time.Millisecond
-
 var (
 	linuxIPv4ProcessSnapshotPtr atomic.Pointer[linuxProcessSnapshot]
 	linuxIPv6ProcessSnapshotPtr atomic.Pointer[linuxProcessSnapshot]
@@ -164,80 +162,47 @@ var (
 	linuxIPv6ProcessSnapshotMu  sync.Mutex
 )
 
-type linuxConnectionEntry struct {
-	localAddr  netip.Addr
-	remoteAddr netip.Addr
-	localPort  uint16
-	remotePort uint16
-	inode      uint64
+type linuxConnEntry struct {
+	src   netip.AddrPort
+	dst   netip.AddrPort
+	inode uint64
 }
 
 type linuxProcessSnapshot struct {
 	createdAt time.Time
-	entries   []linuxConnectionEntry
+	entries   []linuxConnEntry
 }
 
-type linuxInetDiagSockID struct {
-	SPort  uint16
-	DPort  uint16
-	Src    [16]byte
-	Dst    [16]byte
-	If     uint32
-	Cookie [2]uint32
-}
-
-type linuxInetDiagReqV2 struct {
-	Family   uint8
-	Protocol uint8
-	Ext      uint8
-	Pad      uint8
-	States   uint32
-	ID       linuxInetDiagSockID
-}
-
-type linuxInetDiagMsg struct {
-	Family  uint8
-	State   uint8
-	Timer   uint8
-	Retrans uint8
-	ID      linuxInetDiagSockID
-	Expires uint32
-	RQueue  uint32
-	WQueue  uint32
-	UID     uint32
-	Inode   uint32
-}
-
-func findLinuxConnectionEntry(source, destination netip.AddrPort) (linuxConnectionEntry, error) {
+func findLinuxConnectionEntry(source, destination netip.AddrPort) (linuxConnEntry, error) {
 	family := unix.AF_INET
 	if source.Addr().Is6() {
 		family = unix.AF_INET6
 	}
 	ptr, mu := linuxProcessSnapshotState(family)
 	snapshot := ptr.Load()
-	if snapshot != nil && time.Since(snapshot.createdAt) < linuxProcessSnapshotTTL {
-		if entry, ok := matchLinuxConnectionEntry(snapshot.entries, source, destination); ok {
+	if snapshot.fresh() {
+		if entry, ok := snapshot.find(source, destination); ok {
 			return entry, nil
 		}
 		refreshed, err := loadLinuxProcessSnapshot(family, ptr, mu, true, snapshot)
 		if err != nil {
-			return linuxConnectionEntry{}, err
+			return linuxConnEntry{}, err
 		}
-		if entry, ok := matchLinuxConnectionEntry(refreshed.entries, source, destination); ok {
+		if entry, ok := refreshed.find(source, destination); ok {
 			return entry, nil
 		}
-		return linuxConnectionEntry{}, os.ErrNotExist
+		return linuxConnEntry{}, os.ErrNotExist
 	}
 
 	var err error
 	snapshot, err = loadLinuxProcessSnapshot(family, ptr, mu, false, snapshot)
 	if err != nil {
-		return linuxConnectionEntry{}, err
+		return linuxConnEntry{}, err
 	}
-	if entry, ok := matchLinuxConnectionEntry(snapshot.entries, source, destination); ok {
+	if entry, ok := snapshot.find(source, destination); ok {
 		return entry, nil
 	}
-	return linuxConnectionEntry{}, os.ErrNotExist
+	return linuxConnEntry{}, os.ErrNotExist
 }
 
 func linuxProcessSnapshotState(family int) (*atomic.Pointer[linuxProcessSnapshot], *sync.Mutex) {
@@ -249,7 +214,7 @@ func linuxProcessSnapshotState(family int) (*atomic.Pointer[linuxProcessSnapshot
 
 func loadLinuxProcessSnapshot(family int, ptr *atomic.Pointer[linuxProcessSnapshot], mu *sync.Mutex, force bool, seen *linuxProcessSnapshot) (*linuxProcessSnapshot, error) {
 	if !force {
-		if snapshot := ptr.Load(); snapshot != nil && time.Since(snapshot.createdAt) < linuxProcessSnapshotTTL {
+		if snapshot := ptr.Load(); snapshot.fresh() {
 			return snapshot, nil
 		}
 	}
@@ -257,7 +222,7 @@ func loadLinuxProcessSnapshot(family int, ptr *atomic.Pointer[linuxProcessSnapsh
 	mu.Lock()
 	defer mu.Unlock()
 
-	if snapshot := ptr.Load(); snapshot != nil && time.Since(snapshot.createdAt) < linuxProcessSnapshotTTL {
+	if snapshot := ptr.Load(); snapshot.fresh() {
 		if !force || snapshot != seen {
 			return snapshot, nil
 		}
@@ -272,14 +237,49 @@ func loadLinuxProcessSnapshot(family int, ptr *atomic.Pointer[linuxProcessSnapsh
 	return snapshot, nil
 }
 
-func buildLinuxProcessSnapshot(family int) ([]linuxConnectionEntry, error) {
+func (snapshot *linuxProcessSnapshot) fresh() bool {
+	const ttl = 200 * time.Millisecond
+	return snapshot != nil && time.Since(snapshot.createdAt) < ttl
+}
+
+func (snapshot *linuxProcessSnapshot) find(source, destination netip.AddrPort) (linuxConnEntry, bool) {
+	for _, entry := range snapshot.entries {
+		if entry.match(source, destination) {
+			return entry, true
+		}
+	}
+	return linuxConnEntry{}, false
+}
+
+func (entry linuxConnEntry) match(source, destination netip.AddrPort) bool {
+	return entry.src == source && entry.dst == destination
+}
+
+func buildLinuxProcessSnapshot(family int) ([]linuxConnEntry, error) {
+	type inetDiagSockID struct {
+		SPort  uint16
+		DPort  uint16
+		Src    [16]byte
+		Dst    [16]byte
+		If     uint32
+		Cookie [2]uint32
+	}
+	type inetDiagReqV2 struct {
+		Family   uint8
+		Protocol uint8
+		Ext      uint8
+		Pad      uint8
+		States   uint32
+		ID       inetDiagSockID
+	}
+
 	fd, err := unix.Socket(unix.AF_NETLINK, unix.SOCK_RAW|unix.SOCK_CLOEXEC, unix.NETLINK_SOCK_DIAG)
 	if err != nil {
 		return nil, err
 	}
 	defer unix.Close(fd)
 
-	req := linuxInetDiagReqV2{
+	req := inetDiagReqV2{
 		Family:   uint8(family),
 		Protocol: syscall.IPPROTO_TCP,
 		States:   ^uint32(0),
@@ -297,7 +297,7 @@ func buildLinuxProcessSnapshot(family int) ([]linuxConnectionEntry, error) {
 		return nil, err
 	}
 
-	var entries []linuxConnectionEntry
+	var entries []linuxConnEntry
 	reply := make([]byte, 64*1024)
 	for {
 		n, _, err := unix.Recvfrom(fd, reply, 0)
@@ -323,10 +323,8 @@ func buildLinuxProcessSnapshot(family int) ([]linuxConnectionEntry, error) {
 				}
 				return nil, unix.Errno(-e.Error)
 			default:
-				if len(payload) >= int(unsafe.Sizeof(linuxInetDiagMsg{})) {
-					if entry, ok := parseLinuxInetDiagMsg((*linuxInetDiagMsg)(unsafe.Pointer(&payload[0])), family); ok {
-						entries = append(entries, entry)
-					}
+				if entry, ok := parseLinuxInetDiagMsg(payload, family); ok {
+					entries = append(entries, entry)
 				}
 			}
 
@@ -339,40 +337,48 @@ func buildLinuxProcessSnapshot(family int) ([]linuxConnectionEntry, error) {
 	}
 }
 
-func parseLinuxInetDiagMsg(msg *linuxInetDiagMsg, family int) (linuxConnectionEntry, bool) {
-	entry := linuxConnectionEntry{
-		localPort:  linuxNtohs(msg.ID.SPort),
-		remotePort: linuxNtohs(msg.ID.DPort),
-		inode:      uint64(msg.Inode),
+func parseLinuxInetDiagMsg(payload []byte, family int) (linuxConnEntry, bool) {
+	type inetDiagSockID struct {
+		SPort  uint16
+		DPort  uint16
+		Src    [16]byte
+		Dst    [16]byte
+		If     uint32
+		Cookie [2]uint32
 	}
+	type inetDiagMsg struct {
+		Family  uint8
+		State   uint8
+		Timer   uint8
+		Retrans uint8
+		ID      inetDiagSockID
+		Expires uint32
+		RQueue  uint32
+		WQueue  uint32
+		UID     uint32
+		Inode   uint32
+	}
+
+	if len(payload) < int(unsafe.Sizeof(inetDiagMsg{})) {
+		return linuxConnEntry{}, false
+	}
+	msg := (*inetDiagMsg)(unsafe.Pointer(&payload[0]))
+	srcPort, dstPort := linuxNtohs(msg.ID.SPort), linuxNtohs(msg.ID.DPort)
+	entry := linuxConnEntry{inode: uint64(msg.Inode)}
 	switch family {
 	case unix.AF_INET:
 		var src, dst [4]byte
 		copy(src[:], msg.ID.Src[:4])
 		copy(dst[:], msg.ID.Dst[:4])
-		entry.localAddr = netip.AddrFrom4(src)
-		entry.remoteAddr = netip.AddrFrom4(dst)
+		entry.src = netip.AddrPortFrom(netip.AddrFrom4(src), srcPort)
+		entry.dst = netip.AddrPortFrom(netip.AddrFrom4(dst), dstPort)
 	case unix.AF_INET6:
-		entry.localAddr = netip.AddrFrom16(msg.ID.Src).Unmap()
-		entry.remoteAddr = netip.AddrFrom16(msg.ID.Dst).Unmap()
+		entry.src = netip.AddrPortFrom(netip.AddrFrom16(msg.ID.Src).Unmap(), srcPort)
+		entry.dst = netip.AddrPortFrom(netip.AddrFrom16(msg.ID.Dst).Unmap(), dstPort)
 	default:
-		return linuxConnectionEntry{}, false
+		return linuxConnEntry{}, false
 	}
-	return entry, entry.localAddr.IsValid() && entry.remoteAddr.IsValid()
-}
-
-func matchLinuxConnectionEntry(entries []linuxConnectionEntry, source, destination netip.AddrPort) (linuxConnectionEntry, bool) {
-	sourceAddr := source.Addr()
-	destinationAddr := destination.Addr()
-	for _, entry := range entries {
-		if entry.localPort != source.Port() || entry.remotePort != destination.Port() {
-			continue
-		}
-		if entry.localAddr == sourceAddr && entry.remoteAddr == destinationAddr {
-			return entry, true
-		}
-	}
-	return linuxConnectionEntry{}, false
+	return entry, entry.src.IsValid() && entry.dst.IsValid()
 }
 
 func linuxProcessInfoFromSocketInode(inode uint64) (ConnProcessInfo, error) {

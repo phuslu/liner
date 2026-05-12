@@ -225,21 +225,6 @@ func (ops ConnOps) GetProcessInfo() (ConnProcessInfo, error) {
 	return info, nil
 }
 
-const (
-	darwinProcessSnapshotTTL = 200 * time.Millisecond
-
-	darwinXinpgenSize        = 24
-	darwinXsocketOffset      = 104
-	darwinXinpcbForeignPort  = 16
-	darwinXinpcbLocalPort    = 18
-	darwinXinpcbVFlag        = 44
-	darwinXinpcbForeignAddr  = 48
-	darwinXinpcbLocalAddr    = 64
-	darwinXinpcbIPv4Addr     = 12
-	darwinXsocketLastPID     = 68
-	darwinTCPExtraStructSize = 208
-)
-
 var darwinPCBStructSize = func() int {
 	value, _ := syscall.Sysctl("kern.osrelease")
 	major, _, _ := strings.Cut(value, ".")
@@ -252,17 +237,15 @@ var darwinPCBStructSize = func() int {
 	return 384
 }()
 
-type darwinConnectionEntry struct {
-	localAddr  netip.Addr
-	remoteAddr netip.Addr
-	localPort  uint16
-	remotePort uint16
-	pid        uint32
+type darwinConnEntry struct {
+	src netip.AddrPort
+	dst netip.AddrPort
+	pid uint32
 }
 
 type darwinProcessSnapshot struct {
 	createdAt time.Time
-	entries   []darwinConnectionEntry
+	entries   []darwinConnEntry
 }
 
 var (
@@ -270,36 +253,36 @@ var (
 	darwinProcessSnapshotMu  sync.Mutex
 )
 
-func findDarwinConnectionEntry(source, destination netip.AddrPort) (darwinConnectionEntry, error) {
+func findDarwinConnectionEntry(source, destination netip.AddrPort) (darwinConnEntry, error) {
 	snapshot := darwinProcessSnapshotPtr.Load()
-	if snapshot != nil && time.Since(snapshot.createdAt) < darwinProcessSnapshotTTL {
-		if entry, ok := matchDarwinConnectionEntry(snapshot.entries, source, destination); ok {
+	if snapshot.fresh() {
+		if entry, ok := snapshot.find(source, destination); ok {
 			return entry, nil
 		}
 		refreshed, err := loadDarwinProcessSnapshot(true, snapshot)
 		if err != nil {
-			return darwinConnectionEntry{}, err
+			return darwinConnEntry{}, err
 		}
-		if entry, ok := matchDarwinConnectionEntry(refreshed.entries, source, destination); ok {
+		if entry, ok := refreshed.find(source, destination); ok {
 			return entry, nil
 		}
-		return darwinConnectionEntry{}, os.ErrNotExist
+		return darwinConnEntry{}, os.ErrNotExist
 	}
 
 	var err error
 	snapshot, err = loadDarwinProcessSnapshot(false, snapshot)
 	if err != nil {
-		return darwinConnectionEntry{}, err
+		return darwinConnEntry{}, err
 	}
-	if entry, ok := matchDarwinConnectionEntry(snapshot.entries, source, destination); ok {
+	if entry, ok := snapshot.find(source, destination); ok {
 		return entry, nil
 	}
-	return darwinConnectionEntry{}, os.ErrNotExist
+	return darwinConnEntry{}, os.ErrNotExist
 }
 
 func loadDarwinProcessSnapshot(force bool, seen *darwinProcessSnapshot) (*darwinProcessSnapshot, error) {
 	if !force {
-		if snapshot := darwinProcessSnapshotPtr.Load(); snapshot != nil && time.Since(snapshot.createdAt) < darwinProcessSnapshotTTL {
+		if snapshot := darwinProcessSnapshotPtr.Load(); snapshot.fresh() {
 			return snapshot, nil
 		}
 	}
@@ -307,7 +290,7 @@ func loadDarwinProcessSnapshot(force bool, seen *darwinProcessSnapshot) (*darwin
 	darwinProcessSnapshotMu.Lock()
 	defer darwinProcessSnapshotMu.Unlock()
 
-	if snapshot := darwinProcessSnapshotPtr.Load(); snapshot != nil && time.Since(snapshot.createdAt) < darwinProcessSnapshotTTL {
+	if snapshot := darwinProcessSnapshotPtr.Load(); snapshot.fresh() {
 		if !force || snapshot != seen {
 			return snapshot, nil
 		}
@@ -322,20 +305,42 @@ func loadDarwinProcessSnapshot(force bool, seen *darwinProcessSnapshot) (*darwin
 	return snapshot, nil
 }
 
-func buildDarwinProcessSnapshot() ([]darwinConnectionEntry, error) {
+func (snapshot *darwinProcessSnapshot) fresh() bool {
+	const ttl = 200 * time.Millisecond
+	return snapshot != nil && time.Since(snapshot.createdAt) < ttl
+}
+
+func (snapshot *darwinProcessSnapshot) find(source, destination netip.AddrPort) (darwinConnEntry, bool) {
+	for _, entry := range snapshot.entries {
+		if entry.match(source, destination) {
+			return entry, true
+		}
+	}
+	return darwinConnEntry{}, false
+}
+
+func (entry darwinConnEntry) match(source, destination netip.AddrPort) bool {
+	return entry.src == source && entry.dst == destination
+}
+
+func buildDarwinProcessSnapshot() ([]darwinConnEntry, error) {
+	const tcpExtraStructSize = 208
+
 	value, err := unix.SysctlRaw("net.inet.tcp.pcblist_n")
 	if err != nil {
 		return nil, fmt.Errorf("tcp pcblist: %w", err)
 	}
-	return parseDarwinProcessSnapshot(value, darwinPCBStructSize+darwinTCPExtraStructSize), nil
+	return parseDarwinProcessSnapshot(value, darwinPCBStructSize+tcpExtraStructSize), nil
 }
 
-func parseDarwinProcessSnapshot(buf []byte, itemSize int) []darwinConnectionEntry {
-	if itemSize <= 0 || len(buf) <= darwinXinpgenSize {
+func parseDarwinProcessSnapshot(buf []byte, itemSize int) []darwinConnEntry {
+	const xinpgenSize = 24
+
+	if itemSize <= 0 || len(buf) <= xinpgenSize {
 		return nil
 	}
-	entries := make([]darwinConnectionEntry, 0, (len(buf)-darwinXinpgenSize)/itemSize)
-	for i := darwinXinpgenSize; i+itemSize <= len(buf); i += itemSize {
+	entries := make([]darwinConnEntry, 0, (len(buf)-xinpgenSize)/itemSize)
+	for i := xinpgenSize; i+itemSize <= len(buf); i += itemSize {
 		if entry, ok := parseDarwinConnectionEntry(buf[i : i+itemSize]); ok {
 			entries = append(entries, entry)
 		}
@@ -343,46 +348,43 @@ func parseDarwinProcessSnapshot(buf []byte, itemSize int) []darwinConnectionEntr
 	return entries
 }
 
-func parseDarwinConnectionEntry(buf []byte) (darwinConnectionEntry, bool) {
+func parseDarwinConnectionEntry(buf []byte) (darwinConnEntry, bool) {
+	const (
+		xsocketOffset       = 104
+		foreignPort         = 16
+		localPort           = 18
+		vflag               = 44
+		foreignAddr         = 48
+		localAddr           = 64
+		ipv4Addr            = 12
+		xsocketLastPID      = 68
+		vflagIPV4      byte = 0x1
+		vflagIPV6      byte = 0x2
+	)
+
 	if len(buf) < darwinPCBStructSize {
-		return darwinConnectionEntry{}, false
+		return darwinConnEntry{}, false
 	}
-	entry := darwinConnectionEntry{
-		remotePort: binary.BigEndian.Uint16(buf[darwinXinpcbForeignPort : darwinXinpcbForeignPort+2]),
-		localPort:  binary.BigEndian.Uint16(buf[darwinXinpcbLocalPort : darwinXinpcbLocalPort+2]),
-		pid:        binary.NativeEndian.Uint32(buf[darwinXsocketOffset+darwinXsocketLastPID : darwinXsocketOffset+darwinXsocketLastPID+4]),
-	}
-	switch flag := buf[darwinXinpcbVFlag]; {
-	case flag&0x1 != 0:
+	srcPort := binary.BigEndian.Uint16(buf[localPort : localPort+2])
+	dstPort := binary.BigEndian.Uint16(buf[foreignPort : foreignPort+2])
+	entry := darwinConnEntry{pid: binary.NativeEndian.Uint32(buf[xsocketOffset+xsocketLastPID : xsocketOffset+xsocketLastPID+4])}
+	switch flag := buf[vflag]; {
+	case flag&vflagIPV4 != 0:
 		var remote, local [4]byte
-		copy(remote[:], buf[darwinXinpcbForeignAddr+darwinXinpcbIPv4Addr:darwinXinpcbForeignAddr+darwinXinpcbIPv4Addr+4])
-		copy(local[:], buf[darwinXinpcbLocalAddr+darwinXinpcbIPv4Addr:darwinXinpcbLocalAddr+darwinXinpcbIPv4Addr+4])
-		entry.remoteAddr = netip.AddrFrom4(remote)
-		entry.localAddr = netip.AddrFrom4(local)
-	case flag&0x2 != 0:
+		copy(remote[:], buf[foreignAddr+ipv4Addr:foreignAddr+ipv4Addr+4])
+		copy(local[:], buf[localAddr+ipv4Addr:localAddr+ipv4Addr+4])
+		entry.src = netip.AddrPortFrom(netip.AddrFrom4(local), srcPort)
+		entry.dst = netip.AddrPortFrom(netip.AddrFrom4(remote), dstPort)
+	case flag&vflagIPV6 != 0:
 		var remote, local [16]byte
-		copy(remote[:], buf[darwinXinpcbForeignAddr:darwinXinpcbForeignAddr+16])
-		copy(local[:], buf[darwinXinpcbLocalAddr:darwinXinpcbLocalAddr+16])
-		entry.remoteAddr = netip.AddrFrom16(remote)
-		entry.localAddr = netip.AddrFrom16(local)
+		copy(remote[:], buf[foreignAddr:foreignAddr+16])
+		copy(local[:], buf[localAddr:localAddr+16])
+		entry.src = netip.AddrPortFrom(netip.AddrFrom16(local), srcPort)
+		entry.dst = netip.AddrPortFrom(netip.AddrFrom16(remote), dstPort)
 	default:
-		return darwinConnectionEntry{}, false
+		return darwinConnEntry{}, false
 	}
 	return entry, true
-}
-
-func matchDarwinConnectionEntry(entries []darwinConnectionEntry, source, destination netip.AddrPort) (darwinConnectionEntry, bool) {
-	sourceAddr := source.Addr()
-	destinationAddr := destination.Addr()
-	for _, entry := range entries {
-		if entry.localPort != source.Port() || entry.remotePort != destination.Port() {
-			continue
-		}
-		if entry.localAddr == sourceAddr && entry.remoteAddr == destinationAddr {
-			return entry, true
-		}
-	}
-	return darwinConnectionEntry{}, false
 }
 
 func darwinNormalizeAddrPort(addrport netip.AddrPort) netip.AddrPort {

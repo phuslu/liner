@@ -263,12 +263,6 @@ func (ops ConnOps) GetProcessInfo() (ConnProcessInfo, error) {
 	return info, nil
 }
 
-const (
-	windowsProcessSnapshotTTL    = 200 * time.Millisecond
-	windowsTCPTableOwnerPIDAll   = 5
-	windowsTCPTableInitialBuffer = 4 * 1024
-)
-
 var (
 	windowsProcGetExtendedTcpTable = windows.NewLazySystemDLL("iphlpapi.dll").NewProc("GetExtendedTcpTable")
 
@@ -278,69 +272,47 @@ var (
 	windowsIPv6ProcessSnapshotMu  sync.Mutex
 )
 
-type windowsConnectionEntry struct {
-	localAddr  netip.Addr
-	remoteAddr netip.Addr
-	localPort  uint16
-	remotePort uint16
-	pid        uint32
+type windowsConnEntry struct {
+	src netip.AddrPort
+	dst netip.AddrPort
+	pid uint32
 }
 
 type windowsProcessSnapshot struct {
 	createdAt time.Time
-	entries   []windowsConnectionEntry
+	entries   []windowsConnEntry
 }
 
-type windowsTCPRowOwnerPID struct {
-	State      uint32
-	LocalAddr  uint32
-	LocalPort  uint32
-	RemoteAddr uint32
-	RemotePort uint32
-	OwningPID  uint32
-}
-
-type windowsTCP6RowOwnerPID struct {
-	LocalAddr     [16]byte
-	LocalScopeID  uint32
-	LocalPort     uint32
-	RemoteAddr    [16]byte
-	RemoteScopeID uint32
-	RemotePort    uint32
-	State         uint32
-	OwningPID     uint32
-}
-
-func findWindowsConnectionEntry(source, destination netip.AddrPort) (windowsConnectionEntry, error) {
+func findWindowsConnectionEntry(source, destination netip.AddrPort) (windowsConnEntry, error) {
 	family := syscall.AF_INET
 	if source.Addr().Is6() {
 		family = syscall.AF_INET6
 	}
 	ptr, mu := windowsProcessSnapshotState(family)
 	snapshot := ptr.Load()
-	if snapshot != nil && time.Since(snapshot.createdAt) < windowsProcessSnapshotTTL {
-		if entry, ok := matchWindowsConnectionEntry(snapshot.entries, source, destination); ok {
+	if snapshot.fresh() {
+		if entry, ok := snapshot.find(source, destination); ok {
 			return entry, nil
 		}
 		refreshed, err := loadWindowsProcessSnapshot(family, ptr, mu, true, snapshot)
 		if err != nil {
-			return windowsConnectionEntry{}, err
+			return windowsConnEntry{}, err
 		}
-		if entry, ok := matchWindowsConnectionEntry(refreshed.entries, source, destination); ok {
+		if entry, ok := refreshed.find(source, destination); ok {
 			return entry, nil
 		}
-		return windowsConnectionEntry{}, os.ErrNotExist
+		return windowsConnEntry{}, os.ErrNotExist
 	}
 
 	var err error
 	snapshot, err = loadWindowsProcessSnapshot(family, ptr, mu, false, snapshot)
 	if err != nil {
-		return windowsConnectionEntry{}, err
+		return windowsConnEntry{}, err
 	}
-	if entry, ok := matchWindowsConnectionEntry(snapshot.entries, source, destination); ok {
+	if entry, ok := snapshot.find(source, destination); ok {
 		return entry, nil
 	}
-	return windowsConnectionEntry{}, os.ErrNotExist
+	return windowsConnEntry{}, os.ErrNotExist
 }
 
 func windowsProcessSnapshotState(family int) (*atomic.Pointer[windowsProcessSnapshot], *sync.Mutex) {
@@ -352,7 +324,7 @@ func windowsProcessSnapshotState(family int) (*atomic.Pointer[windowsProcessSnap
 
 func loadWindowsProcessSnapshot(family int, ptr *atomic.Pointer[windowsProcessSnapshot], mu *sync.Mutex, force bool, seen *windowsProcessSnapshot) (*windowsProcessSnapshot, error) {
 	if !force {
-		if snapshot := ptr.Load(); snapshot != nil && time.Since(snapshot.createdAt) < windowsProcessSnapshotTTL {
+		if snapshot := ptr.Load(); snapshot.fresh() {
 			return snapshot, nil
 		}
 	}
@@ -360,7 +332,7 @@ func loadWindowsProcessSnapshot(family int, ptr *atomic.Pointer[windowsProcessSn
 	mu.Lock()
 	defer mu.Unlock()
 
-	if snapshot := ptr.Load(); snapshot != nil && time.Since(snapshot.createdAt) < windowsProcessSnapshotTTL {
+	if snapshot := ptr.Load(); snapshot.fresh() {
 		if !force || snapshot != seen {
 			return snapshot, nil
 		}
@@ -375,7 +347,25 @@ func loadWindowsProcessSnapshot(family int, ptr *atomic.Pointer[windowsProcessSn
 	return snapshot, nil
 }
 
-func buildWindowsProcessSnapshot(family int) ([]windowsConnectionEntry, error) {
+func (snapshot *windowsProcessSnapshot) fresh() bool {
+	const ttl = 200 * time.Millisecond
+	return snapshot != nil && time.Since(snapshot.createdAt) < ttl
+}
+
+func (snapshot *windowsProcessSnapshot) find(source, destination netip.AddrPort) (windowsConnEntry, bool) {
+	for _, entry := range snapshot.entries {
+		if entry.match(source, destination) {
+			return entry, true
+		}
+	}
+	return windowsConnEntry{}, false
+}
+
+func (entry windowsConnEntry) match(source, destination netip.AddrPort) bool {
+	return entry.src == source && entry.dst == destination
+}
+
+func buildWindowsProcessSnapshot(family int) ([]windowsConnEntry, error) {
 	buf, err := windowsGetExtendedTcpTable(family)
 	if err != nil {
 		return nil, err
@@ -387,7 +377,12 @@ func buildWindowsProcessSnapshot(family int) ([]windowsConnectionEntry, error) {
 }
 
 func windowsGetExtendedTcpTable(family int) ([]byte, error) {
-	size := uint32(windowsTCPTableInitialBuffer)
+	const (
+		tcpTableOwnerPIDAll = 5
+		initialBufferSize   = 4 * 1024
+	)
+
+	size := uint32(initialBufferSize)
 	for {
 		buf := make([]byte, size)
 		r1, _, _ := windowsProcGetExtendedTcpTable.Call(
@@ -395,7 +390,7 @@ func windowsGetExtendedTcpTable(family int) ([]byte, error) {
 			uintptr(unsafe.Pointer(&size)),
 			0,
 			uintptr(uint32(family)),
-			windowsTCPTableOwnerPIDAll,
+			tcpTableOwnerPIDAll,
 			0,
 		)
 		if r1 == windows.NO_ERROR {
@@ -411,65 +406,67 @@ func windowsGetExtendedTcpTable(family int) ([]byte, error) {
 	}
 }
 
-func parseWindowsTCPTable(buf []byte) []windowsConnectionEntry {
+func parseWindowsTCPTable(buf []byte) []windowsConnEntry {
+	type tcpRowOwnerPID struct {
+		State      uint32
+		LocalAddr  uint32
+		LocalPort  uint32
+		RemoteAddr uint32
+		RemotePort uint32
+		OwningPID  uint32
+	}
+
 	if len(buf) < 4 {
 		return nil
 	}
 	n := int(binary.LittleEndian.Uint32(buf[:4]))
-	rowSize := int(unsafe.Sizeof(windowsTCPRowOwnerPID{}))
+	rowSize := int(unsafe.Sizeof(tcpRowOwnerPID{}))
 	offset := 4
-	entries := make([]windowsConnectionEntry, 0, n)
+	entries := make([]windowsConnEntry, 0, n)
 	for i := 0; i < n && offset+rowSize <= len(buf); i++ {
-		row := (*windowsTCPRowOwnerPID)(unsafe.Pointer(&buf[offset]))
+		row := (*tcpRowOwnerPID)(unsafe.Pointer(&buf[offset]))
 		var localAddr, remoteAddr [4]byte
 		binary.LittleEndian.PutUint32(localAddr[:], row.LocalAddr)
 		binary.LittleEndian.PutUint32(remoteAddr[:], row.RemoteAddr)
-		entries = append(entries, windowsConnectionEntry{
-			localAddr:  netip.AddrFrom4(localAddr),
-			remoteAddr: netip.AddrFrom4(remoteAddr),
-			localPort:  windows.Ntohs(uint16(row.LocalPort)),
-			remotePort: windows.Ntohs(uint16(row.RemotePort)),
-			pid:        row.OwningPID,
+		entries = append(entries, windowsConnEntry{
+			src: netip.AddrPortFrom(netip.AddrFrom4(localAddr), windows.Ntohs(uint16(row.LocalPort))),
+			dst: netip.AddrPortFrom(netip.AddrFrom4(remoteAddr), windows.Ntohs(uint16(row.RemotePort))),
+			pid: row.OwningPID,
 		})
 		offset += rowSize
 	}
 	return entries
 }
 
-func parseWindowsTCP6Table(buf []byte) []windowsConnectionEntry {
+func parseWindowsTCP6Table(buf []byte) []windowsConnEntry {
+	type tcp6RowOwnerPID struct {
+		LocalAddr     [16]byte
+		LocalScopeID  uint32
+		LocalPort     uint32
+		RemoteAddr    [16]byte
+		RemoteScopeID uint32
+		RemotePort    uint32
+		State         uint32
+		OwningPID     uint32
+	}
+
 	if len(buf) < 4 {
 		return nil
 	}
 	n := int(binary.LittleEndian.Uint32(buf[:4]))
-	rowSize := int(unsafe.Sizeof(windowsTCP6RowOwnerPID{}))
+	rowSize := int(unsafe.Sizeof(tcp6RowOwnerPID{}))
 	offset := 4
-	entries := make([]windowsConnectionEntry, 0, n)
+	entries := make([]windowsConnEntry, 0, n)
 	for i := 0; i < n && offset+rowSize <= len(buf); i++ {
-		row := (*windowsTCP6RowOwnerPID)(unsafe.Pointer(&buf[offset]))
-		entries = append(entries, windowsConnectionEntry{
-			localAddr:  netip.AddrFrom16(row.LocalAddr),
-			remoteAddr: netip.AddrFrom16(row.RemoteAddr),
-			localPort:  windows.Ntohs(uint16(row.LocalPort)),
-			remotePort: windows.Ntohs(uint16(row.RemotePort)),
-			pid:        row.OwningPID,
+		row := (*tcp6RowOwnerPID)(unsafe.Pointer(&buf[offset]))
+		entries = append(entries, windowsConnEntry{
+			src: netip.AddrPortFrom(netip.AddrFrom16(row.LocalAddr), windows.Ntohs(uint16(row.LocalPort))),
+			dst: netip.AddrPortFrom(netip.AddrFrom16(row.RemoteAddr), windows.Ntohs(uint16(row.RemotePort))),
+			pid: row.OwningPID,
 		})
 		offset += rowSize
 	}
 	return entries
-}
-
-func matchWindowsConnectionEntry(entries []windowsConnectionEntry, source, destination netip.AddrPort) (windowsConnectionEntry, bool) {
-	sourceAddr := source.Addr()
-	destinationAddr := destination.Addr()
-	for _, entry := range entries {
-		if entry.localPort != source.Port() || entry.remotePort != destination.Port() {
-			continue
-		}
-		if entry.localAddr == sourceAddr && entry.remoteAddr == destinationAddr {
-			return entry, true
-		}
-	}
-	return windowsConnectionEntry{}, false
 }
 
 func windowsNormalizeAddrPort(addrport netip.AddrPort) netip.AddrPort {
