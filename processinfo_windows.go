@@ -160,18 +160,6 @@ func (snapshot *windowsProcessSnapshot) find(finder windowsProcessFinder) (windo
 	return windowsConnEntry{}, false
 }
 
-func (entry windowsConnEntry) processInfo() (TCPConnProcessInfo, error) {
-	if entry.pid == 0 {
-		return TCPConnProcessInfo{}, os.ErrNotExist
-	}
-	info := TCPConnProcessInfo{ID: uint64(entry.pid)}
-	if path, err := entry.imagePath(); err == nil && path != "" {
-		info.Name = filepath.Base(path)
-		info.Path = path
-	}
-	return info, nil
-}
-
 func (finder windowsProcessFinder) buildSnapshot() (*windowsProcessSnapshot, error) {
 	buf, err := finder.getExtendedTcpTable()
 	if err != nil {
@@ -274,6 +262,18 @@ func (finder windowsProcessFinder) parseTCP6Table(buf []byte) []windowsConnEntry
 		offset += rowSize
 	}
 	return entries
+}
+
+func (entry windowsConnEntry) processInfo() (TCPConnProcessInfo, error) {
+	if entry.pid == 0 {
+		return TCPConnProcessInfo{}, os.ErrNotExist
+	}
+	info := TCPConnProcessInfo{ID: uint64(entry.pid)}
+	if path, err := entry.imagePath(); err == nil && path != "" {
+		info.Name = filepath.Base(path)
+		info.Path = path
+	}
+	return info, nil
 }
 
 func (entry windowsConnEntry) imagePath() (string, error) {
