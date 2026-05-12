@@ -30,7 +30,7 @@ Core capabilities include:
   multiplexed transport.
 - Standalone DNS listeners for UDP, TCP, and DoT, plus DoH through the HTTP web
   handler. Upstream resolvers support UDP, TCP, DoT, DoH, and DoH3.
-- Redsocks transparent TCP proxying on Linux.
+- Redsocks transparent TCP proxying on Linux and macOS.
 - Stream forwarding for generic TCP ingress, TLS termination, Unix sockets, and
   proxy protocol targets.
 - TUN device forwarding through a gVisor network stack.
@@ -376,9 +376,9 @@ stream copying.
 - `DnsHandler` applies DNS policy templates and can return `HOST`, `CNAME`,
   `TXT`, `ERROR`, or `PROXY_PASS` directives before proxying to upstream
   `fastdns` dialers.
-- `RedsocksHandler` is Linux-only. It recovers the original destination with
-  netfilter socket options, peeks TLS ClientHello when useful, and forwards with
-  configured dialers.
+- `RedsocksHandler` recovers the original destination with Linux netfilter
+  socket options or macOS pf `DIOCNATLOOK`, peeks TLS ClientHello when useful,
+  and forwards with configured dialers.
 - `TunHandler` creates a TUN device, configures routes/bypass routes, forwards
   TCP/UDP through a gVisor stack, handles DNS specially on port 53, and supports
   template-selected dialers. It uses batched device reads/writes, copy-buffer
@@ -689,7 +689,7 @@ Other handlers:
 - `handler_stream.go`: TCP stream forwarding.
 - `handler_ssh.go`: SSH server.
 - `handler_dns.go`: DNS server.
-- `handler_redsocks.go`: Linux transparent proxy.
+- `handler_redsocks.go`: Linux/macOS transparent TCP proxy.
 - `handler_tun.go`: TUN device and gVisor stack forwarding.
 - `handler_tunnel.go`, `handler_tunnel_http.go`, `handler_tunnel_http2.go`,
   `handler_tunnel_http3.go`, and `handler_tunnel_ssh.go`: remote tunnel client

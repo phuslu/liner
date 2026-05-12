@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
@@ -184,18 +185,95 @@ func (ops ConnOps) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
 }
 
 func (ops ConnOps) GetOriginalDST() (addrport netip.AddrPort, err error) {
-	// macOS has no netfilter, so SO_ORIGINAL_DST / IP6T_SO_ORIGINAL_DST are unavailable.
-	// When using pf(4) for transparent proxying, the original destination can be retrieved
-	// via getsockname, provided pf is configured with rdr-to or divert-to rules.
 	if ops.tc == nil {
 		return
 	}
-	// macOS transparent proxying typically relies on pf + DIOCNATLOOK ioctl to query the NAT table.
-	// This is a best-effort fallback using getsockname, valid only under rdr-to scenarios.
-	addrport = AddrPortFromNetAddr(ops.tc.LocalAddr())
-	if !addrport.IsValid() {
-		err = errors.ErrUnsupported
+
+	// Keep these local PF ioctl definitions in sync with Apple XNU:
+	// https://github.com/apple-oss-distributions/xnu/blob/main/bsd/net/pfvar.h
+	// https://github.com/apple-oss-distributions/xnu/blob/main/bsd/net/pf_ioctl.c
+	const (
+		PF_OUT      = 2
+		DIOCNATLOOK = 0xc0544417 // _IOWR('D', 23, struct pfioc_natlook)
+	)
+
+	type PFINatLook struct {
+		SAddr        [16]byte
+		DAddr        [16]byte
+		RSAddr       [16]byte
+		RDAddr       [16]byte
+		SXPort       [4]byte
+		DXPort       [4]byte
+		RSXPort      [4]byte
+		RDXPort      [4]byte
+		AF           byte
+		Proto        byte
+		ProtoVariant byte
+		Direction    byte
 	}
+
+	raddr := AddrPortFromNetAddr(ops.tc.RemoteAddr())
+	laddr := AddrPortFromNetAddr(ops.tc.LocalAddr())
+	if !raddr.IsValid() || !laddr.IsValid() {
+		err = errors.ErrUnsupported
+		return
+	}
+
+	var nl PFINatLook
+	rip, lip := raddr.Addr(), laddr.Addr()
+	switch {
+	case rip.Is4() && lip.Is4():
+		rip4 := rip.As4()
+		lip4 := lip.As4()
+		copy(nl.SAddr[:4], rip4[:])
+		copy(nl.DAddr[:4], lip4[:])
+		nl.AF = unix.AF_INET
+	case rip.Is6() && lip.Is6():
+		rip6 := rip.As16()
+		lip6 := lip.As16()
+		copy(nl.SAddr[:], rip6[:])
+		copy(nl.DAddr[:], lip6[:])
+		nl.AF = unix.AF_INET6
+	default:
+		err = fmt.Errorf("pf nat lookup: %w", errors.ErrUnsupported)
+		return
+	}
+	binary.BigEndian.PutUint16(nl.SXPort[:2], raddr.Port())
+	binary.BigEndian.PutUint16(nl.DXPort[:2], laddr.Port())
+	nl.Proto = unix.IPPROTO_TCP
+	nl.Direction = PF_OUT
+
+	file, lookupErr := os.OpenFile("/dev/pf", os.O_RDONLY, 0)
+	if lookupErr != nil {
+		err = fmt.Errorf("pf nat lookup: %w", lookupErr)
+		return
+	}
+	defer file.Close()
+
+	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, file.Fd(), DIOCNATLOOK, uintptr(unsafe.Pointer(&nl)))
+	if errno != 0 {
+		err = fmt.Errorf("pf nat lookup: %w", errno)
+		return
+	}
+
+	var addr netip.Addr
+	switch nl.AF {
+	case unix.AF_INET:
+		var v [4]byte
+		copy(v[:], nl.RDAddr[:4])
+		addr = netip.AddrFrom4(v)
+	case unix.AF_INET6:
+		addr = netip.AddrFrom16(nl.RDAddr)
+	default:
+		err = fmt.Errorf("pf nat lookup: %w", errors.ErrUnsupported)
+		return
+	}
+	port := binary.BigEndian.Uint16(nl.RDXPort[:2])
+	if !addr.IsValid() || port == 0 {
+		err = fmt.Errorf("pf nat lookup: %w", errors.ErrUnsupported)
+		return
+	}
+	addrport = netip.AddrPortFrom(addr, port)
 	return
 }
 

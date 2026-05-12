@@ -376,7 +376,9 @@ func NewConfig(filename string) (*Config, error) {
 	}
 
 	if len(config.Redsocks) > 0 {
-		if runtime.GOOS != "linux" {
+		switch runtime.GOOS {
+		case "linux", "darwin":
+		default:
 			return nil, fmt.Errorf("invalid runtime GOOS with redsocks handler: %#v", runtime.GOOS)
 		}
 	}
