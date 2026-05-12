@@ -5,6 +5,7 @@ package main
 import (
 	"cmp"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"math/bits"
@@ -12,7 +13,10 @@ import (
 	"net/netip"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -235,7 +239,262 @@ type ConnProcessInfo struct {
 }
 
 func (ops ConnOps) GetProcessInfo() (ConnProcessInfo, error) {
-	return ConnProcessInfo{}, errors.ErrUnsupported
+	if ops.tc == nil {
+		return ConnProcessInfo{}, errors.ErrUnsupported
+	}
+	source := windowsNormalizeAddrPort(AddrPortFromNetAddr(ops.tc.RemoteAddr()))
+	destination := windowsNormalizeAddrPort(AddrPortFromNetAddr(ops.tc.LocalAddr()))
+	if !source.IsValid() || !destination.IsValid() || source.Addr().BitLen() != destination.Addr().BitLen() {
+		return ConnProcessInfo{}, errors.ErrUnsupported
+	}
+
+	entry, err := findWindowsConnectionEntry(source, destination)
+	if err != nil {
+		return ConnProcessInfo{}, err
+	}
+	if entry.pid == 0 {
+		return ConnProcessInfo{}, os.ErrNotExist
+	}
+
+	info := ConnProcessInfo{ProcessID: uint64(entry.pid)}
+	if path, err := windowsProcessImagePath(entry.pid); err == nil && path != "" {
+		info.ProcessName = filepath.Base(path)
+	}
+	return info, nil
+}
+
+const (
+	windowsProcessSnapshotTTL    = 200 * time.Millisecond
+	windowsTCPTableOwnerPIDAll   = 5
+	windowsTCPTableInitialBuffer = 4 * 1024
+)
+
+var (
+	windowsProcGetExtendedTcpTable = windows.NewLazySystemDLL("iphlpapi.dll").NewProc("GetExtendedTcpTable")
+
+	windowsIPv4ProcessSnapshotPtr atomic.Pointer[windowsProcessSnapshot]
+	windowsIPv6ProcessSnapshotPtr atomic.Pointer[windowsProcessSnapshot]
+	windowsIPv4ProcessSnapshotMu  sync.Mutex
+	windowsIPv6ProcessSnapshotMu  sync.Mutex
+)
+
+type windowsConnectionEntry struct {
+	localAddr  netip.Addr
+	remoteAddr netip.Addr
+	localPort  uint16
+	remotePort uint16
+	pid        uint32
+}
+
+type windowsProcessSnapshot struct {
+	createdAt time.Time
+	entries   []windowsConnectionEntry
+}
+
+type windowsTCPRowOwnerPID struct {
+	State      uint32
+	LocalAddr  uint32
+	LocalPort  uint32
+	RemoteAddr uint32
+	RemotePort uint32
+	OwningPID  uint32
+}
+
+type windowsTCP6RowOwnerPID struct {
+	LocalAddr     [16]byte
+	LocalScopeID  uint32
+	LocalPort     uint32
+	RemoteAddr    [16]byte
+	RemoteScopeID uint32
+	RemotePort    uint32
+	State         uint32
+	OwningPID     uint32
+}
+
+func findWindowsConnectionEntry(source, destination netip.AddrPort) (windowsConnectionEntry, error) {
+	family := syscall.AF_INET
+	if source.Addr().Is6() {
+		family = syscall.AF_INET6
+	}
+	ptr, mu := windowsProcessSnapshotState(family)
+	snapshot := ptr.Load()
+	if snapshot != nil && time.Since(snapshot.createdAt) < windowsProcessSnapshotTTL {
+		if entry, ok := matchWindowsConnectionEntry(snapshot.entries, source, destination); ok {
+			return entry, nil
+		}
+		refreshed, err := loadWindowsProcessSnapshot(family, ptr, mu, true, snapshot)
+		if err != nil {
+			return windowsConnectionEntry{}, err
+		}
+		if entry, ok := matchWindowsConnectionEntry(refreshed.entries, source, destination); ok {
+			return entry, nil
+		}
+		return windowsConnectionEntry{}, os.ErrNotExist
+	}
+
+	var err error
+	snapshot, err = loadWindowsProcessSnapshot(family, ptr, mu, false, snapshot)
+	if err != nil {
+		return windowsConnectionEntry{}, err
+	}
+	if entry, ok := matchWindowsConnectionEntry(snapshot.entries, source, destination); ok {
+		return entry, nil
+	}
+	return windowsConnectionEntry{}, os.ErrNotExist
+}
+
+func windowsProcessSnapshotState(family int) (*atomic.Pointer[windowsProcessSnapshot], *sync.Mutex) {
+	if family == syscall.AF_INET6 {
+		return &windowsIPv6ProcessSnapshotPtr, &windowsIPv6ProcessSnapshotMu
+	}
+	return &windowsIPv4ProcessSnapshotPtr, &windowsIPv4ProcessSnapshotMu
+}
+
+func loadWindowsProcessSnapshot(family int, ptr *atomic.Pointer[windowsProcessSnapshot], mu *sync.Mutex, force bool, seen *windowsProcessSnapshot) (*windowsProcessSnapshot, error) {
+	if !force {
+		if snapshot := ptr.Load(); snapshot != nil && time.Since(snapshot.createdAt) < windowsProcessSnapshotTTL {
+			return snapshot, nil
+		}
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	if snapshot := ptr.Load(); snapshot != nil && time.Since(snapshot.createdAt) < windowsProcessSnapshotTTL {
+		if !force || snapshot != seen {
+			return snapshot, nil
+		}
+	}
+
+	entries, err := buildWindowsProcessSnapshot(family)
+	if err != nil {
+		return nil, err
+	}
+	snapshot := &windowsProcessSnapshot{createdAt: time.Now(), entries: entries}
+	ptr.Store(snapshot)
+	return snapshot, nil
+}
+
+func buildWindowsProcessSnapshot(family int) ([]windowsConnectionEntry, error) {
+	buf, err := windowsGetExtendedTcpTable(family)
+	if err != nil {
+		return nil, err
+	}
+	if family == syscall.AF_INET6 {
+		return parseWindowsTCP6Table(buf), nil
+	}
+	return parseWindowsTCPTable(buf), nil
+}
+
+func windowsGetExtendedTcpTable(family int) ([]byte, error) {
+	size := uint32(windowsTCPTableInitialBuffer)
+	for {
+		buf := make([]byte, size)
+		r1, _, _ := windowsProcGetExtendedTcpTable.Call(
+			uintptr(unsafe.Pointer(&buf[0])),
+			uintptr(unsafe.Pointer(&size)),
+			0,
+			uintptr(uint32(family)),
+			windowsTCPTableOwnerPIDAll,
+			0,
+		)
+		if r1 == windows.NO_ERROR {
+			return buf, nil
+		}
+		errno := syscall.Errno(r1)
+		if errno != windows.ERROR_INSUFFICIENT_BUFFER {
+			return nil, os.NewSyscallError("GetExtendedTcpTable", errno)
+		}
+		if size == 0 {
+			return nil, os.NewSyscallError("GetExtendedTcpTable", errno)
+		}
+	}
+}
+
+func parseWindowsTCPTable(buf []byte) []windowsConnectionEntry {
+	if len(buf) < 4 {
+		return nil
+	}
+	n := int(binary.LittleEndian.Uint32(buf[:4]))
+	rowSize := int(unsafe.Sizeof(windowsTCPRowOwnerPID{}))
+	offset := 4
+	entries := make([]windowsConnectionEntry, 0, n)
+	for i := 0; i < n && offset+rowSize <= len(buf); i++ {
+		row := (*windowsTCPRowOwnerPID)(unsafe.Pointer(&buf[offset]))
+		var localAddr, remoteAddr [4]byte
+		binary.LittleEndian.PutUint32(localAddr[:], row.LocalAddr)
+		binary.LittleEndian.PutUint32(remoteAddr[:], row.RemoteAddr)
+		entries = append(entries, windowsConnectionEntry{
+			localAddr:  netip.AddrFrom4(localAddr),
+			remoteAddr: netip.AddrFrom4(remoteAddr),
+			localPort:  windows.Ntohs(uint16(row.LocalPort)),
+			remotePort: windows.Ntohs(uint16(row.RemotePort)),
+			pid:        row.OwningPID,
+		})
+		offset += rowSize
+	}
+	return entries
+}
+
+func parseWindowsTCP6Table(buf []byte) []windowsConnectionEntry {
+	if len(buf) < 4 {
+		return nil
+	}
+	n := int(binary.LittleEndian.Uint32(buf[:4]))
+	rowSize := int(unsafe.Sizeof(windowsTCP6RowOwnerPID{}))
+	offset := 4
+	entries := make([]windowsConnectionEntry, 0, n)
+	for i := 0; i < n && offset+rowSize <= len(buf); i++ {
+		row := (*windowsTCP6RowOwnerPID)(unsafe.Pointer(&buf[offset]))
+		entries = append(entries, windowsConnectionEntry{
+			localAddr:  netip.AddrFrom16(row.LocalAddr),
+			remoteAddr: netip.AddrFrom16(row.RemoteAddr),
+			localPort:  windows.Ntohs(uint16(row.LocalPort)),
+			remotePort: windows.Ntohs(uint16(row.RemotePort)),
+			pid:        row.OwningPID,
+		})
+		offset += rowSize
+	}
+	return entries
+}
+
+func matchWindowsConnectionEntry(entries []windowsConnectionEntry, source, destination netip.AddrPort) (windowsConnectionEntry, bool) {
+	sourceAddr := source.Addr()
+	destinationAddr := destination.Addr()
+	for _, entry := range entries {
+		if entry.localPort != source.Port() || entry.remotePort != destination.Port() {
+			continue
+		}
+		if entry.localAddr == sourceAddr && entry.remoteAddr == destinationAddr {
+			return entry, true
+		}
+	}
+	return windowsConnectionEntry{}, false
+}
+
+func windowsNormalizeAddrPort(addrport netip.AddrPort) netip.AddrPort {
+	if !addrport.IsValid() {
+		return addrport
+	}
+	return netip.AddrPortFrom(addrport.Addr().Unmap(), addrport.Port())
+}
+
+func windowsProcessImagePath(pid uint32) (string, error) {
+	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
+	if err != nil {
+		return "", err
+	}
+	defer windows.CloseHandle(handle)
+
+	buf := make([]uint16, windows.MAX_LONG_PATH)
+	size := uint32(len(buf))
+	if err := windows.QueryFullProcessImageName(handle, 0, &buf[0], &size); err != nil {
+		return "", err
+	}
+	if size == 0 {
+		return "", os.ErrNotExist
+	}
+	return windows.UTF16ToString(buf[:size]), nil
 }
 
 func (ops ConnOps) GetOriginalDST() (addrport netip.AddrPort, err error) {
