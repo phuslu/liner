@@ -851,11 +851,18 @@ function Update-ProxyMenuState {
         return
     }
 
-    $config = Inspect-ProxyConfig
-    $settings = $config.Settings
-    $script:ProxyPacItem.Enabled = [bool]($settings -and $settings.PacUrl)
-    $script:ProxyManualItem.Enabled = [bool]$settings
-    if ($settings) {
+    $running = Test-ChildRunning
+    $settings = $null
+    if ($running) {
+        $settings = (Inspect-ProxyConfig).Settings
+    }
+    $script:ProxyPacItem.Enabled = [bool]($running -and $settings -and $settings.PacUrl)
+    $script:ProxyManualItem.Enabled = [bool]($running -and $settings)
+    if (-not $running) {
+        $tooltip = 'liner is not running'
+        $script:ProxyPacItem.ToolTipText = $tooltip
+        $script:ProxyManualItem.ToolTipText = $tooltip
+    } elseif ($settings) {
         if ($settings.PacUrl) {
             $script:ProxyPacItem.ToolTipText = $settings.PacUrl
         } else {
@@ -885,6 +892,10 @@ function Apply-ProxyMode {
     if ($Mode -eq 'off') {
         $settings = $null
     } else {
+        if (-not (Test-ChildRunning)) {
+            Update-ProxyMenuState
+            throw 'System proxy mode unavailable: liner is not running.'
+        }
         $settings = (Inspect-ProxyConfig).Settings
         if (-not $settings -or ($Mode -eq 'pac' -and -not $settings.PacUrl)) {
             Update-ProxyMenuState
@@ -905,6 +916,7 @@ function Start-Child {
     if (Test-ChildRunning) {
         Show-Notice $script:AppTitle 'liner is already running.'
         Update-ProcessMenuState
+        Update-ProxyMenuState
         return $true
     }
 
@@ -942,6 +954,7 @@ function Start-Child {
     $script:ChildProcess = $process
     $script:ChildConsoleHandle = [IntPtr]::Zero
     Update-ProcessMenuState
+    Update-ProxyMenuState
     Show-Notice $script:AppTitle 'Started.'
     return $true
 }
@@ -950,6 +963,7 @@ function Stop-Child {
     $process = $script:ChildProcess
     if (-not $process) {
         Update-ProcessMenuState
+        Update-ProxyMenuState
         return $true
     }
 
@@ -987,6 +1001,7 @@ function Stop-Child {
         }
         $script:ChildConsoleHandle = [IntPtr]::Zero
         Update-ProcessMenuState
+        Update-ProxyMenuState
     }
     return $true
 }
@@ -1020,6 +1035,7 @@ function Check-ChildProcess {
     $script:ChildProcess = $null
     $script:ChildConsoleHandle = [IntPtr]::Zero
     Update-ProcessMenuState
+    Update-ProxyMenuState
 
     if (-not $expected) {
         if ($null -eq $exitCode) {

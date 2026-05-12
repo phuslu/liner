@@ -806,6 +806,7 @@ class AppDelegate(NSObject):
         if self.child_process is not None and self.child_process.poll() is None:
             self.append_to_console(f"{CHILD_BIN} is already running.\n", ANSI_COLORS[3])
             self.update_process_menu_state()
+            self.update_proxy_menu_state()
             return True
 
         bin_path = os.path.join(self.work_dir, CHILD_BIN)
@@ -853,6 +854,7 @@ class AppDelegate(NSObject):
         self.start_reading(process.stderr)
         self.start_watching(process)
         self.update_process_menu_state()
+        self.update_proxy_menu_state()
         return True
 
     def start_reading(self, pipe):
@@ -907,6 +909,7 @@ class AppDelegate(NSObject):
         process = self.child_process
         if process is None:
             self.update_process_menu_state()
+            self.update_proxy_menu_state()
             return True
 
         self.expected_termination_pids.add(process.pid)
@@ -930,6 +933,7 @@ class AppDelegate(NSObject):
         if self.child_process is process and stopped:
             self.child_process = None
         self.update_process_menu_state()
+        self.update_proxy_menu_state()
         return stopped
 
     def child_did_terminate(self, process, return_code: int):
@@ -938,6 +942,7 @@ class AppDelegate(NSObject):
         if self.child_process is process:
             self.child_process = None
         self.update_process_menu_state()
+        self.update_proxy_menu_state()
         if expected:
             return
 
@@ -1172,6 +1177,14 @@ class AppDelegate(NSObject):
             settings = None
             mode_name = "Disable"
         else:
+            if not self.is_child_running():
+                self.update_proxy_menu_state()
+                self.append_to_console(
+                    f"System proxy mode unavailable: {CHILD_BIN} is not running.\n",
+                    ANSI_COLORS[1],
+                )
+                self.showConsole_(None)
+                return
             _, settings = self.inspect_proxy_config()
             if settings is None or (mode == "pac" and not settings.pac_url):
                 self.update_proxy_menu_state()
@@ -1207,12 +1220,20 @@ class AppDelegate(NSObject):
         ):
             return
 
-        _, settings = self.inspect_proxy_config()
-        pac_enabled = settings is not None and settings.pac_url is not None
-        manual_enabled = settings is not None
+        running = self.is_child_running()
+        settings = None
+        if running:
+            _, settings = self.inspect_proxy_config()
+
+        pac_enabled = running and settings is not None and settings.pac_url is not None
+        manual_enabled = running and settings is not None
         self.proxy_pac_item.setEnabled_(pac_enabled)
         self.proxy_manual_item.setEnabled_(manual_enabled)
-        if settings is None:
+        if not running:
+            tooltip = f"{CHILD_BIN} is not running"
+            self.proxy_pac_item.setToolTip_(tooltip)
+            self.proxy_manual_item.setToolTip_(tooltip)
+        elif settings is None:
             tooltip = self.proxy_settings_unavailable_tooltip()
             self.proxy_pac_item.setToolTip_(tooltip)
             self.proxy_manual_item.setToolTip_(tooltip)
