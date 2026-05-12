@@ -19,8 +19,9 @@ import (
 )
 
 type ConnProcessInfo struct {
-	ProcessName string
-	ProcessID   uint64
+	ID   uint64
+	Name string
+	Path string
 }
 
 func windowsGetProcessInfo(conn *net.TCPConn) (ConnProcessInfo, error) {
@@ -163,9 +164,10 @@ func (entry windowsConnEntry) processInfo() (ConnProcessInfo, error) {
 	if entry.pid == 0 {
 		return ConnProcessInfo{}, os.ErrNotExist
 	}
-	info := ConnProcessInfo{ProcessID: uint64(entry.pid)}
+	info := ConnProcessInfo{ID: uint64(entry.pid)}
 	if path, err := entry.imagePath(); err == nil && path != "" {
-		info.ProcessName = filepath.Base(path)
+		info.Name = filepath.Base(path)
+		info.Path = path
 	}
 	return info, nil
 }

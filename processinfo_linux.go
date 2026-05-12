@@ -20,8 +20,9 @@ import (
 )
 
 type ConnProcessInfo struct {
-	ProcessName string
-	ProcessID   uint64
+	ID   uint64
+	Name string
+	Path string
 }
 
 func linuxGetProcessInfo(conn *net.TCPConn) (ConnProcessInfo, error) {
@@ -333,9 +334,12 @@ func (entry linuxConnEntry) processInfo() (ConnProcessInfo, error) {
 			if err != nil || target != needle {
 				continue
 			}
-			info := ConnProcessInfo{ProcessID: pid}
+			info := ConnProcessInfo{ID: pid}
 			if name, err := os.ReadFile("/proc/" + entry.Name() + "/comm"); err == nil {
-				info.ProcessName = strings.TrimSuffix(string(name), "\n")
+				info.Name = strings.TrimSuffix(string(name), "\n")
+			}
+			if path, err := os.ReadFile("/proc/" + entry.Name() + "/exe"); err == nil {
+				info.Path = strings.TrimSuffix(string(path), "\n")
 			}
 			return info, nil
 		}
