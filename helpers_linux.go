@@ -14,6 +14,8 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -126,7 +128,296 @@ type ConnProcessInfo struct {
 }
 
 func (ops ConnOps) GetProcessInfo() (ConnProcessInfo, error) {
-	return ConnProcessInfo{}, errors.ErrUnsupported
+	if ops.tc == nil {
+		return ConnProcessInfo{}, errors.ErrUnsupported
+	}
+	source := linuxNormalizeAddrPort(AddrPortFromNetAddr(ops.tc.RemoteAddr()))
+	destination := linuxNormalizeAddrPort(AddrPortFromNetAddr(ops.tc.LocalAddr()))
+	if !source.IsValid() || !destination.IsValid() || source.Addr().BitLen() != destination.Addr().BitLen() {
+		return ConnProcessInfo{}, errors.ErrUnsupported
+	}
+
+	entry, err := findLinuxConnectionEntry(source, destination)
+	if err != nil && errors.Is(err, os.ErrNotExist) {
+		if originalDst, originalErr := ops.GetOriginalDST(); originalErr == nil {
+			originalDst = linuxNormalizeAddrPort(originalDst)
+			if originalDst.IsValid() && originalDst != destination && source.Addr().BitLen() == originalDst.Addr().BitLen() {
+				entry, err = findLinuxConnectionEntry(source, originalDst)
+			}
+		}
+	}
+	if err != nil {
+		return ConnProcessInfo{}, err
+	}
+	if entry.inode == 0 {
+		return ConnProcessInfo{}, os.ErrNotExist
+	}
+	return linuxProcessInfoFromSocketInode(entry.inode)
+}
+
+const linuxProcessSnapshotTTL = 200 * time.Millisecond
+
+var (
+	linuxIPv4ProcessSnapshotPtr atomic.Pointer[linuxProcessSnapshot]
+	linuxIPv6ProcessSnapshotPtr atomic.Pointer[linuxProcessSnapshot]
+	linuxIPv4ProcessSnapshotMu  sync.Mutex
+	linuxIPv6ProcessSnapshotMu  sync.Mutex
+)
+
+type linuxConnectionEntry struct {
+	localAddr  netip.Addr
+	remoteAddr netip.Addr
+	localPort  uint16
+	remotePort uint16
+	inode      uint64
+}
+
+type linuxProcessSnapshot struct {
+	createdAt time.Time
+	entries   []linuxConnectionEntry
+}
+
+type linuxInetDiagSockID struct {
+	SPort  uint16
+	DPort  uint16
+	Src    [16]byte
+	Dst    [16]byte
+	If     uint32
+	Cookie [2]uint32
+}
+
+type linuxInetDiagReqV2 struct {
+	Family   uint8
+	Protocol uint8
+	Ext      uint8
+	Pad      uint8
+	States   uint32
+	ID       linuxInetDiagSockID
+}
+
+type linuxInetDiagMsg struct {
+	Family  uint8
+	State   uint8
+	Timer   uint8
+	Retrans uint8
+	ID      linuxInetDiagSockID
+	Expires uint32
+	RQueue  uint32
+	WQueue  uint32
+	UID     uint32
+	Inode   uint32
+}
+
+func findLinuxConnectionEntry(source, destination netip.AddrPort) (linuxConnectionEntry, error) {
+	family := unix.AF_INET
+	if source.Addr().Is6() {
+		family = unix.AF_INET6
+	}
+	ptr, mu := linuxProcessSnapshotState(family)
+	snapshot := ptr.Load()
+	if snapshot != nil && time.Since(snapshot.createdAt) < linuxProcessSnapshotTTL {
+		if entry, ok := matchLinuxConnectionEntry(snapshot.entries, source, destination); ok {
+			return entry, nil
+		}
+		refreshed, err := loadLinuxProcessSnapshot(family, ptr, mu, true, snapshot)
+		if err != nil {
+			return linuxConnectionEntry{}, err
+		}
+		if entry, ok := matchLinuxConnectionEntry(refreshed.entries, source, destination); ok {
+			return entry, nil
+		}
+		return linuxConnectionEntry{}, os.ErrNotExist
+	}
+
+	var err error
+	snapshot, err = loadLinuxProcessSnapshot(family, ptr, mu, false, snapshot)
+	if err != nil {
+		return linuxConnectionEntry{}, err
+	}
+	if entry, ok := matchLinuxConnectionEntry(snapshot.entries, source, destination); ok {
+		return entry, nil
+	}
+	return linuxConnectionEntry{}, os.ErrNotExist
+}
+
+func linuxProcessSnapshotState(family int) (*atomic.Pointer[linuxProcessSnapshot], *sync.Mutex) {
+	if family == unix.AF_INET6 {
+		return &linuxIPv6ProcessSnapshotPtr, &linuxIPv6ProcessSnapshotMu
+	}
+	return &linuxIPv4ProcessSnapshotPtr, &linuxIPv4ProcessSnapshotMu
+}
+
+func loadLinuxProcessSnapshot(family int, ptr *atomic.Pointer[linuxProcessSnapshot], mu *sync.Mutex, force bool, seen *linuxProcessSnapshot) (*linuxProcessSnapshot, error) {
+	if !force {
+		if snapshot := ptr.Load(); snapshot != nil && time.Since(snapshot.createdAt) < linuxProcessSnapshotTTL {
+			return snapshot, nil
+		}
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	if snapshot := ptr.Load(); snapshot != nil && time.Since(snapshot.createdAt) < linuxProcessSnapshotTTL {
+		if !force || snapshot != seen {
+			return snapshot, nil
+		}
+	}
+
+	entries, err := buildLinuxProcessSnapshot(family)
+	if err != nil {
+		return nil, err
+	}
+	snapshot := &linuxProcessSnapshot{createdAt: time.Now(), entries: entries}
+	ptr.Store(snapshot)
+	return snapshot, nil
+}
+
+func buildLinuxProcessSnapshot(family int) ([]linuxConnectionEntry, error) {
+	fd, err := unix.Socket(unix.AF_NETLINK, unix.SOCK_RAW|unix.SOCK_CLOEXEC, unix.NETLINK_SOCK_DIAG)
+	if err != nil {
+		return nil, err
+	}
+	defer unix.Close(fd)
+
+	req := linuxInetDiagReqV2{
+		Family:   uint8(family),
+		Protocol: syscall.IPPROTO_TCP,
+		States:   ^uint32(0),
+	}
+	reqdata := unsafe.Slice((*byte)(unsafe.Pointer(&req)), int(unsafe.Sizeof(req)))
+	data := make([]byte, unix.SizeofNlMsghdr+len(reqdata))
+	hdr := (*unix.NlMsghdr)(unsafe.Pointer(&data[0]))
+	hdr.Len = uint32(len(data))
+	hdr.Type = unix.SOCK_DIAG_BY_FAMILY
+	hdr.Flags = unix.NLM_F_REQUEST | unix.NLM_F_DUMP
+	hdr.Seq = 1
+	copy(data[unix.SizeofNlMsghdr:], reqdata)
+
+	if err = unix.Sendto(fd, data, 0, &unix.SockaddrNetlink{Family: unix.AF_NETLINK}); err != nil {
+		return nil, err
+	}
+
+	var entries []linuxConnectionEntry
+	reply := make([]byte, 64*1024)
+	for {
+		n, _, err := unix.Recvfrom(fd, reply, 0)
+		if err != nil {
+			return nil, err
+		}
+		for remain := reply[:n]; len(remain) >= unix.SizeofNlMsghdr; {
+			h := *(*unix.NlMsghdr)(unsafe.Pointer(&remain[0]))
+			if h.Len < unix.SizeofNlMsghdr || int(h.Len) > len(remain) {
+				return nil, unix.EINVAL
+			}
+			payload := remain[unix.SizeofNlMsghdr:h.Len]
+			switch h.Type {
+			case unix.NLMSG_DONE:
+				return entries, nil
+			case unix.NLMSG_ERROR:
+				if int(h.Len) < unix.SizeofNlMsghdr+unix.SizeofNlMsgerr {
+					return nil, unix.EINVAL
+				}
+				e := *(*unix.NlMsgerr)(unsafe.Pointer(&payload[0]))
+				if e.Error == 0 {
+					return entries, nil
+				}
+				return nil, unix.Errno(-e.Error)
+			default:
+				if len(payload) >= int(unsafe.Sizeof(linuxInetDiagMsg{})) {
+					if entry, ok := parseLinuxInetDiagMsg((*linuxInetDiagMsg)(unsafe.Pointer(&payload[0])), family); ok {
+						entries = append(entries, entry)
+					}
+				}
+			}
+
+			step := (int(h.Len) + unix.NLMSG_ALIGNTO - 1) & ^(unix.NLMSG_ALIGNTO - 1)
+			if step > len(remain) {
+				step = len(remain)
+			}
+			remain = remain[step:]
+		}
+	}
+}
+
+func parseLinuxInetDiagMsg(msg *linuxInetDiagMsg, family int) (linuxConnectionEntry, bool) {
+	entry := linuxConnectionEntry{
+		localPort:  linuxNtohs(msg.ID.SPort),
+		remotePort: linuxNtohs(msg.ID.DPort),
+		inode:      uint64(msg.Inode),
+	}
+	switch family {
+	case unix.AF_INET:
+		var src, dst [4]byte
+		copy(src[:], msg.ID.Src[:4])
+		copy(dst[:], msg.ID.Dst[:4])
+		entry.localAddr = netip.AddrFrom4(src)
+		entry.remoteAddr = netip.AddrFrom4(dst)
+	case unix.AF_INET6:
+		entry.localAddr = netip.AddrFrom16(msg.ID.Src).Unmap()
+		entry.remoteAddr = netip.AddrFrom16(msg.ID.Dst).Unmap()
+	default:
+		return linuxConnectionEntry{}, false
+	}
+	return entry, entry.localAddr.IsValid() && entry.remoteAddr.IsValid()
+}
+
+func matchLinuxConnectionEntry(entries []linuxConnectionEntry, source, destination netip.AddrPort) (linuxConnectionEntry, bool) {
+	sourceAddr := source.Addr()
+	destinationAddr := destination.Addr()
+	for _, entry := range entries {
+		if entry.localPort != source.Port() || entry.remotePort != destination.Port() {
+			continue
+		}
+		if entry.localAddr == sourceAddr && entry.remoteAddr == destinationAddr {
+			return entry, true
+		}
+	}
+	return linuxConnectionEntry{}, false
+}
+
+func linuxProcessInfoFromSocketInode(inode uint64) (ConnProcessInfo, error) {
+	needle := "socket:[" + strconv.FormatUint(inode, 10) + "]"
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return ConnProcessInfo{}, err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		pid, err := strconv.ParseUint(entry.Name(), 10, 64)
+		if err != nil {
+			continue
+		}
+		dir := "/proc/" + entry.Name() + "/fd"
+		fds, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, fd := range fds {
+			target, err := os.Readlink(dir + "/" + fd.Name())
+			if err != nil || target != needle {
+				continue
+			}
+			info := ConnProcessInfo{ProcessID: pid}
+			if name, err := os.ReadFile("/proc/" + entry.Name() + "/comm"); err == nil {
+				info.ProcessName = strings.TrimSuffix(string(name), "\n")
+			}
+			return info, nil
+		}
+	}
+	return ConnProcessInfo{}, os.ErrNotExist
+}
+
+func linuxNormalizeAddrPort(addrport netip.AddrPort) netip.AddrPort {
+	if !addrport.IsValid() {
+		return addrport
+	}
+	return netip.AddrPortFrom(addrport.Addr().Unmap(), addrport.Port())
+}
+
+func linuxNtohs(v uint16) uint16 {
+	return binary.BigEndian.Uint16((*[2]byte)(unsafe.Pointer(&v))[:])
 }
 
 func (ops ConnOps) GetOriginalDST() (addrport netip.AddrPort, err error) {
