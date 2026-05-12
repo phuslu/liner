@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"text/template"
 	"time"
 
@@ -17,7 +19,11 @@ import (
 	"github.com/valyala/bytebufferpool"
 )
 
-const socksHandshakeTimeout = 10 * time.Second
+const (
+	socksHandshakeTimeout = 10 * time.Second
+	socksUDPBufferSize    = 64 * 1024
+	socksUDPMaxSessions   = 1024
+)
 
 type SocksRequest struct {
 	RemoteAddr  netip.AddrPort
@@ -261,8 +267,7 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 	switch req.ConnectType {
 	case SocksCommandConnectTCP:
 	case SocksCommandConnectUDP:
-		WriteSocks5Status(conn, Socks5StatusCommandNotSupported)
-		log.Error().NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Int("socks_command", int(req.ConnectType)).Str("forward_policy", h.Config.Forward.Policy).Msg("socks udp associate unsupported")
+		h.ServeUDP(ctx, conn, req)
 		return
 	default:
 		WriteSocks5Status(conn, Socks5StatusCommandNotSupported)
@@ -456,4 +461,352 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 
 func WriteSocks5Status(conn net.Conn, status Socks5Status) (int, error) {
 	return conn.Write([]byte{VersionSocks5, byte(status), 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00})
+}
+
+func (h *SocksHandler) ServeUDP(ctx context.Context, conn net.Conn, req SocksRequest) {
+	type udpSession struct {
+		conn       net.Conn
+		header     []byte
+		lastActive atomic.Int64
+	}
+
+	executePolicy := func(req SocksRequest) (string, bool) {
+		policyName := h.Config.Forward.Policy
+		if h.policy == nil {
+			return policyName, true
+		}
+		bb := bytebufferpool.Get()
+		defer bytebufferpool.Put(bb)
+		bb.Reset()
+		var err error
+		if obfuscated {
+			err = h.policy.Execute(bb, map[string]any{
+				"Request":    req,
+				"ServerAddr": req.ServerAddr,
+			})
+		} else {
+			err = h.policy.Execute(bb, struct {
+				Request    SocksRequest
+				ServerAddr netip.AddrPort
+			}{
+				Request:    req,
+				ServerAddr: req.ServerAddr,
+			})
+		}
+		if err != nil {
+			log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("forward_policy", h.Config.Forward.Policy).Msg("execute forward_policy error")
+			return policyName, false
+		}
+		policyName = strings.TrimSpace(bb.String())
+		log.Debug().NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Interface("request", req).Str("forward_policy_name", policyName).Msg("execute forward_policy ok")
+		switch policyName {
+		case "reject", "deny":
+			return policyName, false
+		}
+		return policyName, true
+	}
+
+	selectDialer := func(req SocksRequest) (context.Context, Dialer, string, bool) {
+		var dialerValue = h.Config.Forward.Dialer
+		if h.dialer != nil {
+			bb := bytebufferpool.Get()
+			defer bytebufferpool.Put(bb)
+			bb.Reset()
+			var err error
+			if obfuscated {
+				err = h.dialer.Execute(bb, map[string]any{
+					"Request":    req,
+					"ServerAddr": req.ServerAddr,
+				})
+			} else {
+				err = h.dialer.Execute(bb, struct {
+					Request    SocksRequest
+					ServerAddr netip.AddrPort
+				}{
+					Request:    req,
+					ServerAddr: req.ServerAddr,
+				})
+			}
+			if err != nil {
+				log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("forward_dialer_name", h.Config.Forward.Dialer).Msg("execute forward_dialer error")
+				return nil, nil, "", false
+			}
+			dialerValue = strings.TrimSpace(bb.String())
+		}
+
+		var dialerName = dialerValue
+		var disableIPv6 = h.Config.Forward.DisableIpv6
+		var preferIPv6 = h.Config.Forward.PreferIpv6
+		switch {
+		case strings.HasPrefix(dialerValue, "{\""):
+			var v struct {
+				Dialer      string `json:"dialer"`
+				DisableIPv6 bool   `json:"disable_ipv6"`
+				PreferIPv6  bool   `json:"prefer_ipv6"`
+			}
+			err := json.Unmarshal([]byte(dialerValue), &v)
+			if err != nil {
+				log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("forward_dialer_name", h.Config.Forward.Dialer).Msg("parse forward_dialer error")
+				return nil, nil, "", false
+			}
+			dialerName = v.Dialer
+			disableIPv6 = v.DisableIPv6
+			preferIPv6 = v.PreferIPv6
+		case strings.Contains(dialerValue, "="):
+			u, err := url.ParseQuery(dialerValue)
+			if err != nil {
+				log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("forward_dialer_name", h.Config.Forward.Dialer).Msg("parse forward_dialer error")
+				return nil, nil, "", false
+			}
+			dialerName = u.Get("dialer")
+			if s := u.Get("disable_ipv6"); s != "" {
+				disableIPv6, _ = strconv.ParseBool(s)
+			}
+			if s := u.Get("prefer_ipv6"); s != "" {
+				preferIPv6, _ = strconv.ParseBool(s)
+			}
+		}
+
+		var dialer Dialer
+		if dialerName != "" {
+			if d, ok := h.Dialers[dialerName]; !ok {
+				log.Error().NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("forward_dialer_name", h.Config.Forward.Dialer).Str("dialer_name", dialerName).Msg("dialer not exists")
+				return nil, nil, "", false
+			} else {
+				dialer = d
+			}
+		} else {
+			dialer = h.LocalDialer
+		}
+
+		dialCtx := ctx
+		switch {
+		case disableIPv6:
+			dialCtx = context.WithValue(dialCtx, DialerDisableIPv6ContextKey, struct{}{})
+		case preferIPv6:
+			dialCtx = context.WithValue(dialCtx, DialerPreferIPv6ContextKey, struct{}{})
+		}
+		dialCtx = context.WithValue(dialCtx, DialerHTTPHeaderContextKey, http.Header{
+			"X-Forwarded-For":  []string{req.RemoteAddr.Addr().String()},
+			"X-Forwarded-User": []string{req.User.Username},
+		})
+		return dialCtx, dialer, dialerName, true
+	}
+
+	policyName, ok := executePolicy(req)
+	if !ok {
+		WriteSocks5Status(conn, Socks5StatusConnectionNotAllowedByRuleset)
+		return
+	}
+
+	addr := req.ServerAddr.Addr()
+	if !addr.IsValid() {
+		addr = netip.IPv4Unspecified()
+	}
+	relay, err := net.ListenUDP("udp", net.UDPAddrFromAddrPort(netip.AddrPortFrom(addr, 0)))
+	if err != nil {
+		log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("forward_policy_name", policyName).Msg("socks udp listen error")
+		WriteSocks5Status(conn, Socks5StatusGeneralFailure)
+		return
+	}
+	defer relay.Close()
+
+	relayAddr := AddrPortFromNetAddr(relay.LocalAddr())
+	var reply [22]byte
+	reply[0], reply[1], reply[2] = byte(VersionSocks5), byte(Socks5StatusRequestGranted), 0
+	n := 3
+	switch addr := relayAddr.Addr(); {
+	case addr.Is4():
+		reply[n] = byte(Socks5IPv4Address)
+		n++
+		a := addr.As4()
+		n += copy(reply[n:], a[:])
+	case addr.Is6():
+		reply[n] = byte(Socks5IPv6Address)
+		n++
+		a := addr.As16()
+		n += copy(reply[n:], a[:])
+	default:
+		reply[n] = byte(Socks5IPv4Address)
+		n++
+		n += copy(reply[n:], []byte{0, 0, 0, 0})
+	}
+	reply[n], reply[n+1] = byte(relayAddr.Port()>>8), byte(relayAddr.Port())
+	n += 2
+	if _, err = conn.Write(reply[:n]); err != nil {
+		log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Msg("socks write udp associate response error")
+		return
+	}
+
+	timeoutSeconds := h.Config.Forward.UdpTimeout
+	if timeoutSeconds == 0 {
+		timeoutSeconds = 120
+	}
+	timeout := time.Duration(timeoutSeconds) * time.Second
+	done := make(chan struct{})
+	go func() {
+		_, _ = io.Copy(io.Discard, conn)
+		relay.Close()
+		close(done)
+	}()
+
+	sessions := make(map[string]*udpSession)
+	defer func() {
+		for _, session := range sessions {
+			session.conn.Close()
+		}
+		conn.Close()
+		<-done
+	}()
+
+	cleanup := func(now time.Time) {
+		if timeout <= 0 {
+			return
+		}
+		deadline := now.Add(-timeout).UnixNano()
+		for key, session := range sessions {
+			if session.lastActive.Load() < deadline {
+				session.conn.Close()
+				delete(sessions, key)
+			}
+		}
+	}
+
+	clientAddr := netip.AddrPort{}
+	buf := make([]byte, socksUDPBufferSize)
+	for {
+		if timeout > 0 {
+			_ = relay.SetReadDeadline(time.Now().Add(timeout))
+		}
+		n, addr, err := relay.ReadFromUDPAddrPort(buf)
+		if err != nil {
+			return
+		}
+		now := time.Now()
+		cleanup(now)
+
+		if addr.Addr() != req.RemoteAddr.Addr() {
+			continue
+		}
+		if !clientAddr.IsValid() {
+			clientAddr = addr
+		} else if addr != clientAddr {
+			continue
+		}
+		if n < 4 || buf[0] != 0 || buf[1] != 0 || buf[2] != 0 {
+			continue
+		}
+
+		var host string
+		var port int
+		var headerLen int
+		switch Socks5AddressType(buf[3]) {
+		case Socks5IPv4Address:
+			if n < 10 {
+				continue
+			}
+			host = netip.AddrFrom4(*(*[4]byte)(buf[4:8])).String()
+			port = int(buf[8])<<8 | int(buf[9])
+			headerLen = 10
+		case Socks5DomainName:
+			if n < 5 {
+				continue
+			}
+			domainLen := int(buf[4])
+			headerLen = 5 + domainLen + 2
+			if domainLen == 0 || n < headerLen {
+				continue
+			}
+			host = string(buf[5 : 5+domainLen])
+			port = int(buf[5+domainLen])<<8 | int(buf[6+domainLen])
+		case Socks5IPv6Address:
+			if n < 22 {
+				continue
+			}
+			host = netip.AddrFrom16(*(*[16]byte)(buf[4:20])).String()
+			port = int(buf[20])<<8 | int(buf[21])
+			headerLen = 22
+		default:
+			continue
+		}
+		if headerLen >= n {
+			continue
+		}
+		if port == 0 {
+			continue
+		}
+
+		targetAddr := net.JoinHostPort(host, strconv.Itoa(port))
+		session := sessions[targetAddr]
+		if session == nil {
+			targetReq := req
+			targetReq.Host = host
+			targetReq.Port = port
+			targetPolicyName, ok := executePolicy(targetReq)
+			if !ok {
+				continue
+			}
+			targetCtx, dialer, dialerName, ok := selectDialer(targetReq)
+			if !ok {
+				continue
+			}
+
+			if len(sessions) >= socksUDPMaxSessions {
+				var oldestKey string
+				var oldest int64
+				for key, session := range sessions {
+					ts := session.lastActive.Load()
+					if oldestKey == "" || ts < oldest {
+						oldestKey, oldest = key, ts
+					}
+				}
+				if oldestKey != "" {
+					sessions[oldestKey].conn.Close()
+					delete(sessions, oldestKey)
+				}
+			}
+
+			rconn, err := dialer.DialContext(targetCtx, "udp", targetAddr)
+			if err != nil {
+				if !errors.Is(err, errors.ErrUnsupported) {
+					log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("socks_network", "udp").Str("socks_host", host).Int("socks_port", port).Str("forward_policy_name", targetPolicyName).Str("forward_dialer_name", dialerName).Msg("connect remote host failed")
+				}
+				if rconn != nil {
+					rconn.Close()
+				}
+				continue
+			}
+
+			header := append([]byte(nil), buf[:headerLen]...)
+			session = &udpSession{conn: rconn, header: header}
+			session.lastActive.Store(now.UnixNano())
+			sessions[targetAddr] = session
+
+			log.Info().NetIPAddrPort("server_addr", req.ServerAddr).Int("socks_version", int(req.Version)).Str("username", req.User.Username).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("socks_network", "udp").Str("socks_host", host).Int("socks_port", port).Str("forward_policy_name", targetPolicyName).Str("forward_dialer_name", dialerName).Msg("forward socks request")
+
+			go func(session *udpSession, clientAddr netip.AddrPort) {
+				buf := make([]byte, socksUDPBufferSize+len(session.header))
+				for {
+					n, err := session.conn.Read(buf[len(session.header):])
+					if err != nil {
+						return
+					}
+					if n == 0 {
+						continue
+					}
+					session.lastActive.Store(time.Now().UnixNano())
+					copy(buf[:len(session.header)], session.header)
+					if _, err := relay.WriteToUDPAddrPort(buf[:len(session.header)+n], clientAddr); err != nil {
+						return
+					}
+				}
+			}(session, clientAddr)
+		}
+
+		session.lastActive.Store(now.UnixNano())
+		if _, err = session.conn.Write(buf[headerLen:n]); err != nil {
+			session.conn.Close()
+			delete(sessions, targetAddr)
+		}
+	}
 }

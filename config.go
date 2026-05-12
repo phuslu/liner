@@ -113,6 +113,7 @@ type SocksConfig struct {
 		AuthTable   string `json:"auth_table" yaml:"auth_table"`
 		Dialer      string `json:"dialer" yaml:"dialer"`
 		SpeedLimit  int64  `json:"speed_limit" yaml:"speed_limit"`
+		UdpTimeout  int    `json:"udp_timeout" yaml:"udp_timeout"`
 		DisableIpv6 bool   `json:"disable_ipv6" yaml:"disable_ipv6"`
 		PreferIpv6  bool   `json:"prefer_ipv6" yaml:"prefer_ipv6"`
 		Log         bool   `json:"log" yaml:"log"`
