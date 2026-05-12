@@ -26,18 +26,18 @@ type ConnProcessInfo struct {
 	ProcessID   uint64
 }
 
-func darwinGetProcessInfo(ops ConnOps) (ConnProcessInfo, error) {
-	if ops.tc == nil {
+func darwinGetProcessInfo(conn *net.TCPConn) (ConnProcessInfo, error) {
+	if conn == nil {
 		return ConnProcessInfo{}, errors.ErrUnsupported
 	}
-	finder, ok := newDarwinProcessFinder(ops.tc)
+	finder, ok := newDarwinProcessFinder(conn)
 	if !ok {
 		return ConnProcessInfo{}, errors.ErrUnsupported
 	}
 
 	entry, err := finder.find()
 	if err != nil && errors.Is(err, os.ErrNotExist) {
-		if fallback, ok := finder.originalDst(ops); ok {
+		if fallback, ok := finder.originalDst(conn); ok {
 			entry, err = fallback.find()
 		}
 	}
@@ -87,8 +87,8 @@ func newDarwinProcessFinder(conn *net.TCPConn) (darwinProcessFinder, bool) {
 	return finder, finder.source.IsValid() && finder.destination.IsValid()
 }
 
-func (finder darwinProcessFinder) originalDst(ops ConnOps) (darwinProcessFinder, bool) {
-	addrport, err := ops.GetOriginalDST()
+func (finder darwinProcessFinder) originalDst(conn *net.TCPConn) (darwinProcessFinder, bool) {
+	addrport, err := darwinGetOriginalDST(conn)
 	if err != nil {
 		return darwinProcessFinder{}, false
 	}

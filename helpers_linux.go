@@ -121,20 +121,24 @@ func (ops ConnOps) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
 }
 
 func (ops ConnOps) GetProcessInfo() (ConnProcessInfo, error) {
-	return linuxGetProcessInfo(ops)
+	return linuxGetProcessInfo(ops.tc)
 }
 
 func (ops ConnOps) GetOriginalDST() (addrport netip.AddrPort, err error) {
-	if ops.tc == nil {
+	return linuxGetOriginalDST(ops.tc)
+}
+
+func linuxGetOriginalDST(conn *net.TCPConn) (addrport netip.AddrPort, err error) {
+	if conn == nil {
 		return
 	}
 	var c syscall.RawConn
-	c, err = ops.tc.SyscallConn()
+	c, err = conn.SyscallConn()
 	if err != nil {
 		return
 	}
 
-	if ip := AddrPortFromNetAddr(ops.tc.LocalAddr()).Addr(); ip.Is6() && !ip.Is4In6() {
+	if ip := AddrPortFromNetAddr(conn.LocalAddr()).Addr(); ip.Is6() && !ip.Is4In6() {
 		err = c.Control(func(fd uintptr) {
 			const IP6T_SO_ORIGINAL_DST = 80 // Linux netfilter original destination
 			var sa syscall.RawSockaddrInet6

@@ -185,12 +185,16 @@ func (ops ConnOps) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
 }
 
 func (ops ConnOps) GetProcessInfo() (ConnProcessInfo, error) {
-	return darwinGetProcessInfo(ops)
+	return darwinGetProcessInfo(ops.tc)
 }
 
 func (ops ConnOps) GetOriginalDST() (addrport netip.AddrPort, err error) {
-	if ops.tc == nil {
-		return
+	return darwinGetOriginalDST(ops.tc)
+}
+
+func darwinGetOriginalDST(conn *net.TCPConn) (addrport netip.AddrPort, err error) {
+	if conn == nil {
+		return netip.AddrPort{}, errors.ErrUnsupported
 	}
 
 	// Keep these local PF ioctl definitions in sync with Apple XNU:
@@ -216,8 +220,8 @@ func (ops ConnOps) GetOriginalDST() (addrport netip.AddrPort, err error) {
 		Direction    byte
 	}
 
-	raddr := AddrPortFromNetAddr(ops.tc.RemoteAddr())
-	laddr := AddrPortFromNetAddr(ops.tc.LocalAddr())
+	raddr := AddrPortFromNetAddr(conn.RemoteAddr())
+	laddr := AddrPortFromNetAddr(conn.LocalAddr())
 	if !raddr.IsValid() || !laddr.IsValid() {
 		err = errors.ErrUnsupported
 		return

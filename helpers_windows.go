@@ -230,7 +230,7 @@ func (ops ConnOps) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
 }
 
 func (ops ConnOps) GetProcessInfo() (ConnProcessInfo, error) {
-	return windowsGetProcessInfo(ops)
+	return windowsGetProcessInfo(ops.tc)
 }
 
 func (ops ConnOps) GetOriginalDST() (addrport netip.AddrPort, err error) {

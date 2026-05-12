@@ -23,11 +23,11 @@ type ConnProcessInfo struct {
 	ProcessID   uint64
 }
 
-func windowsGetProcessInfo(ops ConnOps) (ConnProcessInfo, error) {
-	if ops.tc == nil {
+func windowsGetProcessInfo(conn *net.TCPConn) (ConnProcessInfo, error) {
+	if conn == nil {
 		return ConnProcessInfo{}, errors.ErrUnsupported
 	}
-	finder, ok := newWindowsProcessFinder(ops.tc)
+	finder, ok := newWindowsProcessFinder(conn)
 	if !ok {
 		return ConnProcessInfo{}, errors.ErrUnsupported
 	}

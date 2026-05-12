@@ -24,18 +24,18 @@ type ConnProcessInfo struct {
 	ProcessID   uint64
 }
 
-func linuxGetProcessInfo(ops ConnOps) (ConnProcessInfo, error) {
-	if ops.tc == nil {
+func linuxGetProcessInfo(conn *net.TCPConn) (ConnProcessInfo, error) {
+	if conn == nil {
 		return ConnProcessInfo{}, errors.ErrUnsupported
 	}
-	finder, ok := newLinuxProcessFinder(ops.tc)
+	finder, ok := newLinuxProcessFinder(conn)
 	if !ok {
 		return ConnProcessInfo{}, errors.ErrUnsupported
 	}
 
 	entry, err := finder.find()
 	if err != nil && errors.Is(err, os.ErrNotExist) {
-		if fallback, ok := finder.originalDst(ops); ok {
+		if fallback, ok := finder.originalDst(conn); ok {
 			entry, err = fallback.find()
 		}
 	}
@@ -94,8 +94,8 @@ func newLinuxProcessFinder(conn *net.TCPConn) (linuxProcessFinder, bool) {
 	return finder, true
 }
 
-func (finder linuxProcessFinder) originalDst(ops ConnOps) (linuxProcessFinder, bool) {
-	addrport, err := ops.GetOriginalDST()
+func (finder linuxProcessFinder) originalDst(conn *net.TCPConn) (linuxProcessFinder, bool) {
+	addrport, err := linuxGetOriginalDST(conn)
 	if err != nil {
 		return linuxProcessFinder{}, false
 	}
