@@ -48,6 +48,7 @@ type TunRequest struct {
 	Port           uint16
 	TraceID        log.XID
 	TLSClientHello func() (*tls.ClientHelloInfo, error)
+	ProcessInfo    func() (*TCPConnProcessInfo, error)
 }
 
 type TunHandler struct {
@@ -652,6 +653,15 @@ func (h *TunHandler) forwardTCP(r *tcp.ForwarderRequest) {
 		return nil, nil
 	}
 
+	req.ProcessInfo = func() (*TCPConnProcessInfo, error) {
+		if c, err := ensureLocalConn(); err == nil {
+			if info, err := GetTCPConnProcessInfo(c); err == nil {
+				return &info, nil
+			}
+		}
+		return nil, nil
+	}
+
 	ctx, dialer, dialerName, ok := h.prepareDial(req)
 	if !ok {
 		if !completed {
@@ -1069,6 +1079,9 @@ func (h *TunHandler) prepareDial(req TunRequest) (context.Context, Dialer, strin
 	if req.TLSClientHello == nil {
 		req.TLSClientHello = func() (*tls.ClientHelloInfo, error) { return nil, nil }
 	}
+	if req.ProcessInfo == nil {
+		req.ProcessInfo = func() (*TCPConnProcessInfo, error) { return nil, nil }
+	}
 	if h.dialer != nil {
 		bb := bytebufferpool.Get()
 		defer bytebufferpool.Put(bb)
@@ -1079,16 +1092,19 @@ func (h *TunHandler) prepareDial(req TunRequest) (context.Context, Dialer, strin
 				"Request":        req,
 				"ServerAddr":     req.ServerAddr,
 				"TLSClientHello": req.TLSClientHello,
+				"ProcessInfo":    req.ProcessInfo,
 			})
 		} else {
 			err = h.dialer.Execute(bb, struct {
 				Request        TunRequest
 				ServerAddr     netip.AddrPort
 				TLSClientHello func() (*tls.ClientHelloInfo, error)
+				ProcessInfo    func() (*TCPConnProcessInfo, error)
 			}{
 				Request:        req,
 				ServerAddr:     req.ServerAddr,
 				TLSClientHello: req.TLSClientHello,
+				ProcessInfo:    req.ProcessInfo,
 			})
 		}
 		if err != nil {
