@@ -229,6 +229,15 @@ func (ops ConnOps) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
 	return
 }
 
+type ConnProcessInfo struct {
+	ProcessName string
+	ProcessID   uint64
+}
+
+func (ops ConnOps) GetProcessInfo() (ConnProcessInfo, error) {
+	return ConnProcessInfo{}, errors.ErrUnsupported
+}
+
 func (ops ConnOps) GetOriginalDST() (addrport netip.AddrPort, err error) {
 	return netip.AddrPort{}, errors.ErrUnsupported
 }
