@@ -196,33 +196,26 @@ func (ops ConnOps) GetProcessInfo() (ConnProcessInfo, error) {
 	if ops.tc == nil {
 		return ConnProcessInfo{}, errors.ErrUnsupported
 	}
-	source := darwinNormalizeAddrPort(AddrPortFromNetAddr(ops.tc.RemoteAddr()))
-	destination := darwinNormalizeAddrPort(AddrPortFromNetAddr(ops.tc.LocalAddr()))
-	if !source.IsValid() || !destination.IsValid() {
+	finder, ok := newDarwinProcessFinder(ops.tc)
+	if !ok {
 		return ConnProcessInfo{}, errors.ErrUnsupported
 	}
 
-	entry, err := findDarwinConnectionEntry(source, destination)
+	entry, err := finder.find()
 	if err != nil && errors.Is(err, os.ErrNotExist) {
-		if originalDst, originalErr := ops.GetOriginalDST(); originalErr == nil {
-			originalDst = darwinNormalizeAddrPort(originalDst)
-			if originalDst.IsValid() && originalDst != destination {
-				entry, err = findDarwinConnectionEntry(source, originalDst)
-			}
+		if fallback, ok := finder.originalDst(ops); ok {
+			entry, err = fallback.find()
 		}
 	}
 	if err != nil {
 		return ConnProcessInfo{}, err
 	}
-	if entry.pid == 0 {
-		return ConnProcessInfo{}, os.ErrNotExist
-	}
+	return entry.processInfo()
+}
 
-	info := ConnProcessInfo{ProcessID: uint64(entry.pid)}
-	if path, err := darwinExecPathFromPID(entry.pid); err == nil && path != "" {
-		info.ProcessName = filepath.Base(path)
-	}
-	return info, nil
+type darwinProcessFinder struct {
+	source      netip.AddrPort
+	destination netip.AddrPort
 }
 
 var darwinPCBStructSize = func() int {
@@ -253,34 +246,58 @@ var (
 	darwinProcessSnapshotMu  sync.Mutex
 )
 
-func findDarwinConnectionEntry(source, destination netip.AddrPort) (darwinConnEntry, error) {
+func newDarwinProcessFinder(conn *net.TCPConn) (darwinProcessFinder, bool) {
+	var finder darwinProcessFinder
+	finder.source = finder.addrPort(AddrPortFromNetAddr(conn.RemoteAddr()))
+	finder.destination = finder.addrPort(AddrPortFromNetAddr(conn.LocalAddr()))
+	return finder, finder.source.IsValid() && finder.destination.IsValid()
+}
+
+func (finder darwinProcessFinder) originalDst(ops ConnOps) (darwinProcessFinder, bool) {
+	addrport, err := ops.GetOriginalDST()
+	if err != nil {
+		return darwinProcessFinder{}, false
+	}
+	previous := finder.destination
+	finder.destination = finder.addrPort(addrport)
+	return finder, finder.destination.IsValid() && finder.destination != previous
+}
+
+func (finder darwinProcessFinder) addrPort(addrport netip.AddrPort) netip.AddrPort {
+	if !addrport.IsValid() {
+		return addrport
+	}
+	return netip.AddrPortFrom(addrport.Addr().Unmap(), addrport.Port())
+}
+
+func (finder darwinProcessFinder) find() (darwinConnEntry, error) {
 	snapshot := darwinProcessSnapshotPtr.Load()
 	if snapshot.fresh() {
-		if entry, ok := snapshot.find(source, destination); ok {
+		if entry, ok := snapshot.find(finder); ok {
 			return entry, nil
 		}
-		refreshed, err := loadDarwinProcessSnapshot(true, snapshot)
+		refreshed, err := finder.loadSnapshot(true, snapshot)
 		if err != nil {
 			return darwinConnEntry{}, err
 		}
-		if entry, ok := refreshed.find(source, destination); ok {
+		if entry, ok := refreshed.find(finder); ok {
 			return entry, nil
 		}
 		return darwinConnEntry{}, os.ErrNotExist
 	}
 
 	var err error
-	snapshot, err = loadDarwinProcessSnapshot(false, snapshot)
+	snapshot, err = finder.loadSnapshot(false, snapshot)
 	if err != nil {
 		return darwinConnEntry{}, err
 	}
-	if entry, ok := snapshot.find(source, destination); ok {
+	if entry, ok := snapshot.find(finder); ok {
 		return entry, nil
 	}
 	return darwinConnEntry{}, os.ErrNotExist
 }
 
-func loadDarwinProcessSnapshot(force bool, seen *darwinProcessSnapshot) (*darwinProcessSnapshot, error) {
+func (finder darwinProcessFinder) loadSnapshot(force bool, seen *darwinProcessSnapshot) (*darwinProcessSnapshot, error) {
 	if !force {
 		if snapshot := darwinProcessSnapshotPtr.Load(); snapshot.fresh() {
 			return snapshot, nil
@@ -296,11 +313,10 @@ func loadDarwinProcessSnapshot(force bool, seen *darwinProcessSnapshot) (*darwin
 		}
 	}
 
-	entries, err := buildDarwinProcessSnapshot()
+	snapshot, err := finder.buildSnapshot()
 	if err != nil {
 		return nil, err
 	}
-	snapshot := &darwinProcessSnapshot{createdAt: time.Now(), entries: entries}
 	darwinProcessSnapshotPtr.Store(snapshot)
 	return snapshot, nil
 }
@@ -310,30 +326,37 @@ func (snapshot *darwinProcessSnapshot) fresh() bool {
 	return snapshot != nil && time.Since(snapshot.createdAt) < ttl
 }
 
-func (snapshot *darwinProcessSnapshot) find(source, destination netip.AddrPort) (darwinConnEntry, bool) {
+func (snapshot *darwinProcessSnapshot) find(finder darwinProcessFinder) (darwinConnEntry, bool) {
 	for _, entry := range snapshot.entries {
-		if entry.match(source, destination) {
+		if entry.src == finder.source && entry.dst == finder.destination {
 			return entry, true
 		}
 	}
 	return darwinConnEntry{}, false
 }
 
-func (entry darwinConnEntry) match(source, destination netip.AddrPort) bool {
-	return entry.src == source && entry.dst == destination
+func (entry darwinConnEntry) processInfo() (ConnProcessInfo, error) {
+	if entry.pid == 0 {
+		return ConnProcessInfo{}, os.ErrNotExist
+	}
+	info := ConnProcessInfo{ProcessID: uint64(entry.pid)}
+	if path, err := entry.execPath(); err == nil && path != "" {
+		info.ProcessName = filepath.Base(path)
+	}
+	return info, nil
 }
 
-func buildDarwinProcessSnapshot() ([]darwinConnEntry, error) {
+func (finder darwinProcessFinder) buildSnapshot() (*darwinProcessSnapshot, error) {
 	const tcpExtraStructSize = 208
 
 	value, err := unix.SysctlRaw("net.inet.tcp.pcblist_n")
 	if err != nil {
 		return nil, fmt.Errorf("tcp pcblist: %w", err)
 	}
-	return parseDarwinProcessSnapshot(value, darwinPCBStructSize+tcpExtraStructSize), nil
+	return &darwinProcessSnapshot{createdAt: time.Now(), entries: finder.parseSnapshot(value, darwinPCBStructSize+tcpExtraStructSize)}, nil
 }
 
-func parseDarwinProcessSnapshot(buf []byte, itemSize int) []darwinConnEntry {
+func (finder darwinProcessFinder) parseSnapshot(buf []byte, itemSize int) []darwinConnEntry {
 	const xinpgenSize = 24
 
 	if itemSize <= 0 || len(buf) <= xinpgenSize {
@@ -341,14 +364,14 @@ func parseDarwinProcessSnapshot(buf []byte, itemSize int) []darwinConnEntry {
 	}
 	entries := make([]darwinConnEntry, 0, (len(buf)-xinpgenSize)/itemSize)
 	for i := xinpgenSize; i+itemSize <= len(buf); i += itemSize {
-		if entry, ok := parseDarwinConnectionEntry(buf[i : i+itemSize]); ok {
+		if entry, ok := finder.parseEntry(buf[i : i+itemSize]); ok {
 			entries = append(entries, entry)
 		}
 	}
 	return entries
 }
 
-func parseDarwinConnectionEntry(buf []byte) (darwinConnEntry, bool) {
+func (finder darwinProcessFinder) parseEntry(buf []byte) (darwinConnEntry, bool) {
 	const (
 		xsocketOffset       = 104
 		foreignPort         = 16
@@ -387,14 +410,7 @@ func parseDarwinConnectionEntry(buf []byte) (darwinConnEntry, bool) {
 	return entry, true
 }
 
-func darwinNormalizeAddrPort(addrport netip.AddrPort) netip.AddrPort {
-	if !addrport.IsValid() {
-		return addrport
-	}
-	return netip.AddrPortFrom(addrport.Addr().Unmap(), addrport.Port())
-}
-
-func darwinExecPathFromPID(pid uint32) (string, error) {
+func (entry darwinConnEntry) execPath() (string, error) {
 	const (
 		procPIDPathInfo     = 0xb
 		procPIDPathInfoSize = 1024
@@ -404,7 +420,7 @@ func darwinExecPathFromPID(pid uint32) (string, error) {
 	n, _, errno := syscall.Syscall6(
 		syscall.SYS_PROC_INFO,
 		procCallNumPIDInfo,
-		uintptr(pid),
+		uintptr(entry.pid),
 		procPIDPathInfo,
 		0,
 		uintptr(unsafe.Pointer(&buf[0])),

@@ -242,25 +242,16 @@ func (ops ConnOps) GetProcessInfo() (ConnProcessInfo, error) {
 	if ops.tc == nil {
 		return ConnProcessInfo{}, errors.ErrUnsupported
 	}
-	source := windowsNormalizeAddrPort(AddrPortFromNetAddr(ops.tc.RemoteAddr()))
-	destination := windowsNormalizeAddrPort(AddrPortFromNetAddr(ops.tc.LocalAddr()))
-	if !source.IsValid() || !destination.IsValid() || source.Addr().BitLen() != destination.Addr().BitLen() {
+	finder, ok := newWindowsProcessFinder(ops.tc)
+	if !ok {
 		return ConnProcessInfo{}, errors.ErrUnsupported
 	}
 
-	entry, err := findWindowsConnectionEntry(source, destination)
+	entry, err := finder.find()
 	if err != nil {
 		return ConnProcessInfo{}, err
 	}
-	if entry.pid == 0 {
-		return ConnProcessInfo{}, os.ErrNotExist
-	}
-
-	info := ConnProcessInfo{ProcessID: uint64(entry.pid)}
-	if path, err := windowsProcessImagePath(entry.pid); err == nil && path != "" {
-		info.ProcessName = filepath.Base(path)
-	}
-	return info, nil
+	return entry.processInfo()
 }
 
 var (
@@ -271,6 +262,14 @@ var (
 	windowsIPv4ProcessSnapshotMu  sync.Mutex
 	windowsIPv6ProcessSnapshotMu  sync.Mutex
 )
+
+type windowsProcessFinder struct {
+	source      netip.AddrPort
+	destination netip.AddrPort
+	family      int
+	snapshot    *atomic.Pointer[windowsProcessSnapshot]
+	mu          *sync.Mutex
+}
 
 type windowsConnEntry struct {
 	src netip.AddrPort
@@ -283,67 +282,81 @@ type windowsProcessSnapshot struct {
 	entries   []windowsConnEntry
 }
 
-func findWindowsConnectionEntry(source, destination netip.AddrPort) (windowsConnEntry, error) {
-	family := syscall.AF_INET
-	if source.Addr().Is6() {
-		family = syscall.AF_INET6
+func newWindowsProcessFinder(conn *net.TCPConn) (windowsProcessFinder, bool) {
+	finder := windowsProcessFinder{
+		family: syscall.AF_INET,
 	}
-	ptr, mu := windowsProcessSnapshotState(family)
-	snapshot := ptr.Load()
+	finder.source = finder.addrPort(AddrPortFromNetAddr(conn.RemoteAddr()))
+	finder.destination = finder.addrPort(AddrPortFromNetAddr(conn.LocalAddr()))
+	if !finder.source.IsValid() || !finder.destination.IsValid() || finder.source.Addr().BitLen() != finder.destination.Addr().BitLen() {
+		return windowsProcessFinder{}, false
+	}
+	if finder.source.Addr().Is6() {
+		finder.family = syscall.AF_INET6
+		finder.snapshot = &windowsIPv6ProcessSnapshotPtr
+		finder.mu = &windowsIPv6ProcessSnapshotMu
+	} else {
+		finder.snapshot = &windowsIPv4ProcessSnapshotPtr
+		finder.mu = &windowsIPv4ProcessSnapshotMu
+	}
+	return finder, true
+}
+
+func (finder windowsProcessFinder) addrPort(addrport netip.AddrPort) netip.AddrPort {
+	if !addrport.IsValid() {
+		return addrport
+	}
+	return netip.AddrPortFrom(addrport.Addr().Unmap(), addrport.Port())
+}
+
+func (finder windowsProcessFinder) find() (windowsConnEntry, error) {
+	snapshot := finder.snapshot.Load()
 	if snapshot.fresh() {
-		if entry, ok := snapshot.find(source, destination); ok {
+		if entry, ok := snapshot.find(finder); ok {
 			return entry, nil
 		}
-		refreshed, err := loadWindowsProcessSnapshot(family, ptr, mu, true, snapshot)
+		refreshed, err := finder.loadSnapshot(true, snapshot)
 		if err != nil {
 			return windowsConnEntry{}, err
 		}
-		if entry, ok := refreshed.find(source, destination); ok {
+		if entry, ok := refreshed.find(finder); ok {
 			return entry, nil
 		}
 		return windowsConnEntry{}, os.ErrNotExist
 	}
 
 	var err error
-	snapshot, err = loadWindowsProcessSnapshot(family, ptr, mu, false, snapshot)
+	snapshot, err = finder.loadSnapshot(false, snapshot)
 	if err != nil {
 		return windowsConnEntry{}, err
 	}
-	if entry, ok := snapshot.find(source, destination); ok {
+	if entry, ok := snapshot.find(finder); ok {
 		return entry, nil
 	}
 	return windowsConnEntry{}, os.ErrNotExist
 }
 
-func windowsProcessSnapshotState(family int) (*atomic.Pointer[windowsProcessSnapshot], *sync.Mutex) {
-	if family == syscall.AF_INET6 {
-		return &windowsIPv6ProcessSnapshotPtr, &windowsIPv6ProcessSnapshotMu
-	}
-	return &windowsIPv4ProcessSnapshotPtr, &windowsIPv4ProcessSnapshotMu
-}
-
-func loadWindowsProcessSnapshot(family int, ptr *atomic.Pointer[windowsProcessSnapshot], mu *sync.Mutex, force bool, seen *windowsProcessSnapshot) (*windowsProcessSnapshot, error) {
+func (finder windowsProcessFinder) loadSnapshot(force bool, seen *windowsProcessSnapshot) (*windowsProcessSnapshot, error) {
 	if !force {
-		if snapshot := ptr.Load(); snapshot.fresh() {
+		if snapshot := finder.snapshot.Load(); snapshot.fresh() {
 			return snapshot, nil
 		}
 	}
 
-	mu.Lock()
-	defer mu.Unlock()
+	finder.mu.Lock()
+	defer finder.mu.Unlock()
 
-	if snapshot := ptr.Load(); snapshot.fresh() {
+	if snapshot := finder.snapshot.Load(); snapshot.fresh() {
 		if !force || snapshot != seen {
 			return snapshot, nil
 		}
 	}
 
-	entries, err := buildWindowsProcessSnapshot(family)
+	snapshot, err := finder.buildSnapshot()
 	if err != nil {
 		return nil, err
 	}
-	snapshot := &windowsProcessSnapshot{createdAt: time.Now(), entries: entries}
-	ptr.Store(snapshot)
+	finder.snapshot.Store(snapshot)
 	return snapshot, nil
 }
 
@@ -352,31 +365,38 @@ func (snapshot *windowsProcessSnapshot) fresh() bool {
 	return snapshot != nil && time.Since(snapshot.createdAt) < ttl
 }
 
-func (snapshot *windowsProcessSnapshot) find(source, destination netip.AddrPort) (windowsConnEntry, bool) {
+func (snapshot *windowsProcessSnapshot) find(finder windowsProcessFinder) (windowsConnEntry, bool) {
 	for _, entry := range snapshot.entries {
-		if entry.match(source, destination) {
+		if entry.src == finder.source && entry.dst == finder.destination {
 			return entry, true
 		}
 	}
 	return windowsConnEntry{}, false
 }
 
-func (entry windowsConnEntry) match(source, destination netip.AddrPort) bool {
-	return entry.src == source && entry.dst == destination
+func (entry windowsConnEntry) processInfo() (ConnProcessInfo, error) {
+	if entry.pid == 0 {
+		return ConnProcessInfo{}, os.ErrNotExist
+	}
+	info := ConnProcessInfo{ProcessID: uint64(entry.pid)}
+	if path, err := entry.imagePath(); err == nil && path != "" {
+		info.ProcessName = filepath.Base(path)
+	}
+	return info, nil
 }
 
-func buildWindowsProcessSnapshot(family int) ([]windowsConnEntry, error) {
-	buf, err := windowsGetExtendedTcpTable(family)
+func (finder windowsProcessFinder) buildSnapshot() (*windowsProcessSnapshot, error) {
+	buf, err := finder.getExtendedTcpTable()
 	if err != nil {
 		return nil, err
 	}
-	if family == syscall.AF_INET6 {
-		return parseWindowsTCP6Table(buf), nil
+	if finder.family == syscall.AF_INET6 {
+		return &windowsProcessSnapshot{createdAt: time.Now(), entries: finder.parseTCP6Table(buf)}, nil
 	}
-	return parseWindowsTCPTable(buf), nil
+	return &windowsProcessSnapshot{createdAt: time.Now(), entries: finder.parseTCPTable(buf)}, nil
 }
 
-func windowsGetExtendedTcpTable(family int) ([]byte, error) {
+func (finder windowsProcessFinder) getExtendedTcpTable() ([]byte, error) {
 	const (
 		tcpTableOwnerPIDAll = 5
 		initialBufferSize   = 4 * 1024
@@ -389,7 +409,7 @@ func windowsGetExtendedTcpTable(family int) ([]byte, error) {
 			uintptr(unsafe.Pointer(&buf[0])),
 			uintptr(unsafe.Pointer(&size)),
 			0,
-			uintptr(uint32(family)),
+			uintptr(uint32(finder.family)),
 			tcpTableOwnerPIDAll,
 			0,
 		)
@@ -406,7 +426,7 @@ func windowsGetExtendedTcpTable(family int) ([]byte, error) {
 	}
 }
 
-func parseWindowsTCPTable(buf []byte) []windowsConnEntry {
+func (finder windowsProcessFinder) parseTCPTable(buf []byte) []windowsConnEntry {
 	type tcpRowOwnerPID struct {
 		State      uint32
 		LocalAddr  uint32
@@ -438,7 +458,7 @@ func parseWindowsTCPTable(buf []byte) []windowsConnEntry {
 	return entries
 }
 
-func parseWindowsTCP6Table(buf []byte) []windowsConnEntry {
+func (finder windowsProcessFinder) parseTCP6Table(buf []byte) []windowsConnEntry {
 	type tcp6RowOwnerPID struct {
 		LocalAddr     [16]byte
 		LocalScopeID  uint32
@@ -469,15 +489,8 @@ func parseWindowsTCP6Table(buf []byte) []windowsConnEntry {
 	return entries
 }
 
-func windowsNormalizeAddrPort(addrport netip.AddrPort) netip.AddrPort {
-	if !addrport.IsValid() {
-		return addrport
-	}
-	return netip.AddrPortFrom(addrport.Addr().Unmap(), addrport.Port())
-}
-
-func windowsProcessImagePath(pid uint32) (string, error) {
-	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
+func (entry windowsConnEntry) imagePath() (string, error) {
+	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, entry.pid)
 	if err != nil {
 		return "", err
 	}

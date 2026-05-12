@@ -131,19 +131,15 @@ func (ops ConnOps) GetProcessInfo() (ConnProcessInfo, error) {
 	if ops.tc == nil {
 		return ConnProcessInfo{}, errors.ErrUnsupported
 	}
-	source := linuxNormalizeAddrPort(AddrPortFromNetAddr(ops.tc.RemoteAddr()))
-	destination := linuxNormalizeAddrPort(AddrPortFromNetAddr(ops.tc.LocalAddr()))
-	if !source.IsValid() || !destination.IsValid() || source.Addr().BitLen() != destination.Addr().BitLen() {
+	finder, ok := newLinuxProcessFinder(ops.tc)
+	if !ok {
 		return ConnProcessInfo{}, errors.ErrUnsupported
 	}
 
-	entry, err := findLinuxConnectionEntry(source, destination)
+	entry, err := finder.find()
 	if err != nil && errors.Is(err, os.ErrNotExist) {
-		if originalDst, originalErr := ops.GetOriginalDST(); originalErr == nil {
-			originalDst = linuxNormalizeAddrPort(originalDst)
-			if originalDst.IsValid() && originalDst != destination && source.Addr().BitLen() == originalDst.Addr().BitLen() {
-				entry, err = findLinuxConnectionEntry(source, originalDst)
-			}
+		if fallback, ok := finder.originalDst(ops); ok {
+			entry, err = fallback.find()
 		}
 	}
 	if err != nil {
@@ -152,7 +148,7 @@ func (ops ConnOps) GetProcessInfo() (ConnProcessInfo, error) {
 	if entry.inode == 0 {
 		return ConnProcessInfo{}, os.ErrNotExist
 	}
-	return linuxProcessInfoFromSocketInode(entry.inode)
+	return entry.processInfo()
 }
 
 var (
@@ -161,6 +157,14 @@ var (
 	linuxIPv4ProcessSnapshotMu  sync.Mutex
 	linuxIPv6ProcessSnapshotMu  sync.Mutex
 )
+
+type linuxProcessFinder struct {
+	source      netip.AddrPort
+	destination netip.AddrPort
+	family      int
+	snapshot    *atomic.Pointer[linuxProcessSnapshot]
+	mu          *sync.Mutex
+}
 
 type linuxConnEntry struct {
 	src   netip.AddrPort
@@ -173,67 +177,94 @@ type linuxProcessSnapshot struct {
 	entries   []linuxConnEntry
 }
 
-func findLinuxConnectionEntry(source, destination netip.AddrPort) (linuxConnEntry, error) {
-	family := unix.AF_INET
-	if source.Addr().Is6() {
-		family = unix.AF_INET6
+func newLinuxProcessFinder(conn *net.TCPConn) (linuxProcessFinder, bool) {
+	finder := linuxProcessFinder{
+		family: unix.AF_INET,
 	}
-	ptr, mu := linuxProcessSnapshotState(family)
-	snapshot := ptr.Load()
+	finder.source = finder.addrPort(AddrPortFromNetAddr(conn.RemoteAddr()))
+	finder.destination = finder.addrPort(AddrPortFromNetAddr(conn.LocalAddr()))
+	if !finder.source.IsValid() || !finder.destination.IsValid() || finder.source.Addr().BitLen() != finder.destination.Addr().BitLen() {
+		return linuxProcessFinder{}, false
+	}
+	if finder.source.Addr().Is6() {
+		finder.family = unix.AF_INET6
+		finder.snapshot = &linuxIPv6ProcessSnapshotPtr
+		finder.mu = &linuxIPv6ProcessSnapshotMu
+	} else {
+		finder.snapshot = &linuxIPv4ProcessSnapshotPtr
+		finder.mu = &linuxIPv4ProcessSnapshotMu
+	}
+	return finder, true
+}
+
+func (finder linuxProcessFinder) originalDst(ops ConnOps) (linuxProcessFinder, bool) {
+	addrport, err := ops.GetOriginalDST()
+	if err != nil {
+		return linuxProcessFinder{}, false
+	}
+	previous := finder.destination
+	finder.destination = finder.addrPort(addrport)
+	if !finder.destination.IsValid() || finder.destination == previous || finder.source.Addr().BitLen() != finder.destination.Addr().BitLen() {
+		return linuxProcessFinder{}, false
+	}
+	return finder, true
+}
+
+func (finder linuxProcessFinder) addrPort(addrport netip.AddrPort) netip.AddrPort {
+	if !addrport.IsValid() {
+		return addrport
+	}
+	return netip.AddrPortFrom(addrport.Addr().Unmap(), addrport.Port())
+}
+
+func (finder linuxProcessFinder) find() (linuxConnEntry, error) {
+	snapshot := finder.snapshot.Load()
 	if snapshot.fresh() {
-		if entry, ok := snapshot.find(source, destination); ok {
+		if entry, ok := snapshot.find(finder); ok {
 			return entry, nil
 		}
-		refreshed, err := loadLinuxProcessSnapshot(family, ptr, mu, true, snapshot)
+		refreshed, err := finder.loadSnapshot(true, snapshot)
 		if err != nil {
 			return linuxConnEntry{}, err
 		}
-		if entry, ok := refreshed.find(source, destination); ok {
+		if entry, ok := refreshed.find(finder); ok {
 			return entry, nil
 		}
 		return linuxConnEntry{}, os.ErrNotExist
 	}
 
 	var err error
-	snapshot, err = loadLinuxProcessSnapshot(family, ptr, mu, false, snapshot)
+	snapshot, err = finder.loadSnapshot(false, snapshot)
 	if err != nil {
 		return linuxConnEntry{}, err
 	}
-	if entry, ok := snapshot.find(source, destination); ok {
+	if entry, ok := snapshot.find(finder); ok {
 		return entry, nil
 	}
 	return linuxConnEntry{}, os.ErrNotExist
 }
 
-func linuxProcessSnapshotState(family int) (*atomic.Pointer[linuxProcessSnapshot], *sync.Mutex) {
-	if family == unix.AF_INET6 {
-		return &linuxIPv6ProcessSnapshotPtr, &linuxIPv6ProcessSnapshotMu
-	}
-	return &linuxIPv4ProcessSnapshotPtr, &linuxIPv4ProcessSnapshotMu
-}
-
-func loadLinuxProcessSnapshot(family int, ptr *atomic.Pointer[linuxProcessSnapshot], mu *sync.Mutex, force bool, seen *linuxProcessSnapshot) (*linuxProcessSnapshot, error) {
+func (finder linuxProcessFinder) loadSnapshot(force bool, seen *linuxProcessSnapshot) (*linuxProcessSnapshot, error) {
 	if !force {
-		if snapshot := ptr.Load(); snapshot.fresh() {
+		if snapshot := finder.snapshot.Load(); snapshot.fresh() {
 			return snapshot, nil
 		}
 	}
 
-	mu.Lock()
-	defer mu.Unlock()
+	finder.mu.Lock()
+	defer finder.mu.Unlock()
 
-	if snapshot := ptr.Load(); snapshot.fresh() {
+	if snapshot := finder.snapshot.Load(); snapshot.fresh() {
 		if !force || snapshot != seen {
 			return snapshot, nil
 		}
 	}
 
-	entries, err := buildLinuxProcessSnapshot(family)
+	snapshot, err := finder.buildSnapshot()
 	if err != nil {
 		return nil, err
 	}
-	snapshot := &linuxProcessSnapshot{createdAt: time.Now(), entries: entries}
-	ptr.Store(snapshot)
+	finder.snapshot.Store(snapshot)
 	return snapshot, nil
 }
 
@@ -242,20 +273,16 @@ func (snapshot *linuxProcessSnapshot) fresh() bool {
 	return snapshot != nil && time.Since(snapshot.createdAt) < ttl
 }
 
-func (snapshot *linuxProcessSnapshot) find(source, destination netip.AddrPort) (linuxConnEntry, bool) {
+func (snapshot *linuxProcessSnapshot) find(finder linuxProcessFinder) (linuxConnEntry, bool) {
 	for _, entry := range snapshot.entries {
-		if entry.match(source, destination) {
+		if entry.src == finder.source && entry.dst == finder.destination {
 			return entry, true
 		}
 	}
 	return linuxConnEntry{}, false
 }
 
-func (entry linuxConnEntry) match(source, destination netip.AddrPort) bool {
-	return entry.src == source && entry.dst == destination
-}
-
-func buildLinuxProcessSnapshot(family int) ([]linuxConnEntry, error) {
+func (finder linuxProcessFinder) buildSnapshot() (*linuxProcessSnapshot, error) {
 	type inetDiagSockID struct {
 		SPort  uint16
 		DPort  uint16
@@ -280,7 +307,7 @@ func buildLinuxProcessSnapshot(family int) ([]linuxConnEntry, error) {
 	defer unix.Close(fd)
 
 	req := inetDiagReqV2{
-		Family:   uint8(family),
+		Family:   uint8(finder.family),
 		Protocol: syscall.IPPROTO_TCP,
 		States:   ^uint32(0),
 	}
@@ -298,6 +325,7 @@ func buildLinuxProcessSnapshot(family int) ([]linuxConnEntry, error) {
 	}
 
 	var entries []linuxConnEntry
+	snapshot := &linuxProcessSnapshot{createdAt: time.Now()}
 	reply := make([]byte, 64*1024)
 	for {
 		n, _, err := unix.Recvfrom(fd, reply, 0)
@@ -312,18 +340,20 @@ func buildLinuxProcessSnapshot(family int) ([]linuxConnEntry, error) {
 			payload := remain[unix.SizeofNlMsghdr:h.Len]
 			switch h.Type {
 			case unix.NLMSG_DONE:
-				return entries, nil
+				snapshot.entries = entries
+				return snapshot, nil
 			case unix.NLMSG_ERROR:
 				if int(h.Len) < unix.SizeofNlMsghdr+unix.SizeofNlMsgerr {
 					return nil, unix.EINVAL
 				}
 				e := *(*unix.NlMsgerr)(unsafe.Pointer(&payload[0]))
 				if e.Error == 0 {
-					return entries, nil
+					snapshot.entries = entries
+					return snapshot, nil
 				}
 				return nil, unix.Errno(-e.Error)
 			default:
-				if entry, ok := parseLinuxInetDiagMsg(payload, family); ok {
+				if entry, ok := finder.parseInetDiagMsg(payload); ok {
 					entries = append(entries, entry)
 				}
 			}
@@ -337,7 +367,7 @@ func buildLinuxProcessSnapshot(family int) ([]linuxConnEntry, error) {
 	}
 }
 
-func parseLinuxInetDiagMsg(payload []byte, family int) (linuxConnEntry, bool) {
+func (finder linuxProcessFinder) parseInetDiagMsg(payload []byte) (linuxConnEntry, bool) {
 	type inetDiagSockID struct {
 		SPort  uint16
 		DPort  uint16
@@ -363,9 +393,10 @@ func parseLinuxInetDiagMsg(payload []byte, family int) (linuxConnEntry, bool) {
 		return linuxConnEntry{}, false
 	}
 	msg := (*inetDiagMsg)(unsafe.Pointer(&payload[0]))
-	srcPort, dstPort := linuxNtohs(msg.ID.SPort), linuxNtohs(msg.ID.DPort)
+	ntohs := func(v uint16) uint16 { return binary.BigEndian.Uint16((*[2]byte)(unsafe.Pointer(&v))[:]) }
+	srcPort, dstPort := ntohs(msg.ID.SPort), ntohs(msg.ID.DPort)
 	entry := linuxConnEntry{inode: uint64(msg.Inode)}
-	switch family {
+	switch finder.family {
 	case unix.AF_INET:
 		var src, dst [4]byte
 		copy(src[:], msg.ID.Src[:4])
@@ -381,8 +412,8 @@ func parseLinuxInetDiagMsg(payload []byte, family int) (linuxConnEntry, bool) {
 	return entry, entry.src.IsValid() && entry.dst.IsValid()
 }
 
-func linuxProcessInfoFromSocketInode(inode uint64) (ConnProcessInfo, error) {
-	needle := "socket:[" + strconv.FormatUint(inode, 10) + "]"
+func (entry linuxConnEntry) processInfo() (ConnProcessInfo, error) {
+	needle := "socket:[" + strconv.FormatUint(entry.inode, 10) + "]"
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
 		return ConnProcessInfo{}, err
@@ -413,17 +444,6 @@ func linuxProcessInfoFromSocketInode(inode uint64) (ConnProcessInfo, error) {
 		}
 	}
 	return ConnProcessInfo{}, os.ErrNotExist
-}
-
-func linuxNormalizeAddrPort(addrport netip.AddrPort) netip.AddrPort {
-	if !addrport.IsValid() {
-		return addrport
-	}
-	return netip.AddrPortFrom(addrport.Addr().Unmap(), addrport.Port())
-}
-
-func linuxNtohs(v uint16) uint16 {
-	return binary.BigEndian.Uint16((*[2]byte)(unsafe.Pointer(&v))[:])
 }
 
 func (ops ConnOps) GetOriginalDST() (addrport netip.AddrPort, err error) {
