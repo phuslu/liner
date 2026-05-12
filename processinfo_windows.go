@@ -18,24 +18,24 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-type ConnProcessInfo struct {
+type TCPConnProcessInfo struct {
 	ID   uint64
 	Name string
 	Path string
 }
 
-func windowsGetProcessInfo(conn *net.TCPConn) (ConnProcessInfo, error) {
+func GetTCPConnProcessInfo(conn net.Conn) (TCPConnProcessInfo, error) {
 	if conn == nil {
-		return ConnProcessInfo{}, errors.ErrUnsupported
+		return TCPConnProcessInfo{}, errors.ErrUnsupported
 	}
 	finder, ok := newWindowsProcessFinder(conn)
 	if !ok {
-		return ConnProcessInfo{}, errors.ErrUnsupported
+		return TCPConnProcessInfo{}, errors.ErrUnsupported
 	}
 
 	entry, err := finder.find()
 	if err != nil {
-		return ConnProcessInfo{}, err
+		return TCPConnProcessInfo{}, err
 	}
 	return entry.processInfo()
 }
@@ -68,7 +68,7 @@ type windowsProcessSnapshot struct {
 	entries   []windowsConnEntry
 }
 
-func newWindowsProcessFinder(conn *net.TCPConn) (windowsProcessFinder, bool) {
+func newWindowsProcessFinder(conn net.Conn) (windowsProcessFinder, bool) {
 	finder := windowsProcessFinder{
 		family: syscall.AF_INET,
 	}
@@ -160,11 +160,11 @@ func (snapshot *windowsProcessSnapshot) find(finder windowsProcessFinder) (windo
 	return windowsConnEntry{}, false
 }
 
-func (entry windowsConnEntry) processInfo() (ConnProcessInfo, error) {
+func (entry windowsConnEntry) processInfo() (TCPConnProcessInfo, error) {
 	if entry.pid == 0 {
-		return ConnProcessInfo{}, os.ErrNotExist
+		return TCPConnProcessInfo{}, os.ErrNotExist
 	}
-	info := ConnProcessInfo{ID: uint64(entry.pid)}
+	info := TCPConnProcessInfo{ID: uint64(entry.pid)}
 	if path, err := entry.imagePath(); err == nil && path != "" {
 		info.Name = filepath.Base(path)
 		info.Path = path

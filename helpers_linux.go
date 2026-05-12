@@ -120,10 +120,6 @@ func (ops ConnOps) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
 	return
 }
 
-func (ops ConnOps) GetProcessInfo() (ConnProcessInfo, error) {
-	return linuxGetProcessInfo(ops.tc)
-}
-
 func (ops ConnOps) GetOriginalDST() (addrport netip.AddrPort, err error) {
 	return linuxGetOriginalDST(ops.tc)
 }

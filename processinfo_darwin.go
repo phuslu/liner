@@ -21,19 +21,19 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-type ConnProcessInfo struct {
+type TCPConnProcessInfo struct {
 	ID   uint64
 	Name string
 	Path string
 }
 
-func darwinGetProcessInfo(conn *net.TCPConn) (ConnProcessInfo, error) {
+func GetTCPConnProcessInfo(conn net.Conn) (TCPConnProcessInfo, error) {
 	if conn == nil {
-		return ConnProcessInfo{}, errors.ErrUnsupported
+		return TCPConnProcessInfo{}, errors.ErrUnsupported
 	}
 	finder, ok := newDarwinProcessFinder(conn)
 	if !ok {
-		return ConnProcessInfo{}, errors.ErrUnsupported
+		return TCPConnProcessInfo{}, errors.ErrUnsupported
 	}
 
 	entry, err := finder.find()
@@ -43,7 +43,7 @@ func darwinGetProcessInfo(conn *net.TCPConn) (ConnProcessInfo, error) {
 		}
 	}
 	if err != nil {
-		return ConnProcessInfo{}, err
+		return TCPConnProcessInfo{}, err
 	}
 	return entry.processInfo()
 }
@@ -81,15 +81,19 @@ var (
 	darwinProcessSnapshotMu  sync.Mutex
 )
 
-func newDarwinProcessFinder(conn *net.TCPConn) (darwinProcessFinder, bool) {
+func newDarwinProcessFinder(conn net.Conn) (darwinProcessFinder, bool) {
 	var finder darwinProcessFinder
 	finder.source = finder.addrPort(AddrPortFromNetAddr(conn.RemoteAddr()))
 	finder.destination = finder.addrPort(AddrPortFromNetAddr(conn.LocalAddr()))
 	return finder, finder.source.IsValid() && finder.destination.IsValid()
 }
 
-func (finder darwinProcessFinder) originalDst(conn *net.TCPConn) (darwinProcessFinder, bool) {
-	addrport, err := darwinGetOriginalDST(conn)
+func (finder darwinProcessFinder) originalDst(conn net.Conn) (darwinProcessFinder, bool) {
+	tc, ok := conn.(*net.TCPConn)
+	if !ok {
+		return darwinProcessFinder{}, false
+	}
+	addrport, err := darwinGetOriginalDST(tc)
 	if err != nil {
 		return darwinProcessFinder{}, false
 	}
@@ -170,11 +174,11 @@ func (snapshot *darwinProcessSnapshot) find(finder darwinProcessFinder) (darwinC
 	return darwinConnEntry{}, false
 }
 
-func (entry darwinConnEntry) processInfo() (ConnProcessInfo, error) {
+func (entry darwinConnEntry) processInfo() (TCPConnProcessInfo, error) {
 	if entry.pid == 0 {
-		return ConnProcessInfo{}, os.ErrNotExist
+		return TCPConnProcessInfo{}, os.ErrNotExist
 	}
-	info := ConnProcessInfo{ID: uint64(entry.pid)}
+	info := TCPConnProcessInfo{ID: uint64(entry.pid)}
 	if path, err := entry.execPath(); err == nil && path != "" {
 		info.Name = filepath.Base(path)
 		info.Path = path

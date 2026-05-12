@@ -48,12 +48,6 @@ func (ops ConnOps) GetTcpInfo() (*TCPInfo, error) {
 	return nil, errors.ErrUnsupported
 }
 
-type ConnProcessInfo struct{}
-
-func (ops ConnOps) GetProcessInfo() (ConnProcessInfo, error) {
-	return ConnProcessInfo{}, errors.ErrUnsupported
-}
-
 func (ops ConnOps) GetOriginalDST() (addrport netip.AddrPort, err error) {
 	return netip.AddrPort{}, errors.ErrUnsupported
 }

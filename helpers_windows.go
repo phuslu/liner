@@ -229,10 +229,6 @@ func (ops ConnOps) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
 	return
 }
 
-func (ops ConnOps) GetProcessInfo() (ConnProcessInfo, error) {
-	return windowsGetProcessInfo(ops.tc)
-}
-
 func (ops ConnOps) GetOriginalDST() (addrport netip.AddrPort, err error) {
 	return netip.AddrPort{}, errors.ErrUnsupported
 }

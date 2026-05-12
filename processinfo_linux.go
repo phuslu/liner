@@ -19,19 +19,19 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-type ConnProcessInfo struct {
+type TCPConnProcessInfo struct {
 	ID   uint64
 	Name string
 	Path string
 }
 
-func linuxGetProcessInfo(conn *net.TCPConn) (ConnProcessInfo, error) {
+func GetTCPConnProcessInfo(conn net.Conn) (TCPConnProcessInfo, error) {
 	if conn == nil {
-		return ConnProcessInfo{}, errors.ErrUnsupported
+		return TCPConnProcessInfo{}, errors.ErrUnsupported
 	}
 	finder, ok := newLinuxProcessFinder(conn)
 	if !ok {
-		return ConnProcessInfo{}, errors.ErrUnsupported
+		return TCPConnProcessInfo{}, errors.ErrUnsupported
 	}
 
 	entry, err := finder.find()
@@ -41,10 +41,10 @@ func linuxGetProcessInfo(conn *net.TCPConn) (ConnProcessInfo, error) {
 		}
 	}
 	if err != nil {
-		return ConnProcessInfo{}, err
+		return TCPConnProcessInfo{}, err
 	}
 	if entry.inode == 0 {
-		return ConnProcessInfo{}, os.ErrNotExist
+		return TCPConnProcessInfo{}, os.ErrNotExist
 	}
 	return entry.processInfo()
 }
@@ -75,7 +75,7 @@ type linuxProcessSnapshot struct {
 	entries   []linuxConnEntry
 }
 
-func newLinuxProcessFinder(conn *net.TCPConn) (linuxProcessFinder, bool) {
+func newLinuxProcessFinder(conn net.Conn) (linuxProcessFinder, bool) {
 	finder := linuxProcessFinder{
 		family: unix.AF_INET,
 	}
@@ -95,8 +95,12 @@ func newLinuxProcessFinder(conn *net.TCPConn) (linuxProcessFinder, bool) {
 	return finder, true
 }
 
-func (finder linuxProcessFinder) originalDst(conn *net.TCPConn) (linuxProcessFinder, bool) {
-	addrport, err := linuxGetOriginalDST(conn)
+func (finder linuxProcessFinder) originalDst(conn net.Conn) (linuxProcessFinder, bool) {
+	tc, ok := conn.(*net.TCPConn)
+	if !ok {
+		return linuxProcessFinder{}, false
+	}
+	addrport, err := linuxGetOriginalDST(tc)
 	if err != nil {
 		return linuxProcessFinder{}, false
 	}
@@ -310,11 +314,11 @@ func (finder linuxProcessFinder) parseInetDiagMsg(payload []byte) (linuxConnEntr
 	return entry, entry.src.IsValid() && entry.dst.IsValid()
 }
 
-func (entry linuxConnEntry) processInfo() (ConnProcessInfo, error) {
+func (entry linuxConnEntry) processInfo() (TCPConnProcessInfo, error) {
 	needle := "socket:[" + strconv.FormatUint(entry.inode, 10) + "]"
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
-		return ConnProcessInfo{}, err
+		return TCPConnProcessInfo{}, err
 	}
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -334,7 +338,7 @@ func (entry linuxConnEntry) processInfo() (ConnProcessInfo, error) {
 			if err != nil || target != needle {
 				continue
 			}
-			info := ConnProcessInfo{ID: pid}
+			info := TCPConnProcessInfo{ID: pid}
 			if name, err := os.ReadFile("/proc/" + entry.Name() + "/comm"); err == nil {
 				info.Name = strings.TrimSuffix(string(name), "\n")
 			}
@@ -344,5 +348,5 @@ func (entry linuxConnEntry) processInfo() (ConnProcessInfo, error) {
 			return info, nil
 		}
 	}
-	return ConnProcessInfo{}, os.ErrNotExist
+	return TCPConnProcessInfo{}, os.ErrNotExist
 }
