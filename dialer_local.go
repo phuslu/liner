@@ -23,7 +23,7 @@ type LocalDialer struct {
 
 	Interface       string
 	DisableIPv6     bool
-	PerferIPv6      bool
+	PreferIPv6      bool
 	ForbidLocalAddr bool
 	Concurrency     int
 
@@ -97,7 +97,7 @@ func (d *LocalDialer) dialContext(ctx context.Context, network, address string, 
 		if i := slices.IndexFunc(ips, func(a netip.Addr) bool { return a.Is6() }); i > 0 {
 			perfers, fallbacks = ips[:i], nil
 		}
-	case d.PerferIPv6 || ctx.Value(DialerPreferIPv6ContextKey) != nil:
+	case d.PreferIPv6 || ctx.Value(DialerPreferIPv6ContextKey) != nil:
 		if i := slices.IndexFunc(ips, func(a netip.Addr) bool { return a.Is6() }); i > 0 {
 			perfers, fallbacks = ips[i:], ips[:i]
 		}
