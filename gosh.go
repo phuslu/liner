@@ -197,6 +197,15 @@ func gosh(stdin, stdout, stderr *os.File) error {
 		promptPrinter.Print(rl.Stdout(), nextPrefix)
 		nextPrefix = ""
 	}
+	resetPrompt := func() {
+		if runtime.GOOS == "windows" && isatty {
+			// Windows consoles may lose VT mode after programs exit.
+			EnableVirtualTerminalSequences()
+		}
+		setPrompt(goshPromptString(ctx, runner, stdin, stderr, "PS1", goshDefaultPrompt(), promptSeq))
+		promptSeq++
+		flushPrefix()
+	}
 
 	// goshReader wraps readline so parser.Interactive can consume it as an
 	// io.Reader. Each call to Read invokes Readline() to fetch one line.
@@ -204,7 +213,7 @@ func gosh(stdin, stdout, stderr *os.File) error {
 	// incomplete statement. Ctrl-D / EOF returns io.EOF to end the session.
 	rdr := &goshReader{rl: rl, history: history}
 
-	return parser.Interactive(rdr, func(stmts []*syntax.Stmt) bool {
+	return goshRunInteractiveParser(parser, rdr, func(stmts []*syntax.Stmt) bool {
 		// parser.Incomplete() returns true when the parser has consumed a
 		// partial statement and is waiting for more input (e.g. open quotes,
 		// unclosed if/for blocks). Switch to the continuation prompt and keep
@@ -230,13 +239,11 @@ func gosh(stdin, stdout, stderr *os.File) error {
 
 		// Restore the main prompt, updating it in case the effective UID
 		// changed (e.g. via su).
-		if runtime.GOOS == "windows" && isatty {
-			// Windows consoles may lose VT mode after programs exit.
-			EnableVirtualTerminalSequences()
-		}
-		setPrompt(goshPromptString(ctx, runner, stdin, stderr, "PS1", goshDefaultPrompt(), promptSeq))
-		promptSeq++
-		flushPrefix()
+		resetPrompt()
+		return true
+	}, func(err error) bool {
+		fmt.Fprintln(rl.Stderr(), err.Error())
+		resetPrompt()
 		return true
 	})
 }
@@ -273,6 +280,18 @@ func goshParseCommand(args []string) (*goshCommandSpec, error) {
 		break
 	}
 	return spec, nil
+}
+
+func goshRunInteractiveParser(parser *syntax.Parser, r io.Reader, run func([]*syntax.Stmt) bool, handleError func(error) bool) error {
+	for {
+		err := parser.Interactive(r, run)
+		if err == nil {
+			return nil
+		}
+		if handleError == nil || !handleError(err) {
+			return err
+		}
+	}
 }
 
 // goshReader adapts *readline.Instance to the io.Reader interface expected by
