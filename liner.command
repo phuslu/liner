@@ -26,6 +26,7 @@ import queue
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import zipfile
 from dataclasses import dataclass
@@ -192,6 +193,7 @@ class AppDelegate(NSObject):
         self.profiles: List[str] = []
         self.selected_profile: Optional[str] = None
         self.start_stop_item = None
+        self.sudo_askpass_path: Optional[str] = None
 
         self.console_font = (
             NSFont.fontWithName_size_("Monaco", 12.0)
@@ -215,6 +217,7 @@ class AppDelegate(NSObject):
 
     def applicationWillTerminate_(self, notification):
         self.stop_child()
+        self.cleanup_sudo_askpass()
 
     def windowShouldClose_(self, sender):
         sender.orderOut_(None)
@@ -565,6 +568,30 @@ class AppDelegate(NSObject):
             )
         return has_http, settings
 
+    def profile_has_tun_section(self, config_file: str) -> bool:
+        config_path = os.path.join(self.work_dir, config_file)
+        for path in self.config_data_paths(config_path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    content = f.read()
+            except OSError:
+                continue
+            if self.yaml_has_top_level_key(content, "tun"):
+                return True
+        return False
+
+    def yaml_has_top_level_key(self, yaml_text: str, key: str) -> bool:
+        key_prefix = key + ":"
+        for raw_line in yaml_text.splitlines():
+            if not raw_line.strip() or raw_line.lstrip().startswith("#"):
+                continue
+            if self.line_indent(raw_line) != 0:
+                continue
+            trimmed = self.strip_yaml_comment(raw_line).strip()
+            if trimmed == key_prefix or trimmed.startswith(key_prefix + " "):
+                return True
+        return False
+
     def proxy_settings_unavailable_tooltip(self) -> str:
         if not self.selected_profile:
             return "No profile selected"
@@ -830,13 +857,33 @@ class AppDelegate(NSObject):
             self.update_process_menu_state()
             return False
 
-        self.append_to_console(f"Starting: {CHILD_BIN} {config_file}\n", ANSI_COLORS[2])
+        requires_admin = self.profile_has_tun_section(config_file)
+        if requires_admin:
+            self.append_to_console(
+                f"Starting with sudo: {CHILD_BIN} {config_file}\n", ANSI_COLORS[2]
+            )
+        else:
+            self.append_to_console(f"Starting: {CHILD_BIN} {config_file}\n", ANSI_COLORS[2])
 
         environment = dict(os.environ)
         environment["LINER_LOG_TO_STDERR"] = "1"
         try:
+            args = [bin_path, config_file]
+            if requires_admin:
+                environment["SUDO_ASKPASS"] = self.ensure_sudo_askpass()
+                args = [
+                    "/usr/bin/sudo",
+                    "-A",
+                    "-p",
+                    f"{APP_TITLE} needs administrator privileges to start TUN.\nPassword: ",
+                    "--",
+                    "/usr/bin/env",
+                    "LINER_LOG_TO_STDERR=1",
+                    bin_path,
+                    config_file,
+                ]
             process = subprocess.Popen(
-                [bin_path, config_file],
+                args,
                 cwd=self.work_dir,
                 env=environment,
                 stdin=subprocess.DEVNULL,
@@ -856,6 +903,55 @@ class AppDelegate(NSObject):
         self.update_process_menu_state()
         self.update_proxy_menu_state()
         return True
+
+    def ensure_sudo_askpass(self) -> str:
+        path = self.sudo_askpass_path
+        if path and os.path.exists(path):
+            return path
+
+        fd, path = tempfile.mkstemp(prefix=f"{CHILD_BIN}-askpass-", suffix=".sh")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(
+                    """#!/bin/sh
+prompt=${1:-"Password:"}
+exec /usr/bin/osascript - "$prompt" <<'APPLESCRIPT'
+on run argv
+    set promptText to item 1 of argv
+    try
+        set dialogResult to display dialog promptText default answer "" with hidden answer buttons {"OK", "Cancel"} default button "OK" with title "Liner" with icon caution
+        return text returned of dialogResult
+    on error number -128
+        error number -128
+    end try
+end run
+APPLESCRIPT
+"""
+                )
+            os.chmod(path, 0o700)
+        except Exception:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+            raise
+
+        self.sudo_askpass_path = path
+        return path
+
+    def cleanup_sudo_askpass(self):
+        path = self.sudo_askpass_path
+        self.sudo_askpass_path = None
+        if not path:
+            return
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
 
     def start_reading(self, pipe):
         if pipe is None:
