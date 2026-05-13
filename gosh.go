@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"cmp"
 	"context"
 	_ "embed"
 	"encoding/base64"
@@ -38,52 +37,96 @@ import (
 )
 
 func gosh(stdin, stdout, stderr *os.File) error {
-	isatty := pty.IsTerminal(stdin.Fd())
+	return goshRun(goshRunConfig{
+		args:           os.Args,
+		stdin:          stdin,
+		stdout:         stdout,
+		stderr:         stderr,
+		isatty:         pty.IsTerminal(stdin.Fd()),
+		notifySignals:  true,
+		setProcessName: true,
+	})
+}
 
-	command, err := goshParseCommand(os.Args)
+type goshRunConfig struct {
+	ctx            context.Context
+	args           []string
+	stdin          io.Reader
+	stdout         io.Writer
+	stderr         io.Writer
+	env            []string
+	dir            string
+	isatty         bool
+	notifySignals  bool
+	setProcessName bool
+}
+
+func goshRun(c goshRunConfig) error {
+	args := c.args
+	if len(args) == 0 {
+		args = []string{"gosh"}
+	}
+	stdin := c.stdin
+	if stdin == nil {
+		stdin = strings.NewReader("")
+	}
+	stdout := c.stdout
+	if stdout == nil {
+		stdout = io.Discard
+	}
+	stderr := c.stderr
+	if stderr == nil {
+		stderr = io.Discard
+	}
+	env := goshEnvironWithDefaultShell(c.env)
+
+	command, err := goshParseCommand(args)
 	if err != nil {
 		return err
 	}
-	interactive := isatty && command == nil
+	interactive := c.isatty && command == nil
 
-	signals := []os.Signal{syscall.SIGTERM}
-	if !interactive {
-		signals = append(signals, os.Interrupt)
+	ctx := c.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if c.notifySignals {
+		signals := []os.Signal{syscall.SIGTERM}
+		if !interactive {
+			signals = append(signals, os.Interrupt)
+		}
+
+		var cancel context.CancelFunc
+		ctx, cancel = signal.NotifyContext(ctx, signals...)
+		defer cancel()
 	}
 
-	ctx, cancel := signal.NotifyContext(context.Background(), signals...)
-	defer cancel()
-
-	SetProcessName(os.Args[0])
-
-	if isatty {
+	if c.setProcessName {
+		SetProcessName(args[0])
+	}
+	if c.isatty {
 		EnableVirtualTerminalSequences()
 	}
 
-	if exe, err := exec.LookPath("bash"); err == nil {
-		os.Setenv("SHELL", exe)
-	} else {
-		switch runtime.GOOS {
-		case "windows":
-			os.Setenv("SHELL", "cmd.exe")
-		default:
-			os.Setenv("SHELL", "/bin/sh")
-		}
+	opts := []interp.RunnerOption{
+		interp.Interactive(true),
+		interp.StdIO(stdin, stdout, stderr),
+		interp.Env(expand.ListEnviron(env...)),
+	}
+	if c.dir != "" {
+		opts = append(opts, interp.Dir(c.dir))
 	}
 
 	parser := syntax.NewParser()
 	history := &goshHistory{limit: goshResolveHistoryLimit()}
 	bindings := &goshKeyBindingManager{entries: make(map[string]*goKeyBindingEntry)}
 	var runner *interp.Runner
-	runner, err = interp.New(
-		interp.Interactive(true),
-		interp.StdIO(stdin, stdout, stderr),
-		interp.CallHandler(goshCallHandler(func() *interp.Runner { return runner }, history, bindings)),
-	)
+	opts = append(opts, interp.CallHandler(goshCallHandler(func() *interp.Runner { return runner }, history, bindings)))
+	runner, err = interp.New(opts...)
 	if err != nil {
 		return err
 	}
-	goshInstallShellOptionVariable(runner, interactive, stdin != nil)
+	goshInstallShellOptionVariable(runner, interactive, command == nil)
 
 	runner.Run(ctx, func() *syntax.File {
 		prog, err := parser.Parse(strings.NewReader(`
@@ -103,7 +146,7 @@ func gosh(stdin, stdout, stderr *os.File) error {
 	}())
 
 	// source the init files.
-	if file, err := os.Open(os.ExpandEnv(cmp.Or(os.Getenv("GOSH_ENV"), "$HOME/.bashrc"))); err == nil {
+	if file, err := os.Open(goshResolveInitFile(env, interactive)); err == nil {
 		prog, err := parser.Parse(file, file.Name())
 		if err != nil {
 			fmt.Fprintln(stderr, "failed to parse", file.Name(), ":", err)
@@ -202,7 +245,7 @@ func gosh(stdin, stdout, stderr *os.File) error {
 		nextPrefix = ""
 	}
 	resetPrompt := func() {
-		if runtime.GOOS == "windows" && isatty {
+		if runtime.GOOS == "windows" && c.isatty {
 			// Windows consoles may lose VT mode after programs exit.
 			EnableVirtualTerminalSequences()
 		}
@@ -254,6 +297,94 @@ func gosh(stdin, stdout, stderr *os.File) error {
 	})
 }
 
+func goshDefaultShell() string {
+	if exe, err := exec.LookPath("bash"); err == nil {
+		return exe
+	}
+	switch runtime.GOOS {
+	case "windows":
+		return "cmd.exe"
+	default:
+		return "/bin/sh"
+	}
+}
+
+func goshEnvironWithDefaultShell(env []string) []string {
+	if env == nil {
+		env = os.Environ()
+	}
+	env = slices.Clone(env)
+	if _, ok := goshLookupEnv(env, "SHELL"); !ok {
+		env = append(env, "SHELL="+goshDefaultShell())
+	}
+	return env
+}
+
+func goshLookupEnv(env []string, key string) (string, bool) {
+	for i := len(env) - 1; i >= 0; i-- {
+		name, value, ok := strings.Cut(env[i], "=")
+		if !ok {
+			continue
+		}
+		if name == key || runtime.GOOS == "windows" && strings.EqualFold(name, key) {
+			return value, true
+		}
+	}
+	return "", false
+}
+
+func goshExpandEnv(env []string, s string) string {
+	return os.Expand(s, func(key string) string {
+		value, _ := goshLookupEnv(env, key)
+		return value
+	})
+}
+
+func goshResolveInitFile(env []string, interactive bool) string {
+	file, ok := goshLookupEnv(env, "GOSH_ENV")
+	if !ok && interactive {
+		file = "$HOME/.bashrc"
+	}
+	if file == "" {
+		return ""
+	}
+	return goshExpandEnv(env, file)
+}
+
+func goshExitCode(err error) int {
+	if err == nil {
+		return 0
+	}
+	var status interp.ExitStatus
+	if errors.As(err, &status) {
+		return int(status)
+	}
+	if errors.Is(err, context.Canceled) {
+		return 130
+	}
+	return 127
+}
+
+func goshIsExitStatus(err error) bool {
+	var status interp.ExitStatus
+	return errors.As(err, &status)
+}
+
+func goshSetEnv(env []string, key, value string) []string {
+	prefix := key + "="
+	for i := len(env) - 1; i >= 0; i-- {
+		name, _, ok := strings.Cut(env[i], "=")
+		if !ok {
+			continue
+		}
+		if name == key || runtime.GOOS == "windows" && strings.EqualFold(name, key) {
+			env[i] = prefix + value
+			return env
+		}
+	}
+	return append(env, prefix+value)
+}
+
 type goshCommandSpec struct {
 	script string
 	argv0  string
@@ -272,7 +403,10 @@ func goshParseCommand(args []string) (*goshCommandSpec, error) {
 		if i+1 >= len(args) {
 			return nil, fmt.Errorf("gosh: -c requires a command string")
 		}
-		spec = &goshCommandSpec{script: strings.Clone(args[i+1])}
+		spec = &goshCommandSpec{
+			script: strings.Clone(args[i+1]),
+			argv0:  strings.Clone(args[0]),
+		}
 		if i+2 < len(args) {
 			spec.argv0 = strings.Clone(args[i+2])
 			if i+3 < len(args) {
