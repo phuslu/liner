@@ -7,10 +7,24 @@ jobs:
   build:
     name: build
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        osarch:
+          - linux_amd64
+          - linux_arm64
+          - linux_arm
+          - darwin_amd64
+          - darwin_arm64
+          - android_arm64
+          - windows_amd64
+          - windows_arm64
     steps:
       - uses: actions/checkout@v1
       - run: sudo ./build.bash setup
-      - run: sudo ./build.bash build
+      - run: |
+          export GOOSARCH=${{ matrix.osarch }}
+          export GOOS="${GOOSARCH%_*}" GOARCH="${GOOSARCH#*_}"
+          sudo -E ./build.bash build
       - run: sudo -E ./build.bash release
         env:
           GITHUB_TOKEN: ${{ secrets.GOTIP_TOKEN }}

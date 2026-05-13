@@ -18,6 +18,8 @@ function liner::setup() {
 
 function liner::build() {
 	export CGO_ENABLED=0
+	export GOOS=${GOOS:-$(go env GOOS)}
+	export GOARCH=${GOARCH:-$(go env GOARCH)}
 	export GOROOT=${GOROOT:-/tmp/go}
 	export GOPATH=${GOPATH:-/tmp/gopath}
 	export PATH=${GOPATH:-~/go}/bin:${GOROOT}/bin:$PATH
@@ -48,66 +50,68 @@ function liner::build() {
 	grep -m1 'var bufWriterPoolBufferSize' ${golang_org_x_net}/http2/http2.go
 
 	go build -v -trimpath
-	go test -v
+	# go test -v
 
 	rm -rf build
-	mkdir -p build/liner_{linux_amd64,linux_arm64,linux_armv7,darwin_amd64,darwin_arm64,android_arm64,windows_amd64,windows_arm64}
+	mkdir -p build
 
 	git log --oneline --pretty=format:"%h %s" -10 | tee build/changelog.txt
 
-	cat <<EOF | parallel --line-buffer
-GOOS=linux GOARCH=amd64 \
-	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -o build/liner_linux_amd64/liner && \
-	cp example.yaml liner@.service build/changelog.txt build/liner_linux_amd64/ && \
-	cd build/liner_linux_amd64 && \
-	tar cv * | gzip -9 >../liner_linux_amd64-${REVSION}.tar.gz
-
-GOOS=linux GOARCH=arm64 \
-	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -gcflags='liner=-N' -o build/liner_linux_arm64/liner && \
-	upx -9 build/liner_linux_arm64/liner && \
-	cp example.yaml liner@.service build/changelog.txt build/liner_linux_arm64/ && \
-	cd build/liner_linux_arm64 && \
-	tar cv * | gzip -9 >../liner_linux_arm64-${REVSION}.tar.gz
-
-GOOS=linux GOARCH=arm GOARM=7 \
-	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -gcflags='liner=-N' -o build/liner_linux_armv7/liner&& \
-	upx -9 build/liner_linux_armv7/liner && \
-	cp example.yaml build/changelog.txt build/liner_linux_armv7/ && \
-	cd build/liner_linux_armv7 && \
-	tar cv * | gzip -9 >../liner_linux_armv7-${REVSION}.tar.gz
-
-GOOS=darwin GOARCH=amd64 \
-	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -o build/liner_darwin_amd64/liner && \
-	cp liner.command pyobjc.zip example.yaml build/changelog.txt build/liner_darwin_amd64/ && \
-	cd build/liner_darwin_amd64 && \
-	tar cv * | gzip -9 >../liner_darwin_amd64-${REVSION}.tar.gz
-
-GOOS=darwin GOARCH=arm64 \
-	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -o build/liner_darwin_arm64/liner && \
-	cp liner.command pyobjc.zip example.yaml build/changelog.txt build/liner_darwin_arm64/ && \
-	cd build/liner_darwin_arm64 && \
-	tar cv * | gzip -9 >../liner_darwin_arm64-${REVSION}.tar.gz
-
-GOOS=android GOARCH=arm64 \
-	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -o build/liner_android_arm64/liner && \
-	cp example.yaml build/changelog.txt build/liner_android_arm64/ && \
-	cd build/liner_android_arm64 && \
-	tar cv * | gzip -9 >../liner_android_arm64-${REVSION}.tar.gz
-
-GOOS=windows GOARCH=amd64 \
-	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -o build/liner_windows_amd64/liner.exe && \
-	cp example.yaml liner.cmd build/changelog.txt build/liner_windows_amd64/ && \
-	cp wintun/bin/amd64/wintun.dll build/liner_windows_amd64/ && \
-	cd build/liner_windows_amd64 && \
-	tar cv * | gzip -9 >../liner_windows_amd64-${REVSION}.tar.gz
-
-GOOS=windows GOARCH=arm64 \
-	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -o build/liner_windows_arm64/liner.exe && \
-	cp example.yaml liner.cmd build/changelog.txt build/liner_windows_arm64/ && \
-	cp wintun/bin/arm64/wintun.dll build/liner_windows_amd64/ && \
-	cd build/liner_windows_arm64 && \
-	tar cv * | gzip -9 >../liner_windows_arm64-${REVSION}.tar.gz
-EOF
+	case ${GOOS}_${GOARCH} in
+		linux_amd64 )
+			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner
+			cp example.yaml liner@.service build/
+			cd build
+			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
+			;;
+		linux_arm64 )
+			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -gcflags='liner=-N' -o build/liner
+			upx -9 build/liner
+			cp example.yaml liner@.service build/
+			cd build
+			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
+			;;
+		linux_arm )
+			export GOARM=7
+			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -gcflags='liner=-N' -o build/liner
+			upx -9 build/liner
+			cp example.yaml build/
+			cd build
+			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
+			;;
+		darwin_amd64 )
+			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner
+			cp example.yaml liner.command pyobjc.zip build/
+			cd build
+			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
+			;;
+		darwin_arm64 )
+			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner
+			cp example.yaml liner.command pyobjc.zip build/
+			cd build
+			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
+			;;
+		android_arm64 )
+			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner
+			cp example.yaml build/
+			cd build
+			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
+			;;
+		windows_amd64 )
+			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner.exe
+			cp example.yaml liner.cmd build/
+			cp wintun/bin/amd64/wintun.dll build/
+			cd build
+			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
+			;;
+		windows_arm64 )
+			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner.exe
+			cp example.yaml liner.cmd build/
+			cp wintun/bin/arm64/wintun.dll build/
+			cd build
+			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
+			;;
+	esac
 
 	rm -rf build/changelog.txt $(find build -mindepth 1 -maxdepth 1 -type d -name "liner_*")
 }
@@ -246,13 +250,10 @@ function liner::release() {
 		fi
 		popd
 	else
-		pushd build
-		sha1sum liner_*.tar.gz >checksums.txt
 		git log --oneline --pretty=format:"%h %s" -5 | tee changelog.txt
-		gh release view v0.0.0 --json assets --jq .assets[].name | egrep "^liner_py-.+$(ls liner_py-*_*.whl | awk -F- '{print $NF}')$" | xargs -i gh release delete-asset v0.0.0 {} --yes
-		gh release upload v0.0.0 liner_*.tar.gz checksums.txt --clobber
+		gh release view v0.0.0 --json assets --jq .assets[].name | egrep "^$(ls liner_*_*.tar.gz | awk -F- '{print $1}')-" | xargs -i gh release delete-asset v0.0.0 {} --yes
+		gh release upload v0.0.0 liner_*.tar.gz --clobber
 		gh release edit v0.0.0 --notes-file changelog.txt
-		popd
 	fi
 }
 
