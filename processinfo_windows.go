@@ -269,14 +269,14 @@ func (entry windowsConnEntry) processInfo() (TCPConnProcessInfo, error) {
 		return TCPConnProcessInfo{}, os.ErrNotExist
 	}
 	info := TCPConnProcessInfo{ID: uint64(entry.pid)}
-	if path, err := entry.imagePath(); err == nil && path != "" {
+	if path, err := entry.exePath(); err == nil && path != "" {
 		info.Name = filepath.Base(path)
 		info.Path = path
 	}
 	return info, nil
 }
 
-func (entry windowsConnEntry) imagePath() (string, error) {
+func (entry windowsConnEntry) exePath() (string, error) {
 	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, entry.pid)
 	if err != nil {
 		return "", err

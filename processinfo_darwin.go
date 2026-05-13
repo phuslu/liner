@@ -179,7 +179,7 @@ func (entry darwinConnEntry) processInfo() (TCPConnProcessInfo, error) {
 		return TCPConnProcessInfo{}, os.ErrNotExist
 	}
 	info := TCPConnProcessInfo{ID: uint64(entry.pid)}
-	if path, err := entry.execPath(); err == nil && path != "" {
+	if path, err := entry.exePath(); err == nil && path != "" {
 		info.Name = filepath.Base(path)
 		info.Path = path
 	}
@@ -250,7 +250,7 @@ func (finder darwinProcessFinder) parseEntry(buf []byte) (darwinConnEntry, bool)
 	return entry, true
 }
 
-func (entry darwinConnEntry) execPath() (string, error) {
+func (entry darwinConnEntry) exePath() (string, error) {
 	const (
 		procPIDPathInfo        = 0xb
 		procPIDPathInfoMaxSize = 4 * 1024
