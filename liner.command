@@ -462,6 +462,22 @@ class AppDelegate(NSObject):
         process = self.child_process
         return process is not None and process.poll() is None
 
+    def child_command(self) -> Optional[Tuple[List[str], str]]:
+        bin_path = os.path.join(self.work_dir, CHILD_BIN)
+        if os.path.exists(bin_path):
+            if os.access(bin_path, os.X_OK):
+                return [bin_path], CHILD_BIN
+            self.append_to_console(f"Cannot execute: {bin_path}\n", ANSI_COLORS[1])
+            return None
+
+        so_path = os.path.join(self.work_dir, CHILD_BIN + ".so")
+        if sys.platform == "darwin" and os.path.isfile(so_path):
+            command = ["/usr/bin/python3", "-c", "__import__('liner').liner()"]
+            return command, "/usr/bin/python3 -c \"__import__('liner').liner()\""
+
+        self.append_to_console(f"Cannot find executable: {bin_path}\n", ANSI_COLORS[1])
+        return None
+
     def update_process_menu_state(self):
         if self.start_stop_item is None:
             return
@@ -837,11 +853,11 @@ class AppDelegate(NSObject):
             self.update_proxy_menu_state()
             return True
 
-        bin_path = os.path.join(self.work_dir, CHILD_BIN)
-        if not os.access(bin_path, os.X_OK):
-            self.append_to_console(f"Cannot find executable: {bin_path}\n", ANSI_COLORS[1])
+        child_command = self.child_command()
+        if child_command is None:
             self.update_process_menu_state()
             return False
+        child_args, child_display = child_command
 
         config_file = self.selected_profile
         if not config_file:
@@ -880,13 +896,13 @@ class AppDelegate(NSObject):
 
         if requires_admin:
             self.append_to_console(
-                f"Starting with sudo: {CHILD_BIN} {config_file}\n", ANSI_COLORS[2]
+                f"Starting with sudo: {child_display} {config_file}\n", ANSI_COLORS[2]
             )
         else:
-            self.append_to_console(f"Starting: {CHILD_BIN} {config_file}\n", ANSI_COLORS[2])
+            self.append_to_console(f"Starting: {child_display} {config_file}\n", ANSI_COLORS[2])
 
         try:
-            args = [bin_path, config_file]
+            args = child_args + [config_file]
             if requires_admin:
                 args = [
                     "/usr/bin/sudo",
@@ -894,7 +910,7 @@ class AppDelegate(NSObject):
                     "--",
                     "/usr/bin/env",
                     "LINER_LOG_TO_STDERR=1",
-                    bin_path,
+                    *child_args,
                     config_file,
                 ]
             process = subprocess.Popen(
