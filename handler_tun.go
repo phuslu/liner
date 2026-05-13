@@ -794,6 +794,10 @@ func (h *TunHandler) forwardUDP(r *udp.ForwarderRequest) bool {
 		go h.serveUDP(req, lconn)
 		return true
 	}
+	if h.Config.DisableUdp {
+		log.Debug().Xid("trace_id", req.TraceID).Str("tun_name", h.name).Str("tun_network", req.Network).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Msg("reject tun udp request")
+		return false
+	}
 	if h.Config.DisableIpv6 && req.ServerAddr.Addr().Is6() {
 		log.Debug().Xid("trace_id", req.TraceID).Str("tun_name", h.name).Str("tun_network", req.Network).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Msg("reject tun ipv6 request")
 		var wq waiter.Queue

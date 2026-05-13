@@ -144,6 +144,7 @@ type TunConfig struct {
 	Name           string   `json:"name" yaml:"name"`
 	Address        string   `json:"address" yaml:"address"`
 	DisableIpv6    bool     `json:"disable_ipv6" yaml:"disable_ipv6"`
+	DisableUdp     bool     `json:"disable_udp" yaml:"disable_udp"`
 	Routes         []string `json:"routes" yaml:"routes"`
 	RouteMetric    int      `json:"route_metric" yaml:"route_metric"`
 	MTU            int      `json:"mtu" yaml:"mtu"`

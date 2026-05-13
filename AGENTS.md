@@ -292,6 +292,8 @@ touching TUN behavior.
   source-bound clients can select the TUN without replacing normal routing.
 - DNS on port 53 is intercepted and sent through `tun.dns_server` when set. If
   TUN IPv6 is disabled, intercepted AAAA queries return empty NoError locally.
+- `tun[].disable_udp` drops non-DNS UDP forwarding when true; UDP DNS on
+  port 53 still uses the TUN DNS interception path when configured.
 - TUN forwarding rejects unspecified, multicast, limited broadcast, and
   destinations inside the configured TUN address prefix.
 - Dial timeouts in TUN are setup-only; do not bind stream lifetime to setup

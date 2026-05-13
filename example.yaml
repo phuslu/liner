@@ -216,6 +216,7 @@ redsocks:
 tun:
   - name: utun53
     address: 198.18.0.1/15
+    disable_udp: false
     routes: []
     # routes:
     #   - 0.0.0.0/0
