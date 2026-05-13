@@ -46,12 +46,6 @@ function liner::build() {
 	chmod -R +w ${golang_org_x_net}/http2
 	sed -i -E 's/const bufWriterPoolBufferSize = .+/var bufWriterPoolBufferSize = func() int { n, _ := strconv.Atoi(os.Getenv("HTTP2_WRITER_POOL_BUFFER_SIZE")); return max(n, 32768) }()/' ${golang_org_x_net}/http2/http2.go
 	grep -m1 'var bufWriterPoolBufferSize' ${golang_org_x_net}/http2/http2.go
-	# http3 patch
-	# https://github.com/quic-go/quic-go/issues/5325#issuecomment-3852795180
-	# github_com_quic_go="${GOPATH}/pkg/mod/$(go list -m github.com/quic-go/quic-go | tr ' ' @)"
-	# chmod -R +w ${github_com_quic_go}
-	# sed -i -E 's/packetThreshold = .+/packetThreshold = 32/' ${github_com_quic_go}/internal/ackhandler/sent_packet_handler.go
-	# grep -m1 packetThreshold ${github_com_quic_go}/internal/ackhandler/sent_packet_handler.go
 
 	go build -v -trimpath
 	go test -v
