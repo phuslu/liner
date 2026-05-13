@@ -244,8 +244,8 @@ func (finder windowsProcessFinder) buildSnapshot() (*windowsProcessSnapshot, err
 
 func (finder windowsProcessFinder) getExtendedTcpTable() ([]byte, error) {
 	const (
-		tcpTableOwnerPIDAll = 5
-		initialBufferSize   = 4 * 1024
+		tcpTableOwnerPIDConnections = 4
+		initialBufferSize           = 4 * 1024
 	)
 
 	size := uint32(initialBufferSize)
@@ -256,7 +256,7 @@ func (finder windowsProcessFinder) getExtendedTcpTable() ([]byte, error) {
 			uintptr(unsafe.Pointer(&size)),
 			0,
 			uintptr(uint32(finder.family)),
-			tcpTableOwnerPIDAll,
+			tcpTableOwnerPIDConnections,
 			0,
 		)
 		if r1 == windows.NO_ERROR {
