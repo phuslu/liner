@@ -7,7 +7,7 @@ case $(uname -m) in
     arch=arm64
     ;;
   arm* )
-    arch=armv7
+    arch=arm
     ;;
   * )
     arch=amd64
@@ -15,11 +15,26 @@ case $(uname -m) in
 esac
 
 geturl=$(type -p curl &>/dev/null && echo "curl -ksSLf" || echo "wget --no-check-certificate -O-")
-checksum=$($geturl https://github.com/phuslu/liner/releases/download/v0.0.0/checksums.txt | grep -E "liner_linux_${arch}-[0-9]+.tar.gz")
+
+checksum=$($geturl https://github.com/phuslu/liner/releases/expanded_assets/v0.0.0 | awk '
+/>liner_.*\.tar\.gz/ {
+    match($0, /liner_[^<]+\.tar\.gz/)
+    file=substr($0, RSTART, RLENGTH)
+}
+/sha256:/ {
+    if (file == "")
+        next
+    match($0, /sha256:[0-9a-f]+/)
+    sha=substr($0, RSTART+7, RLENGTH-7)
+    if (!seen[file]++)
+        print sha, file
+    file=""
+}' | grep -E "liner_linux_${arch}-[0-9]+.tar.gz")
+
 filename=$(echo $checksum | awk '{print $2}')
 pacfile=$(awk 'BEGIN{srand(); r=int(rand()*10000000000); printf "%06d.pac", r % 1000000}')
 sudo=$(grep -q '^Uid:\s*0' /proc/self/status || echo sudo)
-sha1sum=$(type -p sha1sum &>/dev/null && echo sha1sum || echo "openssl dgst -r -sha1")
+sha256sum=$(type -p sha256sum &>/dev/null && echo sha256sum || echo "openssl dgst -r -sha256")
 
 if test -d liner; then
   cd liner
@@ -35,15 +50,15 @@ else
   wget --no-check-certificate https://github.com/phuslu/liner/releases/download/v0.0.0/$filename -O $filename
 fi
 
-if test "$(cat $filename | $sha1sum | awk '{ print $1 }')" != "$(echo $checksum | awk '{print $1}')"; then
-  echo "$filename sha1sum mismatched, please check your network!"
+if test "$(cat $filename | $sha256sum | awk '{ print $1 }')" != "$(echo $checksum | awk '{print $1}')"; then
+  echo "$filename sha256sum mismatched, please check your network!"
   rm -rf $filename
   exit 1
 fi
 
 if test -f liner; then
   echo liner | tar xvzf $filename -T -
-  test -f liner@.service || echo liner@.service | tar xvzf $filename -T -
+  # test -f liner@.service || echo liner@.service | tar xvzf $filename -T -
   rm -rf $filename
   exit 0
 fi
