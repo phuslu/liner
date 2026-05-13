@@ -294,6 +294,10 @@ touching TUN behavior.
   TUN IPv6 is disabled, intercepted AAAA queries return empty NoError locally.
 - `tun[].disable_udp` drops non-DNS UDP forwarding when true; UDP DNS on
   port 53 still uses the TUN DNS interception path when configured.
+- `tun[].forward.process_dialer` matches `.ProcessInfo.Path` regexes in order
+  before the normal `forward.dialer` template/static selection. Compile regexes
+  and validate dialers in `Load(ctx)`. When no process rule or dialer selects
+  an upstream, TUN forwarding falls back to local.
 - TUN forwarding rejects unspecified, multicast, limited broadcast, and
   destinations inside the configured TUN address prefix.
 - Dial timeouts in TUN are setup-only; do not bind stream lifetime to setup

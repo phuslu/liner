@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"reflect"
+	"regexp"
 	"runtime"
 	"slices"
 	"strconv"
@@ -69,13 +70,22 @@ type TunHandler struct {
 	once     sync.Once
 	address  netip.Prefix
 
-	dialer *template.Template
-	static struct {
+	dialer         *template.Template
+	processDialers []tunProcessDialer
+	static         struct {
 		Dialer      Dialer
 		DialerName  string
 		DisableIPv6 bool
 		PreferIPv6  bool
 	}
+}
+
+type tunProcessDialer struct {
+	path        *regexp.Regexp
+	dialer      Dialer
+	dialerName  string
+	disableIPv6 bool
+	preferIPv6  bool
 }
 
 func (h *TunHandler) Load(ctx context.Context) error {
@@ -92,6 +102,31 @@ func (h *TunHandler) Load(ctx context.Context) error {
 		if h.static.Dialer, h.static.DialerName, h.static.DisableIPv6, h.static.PreferIPv6, err = h.parseForwardDialer(h.Config.Forward.Dialer); err != nil {
 			return err
 		}
+	}
+	for i, pd := range h.Config.Forward.ProcessDialer {
+		path := strings.TrimSpace(pd.Path)
+		if path == "" {
+			return fmt.Errorf("tun process_dialer[%d].path is empty", i)
+		}
+		re, err := regexp.Compile(path)
+		if err != nil {
+			return fmt.Errorf("compile tun process_dialer[%d].path: %w", i, err)
+		}
+		dialerValue := strings.TrimSpace(pd.Dialer)
+		if dialerValue == "" {
+			return fmt.Errorf("tun process_dialer[%d].dialer is empty", i)
+		}
+		dialer, dialerName, disableIPv6, preferIPv6, err := h.parseForwardDialer(dialerValue)
+		if err != nil {
+			return fmt.Errorf("parse tun process_dialer[%d].dialer: %w", i, err)
+		}
+		h.processDialers = append(h.processDialers, tunProcessDialer{
+			path:        re,
+			dialer:      dialer,
+			dialerName:  dialerName,
+			disableIPv6: disableIPv6,
+			preferIPv6:  preferIPv6,
+		})
 	}
 	if h.DnsResolver == nil && h.LocalDialer != nil {
 		h.DnsResolver = h.LocalDialer.DnsResolver
@@ -1209,7 +1244,22 @@ func (h *TunHandler) prepareDial(req TunRequest) (context.Context, Dialer, strin
 	if req.ProcessInfo == nil {
 		req.ProcessInfo = func() (*ConnProcessInfo, error) { return nil, nil }
 	}
-	if h.dialer != nil {
+	processMatched := false
+	if len(h.processDialers) > 0 {
+		if info, err := req.ProcessInfo(); err == nil && info != nil && info.Path != "" {
+			for _, pd := range h.processDialers {
+				if pd.path.MatchString(info.Path) {
+					dialer = pd.dialer
+					dialerName = pd.dialerName
+					disableIPv6 = pd.disableIPv6
+					preferIPv6 = pd.preferIPv6
+					processMatched = true
+					break
+				}
+			}
+		}
+	}
+	if !processMatched && h.dialer != nil {
 		bb := bytebufferpool.Get()
 		defer bytebufferpool.Put(bb)
 		bb.Reset()

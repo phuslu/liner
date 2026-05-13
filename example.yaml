@@ -226,6 +226,9 @@ tun:
     route_metric: 32767
     mtu: 4064
     forward:
+      process_dialer:
+        - path: chrome\.exe$
+          dialer: proxy1
       dialer: proxy1
       disable_ipv6: true
       dial_timeout: 10

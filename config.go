@@ -151,6 +151,10 @@ type TunConfig struct {
 	StackQueueSize int      `json:"stack_queue_size" yaml:"stack_queue_size"`
 	DnsServer      string   `json:"dns_server" yaml:"dns_server"`
 	Forward        struct {
+		ProcessDialer []struct {
+			Path   string `json:"path" yaml:"path"`
+			Dialer string `json:"dialer" yaml:"dialer"`
+		} `json:"process_dialer" yaml:"process_dialer"`
 		Dialer         string `json:"dialer" yaml:"dialer"`
 		DialTimeout    int    `json:"dial_timeout" yaml:"dial_timeout"`
 		TcpTimeout     int    `json:"tcp_timeout" yaml:"tcp_timeout"`
