@@ -252,12 +252,14 @@ func (finder darwinProcessFinder) parseEntry(buf []byte) (darwinConnEntry, bool)
 
 func (entry darwinConnEntry) execPath() (string, error) {
 	const (
-		procPIDPathInfo     = 0xb
-		procPIDPathInfoSize = 1024
-		procCallNumPIDInfo  = 0x2
+		procPIDPathInfo        = 0xb
+		procPIDPathInfoMaxSize = 4 * 1024
+		procCallNumPIDInfo     = 0x2
 	)
-	var buf [procPIDPathInfoSize]byte
-	n, _, errno := syscall.Syscall6(
+	var buf [procPIDPathInfoMaxSize]byte
+	// PROC_PIDPATHINFO returns the path through buf; the syscall retval is not
+	// the path length for this flavor.
+	_, _, errno := syscall.Syscall6(
 		syscall.SYS_PROC_INFO,
 		procCallNumPIDInfo,
 		uintptr(entry.pid),
@@ -269,8 +271,9 @@ func (entry darwinConnEntry) execPath() (string, error) {
 	if errno != 0 {
 		return "", errno
 	}
-	if n == 0 {
+	path := unix.ByteSliceToString(buf[:])
+	if path == "" {
 		return "", os.ErrNotExist
 	}
-	return unix.ByteSliceToString(buf[:]), nil
+	return path, nil
 }
