@@ -18,40 +18,40 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-type TCPConnProcessInfo struct {
+type ConnProcessInfo struct {
 	ID   uint64
 	Name string
 	Path string
 }
 
-func GetTCPConnProcessInfo(conn net.Conn) (TCPConnProcessInfo, error) {
+func GetTCPConnProcessInfo(conn net.Conn) (ConnProcessInfo, error) {
 	if conn == nil {
-		return TCPConnProcessInfo{}, errors.ErrUnsupported
+		return ConnProcessInfo{}, errors.ErrUnsupported
 	}
 	finder, ok := newWindowsProcessFinder(conn)
 	if !ok {
-		return TCPConnProcessInfo{}, errors.ErrUnsupported
+		return ConnProcessInfo{}, errors.ErrUnsupported
 	}
 
 	entry, err := finder.find()
 	if err != nil {
-		return TCPConnProcessInfo{}, err
+		return ConnProcessInfo{}, err
 	}
 	return entry.processInfo()
 }
 
-func GetUDPConnProcessInfo(conn net.Conn) (TCPConnProcessInfo, error) {
+func GetUDPConnProcessInfo(conn net.Conn) (ConnProcessInfo, error) {
 	if conn == nil {
-		return TCPConnProcessInfo{}, errors.ErrUnsupported
+		return ConnProcessInfo{}, errors.ErrUnsupported
 	}
 	finder, ok := newWindowsUDPProcessFinder(conn)
 	if !ok {
-		return TCPConnProcessInfo{}, errors.ErrUnsupported
+		return ConnProcessInfo{}, errors.ErrUnsupported
 	}
 
 	entry, err := finder.find()
 	if err != nil {
-		return TCPConnProcessInfo{}, err
+		return ConnProcessInfo{}, err
 	}
 	return entry.processInfo()
 }
@@ -418,11 +418,11 @@ func (finder windowsProcessFinder) parseUDP6Table(buf []byte) []windowsConnEntry
 	return entries
 }
 
-func (entry windowsConnEntry) processInfo() (TCPConnProcessInfo, error) {
+func (entry windowsConnEntry) processInfo() (ConnProcessInfo, error) {
 	if entry.pid == 0 {
-		return TCPConnProcessInfo{}, os.ErrNotExist
+		return ConnProcessInfo{}, os.ErrNotExist
 	}
-	info := TCPConnProcessInfo{ID: uint64(entry.pid)}
+	info := ConnProcessInfo{ID: uint64(entry.pid)}
 	if path, err := entry.exePath(); err == nil && path != "" {
 		info.Name = filepath.Base(path)
 		info.Path = path

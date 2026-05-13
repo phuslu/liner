@@ -21,19 +21,19 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-type TCPConnProcessInfo struct {
+type ConnProcessInfo struct {
 	ID   uint64
 	Name string
 	Path string
 }
 
-func GetTCPConnProcessInfo(conn net.Conn) (TCPConnProcessInfo, error) {
+func GetTCPConnProcessInfo(conn net.Conn) (ConnProcessInfo, error) {
 	if conn == nil {
-		return TCPConnProcessInfo{}, errors.ErrUnsupported
+		return ConnProcessInfo{}, errors.ErrUnsupported
 	}
 	finder, ok := newDarwinProcessFinder(conn)
 	if !ok {
-		return TCPConnProcessInfo{}, errors.ErrUnsupported
+		return ConnProcessInfo{}, errors.ErrUnsupported
 	}
 
 	entry, err := finder.find()
@@ -43,23 +43,23 @@ func GetTCPConnProcessInfo(conn net.Conn) (TCPConnProcessInfo, error) {
 		}
 	}
 	if err != nil {
-		return TCPConnProcessInfo{}, err
+		return ConnProcessInfo{}, err
 	}
 	return entry.processInfo()
 }
 
-func GetUDPConnProcessInfo(conn net.Conn) (TCPConnProcessInfo, error) {
+func GetUDPConnProcessInfo(conn net.Conn) (ConnProcessInfo, error) {
 	if conn == nil {
-		return TCPConnProcessInfo{}, errors.ErrUnsupported
+		return ConnProcessInfo{}, errors.ErrUnsupported
 	}
 	finder, ok := newDarwinUDPProcessFinder(conn)
 	if !ok {
-		return TCPConnProcessInfo{}, errors.ErrUnsupported
+		return ConnProcessInfo{}, errors.ErrUnsupported
 	}
 
 	entry, err := finder.findUDP()
 	if err != nil {
-		return TCPConnProcessInfo{}, err
+		return ConnProcessInfo{}, err
 	}
 	return entry.processInfo()
 }
@@ -271,11 +271,11 @@ func (snapshot *darwinProcessSnapshot) findUDP(finder darwinProcessFinder) (darw
 	return darwinConnEntry{}, false
 }
 
-func (entry darwinConnEntry) processInfo() (TCPConnProcessInfo, error) {
+func (entry darwinConnEntry) processInfo() (ConnProcessInfo, error) {
 	if entry.pid == 0 {
-		return TCPConnProcessInfo{}, os.ErrNotExist
+		return ConnProcessInfo{}, os.ErrNotExist
 	}
-	info := TCPConnProcessInfo{ID: uint64(entry.pid)}
+	info := ConnProcessInfo{ID: uint64(entry.pid)}
 	if path, err := entry.exePath(); err == nil && path != "" {
 		info.Name = filepath.Base(path)
 		info.Path = path

@@ -48,7 +48,7 @@ type TunRequest struct {
 	Port           uint16
 	TraceID        log.XID
 	TLSClientHello func() (*tls.ClientHelloInfo, error)
-	ProcessInfo    func() (*TCPConnProcessInfo, error)
+	ProcessInfo    func() (*ConnProcessInfo, error)
 }
 
 type TunHandler struct {
@@ -710,9 +710,9 @@ func (h *TunHandler) forwardTCP(r *tcp.ForwarderRequest) {
 
 	var (
 		processInfoOnce sync.Once
-		processInfo     *TCPConnProcessInfo
+		processInfo     *ConnProcessInfo
 	)
-	req.ProcessInfo = func() (*TCPConnProcessInfo, error) {
+	req.ProcessInfo = func() (*ConnProcessInfo, error) {
 		processInfoOnce.Do(func() {
 			c, err := ensureLocalConn()
 			if err != nil {
@@ -1193,7 +1193,7 @@ func (h *TunHandler) prepareDial(req TunRequest) (context.Context, Dialer, strin
 		req.TLSClientHello = func() (*tls.ClientHelloInfo, error) { return nil, nil }
 	}
 	if req.ProcessInfo == nil {
-		req.ProcessInfo = func() (*TCPConnProcessInfo, error) { return nil, nil }
+		req.ProcessInfo = func() (*ConnProcessInfo, error) { return nil, nil }
 	}
 	if h.dialer != nil {
 		bb := bytebufferpool.Get()
@@ -1212,7 +1212,7 @@ func (h *TunHandler) prepareDial(req TunRequest) (context.Context, Dialer, strin
 				Request        TunRequest
 				ServerAddr     netip.AddrPort
 				TLSClientHello func() (*tls.ClientHelloInfo, error)
-				ProcessInfo    func() (*TCPConnProcessInfo, error)
+				ProcessInfo    func() (*ConnProcessInfo, error)
 			}{
 				Request:        req,
 				ServerAddr:     req.ServerAddr,
