@@ -16,3 +16,7 @@ type TCPConnProcessInfo struct {
 func GetTCPConnProcessInfo(conn net.Conn) (TCPConnProcessInfo, error) {
 	return TCPConnProcessInfo{}, errors.ErrUnsupported
 }
+
+func GetUDPConnProcessInfo(conn net.Conn) (TCPConnProcessInfo, error) {
+	return TCPConnProcessInfo{}, errors.ErrUnsupported
+}

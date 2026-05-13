@@ -48,6 +48,22 @@ func GetTCPConnProcessInfo(conn net.Conn) (TCPConnProcessInfo, error) {
 	return entry.processInfo()
 }
 
+func GetUDPConnProcessInfo(conn net.Conn) (TCPConnProcessInfo, error) {
+	if conn == nil {
+		return TCPConnProcessInfo{}, errors.ErrUnsupported
+	}
+	finder, ok := newDarwinUDPProcessFinder(conn)
+	if !ok {
+		return TCPConnProcessInfo{}, errors.ErrUnsupported
+	}
+
+	entry, err := finder.findUDP()
+	if err != nil {
+		return TCPConnProcessInfo{}, err
+	}
+	return entry.processInfo()
+}
+
 type darwinProcessFinder struct {
 	source      netip.AddrPort
 	destination netip.AddrPort
@@ -79,6 +95,9 @@ type darwinProcessSnapshot struct {
 var (
 	darwinProcessSnapshotPtr atomic.Pointer[darwinProcessSnapshot]
 	darwinProcessSnapshotMu  sync.Mutex
+
+	darwinUDPProcessSnapshotPtr atomic.Pointer[darwinProcessSnapshot]
+	darwinUDPProcessSnapshotMu  sync.Mutex
 )
 
 func newDarwinProcessFinder(conn net.Conn) (darwinProcessFinder, bool) {
@@ -86,6 +105,13 @@ func newDarwinProcessFinder(conn net.Conn) (darwinProcessFinder, bool) {
 	finder.source = finder.addrPort(AddrPortFromNetAddr(conn.RemoteAddr()))
 	finder.destination = finder.addrPort(AddrPortFromNetAddr(conn.LocalAddr()))
 	return finder, finder.source.IsValid() && finder.destination.IsValid()
+}
+
+func newDarwinUDPProcessFinder(conn net.Conn) (darwinProcessFinder, bool) {
+	var finder darwinProcessFinder
+	finder.source = finder.addrPort(AddrPortFromNetAddr(conn.RemoteAddr()))
+	finder.destination = finder.addrPort(AddrPortFromNetAddr(conn.LocalAddr()))
+	return finder, finder.source.IsValid() && finder.destination.IsValid() && finder.source.Addr().BitLen() == finder.destination.Addr().BitLen()
 }
 
 func (finder darwinProcessFinder) originalDst(conn net.Conn) (darwinProcessFinder, bool) {
@@ -136,6 +162,33 @@ func (finder darwinProcessFinder) find() (darwinConnEntry, error) {
 	return darwinConnEntry{}, os.ErrNotExist
 }
 
+func (finder darwinProcessFinder) findUDP() (darwinConnEntry, error) {
+	snapshot := darwinUDPProcessSnapshotPtr.Load()
+	if snapshot.fresh() {
+		if entry, ok := snapshot.findUDP(finder); ok {
+			return entry, nil
+		}
+		refreshed, err := finder.loadUDPSnapshot(true, snapshot)
+		if err != nil {
+			return darwinConnEntry{}, err
+		}
+		if entry, ok := refreshed.findUDP(finder); ok {
+			return entry, nil
+		}
+		return darwinConnEntry{}, os.ErrNotExist
+	}
+
+	var err error
+	snapshot, err = finder.loadUDPSnapshot(false, snapshot)
+	if err != nil {
+		return darwinConnEntry{}, err
+	}
+	if entry, ok := snapshot.findUDP(finder); ok {
+		return entry, nil
+	}
+	return darwinConnEntry{}, os.ErrNotExist
+}
+
 func (finder darwinProcessFinder) loadSnapshot(force bool, seen *darwinProcessSnapshot) (*darwinProcessSnapshot, error) {
 	if !force {
 		if snapshot := darwinProcessSnapshotPtr.Load(); snapshot.fresh() {
@@ -160,6 +213,30 @@ func (finder darwinProcessFinder) loadSnapshot(force bool, seen *darwinProcessSn
 	return snapshot, nil
 }
 
+func (finder darwinProcessFinder) loadUDPSnapshot(force bool, seen *darwinProcessSnapshot) (*darwinProcessSnapshot, error) {
+	if !force {
+		if snapshot := darwinUDPProcessSnapshotPtr.Load(); snapshot.fresh() {
+			return snapshot, nil
+		}
+	}
+
+	darwinUDPProcessSnapshotMu.Lock()
+	defer darwinUDPProcessSnapshotMu.Unlock()
+
+	if snapshot := darwinUDPProcessSnapshotPtr.Load(); snapshot.fresh() {
+		if !force || snapshot != seen {
+			return snapshot, nil
+		}
+	}
+
+	snapshot, err := finder.buildUDPSnapshot()
+	if err != nil {
+		return nil, err
+	}
+	darwinUDPProcessSnapshotPtr.Store(snapshot)
+	return snapshot, nil
+}
+
 func (snapshot *darwinProcessSnapshot) fresh() bool {
 	const ttl = 200 * time.Millisecond
 	return snapshot != nil && time.Since(snapshot.createdAt) < ttl
@@ -168,6 +245,26 @@ func (snapshot *darwinProcessSnapshot) fresh() bool {
 func (snapshot *darwinProcessSnapshot) find(finder darwinProcessFinder) (darwinConnEntry, bool) {
 	for _, entry := range snapshot.entries {
 		if entry.src == finder.source && entry.dst == finder.destination {
+			return entry, true
+		}
+	}
+	return darwinConnEntry{}, false
+}
+
+func (snapshot *darwinProcessSnapshot) findUDP(finder darwinProcessFinder) (darwinConnEntry, bool) {
+	for _, entry := range snapshot.entries {
+		if entry.src == finder.source && entry.dst == finder.destination {
+			return entry, true
+		}
+	}
+	for _, entry := range snapshot.entries {
+		if entry.src == finder.source {
+			return entry, true
+		}
+	}
+	for _, entry := range snapshot.entries {
+		addr := entry.src.Addr()
+		if entry.src.Port() == finder.source.Port() && addr.IsUnspecified() && addr.BitLen() == finder.source.Addr().BitLen() {
 			return entry, true
 		}
 	}
@@ -194,6 +291,14 @@ func (finder darwinProcessFinder) buildSnapshot() (*darwinProcessSnapshot, error
 		return nil, fmt.Errorf("tcp pcblist: %w", err)
 	}
 	return &darwinProcessSnapshot{createdAt: time.Now(), entries: finder.parseSnapshot(value, darwinPCBStructSize+tcpExtraStructSize)}, nil
+}
+
+func (finder darwinProcessFinder) buildUDPSnapshot() (*darwinProcessSnapshot, error) {
+	value, err := unix.SysctlRaw("net.inet.udp.pcblist_n")
+	if err != nil {
+		return nil, fmt.Errorf("udp pcblist: %w", err)
+	}
+	return &darwinProcessSnapshot{createdAt: time.Now(), entries: finder.parseSnapshot(value, darwinPCBStructSize)}, nil
 }
 
 func (finder darwinProcessFinder) parseSnapshot(buf []byte, itemSize int) []darwinConnEntry {
