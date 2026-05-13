@@ -101,7 +101,7 @@ EOF
 }
 
 function liner::build::macos() {
-	export CGO_ENABLED=1
+	export CGO_ENABLED=0
 	export GOROOT=${GOROOT:-/tmp/go}
 	export GOPATH=${GOPATH:-/tmp/gopath}
 	export PATH=${GOPATH:-~/go}/bin:${GOROOT}/bin:$PATH
@@ -137,25 +137,18 @@ function liner::build::macos() {
 	rm -rf build
 	mkdir -p build/liner_{darwin_amd64,darwin_arm64}
 
-	cat <<EOF | tee build/liner
-#!/usr/bin/python3
-import liner
-liner.liner()
-EOF
-
 	git log --oneline --pretty=format:"%h %s" -10 | tee build/changelog.txt
 
 	cat <<EOF | parallel --line-buffer
 GOOS=darwin GOARCH=amd64 \
-	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -buildmode=c-shared -o build/liner_darwin_amd64/liner.so && \
 	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -o build/liner_darwin_amd64/liner && \
-	cp liner.command pyobjc.zip example.yaml build/liner build/changelog.txt build/liner_darwin_amd64/ && \
+	cp liner.command pyobjc.zip example.yaml build/changelog.txt build/liner_darwin_amd64/ && \
 	cd build/liner_darwin_amd64 && \
 	tar cv * | gzip -9 >../liner_darwin_amd64-${REVSION}.tar.gz
 
 GOOS=darwin GOARCH=arm64 \
-	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -buildmode=c-shared -o build/liner_darwin_arm64/liner.so && \
-	cp liner.command pyobjc.zip example.yaml build/liner build/changelog.txt build/liner_darwin_arm64/ && \
+	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -o build/liner_darwin_arm64/liner && \
+	cp liner.command pyobjc.zip example.yaml build/changelog.txt build/liner_darwin_arm64/ && \
 	cd build/liner_darwin_arm64 && \
 	tar cv * | gzip -9 >../liner_darwin_arm64-${REVSION}.tar.gz
 EOF
