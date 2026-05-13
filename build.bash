@@ -249,7 +249,7 @@ function liner::release() {
 		pushd build
 		sha1sum liner_*.tar.gz >checksums.txt
 		git log --oneline --pretty=format:"%h %s" -5 | tee changelog.txt
-		gh release view v0.0.0 --json assets --jq .assets[].name | egrep -v '^liner_py-' | xargs -i gh release delete-asset v0.0.0 {} --yes
+		gh release view v0.0.0 --json assets --jq .assets[].name | egrep "^liner_py-.+$(ls liner_py-*_*.whl | awk -F- '{print $NF}')$" | xargs -i gh release delete-asset v0.0.0 {} --yes
 		gh release upload v0.0.0 liner_*.tar.gz checksums.txt --clobber
 		gh release edit v0.0.0 --notes-file changelog.txt
 		popd
