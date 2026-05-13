@@ -47,8 +47,8 @@ func TestSocksUDPAssociate(t *testing.T) {
 	defer ln.Close()
 
 	dialer := &testSocksUDPDialer{
-		network: make(chan string, 1),
-		address: make(chan string, 1),
+		network: make(chan string, 2),
+		address: make(chan string, 2),
 	}
 	h := &SocksHandler{
 		Dialers: map[string]Dialer{"udp": dialer},
@@ -142,23 +142,49 @@ func TestSocksUDPAssociate(t *testing.T) {
 		t.Fatalf("unexpected udp payload: %q", got)
 	}
 
-	select {
-	case network := <-dialer.network:
-		if network != "udp" {
-			t.Fatalf("unexpected dial network: %q", network)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for udp dial network")
+	udp2, err := net.DialUDP("udp", nil, net.UDPAddrFromAddrPort(relay))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer udp2.Close()
+	if err := udp2.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	packet = []byte{0, 0, 0, byte(Socks5IPv4Address), echoIP[0], echoIP[1], echoIP[2], echoIP[3], byte(echoAddr.Port() >> 8), byte(echoAddr.Port())}
+	packet = append(packet, []byte("pong")...)
+	if _, err = udp2.Write(packet); err != nil {
+		t.Fatal(err)
+	}
+	n, err = udp2.Read(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n < 10 {
+		t.Fatalf("short second udp response: %d", n)
+	}
+	if got := string(buf[10:n]); got != "echo:pong" {
+		t.Fatalf("unexpected second udp payload: %q", got)
 	}
 
 	wantAddr := net.JoinHostPort(echoAddr.Addr().String(), strconv.Itoa(int(echoAddr.Port())))
-	select {
-	case addr := <-dialer.address:
-		if addr != wantAddr {
-			t.Fatalf("unexpected dial address: got %q want %q", addr, wantAddr)
+	for range 2 {
+		select {
+		case network := <-dialer.network:
+			if network != "udp" {
+				t.Fatalf("unexpected dial network: %q", network)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for udp dial network")
 		}
-	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for udp dial address")
+
+		select {
+		case addr := <-dialer.address:
+			if addr != wantAddr {
+				t.Fatalf("unexpected dial address: got %q want %q", addr, wantAddr)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for udp dial address")
+		}
 	}
 
 	ctrl.Close()

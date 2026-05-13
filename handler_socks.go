@@ -672,7 +672,6 @@ func (h *SocksHandler) ServeUDP(ctx context.Context, conn net.Conn, req SocksReq
 		}
 	}
 
-	clientAddr := netip.AddrPort{}
 	buf := make([]byte, socksUDPBufferSize)
 	for {
 		if timeout > 0 {
@@ -686,11 +685,6 @@ func (h *SocksHandler) ServeUDP(ctx context.Context, conn net.Conn, req SocksReq
 		cleanup(now)
 
 		if addr.Addr() != req.RemoteAddr.Addr() {
-			continue
-		}
-		if !clientAddr.IsValid() {
-			clientAddr = addr
-		} else if addr != clientAddr {
 			continue
 		}
 		if n < 4 || buf[0] != 0 || buf[1] != 0 || buf[2] != 0 {
@@ -737,7 +731,8 @@ func (h *SocksHandler) ServeUDP(ctx context.Context, conn net.Conn, req SocksReq
 		}
 
 		targetAddr := net.JoinHostPort(host, strconv.Itoa(port))
-		session := sessions[targetAddr]
+		sessionKey := addr.String() + ":" + targetAddr
+		session := sessions[sessionKey]
 		if session == nil {
 			targetReq := req
 			targetReq.Host = host
@@ -780,7 +775,7 @@ func (h *SocksHandler) ServeUDP(ctx context.Context, conn net.Conn, req SocksReq
 			header := append([]byte(nil), buf[:headerLen]...)
 			session = &udpSession{conn: rconn, header: header}
 			session.lastActive.Store(now.UnixNano())
-			sessions[targetAddr] = session
+			sessions[sessionKey] = session
 
 			log.Info().NetIPAddrPort("server_addr", req.ServerAddr).Int("socks_version", int(req.Version)).Str("username", req.User.Username).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("socks_network", "udp").Str("socks_host", host).Int("socks_port", port).Str("forward_policy_name", targetPolicyName).Str("forward_dialer_name", dialerName).Msg("forward socks request")
 
@@ -800,13 +795,13 @@ func (h *SocksHandler) ServeUDP(ctx context.Context, conn net.Conn, req SocksReq
 						return
 					}
 				}
-			}(session, clientAddr)
+			}(session, addr)
 		}
 
 		session.lastActive.Store(now.UnixNano())
 		if _, err = session.conn.Write(buf[headerLen:n]); err != nil {
 			session.conn.Close()
-			delete(sessions, targetAddr)
+			delete(sessions, sessionKey)
 		}
 	}
 }
