@@ -93,6 +93,7 @@ COMPOSITING_DESTINATION_OUT = appkit_constant(
 )
 MENU_STATE_ON = appkit_constant(("NSControlStateValueOn", "NSOnState"), 1)
 MENU_STATE_OFF = appkit_constant(("NSControlStateValueOff", "NSOffState"), 0)
+ALERT_FIRST_BUTTON_RETURN = appkit_constant(("NSAlertFirstButtonReturn",), 1000)
 CONSOLE_BORDER_WIDTH = 3.0
 IGNORED_PROFILE_FILES = {"example.yaml"}
 
@@ -857,7 +858,26 @@ class AppDelegate(NSObject):
             self.update_process_menu_state()
             return False
 
+        environment = dict(os.environ)
+        environment["LINER_LOG_TO_STDERR"] = "1"
+
         requires_admin = self.profile_has_tun_section(config_file)
+        if requires_admin and not self.sudo_credentials_available(environment):
+            if not self.confirm_tun_admin():
+                self.append_to_console("Start canceled.\n", ANSI_COLORS[3])
+                self.update_process_menu_state()
+                return False
+
+            self.append_to_console("Requesting administrator authorization for TUN.\n", ANSI_COLORS[3])
+            ok, message = self.authorize_sudo(environment)
+            if not ok:
+                if message:
+                    self.append_to_console(f"Administrator authorization failed: {message}\n", ANSI_COLORS[1])
+                else:
+                    self.append_to_console("Administrator authorization failed.\n", ANSI_COLORS[1])
+                self.update_process_menu_state()
+                return False
+
         if requires_admin:
             self.append_to_console(
                 f"Starting with sudo: {CHILD_BIN} {config_file}\n", ANSI_COLORS[2]
@@ -865,17 +885,12 @@ class AppDelegate(NSObject):
         else:
             self.append_to_console(f"Starting: {CHILD_BIN} {config_file}\n", ANSI_COLORS[2])
 
-        environment = dict(os.environ)
-        environment["LINER_LOG_TO_STDERR"] = "1"
         try:
             args = [bin_path, config_file]
             if requires_admin:
-                environment["SUDO_ASKPASS"] = self.ensure_sudo_askpass()
                 args = [
                     "/usr/bin/sudo",
-                    "-A",
-                    "-p",
-                    f"{APP_TITLE} needs administrator privileges to start TUN.\nPassword: ",
+                    "-n",
                     "--",
                     "/usr/bin/env",
                     "LINER_LOG_TO_STDERR=1",
@@ -903,6 +918,66 @@ class AppDelegate(NSObject):
         self.update_process_menu_state()
         self.update_proxy_menu_state()
         return True
+
+    def sudo_credentials_available(self, environment: Dict[str, str]) -> bool:
+        try:
+            result = subprocess.run(
+                ["/usr/bin/sudo", "-n", "true"],
+                cwd=self.work_dir,
+                env=environment,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except OSError:
+            return False
+        return result.returncode == 0
+
+    def confirm_tun_admin(self) -> bool:
+        alert = NSAlert.alloc().init()
+        alert.setMessageText_("TUN 需要管理员权限")
+        alert.setInformativeText_(
+            "The selected profile contains a tun: section. "
+            "Liner needs administrator privileges to create and configure the TUN interface."
+        )
+        alert.addButtonWithTitle_("Continue")
+        alert.addButtonWithTitle_("Cancel")
+        NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+        return alert.runModal() == ALERT_FIRST_BUTTON_RETURN
+
+    def authorize_sudo(self, environment: Dict[str, str]) -> Tuple[bool, str]:
+        auth_environment = dict(environment)
+        auth_environment["SUDO_ASKPASS"] = self.ensure_sudo_askpass()
+        try:
+            result = subprocess.run(
+                [
+                    "/usr/bin/sudo",
+                    "-A",
+                    "-v",
+                    "-p",
+                    f"{APP_TITLE} needs administrator privileges to start TUN.\nPassword: ",
+                ],
+                cwd=self.work_dir,
+                env=auth_environment,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        except OSError as exc:
+            return False, str(exc)
+
+        if result.returncode != 0:
+            return False, self.clean_process_error(result.stderr)
+        if not self.sudo_credentials_available(environment):
+            return False, "sudo credentials were not cached"
+        return True, ""
+
+    @staticmethod
+    def clean_process_error(message: Optional[str]) -> str:
+        if not message:
+            return ""
+        return " ".join(message.strip().split())
 
     def ensure_sudo_askpass(self) -> str:
         path = self.sudo_askpass_path
