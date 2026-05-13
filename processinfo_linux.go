@@ -49,17 +49,42 @@ func GetTCPConnProcessInfo(conn net.Conn) (TCPConnProcessInfo, error) {
 	return entry.processInfo()
 }
 
+func GetUDPConnProcessInfo(conn net.Conn) (TCPConnProcessInfo, error) {
+	if conn == nil {
+		return TCPConnProcessInfo{}, errors.ErrUnsupported
+	}
+	finder, ok := newLinuxUDPProcessFinder(conn)
+	if !ok {
+		return TCPConnProcessInfo{}, errors.ErrUnsupported
+	}
+
+	entry, err := finder.find()
+	if err != nil {
+		return TCPConnProcessInfo{}, err
+	}
+	if entry.inode == 0 {
+		return TCPConnProcessInfo{}, os.ErrNotExist
+	}
+	return entry.processInfo()
+}
+
 var (
 	linuxIPv4ProcessSnapshotPtr atomic.Pointer[linuxProcessSnapshot]
 	linuxIPv6ProcessSnapshotPtr atomic.Pointer[linuxProcessSnapshot]
 	linuxIPv4ProcessSnapshotMu  sync.Mutex
 	linuxIPv6ProcessSnapshotMu  sync.Mutex
+
+	linuxIPv4UDPProcessSnapshotPtr atomic.Pointer[linuxProcessSnapshot]
+	linuxIPv6UDPProcessSnapshotPtr atomic.Pointer[linuxProcessSnapshot]
+	linuxIPv4UDPProcessSnapshotMu  sync.Mutex
+	linuxIPv6UDPProcessSnapshotMu  sync.Mutex
 )
 
 type linuxProcessFinder struct {
 	source      netip.AddrPort
 	destination netip.AddrPort
 	family      int
+	udp         bool
 	snapshot    *atomic.Pointer[linuxProcessSnapshot]
 	mu          *sync.Mutex
 }
@@ -91,6 +116,30 @@ func newLinuxProcessFinder(conn net.Conn) (linuxProcessFinder, bool) {
 	} else {
 		finder.snapshot = &linuxIPv4ProcessSnapshotPtr
 		finder.mu = &linuxIPv4ProcessSnapshotMu
+	}
+	return finder, true
+}
+
+func newLinuxUDPProcessFinder(conn net.Conn) (linuxProcessFinder, bool) {
+	finder := linuxProcessFinder{
+		family: unix.AF_INET,
+		udp:    true,
+	}
+	finder.source = finder.addrPort(AddrPortFromNetAddr(conn.RemoteAddr()))
+	finder.destination = finder.addrPort(AddrPortFromNetAddr(conn.LocalAddr()))
+	if !finder.source.IsValid() {
+		return linuxProcessFinder{}, false
+	}
+	if finder.destination.IsValid() && finder.source.Addr().BitLen() != finder.destination.Addr().BitLen() {
+		return linuxProcessFinder{}, false
+	}
+	if finder.source.Addr().Is6() {
+		finder.family = unix.AF_INET6
+		finder.snapshot = &linuxIPv6UDPProcessSnapshotPtr
+		finder.mu = &linuxIPv6UDPProcessSnapshotMu
+	} else {
+		finder.snapshot = &linuxIPv4UDPProcessSnapshotPtr
+		finder.mu = &linuxIPv4UDPProcessSnapshotMu
 	}
 	return finder, true
 }
@@ -176,6 +225,21 @@ func (snapshot *linuxProcessSnapshot) fresh() bool {
 }
 
 func (snapshot *linuxProcessSnapshot) find(finder linuxProcessFinder) (linuxConnEntry, bool) {
+	if finder.udp {
+		if finder.destination.IsValid() {
+			for _, entry := range snapshot.entries {
+				if entry.src == finder.source && entry.dst == finder.destination {
+					return entry, true
+				}
+			}
+		}
+		for _, entry := range snapshot.entries {
+			if entry.src == finder.source {
+				return entry, true
+			}
+		}
+		return linuxConnEntry{}, false
+	}
 	for _, entry := range snapshot.entries {
 		if entry.src == finder.source && entry.dst == finder.destination {
 			return entry, true
@@ -212,6 +276,9 @@ func (finder linuxProcessFinder) buildSnapshot() (*linuxProcessSnapshot, error) 
 		Family:   uint8(finder.family),
 		Protocol: syscall.IPPROTO_TCP,
 		States:   ^uint32(0),
+	}
+	if finder.udp {
+		req.Protocol = syscall.IPPROTO_UDP
 	}
 	reqdata := unsafe.Slice((*byte)(unsafe.Pointer(&req)), int(unsafe.Sizeof(req)))
 	data := make([]byte, unix.SizeofNlMsghdr+len(reqdata))
