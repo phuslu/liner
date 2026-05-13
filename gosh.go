@@ -1739,16 +1739,12 @@ func (c *goshAutoCompleter) Do(line []rune, pos int) ([][]rune, int) {
 	if len(options) == 0 {
 		return nil, 0
 	}
-	escaped := make([]string, len(options))
-	for i, option := range options {
-		escaped[i] = goshEscapeCompletion(option)
-	}
 	prefixLen := utf8.RuneCountInString(ctx.prefix)
-	common := goshLongestCommonPrefix(escaped)
+	common := goshLongestCommonPrefix(options)
 	commonRunes := []rune(common)
 	addition := []rune{}
 	if len(commonRunes) > prefixLen {
-		addition = append(addition, commonRunes[prefixLen:]...)
+		addition = append(addition, []rune(goshEscapeCompletion(string(commonRunes[prefixLen:])))...)
 	}
 	if len(options) == 1 {
 		hasTrailingSep := goshHasTrailingPathSeparator(options[0])
