@@ -87,6 +87,14 @@ type darwinConnEntry struct {
 	pid uint32
 }
 
+type darwinConnMatchKind uint8
+
+const (
+	darwinConnMatchExact darwinConnMatchKind = iota
+	darwinConnMatchLocalFallback
+	darwinConnMatchWildcardFallback
+)
+
 type darwinProcessSnapshot struct {
 	createdAt time.Time
 	entries   []darwinConnEntry
@@ -165,14 +173,14 @@ func (finder darwinProcessFinder) find() (darwinConnEntry, error) {
 func (finder darwinProcessFinder) findUDP() (darwinConnEntry, error) {
 	snapshot := darwinUDPProcessSnapshotPtr.Load()
 	if snapshot.fresh() {
-		if entry, ok := snapshot.findUDP(finder); ok {
+		if entry, kind, ok := snapshot.findUDP(finder); ok && kind == darwinConnMatchExact {
 			return entry, nil
 		}
 		refreshed, err := finder.loadUDPSnapshot(true, snapshot)
 		if err != nil {
 			return darwinConnEntry{}, err
 		}
-		if entry, ok := refreshed.findUDP(finder); ok {
+		if entry, _, ok := refreshed.findUDP(finder); ok {
 			return entry, nil
 		}
 		return darwinConnEntry{}, os.ErrNotExist
@@ -183,7 +191,7 @@ func (finder darwinProcessFinder) findUDP() (darwinConnEntry, error) {
 	if err != nil {
 		return darwinConnEntry{}, err
 	}
-	if entry, ok := snapshot.findUDP(finder); ok {
+	if entry, _, ok := snapshot.findUDP(finder); ok {
 		return entry, nil
 	}
 	return darwinConnEntry{}, os.ErrNotExist
@@ -251,24 +259,24 @@ func (snapshot *darwinProcessSnapshot) find(finder darwinProcessFinder) (darwinC
 	return darwinConnEntry{}, false
 }
 
-func (snapshot *darwinProcessSnapshot) findUDP(finder darwinProcessFinder) (darwinConnEntry, bool) {
+func (snapshot *darwinProcessSnapshot) findUDP(finder darwinProcessFinder) (darwinConnEntry, darwinConnMatchKind, bool) {
 	for _, entry := range snapshot.entries {
 		if entry.src == finder.source && entry.dst == finder.destination {
-			return entry, true
+			return entry, darwinConnMatchExact, true
 		}
 	}
 	for _, entry := range snapshot.entries {
 		if entry.src == finder.source {
-			return entry, true
+			return entry, darwinConnMatchLocalFallback, true
 		}
 	}
 	for _, entry := range snapshot.entries {
 		addr := entry.src.Addr()
 		if entry.src.Port() == finder.source.Port() && addr.IsUnspecified() && addr.BitLen() == finder.source.Addr().BitLen() {
-			return entry, true
+			return entry, darwinConnMatchWildcardFallback, true
 		}
 	}
-	return darwinConnEntry{}, false
+	return darwinConnEntry{}, darwinConnMatchExact, false
 }
 
 func (entry darwinConnEntry) processInfo() (ConnProcessInfo, error) {
