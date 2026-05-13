@@ -708,13 +708,22 @@ func (h *TunHandler) forwardTCP(r *tcp.ForwarderRequest) {
 		return nil, nil
 	}
 
+	var (
+		processInfoOnce sync.Once
+		processInfo     *TCPConnProcessInfo
+	)
 	req.ProcessInfo = func() (*TCPConnProcessInfo, error) {
-		if c, err := ensureLocalConn(); err == nil {
-			if info, err := GetTCPConnProcessInfo(c); err == nil {
-				return &info, nil
+		processInfoOnce.Do(func() {
+			c, err := ensureLocalConn()
+			if err != nil {
+				return
 			}
-		}
-		return nil, nil
+			info, err := GetTCPConnProcessInfo(c)
+			if err == nil {
+				processInfo = &info
+			}
+		})
+		return processInfo, nil
 	}
 
 	ctx, dialer, dialerName, ok := h.prepareDial(req)
