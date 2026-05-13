@@ -6,6 +6,7 @@ import (
 	"cmp"
 	"context"
 	_ "embed"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -151,6 +152,7 @@ func gosh(stdin, stdout, stderr *os.File) error {
 	history.limit = goshResolveShellHistoryLimit(runner)
 	history.control = goshResolveShellHistoryControl(runner)
 	histFile := goshResolveShellHistoryFile(runner)
+	history.file = histFile
 
 	boundStdin := &goshKeyBindingInput{src: stdin, mgr: bindings}
 	promptPrinter := &goshPromptPrinter{}
@@ -160,7 +162,6 @@ func gosh(stdin, stdout, stderr *os.File) error {
 	bindings.registerActionHandler(goshKeyActionHistorySearchForward, historySearch.Search)
 	rl, err := readline.NewEx(&readline.Config{
 		Prompt:                 currentPrompt.prompt,
-		HistoryFile:            histFile,
 		HistoryLimit:           history.limit,
 		DisableAutoSaveHistory: true,
 		InterruptPrompt:        "^C",
@@ -181,6 +182,9 @@ func gosh(stdin, stdout, stderr *os.File) error {
 		return err
 	}
 	_ = history.LoadFile(histFile)
+	for _, entry := range history.Entries() {
+		_ = rl.SaveHistory(entry)
+	}
 	completer.attach(rl)
 	historySearch.Attach(rl)
 	defer rl.Close()
@@ -224,6 +228,7 @@ func gosh(stdin, stdout, stderr *os.File) error {
 			return true
 		}
 
+		rdr.savePendingHistory()
 		for _, stmt := range stmts {
 			if err := runner.Run(ctx, stmt); err != nil {
 				var status interp.ExitStatus
@@ -242,6 +247,7 @@ func gosh(stdin, stdout, stderr *os.File) error {
 		resetPrompt()
 		return true
 	}, func(err error) bool {
+		rdr.savePendingHistory()
 		fmt.Fprintln(rl.Stderr(), err.Error())
 		resetPrompt()
 		return true
@@ -297,9 +303,10 @@ func goshRunInteractiveParser(parser *syntax.Parser, r io.Reader, run func([]*sy
 // goshReader adapts *readline.Instance to the io.Reader interface expected by
 // parser.Interactive. The parser calls Read whenever it needs more input.
 type goshReader struct {
-	rl      *readline.Instance
-	buf     []byte // leftover bytes from the previous Readline call
-	history *goshHistory
+	rl                  *readline.Instance
+	buf                 []byte // leftover bytes from the previous Readline call
+	history             *goshHistory
+	pendingHistoryLines []string
 }
 
 func (r *goshReader) Read(p []byte) (int, error) {
@@ -315,6 +322,7 @@ func (r *goshReader) Read(p []byte) (int, error) {
 		if err == readline.ErrInterrupt {
 			// Ctrl-C: feed a bare newline so the parser discards the current
 			// incomplete statement and returns to a clean state.
+			r.pendingHistoryLines = r.pendingHistoryLines[:0]
 			p[0] = '\n'
 			return 1, nil
 		}
@@ -322,7 +330,7 @@ func (r *goshReader) Read(p []byte) (int, error) {
 		return 0, io.EOF
 	}
 
-	r.saveHistory(line)
+	r.pendingHistoryLines = append(r.pendingHistoryLines, line)
 	data := []byte(line + "\n")
 	n := copy(p, data)
 	if n < len(data) {
@@ -331,7 +339,16 @@ func (r *goshReader) Read(p []byte) (int, error) {
 	return n, nil
 }
 
-func (r *goshReader) saveHistory(line string) {
+func (r *goshReader) savePendingHistory() {
+	if len(r.pendingHistoryLines) == 0 {
+		return
+	}
+	line := goshHistoryLine(r.pendingHistoryLines)
+	r.pendingHistoryLines = r.pendingHistoryLines[:0]
+	r.saveHistoryLine(line)
+}
+
+func (r *goshReader) saveHistoryLine(line string) {
 	if r.rl == nil {
 		if r.history != nil {
 			r.history.Add(line)
@@ -349,9 +366,14 @@ func (r *goshReader) saveHistory(line string) {
 	_ = r.rl.SaveHistory("")
 }
 
+func goshHistoryLine(lines []string) string {
+	return strings.Join(lines, "\n")
+}
+
 type goshHistory struct {
 	limit   int
 	control goshHistoryControl
+	file    string
 	mu      sync.Mutex
 	entries []string
 }
@@ -456,7 +478,7 @@ func (h *goshHistory) Load(r io.Reader) error {
 	for {
 		line, err := br.ReadString('\n')
 		if line != "" {
-			h.append(line)
+			h.append(goshDecodeHistoryLine(line))
 		}
 		if err != nil {
 			if errors.Is(err, io.EOF) {
@@ -473,14 +495,17 @@ func (h *goshHistory) Add(line string) bool {
 		return false
 	}
 	h.mu.Lock()
-	defer h.mu.Unlock()
 	if h.control.ignoreSpace && strings.HasPrefix(line, " ") {
+		h.mu.Unlock()
 		return false
 	}
 	if h.control.ignoreDups && len(h.entries) > 0 && h.entries[len(h.entries)-1] == line {
+		h.mu.Unlock()
 		return false
 	}
 	h.appendLocked(line)
+	h.mu.Unlock()
+	h.appendFile(line)
 	return true
 }
 
@@ -507,6 +532,39 @@ func (h *goshHistory) Entries() []string {
 	out := make([]string, len(h.entries))
 	copy(out, h.entries)
 	return out
+}
+
+func (h *goshHistory) appendFile(line string) {
+	if h == nil || h.file == "" {
+		return
+	}
+	file, err := os.OpenFile(h.file, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o666)
+	if err != nil {
+		return
+	}
+	_, _ = fmt.Fprintln(file, goshEncodeHistoryLine(line))
+	_ = file.Close()
+}
+
+const goshHistoryEncodedPrefix = "# gosh-history-v1 "
+
+func goshEncodeHistoryLine(line string) string {
+	if strings.ContainsAny(line, "\r\n") || strings.HasPrefix(line, goshHistoryEncodedPrefix) {
+		return goshHistoryEncodedPrefix + base64.StdEncoding.EncodeToString([]byte(line))
+	}
+	return line
+}
+
+func goshDecodeHistoryLine(line string) string {
+	line = strings.TrimRight(line, "\r\n")
+	if !strings.HasPrefix(line, goshHistoryEncodedPrefix) {
+		return line
+	}
+	data, err := base64.StdEncoding.DecodeString(strings.TrimSpace(line[len(goshHistoryEncodedPrefix):]))
+	if err != nil {
+		return line
+	}
+	return string(data)
 }
 
 func goshDefaultPrompt() string {
