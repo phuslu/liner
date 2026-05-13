@@ -758,7 +758,7 @@ func (h *TunHandler) forwardTCP(r *tcp.ForwarderRequest) {
 	h.logData(context.Background(), req, dialerName)
 }
 
-func (h *TunHandler) forwardUDP(r *udp.ForwarderRequest) {
+func (h *TunHandler) forwardUDP(r *udp.ForwarderRequest) bool {
 	id := r.ID()
 	serverIP, _ := netip.AddrFromSlice(id.LocalAddress.AsSlice())
 	remoteIP, _ := netip.AddrFromSlice(id.RemoteAddress.AsSlice())
@@ -781,18 +781,18 @@ func (h *TunHandler) forwardUDP(r *udp.ForwarderRequest) {
 		} else {
 			ep.Close()
 		}
-		return
+		return false
 	}
 	if req.Port == 53 && h.DnsResolver != nil && h.DnsResolver.Client != nil {
 		var wq waiter.Queue
 		ep, tcpipErr := r.CreateEndpoint(&wq)
 		if tcpipErr != nil {
 			log.Error().Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Str("error", tcpipErr.String()).Msg("tun udp create endpoint error")
-			return
+			return false
 		}
 		lconn := gonet.NewUDPConn(&wq, ep)
 		go h.serveUDP(req, lconn)
-		return
+		return true
 	}
 	if h.Config.DisableIpv6 && req.ServerAddr.Addr().Is6() {
 		log.Debug().Xid("trace_id", req.TraceID).Str("tun_name", h.name).Str("tun_network", req.Network).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Msg("reject tun ipv6 request")
@@ -803,7 +803,7 @@ func (h *TunHandler) forwardUDP(r *udp.ForwarderRequest) {
 		} else {
 			ep.Close()
 		}
-		return
+		return false
 	}
 	if h.address.Contains(addr) {
 		log.Debug().Xid("trace_id", req.TraceID).Str("tun_name", h.name).Str("tun_network", req.Network).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Msg("reject tun local request")
@@ -814,18 +814,19 @@ func (h *TunHandler) forwardUDP(r *udp.ForwarderRequest) {
 		} else {
 			ep.Close()
 		}
-		return
+		return false
 	}
 
 	var wq waiter.Queue
 	ep, tcpipErr := r.CreateEndpoint(&wq)
 	if tcpipErr != nil {
 		log.Error().Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Str("error", tcpipErr.String()).Msg("tun udp create endpoint error")
-		return
+		return false
 	}
 	lconn := gonet.NewUDPConn(&wq, ep)
 
 	go h.serveUDP(req, lconn)
+	return true
 }
 
 func (h *TunHandler) serveUDP(req TunRequest, lconn net.Conn) {
