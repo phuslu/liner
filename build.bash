@@ -51,7 +51,7 @@ function liner::build() {
 	go test -v
 
 	rm -rf build
-	mkdir -p build/liner_{linux_amd64,linux_arm64,linux_armv7,android_arm64,windows_amd64,windows_arm64}
+	mkdir -p build/liner_{linux_amd64,linux_arm64,linux_armv7,darwin_amd64,darwin_arm64,android_arm64,windows_amd64,windows_arm64}
 
 	git log --oneline --pretty=format:"%h %s" -10 | tee build/changelog.txt
 
@@ -76,6 +76,18 @@ GOOS=linux GOARCH=arm GOARM=7 \
 	cd build/liner_linux_armv7 && \
 	tar cv * | gzip -9 >../liner_linux_armv7-${REVSION}.tar.gz
 
+GOOS=darwin GOARCH=amd64 \
+	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -o build/liner_darwin_amd64/liner && \
+	cp liner.command pyobjc.zip example.yaml build/changelog.txt build/liner_darwin_amd64/ && \
+	cd build/liner_darwin_amd64 && \
+	tar cv * | gzip -9 >../liner_darwin_amd64-${REVSION}.tar.gz
+
+GOOS=darwin GOARCH=arm64 \
+	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -o build/liner_darwin_arm64/liner && \
+	cp liner.command pyobjc.zip example.yaml build/changelog.txt build/liner_darwin_arm64/ && \
+	cd build/liner_darwin_arm64 && \
+	tar cv * | gzip -9 >../liner_darwin_arm64-${REVSION}.tar.gz
+
 GOOS=android GOARCH=arm64 \
 	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -o build/liner_android_arm64/liner && \
 	cp example.yaml build/changelog.txt build/liner_android_arm64/ && \
@@ -95,62 +107,6 @@ GOOS=windows GOARCH=arm64 \
 	cp wintun/bin/arm64/wintun.dll build/liner_windows_amd64/ && \
 	cd build/liner_windows_arm64 && \
 	tar cv * | gzip -9 >../liner_windows_arm64-${REVSION}.tar.gz
-EOF
-
-	rm -rf build/changelog.txt $(find build -mindepth 1 -maxdepth 1 -type d -name "liner_*")
-}
-
-function liner::build::macos() {
-	export CGO_ENABLED=0
-	export GOROOT=${GOROOT:-/tmp/go}
-	export GOPATH=${GOPATH:-/tmp/gopath}
-	export PATH=${GOPATH:-~/go}/bin:${GOROOT}/bin:$PATH
-	export REVSION=$(git rev-list --count HEAD)
-
-	if grep -lr $(printf '\r\n') * | grep '.go$' ; then
-		echo -e "\e[1;31mPlease run dos2unix for go source files\e[0m"
-		exit 1
-	fi
-
-	# if [ "$(gofmt -l .)" != "" ]; then
-	# 	echo -e "\e[1;31mPlease run 'gofmt -s -w .' for go source files\e[0m"
-	# 	exit 1
-	# fi
-
-	go version
-	go env
-
-	go mod download -x
-	# http2 patch
-	# https://github.com/golang/go/issues/47840#issuecomment-983558795
-	sed -i -E 's/const http2bufWriterPoolBufferSize = .+/var http2bufWriterPoolBufferSize = func() int { n, _ := strconv.Atoi(os.Getenv("HTTP2_WRITER_POOL_BUFFER_SIZE")); return max(n, 32768) }()/' ${GOROOT}/src/net/http/h2_bundle.go
-	grep -m1 http2bufWriterPoolBufferSize ${GOROOT}/src/net/http/h2_bundle.go
-	# x/net/http2 patch
-	golang_org_x_net="${GOPATH}/pkg/mod/$(go list -m golang.org/x/net | tr ' ' @)"
-	chmod -R +w ${golang_org_x_net}/http2
-	sed -i -E 's/const bufWriterPoolBufferSize = .+/var bufWriterPoolBufferSize = func() int { n, _ := strconv.Atoi(os.Getenv("HTTP2_WRITER_POOL_BUFFER_SIZE")); return max(n, 32768) }()/' ${golang_org_x_net}/http2/http2.go
-	grep -m1 'var bufWriterPoolBufferSize' ${golang_org_x_net}/http2/http2.go
-
-	go build -v -trimpath
-	go test -v
-
-	rm -rf build
-	mkdir -p build/liner_{darwin_amd64,darwin_arm64}
-
-	git log --oneline --pretty=format:"%h %s" -10 | tee build/changelog.txt
-
-	cat <<EOF | parallel --line-buffer
-GOOS=darwin GOARCH=amd64 \
-	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -o build/liner_darwin_amd64/liner && \
-	cp liner.command pyobjc.zip example.yaml build/changelog.txt build/liner_darwin_amd64/ && \
-	cd build/liner_darwin_amd64 && \
-	tar cv * | gzip -9 >../liner_darwin_amd64-${REVSION}.tar.gz
-
-GOOS=darwin GOARCH=arm64 \
-	go build -v -trimpath -ldflags='-s -w -X main.version=1.0.${REVSION}' -o build/liner_darwin_arm64/liner && \
-	cp liner.command pyobjc.zip example.yaml build/changelog.txt build/liner_darwin_arm64/ && \
-	cd build/liner_darwin_arm64 && \
-	tar cv * | gzip -9 >../liner_darwin_arm64-${REVSION}.tar.gz
 EOF
 
 	rm -rf build/changelog.txt $(find build -mindepth 1 -maxdepth 1 -type d -name "liner_*")
@@ -293,7 +249,7 @@ function liner::release() {
 		pushd build
 		sha1sum liner_*.tar.gz >checksums.txt
 		git log --oneline --pretty=format:"%h %s" -5 | tee changelog.txt
-		gh release view v0.0.0 --json assets --jq .assets[].name | egrep "^liner_py-.+$(ls liner_py-*_*.whl | awk -F- '{print $NF}')$" | xargs -i gh release delete-asset v0.0.0 {} --yes
+		gh release view v0.0.0 --json assets --jq .assets[].name | egrep -v '^liner_py-' | xargs -i gh release delete-asset v0.0.0 {} --yes
 		gh release upload v0.0.0 liner_*.tar.gz checksums.txt --clobber
 		gh release edit v0.0.0 --notes-file changelog.txt
 		popd
