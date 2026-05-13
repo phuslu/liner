@@ -268,6 +268,54 @@ func (h *TunHandler) Load(ctx context.Context) error {
 			cleanup()
 		}
 	}()
+
+	log.Info().Str("tun_name", h.name).Str("tun_address", addressPrefix.String()).Msg("wait tun address update")
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		addr := addressPrefix.Addr().Unmap()
+		ready := false
+		ifis, err := net.Interfaces()
+		if err != nil {
+			return fmt.Errorf("wait tun address ready: %w", err)
+		}
+		for _, ifi := range ifis {
+			if !strings.EqualFold(ifi.Name, h.name) {
+				continue
+			}
+			addrs, err := ifi.Addrs()
+			if err != nil {
+				return fmt.Errorf("wait tun address ready: %w", err)
+			}
+			for _, a := range addrs {
+				ipNet, ok := a.(*net.IPNet)
+				if !ok {
+					continue
+				}
+				ip := ipNet.IP
+				if ip4 := ip.To4(); ip4 != nil {
+					ip = ip4
+				}
+				ipaddr, ok := netip.AddrFromSlice(ip)
+				if ok && ipaddr.Unmap() == addr {
+					ln, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IP(addr.AsSlice())})
+					if err != nil {
+						break
+					}
+					ln.Close()
+					ready = true
+					break
+				}
+			}
+			break
+		}
+		if ready {
+			break
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("wait tun address %s ready timeout: interface=%s", addressPrefix, h.name)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
 	log.Info().Str("tun_name", h.name).Str("tun_address", addressPrefix.String()).Msg("tun address updated")
 	log.Info().Str("tun_name", h.name).Msg("tun link up")
 	for _, prefix := range bypassPrefixes {
