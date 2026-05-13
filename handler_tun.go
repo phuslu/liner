@@ -845,6 +845,20 @@ func (h *TunHandler) forwardUDP(r *udp.ForwarderRequest) bool {
 func (h *TunHandler) serveUDP(req TunRequest, lconn net.Conn) {
 	defer lconn.Close()
 
+	var (
+		processInfoOnce sync.Once
+		processInfo     *ConnProcessInfo
+	)
+	req.ProcessInfo = func() (*ConnProcessInfo, error) {
+		processInfoOnce.Do(func() {
+			info, err := GetUDPConnProcessInfo(lconn)
+			if err == nil {
+				processInfo = &info
+			}
+		})
+		return processInfo, nil
+	}
+
 	if req.Port == 53 && h.DnsResolver != nil && h.DnsResolver.Client != nil {
 		client := h.DnsResolver.Client
 		h.logForward(req, client.Addr)
