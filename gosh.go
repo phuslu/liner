@@ -146,16 +146,19 @@ func goshRun(c goshRunConfig) error {
 	}())
 
 	// source the init files.
-	if file, err := os.Open(goshResolveInitFile(env, interactive)); err == nil {
-		prog, err := parser.Parse(file, file.Name())
-		if err != nil {
-			fmt.Fprintln(stderr, "failed to parse", file.Name(), ":", err)
-		} else {
-			if err := runner.Run(ctx, prog); err != nil {
-				fmt.Fprintln(stderr, "failed to run", file.Name(), ":", err)
+	if command == nil {
+		file, err := os.Open(goshResolveInitFile(env, interactive))
+		if err == nil {
+			prog, err := parser.Parse(file, file.Name())
+			if err != nil {
+				fmt.Fprintln(stderr, "failed to parse", file.Name(), ":", err)
+			} else {
+				if err := runner.Run(ctx, prog); err != nil {
+					fmt.Fprintln(stderr, "failed to run", file.Name(), ":", err)
+				}
 			}
+			file.Close()
 		}
-		file.Close()
 	}
 
 	defaultPrompt := goshDefaultPrompt()
