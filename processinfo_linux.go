@@ -245,6 +245,11 @@ func (snapshot *linuxProcessSnapshot) find(finder linuxProcessFinder) (linuxConn
 			return entry, true
 		}
 	}
+	for _, entry := range snapshot.entries {
+		if entry.src == finder.source {
+			return entry, true
+		}
+	}
 	return linuxConnEntry{}, false
 }
 

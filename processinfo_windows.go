@@ -97,7 +97,7 @@ func newWindowsProcessFinder(conn net.Conn) (windowsProcessFinder, bool) {
 	}
 	finder.source = finder.addrPort(AddrPortFromNetAddr(conn.RemoteAddr()))
 	finder.destination = finder.addrPort(AddrPortFromNetAddr(conn.LocalAddr()))
-	if !finder.source.IsValid() || !finder.destination.IsValid() || finder.source.Addr().BitLen() != finder.destination.Addr().BitLen() {
+	if !finder.source.IsValid() {
 		return windowsProcessFinder{}, false
 	}
 	if finder.source.Addr().Is6() {
@@ -199,7 +199,7 @@ func (snapshot *windowsProcessSnapshot) find(finder windowsProcessFinder) (windo
 		return snapshot.findUDP(finder)
 	}
 	for _, entry := range snapshot.entries {
-		if entry.src == finder.source && entry.dst == finder.destination {
+		if entry.src == finder.source {
 			return entry, true
 		}
 	}
