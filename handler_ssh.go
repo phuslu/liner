@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"os"
 	"os/exec"
@@ -19,7 +20,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/google/shlex"
@@ -443,79 +443,6 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 	for req := range requests {
 		h.Logger.Info().NetAddr("remote_addr", conn.RemoteAddr()).Any("request", req).Msg("process ssh channel request")
 		switch req.Type {
-		case "exec":
-			req.Reply(true, nil)
-
-			var payload struct {
-				Command string
-			}
-			if err := ssh.Unmarshal(req.Payload, &payload); err != nil {
-				h.Logger.Error().Err(err).Msgf("ssh exec unmarshal error")
-				continue
-			}
-
-			h.Logger.Info().Str("command", payload.Command).Msg("ssh exec command")
-
-			shellPath := cmp.Or(os.Getenv("SHELL"), os.ExpandEnv(h.shellPath))
-			shellcmd := exec.CommandContext(ctx, shellPath, "-c", "cd; "+payload.Command)
-			shellcmd.Dir = cmp.Or(h.Config.Home, "/")
-
-			var err error
-			var in io.WriteCloser
-			var out io.ReadCloser
-
-			// Prepare teardown function
-			close := func() {
-				in.Close()
-
-				err := shellcmd.Wait()
-				var exitStatus int32
-				if err != nil {
-					if e2, ok := err.(*exec.ExitError); ok {
-						if s, ok := e2.Sys().(syscall.WaitStatus); ok {
-							exitStatus = int32(s.ExitStatus())
-						} else {
-							panic(errors.New("unimplemented for system where exec.ExitError.Sys() is not syscall.WaitStatus"))
-						}
-					}
-				}
-				b := [4]byte{byte(exitStatus >> 24), byte(exitStatus >> 16), byte(exitStatus >> 8), byte(exitStatus)}
-				channel.SendRequest("exit-status", false, b[:])
-				channel.Close()
-				h.Logger.Info().Int32("exit_status", exitStatus).Msg("ssh exec session closed")
-			}
-
-			in, err = shellcmd.StdinPipe()
-			if err != nil {
-				h.Logger.Printf("Could not get stdin pipe (%s)", err)
-				close()
-				return
-			}
-
-			out, err = shellcmd.StdoutPipe()
-			if err != nil {
-				h.Logger.Printf("Could not get stdout pipe (%s)", err)
-				close()
-				return
-			}
-
-			err = shellcmd.Start()
-			if err != nil {
-				h.Logger.Printf("Could not start pty (%s)", err)
-				close()
-				return
-			}
-
-			//pipe session to shell and visa-versa
-			var once sync.Once
-			go func() {
-				io.Copy(channel, out)
-				once.Do(close)
-			}()
-			go func() {
-				io.Copy(in, channel)
-				once.Do(close)
-			}()
 		case "env":
 			if len(req.Payload) != 0 {
 				var payload struct {
@@ -530,6 +457,17 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 				h.Logger.Info().Str("req_type", req.Type).Str("key", payload.Key).Str("value", payload.Value).Msg("handle ssh request")
 			}
 			req.Reply(true, nil)
+		case "exec":
+			req.Reply(true, nil)
+			var payload struct {
+				Command string
+			}
+			if err := ssh.Unmarshal(req.Payload, &payload); err != nil {
+				h.Logger.Error().Err(err).Msgf("ssh exec unmarshal error")
+				continue
+			}
+			h.Logger.Info().Str("command", payload.Command).Msg("ssh exec command")
+			go h.startExec(ctx, channel, payload.Command, maps.Clone(envs))
 		case "shell":
 			// We only accept the default shell
 			// (i.e. no command in the Payload)
@@ -631,115 +569,73 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 	}
 }
 
-func (h *SshHandler) startShell(ctx context.Context, shellPath string, winsize pty.Winsize, modes map[byte]uint32, envs map[string]string, channel ssh.Channel) (pty.Pty, error) {
-	currentUser, err := user.Current()
-	if err != nil {
-		return nil, err
-	}
-
-	eval := func(text string, shell string) (string, error) {
-		if !strings.Contains(text, "{{") {
-			return text, nil
-		}
-		tmpl, err := h.Functions.ParseTemplate(text, text)
-		if err != nil {
-			return "", err
-		}
-
-		// use map[string]any to defense garble
-		var sb strings.Builder
-		if obfuscated {
-			err = tmpl.Execute(&sb, map[string]any{
-				"Version": version,
-				"User":    currentUser,
-				"Shell":   shell,
-				"Env":     envs,
-			})
-		} else {
-			err = tmpl.Execute(&sb, struct {
-				Version string
-				User    *user.User
-				Env     map[string]string
-				Shell   string
-			}{
-				Version: version,
-				User:    currentUser,
-				Shell:   shell,
-				Env:     envs,
-			})
-		}
-		if err != nil {
-			return "", err
-		}
-		text = strings.TrimSpace(sb.String())
-
+func (h *SshHandler) evalSshShellText(text string, shell string, currentUser *user.User, envs map[string]string) (string, error) {
+	if !strings.Contains(text, "{{") {
 		return text, nil
 	}
-
-	shellPath, err = eval(shellPath, shellPath)
+	tmpl, err := h.Functions.ParseTemplate(text, text)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
-	var shell *exec.Cmd
-	if shellPath == "$" {
-		exe, err := os.Executable()
-		if err != nil {
-			exe, err = filepath.Abs(os.Args[0])
-			if err != nil {
-				return nil, err
-			}
-		}
-		if strings.HasSuffix(strings.ToLower(filepath.Base(exe)), "python") {
-			// pip install liner-py
-			shell = exec.CommandContext(ctx, "linex")
-		} else {
-			shell = exec.CommandContext(ctx, exe)
-			shell.Env = append(shell.Env, "GOSH=1")
-		}
+	var sb strings.Builder
+	if obfuscated {
+		err = tmpl.Execute(&sb, map[string]any{
+			"Version": version,
+			"User":    currentUser,
+			"Shell":   shell,
+			"Env":     envs,
+		})
 	} else {
-		shellArgs, err := shlex.Split(shellPath)
-		if err != nil {
-			return nil, err
-		}
-		shell = exec.CommandContext(ctx, os.ExpandEnv(shellArgs[0]), shellArgs[1:]...)
-		shell.Dir = os.ExpandEnv(cmp.Or(h.Config.Home, currentUser.HomeDir))
+		err = tmpl.Execute(&sb, struct {
+			Version string
+			User    *user.User
+			Env     map[string]string
+			Shell   string
+		}{
+			Version: version,
+			User:    currentUser,
+			Shell:   shell,
+			Env:     envs,
+		})
 	}
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(sb.String()), nil
+}
 
-	shell.Env = append(shell.Env,
-		"PATH="+os.Getenv("PATH"),
-		"LOGNAME="+currentUser.Username,
-		"USER="+currentUser.Username,
-		"HOME="+cmp.Or(h.Config.Home, currentUser.HomeDir),
-		"SHELL="+shell.Args[0],
-	)
+func (h *SshHandler) sshShellEnv(currentUser *user.User, shell string, shellPath string, envs map[string]string) ([]string, error) {
+	env := []string{
+		"PATH=" + os.Getenv("PATH"),
+		"LOGNAME=" + currentUser.Username,
+		"USER=" + currentUser.Username,
+		"HOME=" + cmp.Or(h.Config.Home, currentUser.HomeDir),
+		"SHELL=" + shell,
+	}
 	switch runtime.GOOS {
-	case "linux":
-		if shell.Args[0] == "bash" || strings.HasSuffix(shell.Args[0], "/bash") {
-			shell.Args[0] = "-bash"
-		}
 	case "darwin":
-		if shell.Args[0] == "/bin/bash" {
-			shell.Env = append(shell.Env, "BASH_SILENCE_DEPRECATION_WARNING=1")
+		if shell == "/bin/bash" {
+			env = append(env, "BASH_SILENCE_DEPRECATION_WARNING=1")
 		}
 	case "windows":
 		for _, key := range []string{"APPDATA", "PATH", "PATHEXT", "TEMP", "TMP", "USERNAME", "USERPROFILE"} {
 			if value := os.Getenv(key); value != "" {
-				shell.Env = append(shell.Env, key+"="+value)
+				env = goshSetEnv(env, key, value)
 			}
 		}
 	}
 	if h.Config.Env != "" || h.Config.EnvFile != "" {
 		var text string
 		if data := h.Config.Env; data != "" {
-			output, err := eval(data, shellPath)
+			output, err := h.evalSshShellText(data, shellPath, currentUser, envs)
 			if err != nil {
 				return nil, err
 			}
 			text += os.ExpandEnv(output) + "\n"
 		}
 		if data, err := os.ReadFile(h.Config.EnvFile); err == nil {
-			output, err := eval(string(data), shellPath)
+			output, err := h.evalSshShellText(string(data), shellPath, currentUser, envs)
 			if err != nil {
 				return nil, err
 			}
@@ -752,14 +648,213 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, winsize p
 				continue
 			}
 			key, value := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
-			shell.Env = append(shell.Env, key+"="+value)
+			env = goshSetEnv(env, key, value)
 		}
 	}
 	for key, value := range envs {
 		if strings.HasPrefix(key, "_") {
 			continue
 		}
-		shell.Env = append(shell.Env, key+"="+value)
+		env = goshSetEnv(env, key, value)
+	}
+	return env, nil
+}
+
+func (h *SshHandler) startExec(ctx context.Context, channel ssh.Channel, command string, envs map[string]string) {
+	defer channel.Close()
+
+	exitStatus := 127
+	defer func() {
+		var b [4]byte
+		binary.BigEndian.PutUint32(b[:], uint32(exitStatus))
+		if _, err := channel.SendRequest("exit-status", false, b[:]); err != nil {
+			h.Logger.Error().Err(err).Int("exit_status", exitStatus).Msg("ssh exec send exit-status error")
+		}
+		h.Logger.Info().Int("exit_status", exitStatus).Msg("ssh exec session closed")
+	}()
+
+	currentUser, err := user.Current()
+	if err != nil {
+		fmt.Fprintln(channel.Stderr(), err)
+		return
+	}
+
+	shellPath, err := h.evalSshShellText(h.shellPath, h.shellPath, currentUser, envs)
+	if err != nil {
+		fmt.Fprintln(channel.Stderr(), err)
+		return
+	}
+
+	home := os.ExpandEnv(cmp.Or(h.Config.Home, currentUser.HomeDir))
+	script := "cd; " + command
+	if shellPath == "$" {
+		var shell string
+		setGosh := false
+		exe, err := os.Executable()
+		if err != nil {
+			exe, err = filepath.Abs(os.Args[0])
+			if err != nil {
+				fmt.Fprintln(channel.Stderr(), err)
+				return
+			}
+		}
+		if strings.HasSuffix(strings.ToLower(filepath.Base(exe)), "python") {
+			// pip install liner-py
+			shell = "linex"
+		} else {
+			shell = exe
+			setGosh = true
+		}
+
+		env, err := h.sshShellEnv(currentUser, shell, shellPath, envs)
+		if err != nil {
+			fmt.Fprintln(channel.Stderr(), err)
+			return
+		}
+		if setGosh {
+			env = goshSetEnv(env, "GOSH", "1")
+		}
+		err = goshRun(goshRunConfig{
+			ctx:    ctx,
+			args:   []string{shell, "-c", script},
+			stdin:  channel,
+			stdout: channel,
+			stderr: channel.Stderr(),
+			env:    env,
+			dir:    home,
+		})
+		if err != nil && !goshIsExitStatus(err) && !errors.Is(err, context.Canceled) {
+			fmt.Fprintln(channel.Stderr(), err)
+		}
+		exitStatus = goshExitCode(err)
+		return
+	}
+
+	shellArgs, err := shlex.Split(shellPath)
+	if err != nil {
+		fmt.Fprintln(channel.Stderr(), err)
+		return
+	}
+	if len(shellArgs) == 0 {
+		fmt.Fprintln(channel.Stderr(), "empty ssh shell")
+		return
+	}
+	shell := os.ExpandEnv(shellArgs[0])
+	env, err := h.sshShellEnv(currentUser, shell, shellPath, envs)
+	if err != nil {
+		fmt.Fprintln(channel.Stderr(), err)
+		return
+	}
+
+	shellcmd := exec.CommandContext(ctx, shell, append(shellArgs[1:], "-c", script)...)
+	shellcmd.Dir = home
+	shellcmd.Env = env
+
+	in, err := shellcmd.StdinPipe()
+	if err != nil {
+		h.Logger.Printf("Could not get stdin pipe (%s)", err)
+		fmt.Fprintln(channel.Stderr(), err)
+		return
+	}
+	out, err := shellcmd.StdoutPipe()
+	if err != nil {
+		h.Logger.Printf("Could not get stdout pipe (%s)", err)
+		fmt.Fprintln(channel.Stderr(), err)
+		return
+	}
+	errout, err := shellcmd.StderrPipe()
+	if err != nil {
+		h.Logger.Printf("Could not get stderr pipe (%s)", err)
+		fmt.Fprintln(channel.Stderr(), err)
+		return
+	}
+	if err := shellcmd.Start(); err != nil {
+		h.Logger.Printf("Could not start shell (%s)", err)
+		fmt.Fprintln(channel.Stderr(), err)
+		return
+	}
+
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		io.Copy(channel, out)
+	})
+	wg.Go(func() {
+		io.Copy(channel.Stderr(), errout)
+	})
+	go func() {
+		io.Copy(in, channel)
+		in.Close()
+	}()
+
+	err = shellcmd.Wait()
+	in.Close()
+	wg.Wait()
+	switch {
+	case err == nil:
+		exitStatus = 0
+	case errors.Is(err, context.Canceled):
+		exitStatus = 130
+	default:
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			if code := exitErr.ExitCode(); code >= 0 {
+				exitStatus = code
+			} else {
+				exitStatus = 128
+			}
+		}
+	}
+}
+
+func (h *SshHandler) startShell(ctx context.Context, shellPath string, winsize pty.Winsize, modes map[byte]uint32, envs map[string]string, channel ssh.Channel) (pty.Pty, error) {
+	currentUser, err := user.Current()
+	if err != nil {
+		return nil, err
+	}
+
+	shellPath, err = h.evalSshShellText(shellPath, shellPath, currentUser, envs)
+	if err != nil {
+		return nil, err
+	}
+
+	var shell *exec.Cmd
+	setGosh := false
+	if shellPath == "$" {
+		exe, err := os.Executable()
+		if err != nil {
+			exe, err = filepath.Abs(os.Args[0])
+			if err != nil {
+				return nil, err
+			}
+		}
+		if strings.HasSuffix(strings.ToLower(filepath.Base(exe)), "python") {
+			// pip install liner-py
+			shell = exec.CommandContext(ctx, "linex")
+		} else {
+			setGosh = true
+			shell = exec.CommandContext(ctx, exe)
+		}
+	} else {
+		shellArgs, err := shlex.Split(shellPath)
+		if err != nil {
+			return nil, err
+		}
+		shell = exec.CommandContext(ctx, os.ExpandEnv(shellArgs[0]), shellArgs[1:]...)
+		shell.Dir = os.ExpandEnv(cmp.Or(h.Config.Home, currentUser.HomeDir))
+	}
+
+	shell.Env, err = h.sshShellEnv(currentUser, shell.Args[0], shellPath, envs)
+	if err != nil {
+		return nil, err
+	}
+	if setGosh {
+		shell.Env = goshSetEnv(shell.Env, "GOSH", "1")
+	}
+	switch runtime.GOOS {
+	case "linux":
+		if shell.Args[0] == "bash" || strings.HasSuffix(shell.Args[0], "/bash") {
+			shell.Args[0] = "-bash"
+		}
 	}
 	if spa := AppendSetSidToSysProcAttr(shell.SysProcAttr, os.Geteuid(), os.Getuid()); spa != nil {
 		shell.SysProcAttr = spa
