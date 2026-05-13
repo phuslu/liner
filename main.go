@@ -538,6 +538,40 @@ func main() {
 		tlsConfigurator.TLSServerNameHandle = handler.ServeConn
 	}
 
+	// tun handler
+	for _, tunConfig := range config.Tun {
+		tunResolver := dnsResolver
+		if server := strings.TrimSpace(tunConfig.DnsServer); server != "" {
+			tunResolver, err = dnsResolverPool.Get(server, 600*time.Second)
+			if err != nil {
+				log.Fatal().Err(err).Str("tun_name", tunConfig.Name).Str("dns_server", tunConfig.DnsServer).Msg("tun dns_server load error")
+			}
+		}
+		localdialer := *dialer
+		if ip, err := GetPreferedLocalIP("1.1.1.1"); err == nil {
+			localdialer.Interface = ip.String()
+		}
+		h := &TunHandler{
+			Config:      tunConfig,
+			DataLogger:  dataLogger,
+			GeoResolver: geoResolver,
+			DnsResolver: tunResolver,
+			LocalDialer: &localdialer,
+			Dialers:     dialers,
+			Functions:   functions,
+		}
+
+		if err = h.Load(context.Background()); err != nil {
+			log.Fatal().Err(err).Str("tun_name", tunConfig.Name).Msg("tun handler load error")
+		}
+
+		log.Info().Str("version", version).Str("tun_name", h.name).Int("tun_mtu", h.mtu).Msg("liner create and serve tun")
+
+		go h.Serve(context.Background())
+		// at exit
+		atexit["90-unload-tun-device-"+tunConfig.Name] = h.Unload
+	}
+
 	// listen and serve https
 	h2handlers := map[string]*struct {
 		Names map[string]HTTPHandler
@@ -1013,40 +1047,6 @@ func main() {
 				}
 			}(ln, h)
 		}
-	}
-
-	// tun handler
-	for _, tunConfig := range config.Tun {
-		tunResolver := dnsResolver
-		if server := strings.TrimSpace(tunConfig.DnsServer); server != "" {
-			tunResolver, err = dnsResolverPool.Get(server, 600*time.Second)
-			if err != nil {
-				log.Fatal().Err(err).Str("tun_name", tunConfig.Name).Str("dns_server", tunConfig.DnsServer).Msg("tun dns_server load error")
-			}
-		}
-		localdialer := *dialer
-		if ip, err := GetPreferedLocalIP("1.1.1.1"); err == nil {
-			localdialer.Interface = ip.String()
-		}
-		h := &TunHandler{
-			Config:      tunConfig,
-			DataLogger:  dataLogger,
-			GeoResolver: geoResolver,
-			DnsResolver: tunResolver,
-			LocalDialer: &localdialer,
-			Dialers:     dialers,
-			Functions:   functions,
-		}
-
-		if err = h.Load(context.Background()); err != nil {
-			log.Fatal().Err(err).Str("tun_name", tunConfig.Name).Msg("tun handler load error")
-		}
-
-		log.Info().Str("version", version).Str("tun_name", h.name).Int("tun_mtu", h.mtu).Msg("liner create and serve tun")
-
-		go h.Serve(context.Background())
-		// at exit
-		atexit["10-unload-tun-device-"+tunConfig.Name] = h.Unload
 	}
 
 	// ssh handler
