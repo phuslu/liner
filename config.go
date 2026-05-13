@@ -152,6 +152,7 @@ type TunConfig struct {
 	Forward        struct {
 		Dialer         string `json:"dialer" yaml:"dialer"`
 		DialTimeout    int    `json:"dial_timeout" yaml:"dial_timeout"`
+		TcpTimeout     int    `json:"tcp_timeout" yaml:"tcp_timeout"`
 		UdpTimeout     int    `json:"udp_timeout" yaml:"udp_timeout"`
 		TcpMaxInFlight int    `json:"tcp_max_in_flight" yaml:"tcp_max_in_flight"`
 		TcpBufferSize  int    `json:"tcp_buffer_size" yaml:"tcp_buffer_size"`

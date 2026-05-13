@@ -603,6 +603,10 @@ func (h *TunHandler) forwardTCP(r *tcp.ForwarderRequest) {
 	id := r.ID()
 	serverIP, _ := netip.AddrFromSlice(id.LocalAddress.AsSlice())
 	remoteIP, _ := netip.AddrFromSlice(id.RemoteAddress.AsSlice())
+	var tcpTimeout time.Duration
+	if timeout := cmp.Or(h.Config.Forward.TcpTimeout, 600); timeout > 0 {
+		tcpTimeout = time.Duration(timeout) * time.Second
+	}
 	req := TunRequest{
 		TunName:    h.name,
 		Network:    "tcp",
@@ -637,6 +641,9 @@ func (h *TunHandler) forwardTCP(r *tcp.ForwarderRequest) {
 		r.Complete(false)
 		completed = true
 		lconn = gonet.NewTCPConn(&wq, ep)
+		if tcpTimeout > 0 {
+			_ = lconn.SetDeadline(time.Now().Add(tcpTimeout))
+		}
 		return lconn, nil
 	}
 
@@ -736,11 +743,17 @@ func (h *TunHandler) forwardTCP(r *tcp.ForwarderRequest) {
 	if _, err = ensureLocalConn(); err != nil {
 		return
 	}
+	if tcpTimeout > 0 {
+		_ = lconn.SetDeadline(time.Time{})
+	}
 
 	h.logForward(req, dialerName)
 
-	go tunCopyConn(rconn, lconn)
-	tunCopyConn(lconn, rconn)
+	touch, stop := tunStartTCPIdleTimer(tcpTimeout, lconn, rconn)
+	defer stop()
+
+	go tunCopyConnWithActivity(rconn, lconn, touch)
+	tunCopyConnWithActivity(lconn, rconn, touch)
 
 	h.logData(context.Background(), req, dialerName)
 }
@@ -1025,10 +1038,48 @@ func tunGetCopyBuffer(size int) []byte {
 	return b[:size]
 }
 
-func tunCopyConn(dst, src net.Conn) {
+func tunCopyConnWithActivity(dst, src net.Conn, active func()) {
 	buf := tunGetCopyBuffer(tunCopyBufferSize)
 	defer tunPutCopyBuffer(buf)
-	_, _ = io.CopyBuffer(dst, src, buf)
+	for {
+		n, err := src.Read(buf)
+		if n > 0 {
+			if nw, werr := dst.Write(buf[:n]); werr != nil || nw != n {
+				return
+			}
+			active()
+		}
+		if err != nil {
+			return
+		}
+	}
+}
+
+func tunStartTCPIdleTimer(timeout time.Duration, conns ...net.Conn) (func(), func()) {
+	if timeout <= 0 {
+		return func() {}, func() {}
+	}
+	var mu sync.Mutex
+	stopped := false
+	timer := time.AfterFunc(timeout, func() {
+		for _, conn := range conns {
+			_ = conn.Close()
+		}
+	})
+	touch := func() {
+		mu.Lock()
+		if !stopped {
+			timer.Reset(timeout)
+		}
+		mu.Unlock()
+	}
+	stop := func() {
+		mu.Lock()
+		stopped = true
+		timer.Stop()
+		mu.Unlock()
+	}
+	return touch, stop
 }
 
 func tunPacketHeadroomSlice(pkt *stack.PacketBuffer, pktSize int) ([]byte, bool) {

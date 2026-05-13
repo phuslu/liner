@@ -296,6 +296,8 @@ touching TUN behavior.
   destinations inside the configured TUN address prefix.
 - Dial timeouts in TUN are setup-only; do not bind stream lifetime to setup
   context by accident.
+- `tun[].forward.tcp_timeout` is TCP stream idle timeout in seconds. `0`
+  means the default `600`; a negative value disables idle timeout.
 
 ### WireGuard
 
