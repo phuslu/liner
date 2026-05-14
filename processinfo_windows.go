@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"net"
@@ -15,6 +16,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/phuslu/lru"
 	"golang.org/x/sys/windows"
 )
 
@@ -61,6 +63,8 @@ var (
 	windowsIPv6UDPProcessSnapshotPtr atomic.Pointer[windowsProcessSnapshot]
 	windowsIPv4UDPProcessSnapshotMu  sync.Mutex
 	windowsIPv6UDPProcessSnapshotMu  sync.Mutex
+
+	windowsProcessInfoCache = lru.NewTTLCache[uint32, ConnProcessInfo](2048)
 )
 
 type windowsProcessFinder struct {
@@ -378,11 +382,19 @@ func (entry windowsConnEntry) processInfo() (ConnProcessInfo, error) {
 	if entry.pid == 0 {
 		return ConnProcessInfo{}, os.ErrNotExist
 	}
-	info := ConnProcessInfo{ID: uint64(entry.pid)}
-	if path, err := entry.exePath(); err == nil && path != "" {
+	info, _, _ := windowsProcessInfoCache.GetOrLoad(context.Background(), entry.pid, func(_ context.Context, pid uint32) (ConnProcessInfo, time.Duration, error) {
+		info := ConnProcessInfo{ID: uint64(pid)}
+		path, err := entry.exePath()
+		if err != nil {
+			return info, 0, err
+		}
+		if path == "" {
+			return info, 0, os.ErrNotExist
+		}
 		info.Name = filepath.Base(path)
 		info.Path = path
-	}
+		return info, 2 * time.Second, nil
+	})
 	return info, nil
 }
 

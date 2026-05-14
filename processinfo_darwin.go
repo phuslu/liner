@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/phuslu/lru"
 	"golang.org/x/sys/unix"
 )
 
@@ -109,6 +111,8 @@ var (
 
 	darwinUDPProcessSnapshotPtr atomic.Pointer[darwinProcessSnapshot]
 	darwinUDPProcessSnapshotMu  sync.Mutex
+
+	darwinProcessInfoCache = lru.NewTTLCache[uint32, ConnProcessInfo](2048)
 )
 
 func newDarwinProcessFinder(conn net.Conn, protocol int) (darwinProcessFinder, bool) {
@@ -278,11 +282,19 @@ func (entry darwinConnEntry) processInfo() (ConnProcessInfo, error) {
 	if entry.pid == 0 {
 		return ConnProcessInfo{}, os.ErrNotExist
 	}
-	info := ConnProcessInfo{ID: uint64(entry.pid)}
-	if path, err := entry.exePath(); err == nil && path != "" {
+	info, _, _ := darwinProcessInfoCache.GetOrLoad(context.Background(), entry.pid, func(_ context.Context, pid uint32) (ConnProcessInfo, time.Duration, error) {
+		info := ConnProcessInfo{ID: uint64(pid)}
+		path, err := entry.exePath()
+		if err != nil {
+			return info, 0, err
+		}
+		if path == "" {
+			return info, 0, os.ErrNotExist
+		}
 		info.Name = filepath.Base(path)
 		info.Path = path
-	}
+		return info, 2 * time.Second, nil
+	})
 	return info, nil
 }
 
