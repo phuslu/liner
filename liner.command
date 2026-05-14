@@ -35,6 +35,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 CHILD_BIN = os.path.splitext(os.path.basename(__file__))[0]
 APP_TITLE = CHILD_BIN.title()
+LOG_WINDOW_TITLE = f"{APP_TITLE} Activity Log"
 
 CONSOLE_MAX_LENGTH = 2_000_000
 CONSOLE_TRIM_EXTRA = 100_000
@@ -310,7 +311,7 @@ class AppDelegate(NSObject):
             button.setToolTip_(APP_TITLE)
 
         menu = NSMenu.alloc().init()
-        menu.addItem_(self.make_item("Console", "showConsole:", "terminal"))
+        menu.addItem_(self.make_item("Activity Log", "showConsole:", "macwindow"))
         menu.addItem_(NSMenuItem.separatorItem())
 
         profile_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
@@ -498,7 +499,7 @@ class AppDelegate(NSObject):
         self.console_window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
             frame, WINDOW_STYLE_MASK, NSBackingStoreBuffered, False
         )
-        self.console_window.setTitle_(APP_TITLE)
+        self.console_window.setTitle_(LOG_WINDOW_TITLE)
         self.console_window.setDelegate_(self)
         self.console_window.setReleasedWhenClosed_(False)
 
@@ -1059,7 +1060,7 @@ APPLESCRIPT
                         ("output", data.decode("utf-8", errors="replace"))
                     )
             except Exception as exc:
-                self.event_queue.put(("output", f"\nconsole reader error: {exc}\n"))
+                self.event_queue.put(("output", f"\nlog reader error: {exc}\n"))
             finally:
                 try:
                     pipe.close()
@@ -1338,7 +1339,7 @@ APPLESCRIPT
             self.send_notification(APP_TITLE, "Restarted.")
         else:
             self.showConsole_(None)
-            self.send_notification(APP_TITLE, "Restart failed. Check the console.")
+            self.send_notification(APP_TITLE, "Restart failed. Check the activity log.")
 
     def startChild_(self, sender):
         self.showConsole_(sender)
@@ -1346,7 +1347,7 @@ APPLESCRIPT
             self.send_notification(APP_TITLE, "Started.")
         else:
             self.showConsole_(None)
-            self.send_notification(APP_TITLE, "Failed to start. Check the console.")
+            self.send_notification(APP_TITLE, "Failed to start. Check the activity log.")
 
     def stopChild_(self, sender):
         self.showConsole_(sender)
