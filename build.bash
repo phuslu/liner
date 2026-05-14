@@ -11,9 +11,6 @@ function liner::setup() {
 
 	curl -L https://github.com/phuslu/go/releases/download/v0.0.0/go1.26.linux-${goarch}.tar.xz | \
 	tar xvJ -C /tmp/
-
-	curl -LOJ https://www.wintun.net/builds/wintun-0.14.1.zip && \
-	unzip wintun-0.14.1.zip && rm -f wintun-0.14.1.zip
 }
 
 function liner::build() {
@@ -119,15 +116,15 @@ EOF
 			;;
 		windows_amd64 )
 			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner.exe
-			cp china.pac proxy.yaml liner.cmd build/
-			cp wintun/bin/amd64/wintun.dll build/
+			unzip wintun-0.14.1.zip
+			cp china.pac proxy.yaml liner.cmd wintun/bin/${GOARCH}/wintun.dll build/
 			cd build
 			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
 			;;
 		windows_arm64 )
 			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner.exe
-			cp china.pac proxy.yaml liner.cmd build/
-			cp wintun/bin/arm64/wintun.dll build/
+			unzip wintun-0.14.1.zip
+			cp china.pac proxy.yaml liner.cmd wintun/bin/${GOARCH}/wintun.dll build/
 			cd build
 			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
 			;;
