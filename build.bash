@@ -57,17 +57,37 @@ function liner::build() {
 
 	git log --oneline --pretty=format:"%h %s" -10 | tee build/changelog.txt
 
+		cat <<EOF | tee proxy.yaml
+global:
+  log_level: info
+  log_backups: 2
+  log_maxsize: 104857600
+  log_localtime: true
+  max_idle_conns: 64
+dialer:
+  sg-http3: "http3://username:password@phus.lu:443/"
+http:
+  - listen: ['127.0.0.1:8087']
+    forward:
+      policy: bypass_auth
+      dialer: sg-http3
+    web:
+      - location: /proxy.pac
+        index:
+          file: china.pac
+EOF
+
 	case ${GOOS}_${GOARCH} in
 		linux_amd64 )
 			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner
-			cp china.pac liner@.service build/
+			cp china.pac proxy.yaml liner@.service build/
 			cd build
 			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
 			;;
 		linux_arm64 )
 			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -gcflags='liner=-N' -o build/liner
 			upx -9 build/liner
-			cp china.pac liner@.service build/
+			cp china.pac proxy.yaml liner@.service build/
 			cd build
 			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
 			;;
@@ -75,38 +95,38 @@ function liner::build() {
 			export GOARM=7
 			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -gcflags='liner=-N' -o build/liner
 			upx -9 build/liner
-			cp china.pac build/
+			cp china.pac proxy.yaml build/
 			cd build
 			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
 			;;
 		darwin_amd64 )
 			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner
-			cp china.pac liner.command pyobjc.zip build/
+			cp china.pac proxy.yaml liner.command pyobjc.zip build/
 			cd build
 			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
 			;;
 		darwin_arm64 )
 			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner
-			cp china.pac liner.command pyobjc.zip build/
+			cp china.pac proxy.yaml liner.command pyobjc.zip build/
 			cd build
 			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
 			;;
 		android_arm64 )
 			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner
-			cp china.pac build/
+			cp china.pac proxy.yaml build/
 			cd build
 			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
 			;;
 		windows_amd64 )
 			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner.exe
-			cp china.pac liner.cmd build/
+			cp china.pac proxy.yaml liner.cmd build/
 			cp wintun/bin/amd64/wintun.dll build/
 			cd build
 			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
 			;;
 		windows_arm64 )
 			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner.exe
-			cp china.pac liner.cmd build/
+			cp china.pac proxy.yaml liner.cmd build/
 			cp wintun/bin/arm64/wintun.dll build/
 			cd build
 			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
