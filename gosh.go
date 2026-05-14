@@ -2040,6 +2040,7 @@ type goshAutoCompleter struct {
 
 	mu              sync.Mutex
 	cachedPath      string
+	cachedPathExt   string
 	cachedFuncStamp string
 	cachedHome      string
 	cachedCommands  []string
@@ -2247,9 +2248,13 @@ func (c *goshAutoCompleter) commandCandidates(prefix string) []string {
 	if path == "" {
 		path = os.Getenv("PATH")
 	}
+	pathExt := c.shellVar("PATHEXT")
+	if pathExt == "" {
+		pathExt = os.Getenv("PATHEXT")
+	}
 	funcStamp := c.functionStamp()
 	home := c.userHome()
-	commands := c.commandIndex(path, funcStamp, home)
+	commands := c.commandIndex(path, pathExt, funcStamp, home)
 	if len(commands) == 0 {
 		return nil
 	}
@@ -2262,21 +2267,22 @@ func (c *goshAutoCompleter) commandCandidates(prefix string) []string {
 	return matches
 }
 
-func (c *goshAutoCompleter) commandIndex(path, funcStamp, home string) []string {
+func (c *goshAutoCompleter) commandIndex(path, pathExt, funcStamp, home string) []string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if path == c.cachedPath && funcStamp == c.cachedFuncStamp && home == c.cachedHome && len(c.cachedCommands) > 0 {
+	if path == c.cachedPath && pathExt == c.cachedPathExt && funcStamp == c.cachedFuncStamp && home == c.cachedHome && len(c.cachedCommands) > 0 {
 		return c.cachedCommands
 	}
-	cmds := c.buildCommandIndexLocked(path, home)
+	cmds := c.buildCommandIndexLocked(path, pathExt, home)
 	c.cachedPath = path
+	c.cachedPathExt = pathExt
 	c.cachedFuncStamp = funcStamp
 	c.cachedHome = home
 	c.cachedCommands = cmds
 	return cmds
 }
 
-func (c *goshAutoCompleter) buildCommandIndexLocked(path, home string) []string {
+func (c *goshAutoCompleter) buildCommandIndexLocked(path, pathExt, home string) []string {
 	seen := make(map[string]struct{})
 	add := func(name string) {
 		if name == "" {
@@ -2400,7 +2406,9 @@ func (c *goshAutoCompleter) buildCommandIndexLocked(path, home string) []string 
 				continue
 			}
 			for _, entry := range entries {
-				add(entry.Name())
+				for _, name := range goshCommandEntryNames(dir, entry, runtime.GOOS, pathExt) {
+					add(name)
+				}
 			}
 		}
 	}
@@ -2410,6 +2418,50 @@ func (c *goshAutoCompleter) buildCommandIndexLocked(path, home string) []string 
 	}
 	slices.Sort(cmds)
 	return cmds
+}
+
+func goshCommandEntryNames(dir string, entry os.DirEntry, goos, pathExt string) []string {
+	if entry == nil || entry.IsDir() {
+		return nil
+	}
+	name := entry.Name()
+	if goos == "windows" {
+		ext := strings.ToLower(filepath.Ext(name))
+		if ext == "" || !slices.Contains(goshPathExts(pathExt), ext) {
+			return nil
+		}
+		stem := strings.TrimSuffix(name, filepath.Ext(name))
+		if stem == "" || strings.EqualFold(stem, name) {
+			return []string{name}
+		}
+		return []string{stem, name}
+	}
+	info, err := entry.Info()
+	if err == nil && info.Mode()&fs.ModeSymlink != 0 {
+		info, err = os.Stat(filepath.Join(dir, name))
+	}
+	if err != nil || info.IsDir() || info.Mode()&0o111 == 0 {
+		return nil
+	}
+	return []string{name}
+}
+
+func goshPathExts(pathExt string) []string {
+	if pathExt == "" {
+		pathExt = ".com;.exe;.bat;.cmd"
+	}
+	var exts []string
+	for _, ext := range strings.Split(pathExt, ";") {
+		ext = strings.TrimSpace(strings.ToLower(ext))
+		if ext == "" {
+			continue
+		}
+		if !strings.HasPrefix(ext, ".") {
+			ext = "." + ext
+		}
+		exts = append(exts, ext)
+	}
+	return exts
 }
 
 func (c *goshAutoCompleter) pathCandidates(prefix string, dirsOnly bool) []string {
