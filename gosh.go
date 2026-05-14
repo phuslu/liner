@@ -92,6 +92,10 @@ func goshRun(c goshRunConfig) error {
 		return err
 	}
 	interactive := c.isatty && command == nil
+	stdinForRunner := stdin
+	if command == nil && !interactive {
+		stdinForRunner = strings.NewReader("")
+	}
 
 	ctx := c.ctx
 	if ctx == nil {
@@ -117,7 +121,7 @@ func goshRun(c goshRunConfig) error {
 
 	opts := []interp.RunnerOption{
 		interp.Interactive(true),
-		interp.StdIO(stdin, stdout, stderr),
+		interp.StdIO(stdinForRunner, stdout, stderr),
 		interp.Env(expand.ListEnviron(env...)),
 	}
 	if c.dir != "" {
@@ -193,12 +197,8 @@ func goshRun(c goshRunConfig) error {
 
 	// Non-interactive: parse stdin as a script and run it directly.
 	if !interactive {
-		prog, err := parser.Parse(stdin, "")
-		if err != nil {
-			return err
-		}
 		runner.Reset()
-		return runner.Run(ctx, prog)
+		return goshRunNonInteractiveStream(ctx, stdin, runner, stdout, stderr)
 	}
 
 	// export HISTFILE=""
@@ -443,6 +443,108 @@ func goshRunInteractiveParser(parser *syntax.Parser, r io.Reader, run func([]*sy
 			return err
 		}
 	}
+}
+
+func goshRunNonInteractiveStream(ctx context.Context, r io.Reader, runner *interp.Runner, stdout, stderr io.Writer) error {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+	var runErr error
+	var lastStatus error
+	for offset := 0; offset < len(data); {
+		stmts, next, err := goshParseNextStatements(data, offset)
+		if err != nil {
+			return err
+		}
+		if next <= offset {
+			break
+		}
+		stdin, err := goshRemainingStdinFile(data[next:])
+		if err != nil {
+			return err
+		}
+		if err := interp.StdIO(stdin, stdout, stderr)(runner); err != nil {
+			stdin.Close()
+			os.Remove(stdin.Name())
+			return err
+		}
+		for _, stmt := range stmts {
+			err := runner.Run(ctx, stmt)
+			if err == nil {
+				lastStatus = nil
+			} else {
+				var status interp.ExitStatus
+				if errors.As(err, &status) {
+					lastStatus = err
+				} else {
+					runErr = err
+					break
+				}
+			}
+			if runner.Exited() {
+				break
+			}
+		}
+		pos, seekErr := stdin.Seek(0, io.SeekCurrent)
+		stdin.Close()
+		os.Remove(stdin.Name())
+		if seekErr != nil {
+			return seekErr
+		}
+		offset = next + int(pos)
+		if runErr != nil {
+			return runErr
+		}
+		if runner.Exited() {
+			return lastStatus
+		}
+	}
+	return lastStatus
+}
+
+func goshParseNextStatements(data []byte, offset int) ([]*syntax.Stmt, int, error) {
+	for next := offset; next < len(data); {
+		if idx := bytes.IndexByte(data[next:], '\n'); idx >= 0 {
+			next += idx + 1
+		} else {
+			next = len(data)
+		}
+		var out []*syntax.Stmt
+		parser := syntax.NewParser()
+		err := parser.Interactive(bytes.NewReader(data[offset:next]), func(stmts []*syntax.Stmt) bool {
+			if parser.Incomplete() {
+				return true
+			}
+			out = append(out, stmts...)
+			return false
+		})
+		if err != nil {
+			return nil, next, err
+		}
+		if !parser.Incomplete() {
+			return out, next, nil
+		}
+	}
+	return nil, len(data), io.ErrUnexpectedEOF
+}
+
+func goshRemainingStdinFile(data []byte) (*os.File, error) {
+	file, err := os.CreateTemp("", "gosh-stdin-*")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := file.Write(data); err != nil {
+		file.Close()
+		os.Remove(file.Name())
+		return nil, err
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		file.Close()
+		os.Remove(file.Name())
+		return nil, err
+	}
+	return file, nil
 }
 
 // goshReader adapts *readline.Instance to the io.Reader interface expected by
