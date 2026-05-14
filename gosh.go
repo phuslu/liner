@@ -1801,23 +1801,51 @@ type goshKeyBindingInput struct {
 	buf []byte
 	out []byte
 	tmp [64]byte
+
+	needMore bool
+}
+
+const goshKeyBindingPrefixTimeout = 50 * time.Millisecond
+
+type goshReadDeadliner interface {
+	SetReadDeadline(time.Time) error
 }
 
 func (r *goshKeyBindingInput) Read(p []byte) (int, error) {
 	for len(r.out) == 0 {
+		var deadliner goshReadDeadliner
+		deadlineSet := false
+		if r.needMore && len(r.buf) > 0 {
+			if d, ok := r.src.(goshReadDeadliner); ok {
+				if err := d.SetReadDeadline(time.Now().Add(goshKeyBindingPrefixTimeout)); err == nil {
+					deadliner = d
+					deadlineSet = true
+				}
+			}
+		}
 		n, err := r.src.Read(r.tmp[:])
+		if deadlineSet {
+			_ = deadliner.SetReadDeadline(time.Time{})
+		}
 		if n > 0 {
 			r.buf = append(r.buf, r.tmp[:n]...)
-			r.processBuffer()
+			r.needMore = r.processBuffer()
 		}
 		if len(r.out) > 0 {
 			break
 		}
 		if err != nil {
+			if goshIsReadTimeout(err) && len(r.buf) > 0 {
+				r.out = append(r.out, r.buf[0])
+				r.buf = r.buf[1:]
+				r.needMore = r.processBuffer()
+				continue
+			}
 			if err == io.EOF {
 				if len(r.buf) > 0 {
 					r.out = append(r.out, r.buf...)
 					r.buf = nil
+					r.needMore = false
 					continue
 				}
 				if len(r.out) > 0 {
@@ -1832,7 +1860,17 @@ func (r *goshKeyBindingInput) Read(p []byte) (int, error) {
 	return n, nil
 }
 
-func (r *goshKeyBindingInput) processBuffer() {
+func goshIsReadTimeout(err error) bool {
+	if errors.Is(err, os.ErrDeadlineExceeded) {
+		return true
+	}
+	var timeout interface {
+		Timeout() bool
+	}
+	return errors.As(err, &timeout) && timeout.Timeout()
+}
+
+func (r *goshKeyBindingInput) processBuffer() bool {
 	for len(r.buf) > 0 {
 		action, size, needMore := r.mgr.match(r.buf)
 		if size > 0 {
@@ -1845,11 +1883,12 @@ func (r *goshKeyBindingInput) processBuffer() {
 			continue
 		}
 		if needMore {
-			return
+			return true
 		}
 		r.out = append(r.out, r.buf[0])
 		r.buf = r.buf[1:]
 	}
+	return false
 }
 
 type goshHistorySearch struct {
