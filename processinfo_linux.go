@@ -12,7 +12,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 	"unsafe"
 
@@ -26,39 +25,28 @@ type ConnProcessInfo struct {
 }
 
 func GetTCPConnProcessInfo(conn net.Conn) (ConnProcessInfo, error) {
+	return getLinuxConnProcessInfo(conn, unix.IPPROTO_TCP)
+}
+
+func GetUDPConnProcessInfo(conn net.Conn) (ConnProcessInfo, error) {
+	return getLinuxConnProcessInfo(conn, unix.IPPROTO_UDP)
+}
+
+func getLinuxConnProcessInfo(conn net.Conn, protocol int) (ConnProcessInfo, error) {
 	if conn == nil {
 		return ConnProcessInfo{}, errors.ErrUnsupported
 	}
-	finder, ok := newLinuxProcessFinder(conn)
+	finder, ok := newLinuxProcessFinder(conn, protocol)
 	if !ok {
 		return ConnProcessInfo{}, errors.ErrUnsupported
 	}
 
 	entry, err := finder.find()
-	if err != nil && errors.Is(err, os.ErrNotExist) {
+	if protocol == unix.IPPROTO_TCP && err != nil && errors.Is(err, os.ErrNotExist) {
 		if fallback, ok := finder.originalDst(conn); ok {
 			entry, err = fallback.find()
 		}
 	}
-	if err != nil {
-		return ConnProcessInfo{}, err
-	}
-	if entry.inode == 0 {
-		return ConnProcessInfo{}, os.ErrNotExist
-	}
-	return entry.processInfo()
-}
-
-func GetUDPConnProcessInfo(conn net.Conn) (ConnProcessInfo, error) {
-	if conn == nil {
-		return ConnProcessInfo{}, errors.ErrUnsupported
-	}
-	finder, ok := newLinuxUDPProcessFinder(conn)
-	if !ok {
-		return ConnProcessInfo{}, errors.ErrUnsupported
-	}
-
-	entry, err := finder.find()
 	if err != nil {
 		return ConnProcessInfo{}, err
 	}
@@ -84,7 +72,7 @@ type linuxProcessFinder struct {
 	source      netip.AddrPort
 	destination netip.AddrPort
 	family      int
-	udp         bool
+	protocol    int
 	snapshot    *atomic.Pointer[linuxProcessSnapshot]
 	mu          *sync.Mutex
 }
@@ -100,34 +88,17 @@ type linuxProcessSnapshot struct {
 	entries   []linuxConnEntry
 }
 
-func newLinuxProcessFinder(conn net.Conn) (linuxProcessFinder, bool) {
+func newLinuxProcessFinder(conn net.Conn, protocol int) (linuxProcessFinder, bool) {
 	finder := linuxProcessFinder{
-		family: unix.AF_INET,
-	}
-	finder.source = finder.addrPort(AddrPortFromNetAddr(conn.RemoteAddr()))
-	finder.destination = finder.addrPort(AddrPortFromNetAddr(conn.LocalAddr()))
-	if !finder.source.IsValid() || !finder.destination.IsValid() || finder.source.Addr().BitLen() != finder.destination.Addr().BitLen() {
-		return linuxProcessFinder{}, false
-	}
-	if finder.source.Addr().Is6() {
-		finder.family = unix.AF_INET6
-		finder.snapshot = &linuxIPv6ProcessSnapshotPtr
-		finder.mu = &linuxIPv6ProcessSnapshotMu
-	} else {
-		finder.snapshot = &linuxIPv4ProcessSnapshotPtr
-		finder.mu = &linuxIPv4ProcessSnapshotMu
-	}
-	return finder, true
-}
-
-func newLinuxUDPProcessFinder(conn net.Conn) (linuxProcessFinder, bool) {
-	finder := linuxProcessFinder{
-		family: unix.AF_INET,
-		udp:    true,
+		family:   unix.AF_INET,
+		protocol: protocol,
 	}
 	finder.source = finder.addrPort(AddrPortFromNetAddr(conn.RemoteAddr()))
 	finder.destination = finder.addrPort(AddrPortFromNetAddr(conn.LocalAddr()))
 	if !finder.source.IsValid() {
+		return linuxProcessFinder{}, false
+	}
+	if protocol == unix.IPPROTO_TCP && !finder.destination.IsValid() {
 		return linuxProcessFinder{}, false
 	}
 	if finder.destination.IsValid() && finder.source.Addr().BitLen() != finder.destination.Addr().BitLen() {
@@ -135,11 +106,27 @@ func newLinuxUDPProcessFinder(conn net.Conn) (linuxProcessFinder, bool) {
 	}
 	if finder.source.Addr().Is6() {
 		finder.family = unix.AF_INET6
-		finder.snapshot = &linuxIPv6UDPProcessSnapshotPtr
-		finder.mu = &linuxIPv6UDPProcessSnapshotMu
+		switch protocol {
+		case unix.IPPROTO_TCP:
+			finder.snapshot = &linuxIPv6ProcessSnapshotPtr
+			finder.mu = &linuxIPv6ProcessSnapshotMu
+		case unix.IPPROTO_UDP:
+			finder.snapshot = &linuxIPv6UDPProcessSnapshotPtr
+			finder.mu = &linuxIPv6UDPProcessSnapshotMu
+		default:
+			return linuxProcessFinder{}, false
+		}
 	} else {
-		finder.snapshot = &linuxIPv4UDPProcessSnapshotPtr
-		finder.mu = &linuxIPv4UDPProcessSnapshotMu
+		switch protocol {
+		case unix.IPPROTO_TCP:
+			finder.snapshot = &linuxIPv4ProcessSnapshotPtr
+			finder.mu = &linuxIPv4ProcessSnapshotMu
+		case unix.IPPROTO_UDP:
+			finder.snapshot = &linuxIPv4UDPProcessSnapshotPtr
+			finder.mu = &linuxIPv4UDPProcessSnapshotMu
+		default:
+			return linuxProcessFinder{}, false
+		}
 	}
 	return finder, true
 }
@@ -225,24 +212,11 @@ func (snapshot *linuxProcessSnapshot) fresh() bool {
 }
 
 func (snapshot *linuxProcessSnapshot) find(finder linuxProcessFinder) (linuxConnEntry, bool) {
-	if finder.udp {
-		if finder.destination.IsValid() {
-			for _, entry := range snapshot.entries {
-				if entry.src == finder.source && entry.dst == finder.destination {
-					return entry, true
-				}
-			}
-		}
+	if finder.destination.IsValid() {
 		for _, entry := range snapshot.entries {
-			if entry.src == finder.source {
+			if entry.src == finder.source && entry.dst == finder.destination {
 				return entry, true
 			}
-		}
-		return linuxConnEntry{}, false
-	}
-	for _, entry := range snapshot.entries {
-		if entry.src == finder.source && entry.dst == finder.destination {
-			return entry, true
 		}
 	}
 	for _, entry := range snapshot.entries {
@@ -279,11 +253,8 @@ func (finder linuxProcessFinder) buildSnapshot() (*linuxProcessSnapshot, error) 
 
 	req := inetDiagReqV2{
 		Family:   uint8(finder.family),
-		Protocol: syscall.IPPROTO_TCP,
+		Protocol: uint8(finder.protocol),
 		States:   ^uint32(0),
-	}
-	if finder.udp {
-		req.Protocol = syscall.IPPROTO_UDP
 	}
 	reqdata := unsafe.Slice((*byte)(unsafe.Pointer(&req)), int(unsafe.Sizeof(req)))
 	data := make([]byte, unix.SizeofNlMsghdr+len(reqdata))

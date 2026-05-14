@@ -25,26 +25,18 @@ type ConnProcessInfo struct {
 }
 
 func GetTCPConnProcessInfo(conn net.Conn) (ConnProcessInfo, error) {
-	if conn == nil {
-		return ConnProcessInfo{}, errors.ErrUnsupported
-	}
-	finder, ok := newWindowsProcessFinder(conn)
-	if !ok {
-		return ConnProcessInfo{}, errors.ErrUnsupported
-	}
-
-	entry, err := finder.find()
-	if err != nil {
-		return ConnProcessInfo{}, err
-	}
-	return entry.processInfo()
+	return getWindowsConnProcessInfo(conn, syscall.IPPROTO_TCP)
 }
 
 func GetUDPConnProcessInfo(conn net.Conn) (ConnProcessInfo, error) {
+	return getWindowsConnProcessInfo(conn, syscall.IPPROTO_UDP)
+}
+
+func getWindowsConnProcessInfo(conn net.Conn, protocol int) (ConnProcessInfo, error) {
 	if conn == nil {
 		return ConnProcessInfo{}, errors.ErrUnsupported
 	}
-	finder, ok := newWindowsUDPProcessFinder(conn)
+	finder, ok := newWindowsProcessFinder(conn, protocol)
 	if !ok {
 		return ConnProcessInfo{}, errors.ErrUnsupported
 	}
@@ -72,17 +64,15 @@ var (
 )
 
 type windowsProcessFinder struct {
-	source      netip.AddrPort
-	destination netip.AddrPort
-	family      int
-	udp         bool
-	snapshot    *atomic.Pointer[windowsProcessSnapshot]
-	mu          *sync.Mutex
+	source   netip.AddrPort
+	family   int
+	protocol int
+	snapshot *atomic.Pointer[windowsProcessSnapshot]
+	mu       *sync.Mutex
 }
 
 type windowsConnEntry struct {
 	src netip.AddrPort
-	dst netip.AddrPort
 	pid uint32
 }
 
@@ -91,30 +81,10 @@ type windowsProcessSnapshot struct {
 	entries   []windowsConnEntry
 }
 
-func newWindowsProcessFinder(conn net.Conn) (windowsProcessFinder, bool) {
+func newWindowsProcessFinder(conn net.Conn, protocol int) (windowsProcessFinder, bool) {
 	finder := windowsProcessFinder{
-		family: syscall.AF_INET,
-	}
-	finder.source = finder.addrPort(AddrPortFromNetAddr(conn.RemoteAddr()))
-	finder.destination = finder.addrPort(AddrPortFromNetAddr(conn.LocalAddr()))
-	if !finder.source.IsValid() {
-		return windowsProcessFinder{}, false
-	}
-	if finder.source.Addr().Is6() {
-		finder.family = syscall.AF_INET6
-		finder.snapshot = &windowsIPv6ProcessSnapshotPtr
-		finder.mu = &windowsIPv6ProcessSnapshotMu
-	} else {
-		finder.snapshot = &windowsIPv4ProcessSnapshotPtr
-		finder.mu = &windowsIPv4ProcessSnapshotMu
-	}
-	return finder, true
-}
-
-func newWindowsUDPProcessFinder(conn net.Conn) (windowsProcessFinder, bool) {
-	finder := windowsProcessFinder{
-		family: syscall.AF_INET,
-		udp:    true,
+		family:   syscall.AF_INET,
+		protocol: protocol,
 	}
 	finder.source = finder.addrPort(AddrPortFromNetAddr(conn.RemoteAddr()))
 	if !finder.source.IsValid() {
@@ -122,11 +92,27 @@ func newWindowsUDPProcessFinder(conn net.Conn) (windowsProcessFinder, bool) {
 	}
 	if finder.source.Addr().Is6() {
 		finder.family = syscall.AF_INET6
-		finder.snapshot = &windowsIPv6UDPProcessSnapshotPtr
-		finder.mu = &windowsIPv6UDPProcessSnapshotMu
+		switch protocol {
+		case syscall.IPPROTO_TCP:
+			finder.snapshot = &windowsIPv6ProcessSnapshotPtr
+			finder.mu = &windowsIPv6ProcessSnapshotMu
+		case syscall.IPPROTO_UDP:
+			finder.snapshot = &windowsIPv6UDPProcessSnapshotPtr
+			finder.mu = &windowsIPv6UDPProcessSnapshotMu
+		default:
+			return windowsProcessFinder{}, false
+		}
 	} else {
-		finder.snapshot = &windowsIPv4UDPProcessSnapshotPtr
-		finder.mu = &windowsIPv4UDPProcessSnapshotMu
+		switch protocol {
+		case syscall.IPPROTO_TCP:
+			finder.snapshot = &windowsIPv4ProcessSnapshotPtr
+			finder.mu = &windowsIPv4ProcessSnapshotMu
+		case syscall.IPPROTO_UDP:
+			finder.snapshot = &windowsIPv4UDPProcessSnapshotPtr
+			finder.mu = &windowsIPv4UDPProcessSnapshotMu
+		default:
+			return windowsProcessFinder{}, false
+		}
 	}
 	return finder, true
 }
@@ -195,34 +181,34 @@ func (snapshot *windowsProcessSnapshot) fresh() bool {
 }
 
 func (snapshot *windowsProcessSnapshot) find(finder windowsProcessFinder) (windowsConnEntry, bool) {
-	if finder.udp {
-		return snapshot.findUDP(finder)
-	}
 	for _, entry := range snapshot.entries {
 		if entry.src == finder.source {
 			return entry, true
 		}
 	}
-	return windowsConnEntry{}, false
-}
-
-func (snapshot *windowsProcessSnapshot) findUDP(finder windowsProcessFinder) (windowsConnEntry, bool) {
-	for _, entry := range snapshot.entries {
-		if entry.src == finder.source {
-			return entry, true
-		}
-	}
-	for _, entry := range snapshot.entries {
-		addr := entry.src.Addr()
-		if entry.src.Port() == finder.source.Port() && addr.IsUnspecified() && addr.BitLen() == finder.source.Addr().BitLen() {
-			return entry, true
+	if finder.protocol == syscall.IPPROTO_UDP {
+		for _, entry := range snapshot.entries {
+			addr := entry.src.Addr()
+			if entry.src.Port() == finder.source.Port() && addr.IsUnspecified() && addr.BitLen() == finder.source.Addr().BitLen() {
+				return entry, true
+			}
 		}
 	}
 	return windowsConnEntry{}, false
 }
 
 func (finder windowsProcessFinder) buildSnapshot() (*windowsProcessSnapshot, error) {
-	if finder.udp {
+	switch finder.protocol {
+	case syscall.IPPROTO_TCP:
+		buf, err := finder.getExtendedTcpTable()
+		if err != nil {
+			return nil, err
+		}
+		if finder.family == syscall.AF_INET6 {
+			return &windowsProcessSnapshot{createdAt: time.Now(), entries: finder.parseTCP6Table(buf)}, nil
+		}
+		return &windowsProcessSnapshot{createdAt: time.Now(), entries: finder.parseTCPTable(buf)}, nil
+	case syscall.IPPROTO_UDP:
 		buf, err := finder.getExtendedUdpTable()
 		if err != nil {
 			return nil, err
@@ -231,62 +217,35 @@ func (finder windowsProcessFinder) buildSnapshot() (*windowsProcessSnapshot, err
 			return &windowsProcessSnapshot{createdAt: time.Now(), entries: finder.parseUDP6Table(buf)}, nil
 		}
 		return &windowsProcessSnapshot{createdAt: time.Now(), entries: finder.parseUDPTable(buf)}, nil
+	default:
+		return nil, errors.ErrUnsupported
 	}
-	buf, err := finder.getExtendedTcpTable()
-	if err != nil {
-		return nil, err
-	}
-	if finder.family == syscall.AF_INET6 {
-		return &windowsProcessSnapshot{createdAt: time.Now(), entries: finder.parseTCP6Table(buf)}, nil
-	}
-	return &windowsProcessSnapshot{createdAt: time.Now(), entries: finder.parseTCPTable(buf)}, nil
 }
 
 func (finder windowsProcessFinder) getExtendedTcpTable() ([]byte, error) {
-	const (
-		tcpTableOwnerPIDConnections = 4
-		initialBufferSize           = 4 * 1024
-	)
+	const tcpTableOwnerPIDConnections = 4
 
-	size := uint32(initialBufferSize)
-	for {
-		buf := make([]byte, size)
-		r1, _, _ := windowsProcGetExtendedTcpTable.Call(
-			uintptr(unsafe.Pointer(&buf[0])),
-			uintptr(unsafe.Pointer(&size)),
-			0,
-			uintptr(uint32(finder.family)),
-			tcpTableOwnerPIDConnections,
-			0,
-		)
-		if r1 == windows.NO_ERROR {
-			return buf, nil
-		}
-		errno := syscall.Errno(r1)
-		if errno != windows.ERROR_INSUFFICIENT_BUFFER {
-			return nil, os.NewSyscallError("GetExtendedTcpTable", errno)
-		}
-		if size == 0 {
-			return nil, os.NewSyscallError("GetExtendedTcpTable", errno)
-		}
-	}
+	return finder.getExtendedTable(windowsProcGetExtendedTcpTable, tcpTableOwnerPIDConnections, "GetExtendedTcpTable")
 }
 
 func (finder windowsProcessFinder) getExtendedUdpTable() ([]byte, error) {
-	const (
-		udpTableOwnerPID  = 1
-		initialBufferSize = 4 * 1024
-	)
+	const udpTableOwnerPID = 1
+
+	return finder.getExtendedTable(windowsProcGetExtendedUdpTable, udpTableOwnerPID, "GetExtendedUdpTable")
+}
+
+func (finder windowsProcessFinder) getExtendedTable(proc *windows.LazyProc, tableClass uintptr, name string) ([]byte, error) {
+	const initialBufferSize = 4 * 1024
 
 	size := uint32(initialBufferSize)
 	for {
 		buf := make([]byte, size)
-		r1, _, _ := windowsProcGetExtendedUdpTable.Call(
+		r1, _, _ := proc.Call(
 			uintptr(unsafe.Pointer(&buf[0])),
 			uintptr(unsafe.Pointer(&size)),
 			0,
 			uintptr(uint32(finder.family)),
-			udpTableOwnerPID,
+			tableClass,
 			0,
 		)
 		if r1 == windows.NO_ERROR {
@@ -294,10 +253,10 @@ func (finder windowsProcessFinder) getExtendedUdpTable() ([]byte, error) {
 		}
 		errno := syscall.Errno(r1)
 		if errno != windows.ERROR_INSUFFICIENT_BUFFER {
-			return nil, os.NewSyscallError("GetExtendedUdpTable", errno)
+			return nil, os.NewSyscallError(name, errno)
 		}
 		if size == 0 {
-			return nil, os.NewSyscallError("GetExtendedUdpTable", errno)
+			return nil, os.NewSyscallError(name, errno)
 		}
 	}
 }
@@ -321,12 +280,10 @@ func (finder windowsProcessFinder) parseTCPTable(buf []byte) []windowsConnEntry 
 	entries := make([]windowsConnEntry, 0, n)
 	for i := 0; i < n && offset+rowSize <= len(buf); i++ {
 		row := (*tcpRowOwnerPID)(unsafe.Pointer(&buf[offset]))
-		var localAddr, remoteAddr [4]byte
+		var localAddr [4]byte
 		binary.LittleEndian.PutUint32(localAddr[:], row.LocalAddr)
-		binary.LittleEndian.PutUint32(remoteAddr[:], row.RemoteAddr)
 		entries = append(entries, windowsConnEntry{
 			src: netip.AddrPortFrom(netip.AddrFrom4(localAddr), windows.Ntohs(uint16(row.LocalPort))),
-			dst: netip.AddrPortFrom(netip.AddrFrom4(remoteAddr), windows.Ntohs(uint16(row.RemotePort))),
 			pid: row.OwningPID,
 		})
 		offset += rowSize
@@ -357,7 +314,6 @@ func (finder windowsProcessFinder) parseTCP6Table(buf []byte) []windowsConnEntry
 		row := (*tcp6RowOwnerPID)(unsafe.Pointer(&buf[offset]))
 		entries = append(entries, windowsConnEntry{
 			src: netip.AddrPortFrom(netip.AddrFrom16(row.LocalAddr), windows.Ntohs(uint16(row.LocalPort))),
-			dst: netip.AddrPortFrom(netip.AddrFrom16(row.RemoteAddr), windows.Ntohs(uint16(row.RemotePort))),
 			pid: row.OwningPID,
 		})
 		offset += rowSize
