@@ -42,7 +42,7 @@ func gosh(stdin, stdout, stderr *os.File) error {
 		stdin:          stdin,
 		stdout:         stdout,
 		stderr:         stderr,
-		isatty:         pty.IsTerminal(stdin.Fd()),
+		isatty:         pty.IsTerminal(stdin.Fd()) && pty.IsTerminal(stderr.Fd()),
 		notifySignals:  true,
 		setProcessName: true,
 	})
@@ -59,6 +59,13 @@ type goshRunConfig struct {
 	isatty         bool
 	notifySignals  bool
 	setProcessName bool
+}
+
+func goshInteractiveUIWriter(stderr io.Writer) io.Writer {
+	if stderr == nil {
+		return io.Discard
+	}
+	return stderr
 }
 
 func goshRun(c goshRunConfig) error {
@@ -200,9 +207,10 @@ func goshRun(c goshRunConfig) error {
 	histFile := goshResolveShellHistoryFile(runner)
 	history.file = histFile
 
+	ui := goshInteractiveUIWriter(stderr)
 	boundStdin := &goshKeyBindingInput{src: stdin, mgr: bindings}
 	promptPrinter := &goshPromptPrinter{}
-	completer := &goshAutoCompleter{ctx: ctx, runner: runner, stdin: stdin, stdout: stdout, stderr: stderr, promptPrinter: promptPrinter}
+	completer := &goshAutoCompleter{ctx: ctx, runner: runner, stdin: stdin, stdout: ui, stderr: stderr, promptPrinter: promptPrinter}
 	historySearch := &goshHistorySearch{history: history, searchIndex: -1}
 	bindings.registerActionHandler(goshKeyActionHistorySearchBackward, historySearch.Search)
 	bindings.registerActionHandler(goshKeyActionHistorySearchForward, historySearch.Search)
@@ -213,7 +221,7 @@ func goshRun(c goshRunConfig) error {
 		InterruptPrompt:        "^C",
 		EOFPrompt:              "exit",
 		Stdin:                  readline.NewCancelableStdin(boundStdin),
-		Stdout:                 stdout,
+		Stdout:                 ui,
 		Stderr:                 stderr,
 		AutoComplete:           completer,
 		Listener:               historySearch,
@@ -281,7 +289,7 @@ func goshRun(c goshRunConfig) error {
 				if errors.As(err, &status) {
 					continue
 				}
-				fmt.Fprintln(rl.Stdout(), err.Error())
+				fmt.Fprintln(rl.Stderr(), err.Error())
 			}
 			if runner.Exited() {
 				return false
