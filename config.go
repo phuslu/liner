@@ -85,7 +85,7 @@ type HTTPConfig struct {
 			TinyAuth  string            `json:"tiny_auth" yaml:"tiny_auth"`
 			Command   string            `json:"command" yaml:"command"`
 			Home      string            `json:"home" yaml:"home"`
-			Template  map[string]string `json:"template" yaml:"template"`
+			Values    map[string]string `json:"values" yaml:"values"`
 		} `json:"shell" yaml:"shell"`
 		Logtail struct {
 			Enabled   bool   `json:"enabled" yaml:"enabled"`

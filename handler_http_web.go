@@ -131,7 +131,7 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 				Functions: h.Functions,
 				Command:   web.Shell.Command,
 				Home:      web.Shell.Home,
-				Template:  web.Shell.Template,
+				Values:    web.Shell.Values,
 			}
 			if table := web.Shell.AuthTable; table != "" {
 				router.handler = &HTTPWebMiddlewareAuthTable{

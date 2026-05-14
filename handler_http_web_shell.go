@@ -23,7 +23,7 @@ type HTTPWebShellHandler struct {
 	Location  string
 	Command   string
 	Home      string
-	Template  map[string]string
+	Values    map[string]string
 	Functions *Functions
 
 	webshell *template.Template
@@ -64,16 +64,16 @@ func (h *HTTPWebShellHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		var err error
 		if obfuscated {
 			err = h.webshell.Execute(&b, map[string]any{
-				"Request":  req,
-				"Template": h.Template,
+				"Request": req,
+				"Values":  h.Values,
 			})
 		} else {
 			err = h.webshell.Execute(&b, struct {
-				Request  *http.Request
-				Template map[string]string
+				Request *http.Request
+				Values  map[string]string
 			}{
-				Request:  req,
-				Template: h.Template,
+				Request: req,
+				Values:  h.Values,
 			})
 		}
 		if err != nil {

@@ -135,7 +135,7 @@ https:
         shell:
           enabled: true
           command: /bin/bash
-          template:
+          values:
             title: "webshell"
             font_size: "14"
             windows_mode: "true"

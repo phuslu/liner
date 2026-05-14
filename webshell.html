@@ -55,17 +55,17 @@
     </div>
 
     <script>
-        document.title = "{{ index .Template `title` }}" || "liner webshell";
+        document.title = "{{ index .Values `title` }}" || "liner webshell";
 
         const term = new Terminal({
             allowProposedApi: true,
             cursorBlink: true,
             disableStdin: false,
-            fontSize: parseInt("{{ .Request.URL.Query.Get `font_size` | default (index .Template `font_size`) }}") || 14,
+            fontSize: parseInt("{{ .Request.URL.Query.Get `font_size` | default (index .Values `font_size`) }}") || 14,
             fontFamily: 'Menlo, Monaco, "Courier New", monospace',
             theme: { background: '#101010' },
             scrollback: 5000,
-            windowsMode: "{{ .Request.URL.Query.Get `windows_mode` | default (index .Template `windows_mode`) }}" == "true",
+            windowsMode: "{{ .Request.URL.Query.Get `windows_mode` | default (index .Values `windows_mode`) }}" == "true",
         });
 
         const fitAddon = new FitAddon.FitAddon();
