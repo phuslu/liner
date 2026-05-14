@@ -18,8 +18,10 @@ build/
 dist/
 lego/
 pki/
+pyobjc/
 CLAUDE*.md
 .claude
+.codex
 .tokeignore
 /logs
 .idea
