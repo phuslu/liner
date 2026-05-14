@@ -88,9 +88,11 @@ STATUS_ITEM_SQUARE_LENGTH = appkit_constant(("NSSquareStatusItemLength",), -2.0)
 ACTIVATION_POLICY_ACCESSORY = appkit_constant(
     ("NSApplicationActivationPolicyAccessory",), 1
 )
-FONT_WEIGHT_HEAVY = appkit_constant(("NSFontWeightHeavy",), 0.8)
-COMPOSITING_DESTINATION_OUT = appkit_constant(
-    ("NSCompositingOperationDestinationOut", "NSCompositeDestinationOut"), 8
+LINE_CAP_ROUND = appkit_constant(
+    ("NSLineCapStyleRound", "NSRoundLineCapStyle"), 1
+)
+LINE_JOIN_ROUND = appkit_constant(
+    ("NSLineJoinStyleRound", "NSRoundLineJoinStyle"), 1
 )
 MENU_STATE_ON = appkit_constant(("NSControlStateValueOn", "NSOnState"), 1)
 MENU_STATE_OFF = appkit_constant(("NSControlStateValueOff", "NSOffState"), 0)
@@ -262,39 +264,26 @@ class AppDelegate(NSObject):
         image = NSImage.alloc().initWithSize_(NSMakeSize(18.0, 18.0))
         image.lockFocus()
         try:
-            rect = NSMakeRect(0.0, 0.0, 18.0, 18.0)
-            bg_rect = NSMakeRect(1.0, 1.0, 16.0, 16.0)
-            bg = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
-                bg_rect, 3.5, 3.5
-            )
-            NSColor.blackColor().setFill()
-            bg.fill()
+            NSColor.blackColor().set()
 
-            if hasattr(NSFont, "systemFontOfSize_weight_"):
-                font = NSFont.systemFontOfSize_weight_(14.0, FONT_WEIGHT_HEAVY)
-            else:
-                font = NSFont.boldSystemFontOfSize_(14.0)
+            for points in (
+                ((4.5, 12.35), (9.0, 12.35), (13.5, 9.0)),
+                ((4.5, 5.65), (9.0, 5.65), (13.5, 9.0)),
+            ):
+                path = NSBezierPath.bezierPath()
+                path.moveToPoint_(NSMakePoint(*points[0]))
+                path.lineToPoint_(NSMakePoint(*points[1]))
+                path.lineToPoint_(NSMakePoint(*points[2]))
+                path.setLineWidth_(2.1)
+                path.setLineCapStyle_(LINE_CAP_ROUND)
+                path.setLineJoinStyle_(LINE_JOIN_ROUND)
+                path.stroke()
 
-            attrs = {
-                NSFontAttributeName: font,
-                NSForegroundColorAttributeName: NSColor.blackColor(),
-            }
-            text = NSAttributedString.alloc().initWithString_attributes_("P", attrs)
-            text_width = text.size().width
-            baseline_y = (rect.size.height - font.capHeight()) / 2.0
-            draw_point = NSMakePoint(
-                rect.origin.x + rect.size.width / 2.0 - text_width / 2.0,
-                baseline_y + font.descender(),
-            )
-
-            ctx = NSGraphicsContext.currentContext()
-            if ctx is not None:
-                ctx.saveGraphicsState()
-                try:
-                    ctx.setCompositingOperation_(COMPOSITING_DESTINATION_OUT)
-                    text.drawAtPoint_(draw_point)
-                finally:
-                    ctx.restoreGraphicsState()
+            for x, y in ((4.5, 12.35), (13.5, 9.0), (4.5, 5.65)):
+                node = NSBezierPath.bezierPathWithOvalInRect_(
+                    NSMakeRect(x - 2.35, y - 2.35, 4.7, 4.7)
+                )
+                node.fill()
         finally:
             image.unlockFocus()
 
