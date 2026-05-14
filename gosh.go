@@ -2068,7 +2068,7 @@ func (c *goshAutoCompleter) Do(line []rune, pos int) ([][]rune, int) {
 	commonRunes := []rune(common)
 	addition := []rune{}
 	if len(commonRunes) > prefixLen {
-		addition = append(addition, []rune(goshEscapeCompletion(string(commonRunes[prefixLen:])))...)
+		addition = append(addition, []rune(goshEscapeCompletionForContext(string(commonRunes[prefixLen:]), ctx.quote))...)
 	}
 	if len(options) == 1 {
 		hasTrailingSep := goshHasTrailingPathSeparator(options[0])
@@ -2094,6 +2094,7 @@ type goshCompletionContext struct {
 	prefix    string
 	isCommand bool
 	command   string
+	quote     rune
 }
 
 func (c *goshAutoCompleter) completionContext(line []rune, pos int) goshCompletionContext {
@@ -2103,18 +2104,94 @@ func (c *goshAutoCompleter) completionContext(line []rune, pos int) goshCompleti
 	if pos > len(line) {
 		pos = len(line)
 	}
-	start := pos
-	for start > 0 {
-		r := line[start-1]
-		if goshIsCompletionBreak(r) {
-			break
-		}
-		start--
+	return goshScanCompletionContext(line[:pos])
+}
+
+func goshScanCompletionContext(line []rune) goshCompletionContext {
+	var words []string
+	var current []rune
+	inWord := false
+	quote := rune(0)
+	escaped := false
+	lastCompleted := ""
+	resetCommand := func() {
+		words = words[:0]
+		lastCompleted = ""
 	}
-	prefixRunes := line[start:pos]
-	isCommand := c.isCommandPosition(line, start)
-	cmd := c.resolveCommand(line, start)
-	return goshCompletionContext{prefix: string(prefixRunes), isCommand: isCommand, command: cmd}
+	finishWord := func() {
+		if !inWord {
+			return
+		}
+		word := string(current)
+		words = append(words, word)
+		lastCompleted = word
+		current = current[:0]
+		inWord = false
+	}
+	startWord := func() {
+		if !inWord {
+			inWord = true
+			current = current[:0]
+		}
+	}
+
+	for _, r := range line {
+		if escaped {
+			startWord()
+			current = append(current, r)
+			escaped = false
+			continue
+		}
+		if quote == 0 && r == '\\' {
+			startWord()
+			escaped = true
+			continue
+		}
+		if quote == '"' && r == '\\' {
+			startWord()
+			escaped = true
+			continue
+		}
+		if quote != 0 {
+			if r == quote {
+				quote = 0
+				startWord()
+				continue
+			}
+			startWord()
+			current = append(current, r)
+			continue
+		}
+		switch {
+		case r == '\'' || r == '"':
+			startWord()
+			quote = r
+		case unicode.IsSpace(r):
+			finishWord()
+		case goshIsCommandSeparator(r):
+			finishWord()
+			resetCommand()
+		default:
+			startWord()
+			current = append(current, r)
+		}
+	}
+
+	prefix := ""
+	if inWord {
+		prefix = string(current)
+	}
+	isCommand := len(words) == 0
+	if inWord {
+		isCommand = len(words) == 0 || goshKeywordStartsCommand(lastCompleted)
+	} else if lastCompleted != "" && goshKeywordStartsCommand(lastCompleted) {
+		isCommand = true
+	}
+	command := ""
+	if len(words) > 0 {
+		command = words[0]
+	}
+	return goshCompletionContext{prefix: prefix, isCommand: isCommand, command: command, quote: quote}
 }
 
 func (c *goshAutoCompleter) isCommandPosition(line []rune, start int) bool {
@@ -2524,18 +2601,42 @@ func goshCompletionDisplayName(opt string) string {
 }
 
 func goshEscapeCompletion(val string) string {
+	return goshEscapeCompletionForContext(val, 0)
+}
+
+func goshEscapeCompletionForContext(val string, quote rune) string {
 	if val == "" {
 		return ""
 	}
 	var b strings.Builder
 	for _, r := range val {
-		switch r {
-		case ' ', '\t', '\n', '\\', '"', '\'', '`', '$', '&', '|', ';', '<', '>', '(', ')', '{', '}', '[', ']', '!', '?', '*', '~', '^', '#', '%', '=', ':', ',', '+':
+		if goshShouldEscapeCompletionRune(r, quote) {
 			b.WriteByte('\\')
 		}
 		b.WriteRune(r)
 	}
 	return b.String()
+}
+
+func goshShouldEscapeCompletionRune(r rune, quote rune) bool {
+	switch quote {
+	case '\'':
+		return r == '\''
+	case '"':
+		switch r {
+		case '\\', '"', '`', '$':
+			return true
+		default:
+			return false
+		}
+	default:
+		switch r {
+		case ' ', '\t', '\n', '\\', '"', '\'', '`', '$', '&', '|', ';', '<', '>', '(', ')', '{', '}', '[', ']', '!', '?', '*', '~', '^', '#', '%', '=', ':', ',', '+':
+			return true
+		default:
+			return false
+		}
+	}
 }
 
 func (c *goshAutoCompleter) shellVar(name string) string {
