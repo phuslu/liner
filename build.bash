@@ -60,14 +60,14 @@ function liner::build() {
 	case ${GOOS}_${GOARCH} in
 		linux_amd64 )
 			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner
-			cp example.yaml liner@.service build/
+			cp china.pac liner@.service build/
 			cd build
 			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
 			;;
 		linux_arm64 )
 			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -gcflags='liner=-N' -o build/liner
 			upx -9 build/liner
-			cp example.yaml liner@.service build/
+			cp china.pac liner@.service build/
 			cd build
 			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
 			;;
@@ -75,38 +75,38 @@ function liner::build() {
 			export GOARM=7
 			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -gcflags='liner=-N' -o build/liner
 			upx -9 build/liner
-			cp example.yaml build/
+			cp china.pac build/
 			cd build
 			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
 			;;
 		darwin_amd64 )
 			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner
-			cp example.yaml liner.command pyobjc.zip build/
+			cp china.pac liner.command pyobjc.zip build/
 			cd build
 			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
 			;;
 		darwin_arm64 )
 			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner
-			cp example.yaml liner.command pyobjc.zip build/
+			cp china.pac liner.command pyobjc.zip build/
 			cd build
 			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
 			;;
 		android_arm64 )
 			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner
-			cp example.yaml build/
+			cp china.pac build/
 			cd build
 			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
 			;;
 		windows_amd64 )
 			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner.exe
-			cp example.yaml liner.cmd build/
+			cp china.pac liner.cmd build/
 			cp wintun/bin/amd64/wintun.dll build/
 			cd build
 			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
 			;;
 		windows_arm64 )
 			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner.exe
-			cp example.yaml liner.cmd build/
+			cp china.pac liner.cmd build/
 			cp wintun/bin/arm64/wintun.dll build/
 			cd build
 			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
