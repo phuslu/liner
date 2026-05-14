@@ -1,6 +1,6 @@
 #!/bin/bash
 
-if [[ $BASH_VERSION == *-gosh && $- == *i* ]]; then
+if [[ -n $BASH_VERSION && $- == *i* ]]; then
     bind '"\e[1~": beginning-of-line'
     bind '"\e[4~": end-of-line'
     bind '"\e[5~": previous-screen'
