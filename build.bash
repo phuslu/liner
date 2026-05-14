@@ -96,32 +96,19 @@ EOF
 			cd build
 			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
 			;;
-		darwin_amd64 )
-			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner
-			cp china.pac proxy.yaml liner.command pyobjc.zip build/
-			cd build
-			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
-			;;
-		darwin_arm64 )
-			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner
-			cp china.pac proxy.yaml liner.command pyobjc.zip build/
-			cd build
-			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
-			;;
 		android_arm64 )
 			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner
 			cp china.pac proxy.yaml build/
 			cd build
 			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
 			;;
-		windows_amd64 )
-			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner.exe
-			unzip wintun-0.14.1.zip
-			cp china.pac proxy.yaml liner.cmd wintun/bin/${GOARCH}/wintun.dll build/
+		darwin_amd64 | darwin_arm64 )
+			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner
+			cp china.pac proxy.yaml liner.command pyobjc.zip build/
 			cd build
 			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
 			;;
-		windows_arm64 )
+		windows_amd64 | windows_arm64 )
 			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner.exe
 			unzip wintun-0.14.1.zip
 			cp china.pac proxy.yaml liner.cmd wintun/bin/${GOARCH}/wintun.dll build/
