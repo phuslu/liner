@@ -194,6 +194,7 @@ class AppDelegate(NSObject):
         self.profile_items: Dict[str, Any] = {}
         self.profiles: List[str] = []
         self.selected_profile: Optional[str] = None
+        self.preferences_item = None
         self.start_stop_item = None
         self.sudo_askpass_path: Optional[str] = None
 
@@ -311,6 +312,7 @@ class AppDelegate(NSObject):
             button.setToolTip_(APP_TITLE)
 
         menu = NSMenu.alloc().init()
+        menu.setAutoenablesItems_(False)
         menu.addItem_(self.make_item("Activity Log", "showConsole:", "macwindow"))
         menu.addItem_(NSMenuItem.separatorItem())
 
@@ -348,9 +350,10 @@ class AppDelegate(NSObject):
         menu.addItem_(proxy_item)
         menu.addItem_(NSMenuItem.separatorItem())
 
-        menu.addItem_(
-            self.make_item("Preferences…", "editConfig:", "slider.horizontal.3")
+        self.preferences_item = self.make_item(
+            "Preferences…", "editConfig:", "slider.horizontal.3"
         )
+        menu.addItem_(self.preferences_item)
         menu.addItem_(NSMenuItem.separatorItem())
 
         self.start_stop_item = self.make_item("Start", "startChild:", "play.circle")
@@ -362,6 +365,7 @@ class AppDelegate(NSObject):
         self.status_item.setMenu_(menu)
         self.update_proxy_menu_state()
         self.update_profile_menu_state()
+        self.update_preferences_menu_state()
         self.update_process_menu_state()
 
     def make_item(self, title: str, action: str, symbol_name: Optional[str] = None):
@@ -458,6 +462,12 @@ class AppDelegate(NSObject):
             item.setState_(
                 MENU_STATE_ON if profile == self.selected_profile else MENU_STATE_OFF
             )
+        self.update_preferences_menu_state()
+
+    def update_preferences_menu_state(self):
+        if self.preferences_item is None:
+            return
+        self.preferences_item.setEnabled_(self.selected_profile in self.profile_items)
 
     def is_child_running(self) -> bool:
         process = self.child_process
