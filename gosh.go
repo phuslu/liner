@@ -61,13 +61,6 @@ type goshRunConfig struct {
 	setProcessName bool
 }
 
-func goshInteractiveUIWriter(stderr io.Writer) io.Writer {
-	if stderr == nil {
-		return io.Discard
-	}
-	return stderr
-}
-
 func goshRun(c goshRunConfig) error {
 	args := c.args
 	if len(args) == 0 {
@@ -116,7 +109,7 @@ func goshRun(c goshRunConfig) error {
 		SetProcessName(args[0])
 	}
 	if c.isatty {
-		pty.EnableVirtualTerminal(true, true, true)
+		pty.EnableVirtualTerminal(true, false, false)
 	}
 
 	opts := []interp.RunnerOption{
@@ -210,7 +203,7 @@ func goshRun(c goshRunConfig) error {
 	ui := goshInteractiveUIWriter(stderr)
 	boundStdin := &goshKeyBindingInput{src: stdin, mgr: bindings}
 	promptPrinter := &goshPromptPrinter{}
-	completer := &goshAutoCompleter{ctx: ctx, runner: runner, stdin: stdin, stdout: ui, stderr: stderr, promptPrinter: promptPrinter}
+	completer := &goshAutoCompleter{ctx: ctx, runner: runner, stdin: stdin, stdout: ui, stderr: ui, promptPrinter: promptPrinter}
 	historySearch := &goshHistorySearch{history: history, searchIndex: -1}
 	bindings.registerActionHandler(goshKeyActionHistorySearchBackward, historySearch.Search)
 	bindings.registerActionHandler(goshKeyActionHistorySearchForward, historySearch.Search)
@@ -222,7 +215,7 @@ func goshRun(c goshRunConfig) error {
 		EOFPrompt:              "exit",
 		Stdin:                  readline.NewCancelableStdin(boundStdin),
 		Stdout:                 ui,
-		Stderr:                 stderr,
+		Stderr:                 ui,
 		AutoComplete:           completer,
 		Listener:               historySearch,
 		FuncGetWidth: func() int {
@@ -258,7 +251,7 @@ func goshRun(c goshRunConfig) error {
 	resetPrompt := func() {
 		if runtime.GOOS == "windows" && c.isatty {
 			// Windows consoles may lose VT mode after programs exit.
-			pty.EnableVirtualTerminal(true, true, true)
+			pty.EnableVirtualTerminal(true, false, false)
 		}
 		setPrompt(goshPromptString(ctx, runner, stdin, stderr, "PS1", goshDefaultPrompt(), promptSeq))
 		promptSeq++
