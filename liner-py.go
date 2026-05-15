@@ -6,6 +6,10 @@ package main
 
 import (
 	"os"
+
+	"github.com/phuslu/pty"
+
+	"liner/gosh"
 )
 
 /*
@@ -44,7 +48,17 @@ func liner() *C.PyObject {
 
 //export linex
 func linex() *C.PyObject {
-	gosh(os.Stdin, os.Stdout, os.Stderr)
+	gosh.Run(gosh.Config{
+		Args:                           os.Args,
+		Stdin:                          os.Stdin,
+		Stdout:                         os.Stdout,
+		Stderr:                         os.Stderr,
+		IsTerminal:                     pty.IsTerminal(os.Stdin.Fd()) && pty.IsTerminal(os.Stderr.Fd()),
+		NotifySignals:                  true,
+		Version:                        version,
+		SetProcessName:                 SetProcessName,
+		EnableVirtualTerminalSequences: pty.EnableVirtualTerminal,
+	})
 	C.Py_IncRef(C.Py_None)
 	return C.Py_None
 }

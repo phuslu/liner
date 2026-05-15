@@ -1,18 +1,3 @@
-//go:build windows
-
-// CGO_ENABLED=1 GOOS=windows GOARCH=amd64 CC="zig cc -target x86_64-windows-gnu" go build -v -trimpath -ldflags="-s -w" -buildmode=c-shared -o liner.dll
-
-/*
-
-import ctypes
-import os
-dll = ctypes.CDLL(os.path.dirname(__file__) + '/liner.dll')
-liner = dll.liner
-linex = dll.linex
-del ctypes, os, dll
-
-*/
-
 package main
 
 import (
@@ -23,16 +8,10 @@ import (
 	"liner/gosh"
 )
 
-import "C"
+var version = "0.0.0"
 
-//export liner
-func liner() {
-	main()
-}
-
-//export linex
-func linex() {
-	gosh.Run(gosh.Config{
+func main() {
+	err := gosh.Run(gosh.Config{
 		Args:                           os.Args,
 		Stdin:                          os.Stdin,
 		Stdout:                         os.Stdout,
@@ -40,7 +19,9 @@ func linex() {
 		IsTerminal:                     pty.IsTerminal(os.Stdin.Fd()) && pty.IsTerminal(os.Stderr.Fd()),
 		NotifySignals:                  true,
 		Version:                        version,
-		SetProcessName:                 SetProcessName,
 		EnableVirtualTerminalSequences: pty.EnableVirtualTerminal,
 	})
+	if err != nil {
+		os.Exit(gosh.ExitCode(err))
+	}
 }

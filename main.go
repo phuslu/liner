@@ -41,6 +41,8 @@ import (
 	"github.com/robfig/cron/v3"
 	"github.com/smallnest/ringbuffer"
 	"go4.org/netipx"
+
+	"liner/gosh"
 )
 
 var (
@@ -54,9 +56,19 @@ var (
 
 func main() {
 	if s := filepath.Base(os.Args[0]); s == "linex" || s == "linex.exe" || s == "gosh" || s == "gosh.exe" || os.Getenv("GOSH") == "1" {
-		err := gosh(os.Stdin, os.Stdout, os.Stderr)
+		err := gosh.Run(gosh.Config{
+			Args:                           os.Args,
+			Stdin:                          os.Stdin,
+			Stdout:                         os.Stdout,
+			Stderr:                         os.Stderr,
+			IsTerminal:                     pty.IsTerminal(os.Stdin.Fd()) && pty.IsTerminal(os.Stderr.Fd()),
+			NotifySignals:                  true,
+			Version:                        version,
+			SetProcessName:                 SetProcessName,
+			EnableVirtualTerminalSequences: pty.EnableVirtualTerminal,
+		})
 		if err != nil {
-			os.Exit(goshExitCode(err))
+			os.Exit(gosh.ExitCode(err))
 		}
 		return
 	}

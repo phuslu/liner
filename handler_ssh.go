@@ -30,6 +30,8 @@ import (
 	"github.com/quic-go/quic-go"
 	"golang.org/x/crypto/ed25519"
 	"golang.org/x/crypto/ssh"
+
+	"liner/gosh"
 )
 
 type SshHandler struct {
@@ -621,7 +623,7 @@ func (h *SshHandler) sshShellEnv(currentUser *user.User, shell string, shellPath
 	case "windows":
 		for _, key := range []string{"APPDATA", "PATH", "PATHEXT", "TEMP", "TMP", "USERNAME", "USERPROFILE"} {
 			if value := os.Getenv(key); value != "" {
-				env = goshSetEnv(env, key, value)
+				env = gosh.SetEnv(env, key, value)
 			}
 		}
 	}
@@ -648,14 +650,14 @@ func (h *SshHandler) sshShellEnv(currentUser *user.User, shell string, shellPath
 				continue
 			}
 			key, value := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
-			env = goshSetEnv(env, key, value)
+			env = gosh.SetEnv(env, key, value)
 		}
 	}
 	for key, value := range envs {
 		if strings.HasPrefix(key, "_") {
 			continue
 		}
-		env = goshSetEnv(env, key, value)
+		env = gosh.SetEnv(env, key, value)
 	}
 	return env, nil
 }
@@ -712,21 +714,23 @@ func (h *SshHandler) startExec(ctx context.Context, channel ssh.Channel, command
 			return
 		}
 		if setGosh {
-			env = goshSetEnv(env, "GOSH", "1")
+			env = gosh.SetEnv(env, "GOSH", "1")
 		}
-		err = goshRun(goshRunConfig{
-			ctx:    ctx,
-			args:   []string{shell, "-c", script},
-			stdin:  channel,
-			stdout: channel,
-			stderr: channel.Stderr(),
-			env:    env,
-			dir:    home,
+		err = gosh.Run(gosh.Config{
+			Context:                        ctx,
+			Args:                           []string{shell, "-c", script},
+			Stdin:                          channel,
+			Stdout:                         channel,
+			Stderr:                         channel.Stderr(),
+			Env:                            env,
+			Dir:                            home,
+			Version:                        version,
+			EnableVirtualTerminalSequences: pty.EnableVirtualTerminal,
 		})
-		if err != nil && !goshIsExitStatus(err) && !errors.Is(err, context.Canceled) {
+		if err != nil && !gosh.IsExitStatus(err) && !errors.Is(err, context.Canceled) {
 			fmt.Fprintln(channel.Stderr(), err)
 		}
-		exitStatus = goshExitCode(err)
+		exitStatus = gosh.ExitCode(err)
 		return
 	}
 
@@ -848,7 +852,7 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, winsize p
 		return nil, err
 	}
 	if setGosh {
-		shell.Env = goshSetEnv(shell.Env, "GOSH", "1")
+		shell.Env = gosh.SetEnv(shell.Env, "GOSH", "1")
 	}
 	switch runtime.GOOS {
 	case "linux":
