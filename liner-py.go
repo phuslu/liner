@@ -6,6 +6,7 @@ package main
 
 import (
 	"os"
+	"strings"
 
 	"github.com/phuslu/gosh"
 	"github.com/phuslu/pty"
@@ -47,9 +48,11 @@ func liner() *C.PyObject {
 
 //export linex
 func linex() *C.PyObject {
+	args := strings.Split(strings.Join(os.Args, "\x00"), "\x00")
+	SetProcessName(os.Args[0])
 	gosh.Run(gosh.Config{
 		Version:               version,
-		Args:                  os.Args,
+		Args:                  args,
 		Stdin:                 os.Stdin,
 		Stdout:                os.Stdout,
 		Stderr:                os.Stderr,
