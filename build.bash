@@ -1,15 +1,21 @@
 #!/bin/bash -xe
 
 function liner::setup() {
-	export DEBIAN_FRONTEND=noninteractive
-	apt update -y
-	apt install -yq git curl jq unzip zip xz-utils gh build-essential parallel upx
+	case $(uname) in
+		Darwin )
+			brew list --formula -1 | grep python || brew install python
+			;;
+		Linux )
+			export DEBIAN_FRONTEND=noninteractive
+			apt update -y
+			apt install -yq git curl jq unzip zip xz-utils gh build-essential parallel upx
+			git config --global --add safe.directory '*'
+			;;
+	esac
 
-	git config --global --add safe.directory '*'
-
+	goos=$(uname | tr A-Z a-z)
 	goarch=$(test $(uname -m) = aarch64 && echo arm64 || echo amd64)
-
-	curl -L https://github.com/phuslu/go/releases/download/v0.0.0/go1.26.linux-${goarch}.tar.xz | \
+	curl -L https://github.com/phuslu/go/releases/download/v0.0.0/go1.26.${goos}-${goarch}.tar.xz | \
 	tar xvJ -C /tmp/
 }
 
