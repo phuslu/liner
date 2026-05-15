@@ -116,7 +116,7 @@ func goshRun(c goshRunConfig) error {
 		SetProcessName(args[0])
 	}
 	if c.isatty {
-		EnableVirtualTerminalSequences()
+		pty.EnableVirtualTerminal(true, true, true)
 	}
 
 	opts := []interp.RunnerOption{
@@ -258,7 +258,7 @@ func goshRun(c goshRunConfig) error {
 	resetPrompt := func() {
 		if runtime.GOOS == "windows" && c.isatty {
 			// Windows consoles may lose VT mode after programs exit.
-			EnableVirtualTerminalSequences()
+			pty.EnableVirtualTerminal(true, true, true)
 		}
 		setPrompt(goshPromptString(ctx, runner, stdin, stderr, "PS1", goshDefaultPrompt(), promptSeq))
 		promptSeq++

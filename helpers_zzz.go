@@ -79,7 +79,3 @@ func RedirectOutputToFile(filename string) error {
 func AppendSetSidToSysProcAttr(old *syscall.SysProcAttr, uid, gid int) *syscall.SysProcAttr {
 	return old
 }
-
-func EnableVirtualTerminalSequences() error {
-	return nil
-}
