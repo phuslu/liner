@@ -3,7 +3,6 @@ module liner
 go 1.26
 
 require (
-	github.com/chzyer/readline v1.5.1
 	github.com/coder/websocket v1.8.14
 	github.com/go-task/slim-sprig/v3 v3.0.0
 	github.com/goccy/go-yaml v1.19.2
@@ -13,6 +12,7 @@ require (
 	github.com/oschwald/maxminddb-golang/v2 v2.2.0
 	github.com/phuslu/fastdns v0.17.0
 	github.com/phuslu/geosite v1.0.20250901
+	github.com/phuslu/gosh v0.0.0-20260515182517-7bc71f592569
 	github.com/phuslu/log v1.0.124
 	github.com/phuslu/lru v1.0.19
 	github.com/phuslu/pty v0.0.0-20260515102020-389761547580
@@ -30,11 +30,11 @@ require (
 	golang.org/x/sys v0.44.0
 	golang.zx2c4.com/wireguard v0.0.0-20250521234502-f333402bd9cb
 	gvisor.dev/gvisor v0.0.0-20260512224032-031492ed34ed
-	mvdan.cc/sh/v3 v3.13.1
 )
 
 require (
 	github.com/andybalholm/brotli v1.2.1 // indirect
+	github.com/chzyer/readline v1.5.1 // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/klauspost/compress v1.18.6 // indirect
 	github.com/kr/fs v0.1.0 // indirect
@@ -46,6 +46,7 @@ require (
 	golang.org/x/text v0.37.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
+	mvdan.cc/sh/v3 v3.13.1 // indirect
 )
 
 replace github.com/quic-go/quic-go v0.59.1 => github.com/phuslu/quic-go v0.0.0-20260513175713-0418df6414dd

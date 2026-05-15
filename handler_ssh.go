@@ -24,14 +24,13 @@ import (
 
 	"github.com/google/shlex"
 	"github.com/libp2p/go-yamux/v5"
+	"github.com/phuslu/gosh"
 	"github.com/phuslu/log"
 	"github.com/phuslu/pty"
 	"github.com/pkg/sftp"
 	"github.com/quic-go/quic-go"
 	"golang.org/x/crypto/ed25519"
 	"golang.org/x/crypto/ssh"
-
-	"liner/gosh"
 )
 
 type SshHandler struct {
@@ -691,7 +690,7 @@ func (h *SshHandler) startExec(ctx context.Context, channel ssh.Channel, command
 	script := "cd; " + command
 	if shellPath == "$" {
 		var shell string
-		setGosh := false
+		var isgosh bool
 		exe, err := os.Executable()
 		if err != nil {
 			exe, err = filepath.Abs(os.Args[0])
@@ -705,7 +704,7 @@ func (h *SshHandler) startExec(ctx context.Context, channel ssh.Channel, command
 			shell = "linex"
 		} else {
 			shell = exe
-			setGosh = true
+			isgosh = true
 		}
 
 		env, err := h.sshShellEnv(currentUser, shell, shellPath, envs)
@@ -713,19 +712,20 @@ func (h *SshHandler) startExec(ctx context.Context, channel ssh.Channel, command
 			fmt.Fprintln(channel.Stderr(), err)
 			return
 		}
-		if setGosh {
+		if isgosh {
 			env = gosh.SetEnv(env, "GOSH", "1")
 		}
 		err = gosh.Run(gosh.Config{
-			Context:                        ctx,
-			Args:                           []string{shell, "-c", script},
-			Stdin:                          channel,
-			Stdout:                         channel,
-			Stderr:                         channel.Stderr(),
-			Env:                            env,
-			Dir:                            home,
-			Version:                        version,
-			EnableVirtualTerminalSequences: pty.EnableVirtualTerminal,
+			Version:               version,
+			Context:               ctx,
+			Args:                  []string{shell, "-c", script},
+			Stdin:                 channel,
+			Stdout:                channel,
+			Stderr:                channel.Stderr(),
+			Env:                   env,
+			Dir:                   home,
+			IsTerminal:            false,
+			EnableVirtualTerminal: pty.EnableVirtualTerminal,
 		})
 		if err != nil && !gosh.IsExitStatus(err) && !errors.Is(err, context.Canceled) {
 			fmt.Fprintln(channel.Stderr(), err)
@@ -822,7 +822,7 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, winsize p
 	}
 
 	var shell *exec.Cmd
-	setGosh := false
+	var isgosh bool
 	if shellPath == "$" {
 		exe, err := os.Executable()
 		if err != nil {
@@ -835,7 +835,7 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, winsize p
 			// pip install liner-py
 			shell = exec.CommandContext(ctx, "linex")
 		} else {
-			setGosh = true
+			isgosh = true
 			shell = exec.CommandContext(ctx, exe)
 		}
 	} else {
@@ -851,7 +851,7 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, winsize p
 	if err != nil {
 		return nil, err
 	}
-	if setGosh {
+	if isgosh {
 		shell.Env = gosh.SetEnv(shell.Env, "GOSH", "1")
 	}
 	switch runtime.GOOS {
