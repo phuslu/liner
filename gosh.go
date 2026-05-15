@@ -200,10 +200,10 @@ func goshRun(c goshRunConfig) error {
 	histFile := goshResolveShellHistoryFile(runner)
 	history.file = histFile
 
-	ui := goshInteractiveUIWriter(stderr)
+	conWriter := pty.NewConsoleANSIWriter(stderr)
 	boundStdin := &goshKeyBindingInput{src: stdin, mgr: bindings}
 	promptPrinter := &goshPromptPrinter{}
-	completer := &goshAutoCompleter{ctx: ctx, runner: runner, stdin: stdin, stdout: ui, stderr: ui, promptPrinter: promptPrinter}
+	completer := &goshAutoCompleter{ctx: ctx, runner: runner, stdin: stdin, stdout: conWriter, stderr: conWriter, promptPrinter: promptPrinter}
 	historySearch := &goshHistorySearch{history: history, searchIndex: -1}
 	bindings.registerActionHandler(goshKeyActionHistorySearchBackward, historySearch.Search)
 	bindings.registerActionHandler(goshKeyActionHistorySearchForward, historySearch.Search)
@@ -214,8 +214,8 @@ func goshRun(c goshRunConfig) error {
 		InterruptPrompt:        "^C",
 		EOFPrompt:              "exit",
 		Stdin:                  readline.NewCancelableStdin(boundStdin),
-		Stdout:                 ui,
-		Stderr:                 ui,
+		Stdout:                 conWriter,
+		Stderr:                 conWriter,
 		AutoComplete:           completer,
 		Listener:               historySearch,
 		FuncGetWidth: func() int {
