@@ -145,6 +145,8 @@ function liner::build::macos() {
 	chmod 755 build/macos/Liner.app/Contents/Resources/liner
 
 	go run liner-icns.go build/macos/Liner.app/Contents/Resources/Liner.icns
+	unzip -q pyobjc.zip -d build/macos/Liner.app/Contents/Resources/pyobjc
+	cp china.pac liner.command build/macos/Liner.app/Contents/Resources/
 
 	cat <<EOF | tee build/macos/Liner.app/Contents/Resources/proxy.yaml
 global:
@@ -165,7 +167,6 @@ http:
         index:
           file: china.pac
 EOF
-	cp china.pac liner.command pyobjc.zip build/macos/Liner.app/Contents/Resources/
 	cat <<EOF | tee build/macos/Liner.app/Contents/MacOS/Liner
 #!/bin/sh
 cd "\$(dirname "\$0")/../Resources" || exit 1
