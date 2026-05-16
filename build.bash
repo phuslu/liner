@@ -269,7 +269,7 @@ function liner::python() {
 		echo liner_py-1.0.${REVSION}.dist-info/RECORD,,
 	' sh {} + | tee liner_py-1.0.${REVSION}.dist-info/RECORD
 
-	zip -r liner_py-1.0.${REVSION}-cp32-abi3-${PLATFORM_TAG}.whl liner liner_py-1.0.${REVSION}.*
+	zip -r ../liner_py-1.0.${REVSION}-cp32-abi3-${PLATFORM_TAG}.whl liner liner_py-1.0.${REVSION}.*
 
 	popd
 }
@@ -323,14 +323,13 @@ EOF
 		echo liner_py-1.0.${REVSION}.dist-info/RECORD,,
 	' sh {} + | tee liner_py-1.0.${REVSION}.dist-info/RECORD
 
-	zip -r liner_py-1.0.${REVSION}-cp32-abi3-win_${GOARCH}.whl liner liner_py-1.0.${REVSION}.*
+	zip -r ../liner_py-1.0.${REVSION}-cp32-abi3-win_${GOARCH}.whl liner liner_py-1.0.${REVSION}.*
 
 	popd
 }
 
 function liner::release() {
-	if ls python/liner_py-*.whl 2>/dev/null; then
-		pushd python
+	if ls liner_py-*.whl 2>/dev/null; then
 		# gh release view v0.0.0 --json assets --jq .assets[].name | egrep "^liner_py-.+$(ls liner_py-*_*.whl | awk -F- '{print $NF}')$" | xargs -i gh release delete-asset v0.0.0 {} --yes
 		# gh release upload v0.0.0 liner_py-*.whl --clobber
 		if git log -1 --oneline | grep -q ' +pypi$'; then
@@ -339,7 +338,6 @@ function liner::release() {
 			~/.venv/bin/pip install twine
 			~/.venv/bin/twine upload liner_py-*.whl
 		fi
-		popd
 	elif ls liner_darwin_universal-*.zip 2>/dev/null; then
 		gh release view v0.0.0 --json assets --jq .assets[].name | egrep "^$(ls liner_darwin_universal-*.zip | awk -F- '{print $1}')-" | xargs -i gh release delete-asset v0.0.0 {} --yes
 		gh release upload v0.0.0 liner_darwin_universal-*.zip --clobber
