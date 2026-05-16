@@ -191,6 +191,41 @@ function liner::python() {
 	zip -r liner_py-1.0.${REVSION}-cp32-abi3-${PLATFORM_TAG}.whl liner liner_py-1.0.${REVSION}.*
 
 	popd
+
+	if test "$(uname)" = "Darwin"; then
+		mkdir -p python/tarball
+		cp python/liner/liner.so python/tarball/
+		cat <<EOF | tee python/tarball/liner
+#!/usr/bin/python3
+import sys, liner
+len(sys.argv) == 1 and (print('Please run ./liner.command'), sys.exit(1))
+liner.liner()
+EOF
+		chmod 755 python/tarball/liner
+		cat <<EOF | tee python/tarball/proxy.yaml
+global:
+  log_level: info
+  log_backups: 2
+  log_maxsize: 104857600
+  log_localtime: true
+  max_idle_conns: 64
+dialer:
+  sg-http3: "http3://username:password@phus.lu:443/"
+http:
+  - listen: ['127.0.0.1:8087']
+    forward:
+      policy: bypass_auth
+      dialer: sg-http3
+    web:
+      - location: /proxy.pac
+        index:
+          file: china.pac
+EOF
+		cp china.pac liner.command pyobjc.zip python/tarball/
+		pushd python/tarball
+		COPYFILE_DISABLE=1 /usr/bin/tar cv --format=ustar * | gzip -9 >../liner_darwin_${GOARCH:-$(go env GOARCH)}-${REVSION}.tar.gz
+		popd
+	fi
 }
 
 function liner::python::windows() {
