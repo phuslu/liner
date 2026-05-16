@@ -28,3 +28,13 @@ jobs:
       - run: sudo -E ./build.bash release
         env:
           GITHUB_TOKEN: ${{ secrets.GOTIP_TOKEN }}
+  macos:
+    name: macos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - run: sudo ./build.bash setup
+      - run: sudo -E ./build.bash build::macos
+      - run: sudo -E ./build.bash release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GOTIP_TOKEN }}

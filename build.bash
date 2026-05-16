@@ -340,6 +340,9 @@ function liner::release() {
 			~/.venv/bin/twine upload liner_py-*.whl
 		fi
 		popd
+	elif ls liner_darwin_universal-*.zip 2>/dev/null; then
+		gh release view v0.0.0 --json assets --jq .assets[].name | egrep "^$(ls liner_darwin_universal-*.zip | awk -F- '{print $1}')-" | xargs -i gh release delete-asset v0.0.0 {} --yes
+		gh release upload v0.0.0 liner_darwin_universal-*.zip --clobber
 	else
 		git log --oneline --pretty=format:"%h %s" -5 | tee changelog.txt
 		gh release view v0.0.0 --json assets --jq .assets[].name | egrep "^$(ls liner_*_*.tar.gz | awk -F- '{print $1}')-" | xargs -i gh release delete-asset v0.0.0 {} --yes
