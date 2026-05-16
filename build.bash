@@ -128,7 +128,6 @@ EOF
 
 function liner::build::macos() {
 	export CGO_ENABLED=0
-	export GOOS=darwin
 	export GOROOT=${GOROOT:-/tmp/go}
 	export GOPATH=${GOPATH:-/tmp/gopath}
 	export PATH=${GOPATH:-~/go}/bin:${GOROOT}/bin:$PATH
@@ -140,10 +139,12 @@ function liner::build::macos() {
 	rm -rf build
 	mkdir -p build/macos/Liner.app/Contents/MacOS build/macos/Liner.app/Contents/Resources
 
-	GOARCH=amd64 go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner_darwin_amd64
-	GOARCH=arm64 go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner_darwin_arm64
+	GOOS=darwin GOARCH=amd64 go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner_darwin_amd64
+	GOOS=darwin GOARCH=arm64 go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner_darwin_arm64
 	llvm-lipo-18 -create -output build/macos/Liner.app/Contents/Resources/liner build/liner_darwin_amd64 build/liner_darwin_arm64
 	chmod 755 build/macos/Liner.app/Contents/Resources/liner
+
+	go run liner-icns.go build/macos/Liner.app/Contents/Resources/Liner.icns
 
 	cat <<EOF | tee build/macos/Liner.app/Contents/Resources/proxy.yaml
 global:
@@ -183,6 +184,8 @@ EOF
 	<string>Liner</string>
 	<key>CFBundleExecutable</key>
 	<string>Liner</string>
+	<key>CFBundleIconFile</key>
+	<string>Liner.icns</string>
 	<key>CFBundleIdentifier</key>
 	<string>lu.phus.liner</string>
 	<key>CFBundleName</key>
