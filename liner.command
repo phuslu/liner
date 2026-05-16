@@ -540,6 +540,16 @@ class AppDelegate(NSObject):
             0.05, self, "drainEvents:", None, True
         )
 
+    @staticmethod
+    def reap_process(process):
+        def waiter():
+            try:
+                process.wait()
+            except Exception:
+                pass
+
+        threading.Thread(target=waiter, daemon=True).start()
+
     def drainEvents_(self, timer):
         for _ in range(1000):
             try:
@@ -1256,11 +1266,12 @@ APPLESCRIPT
             'sound name "default"'
         )
         try:
-            subprocess.Popen(
+            process = subprocess.Popen(
                 ["/usr/bin/osascript", "-e", script],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
+            self.reap_process(process)
         except OSError:
             pass
 
@@ -1317,11 +1328,12 @@ APPLESCRIPT
             return
 
         try:
-            subprocess.Popen(
+            process = subprocess.Popen(
                 ["/usr/bin/open", "-e", config_path],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
+            self.reap_process(process)
         except Exception as exc:
             self.append_to_console(f"Open config failed: {exc}\n", ANSI_COLORS[1])
             self.showConsole_(None)
