@@ -168,7 +168,8 @@ EOF
 	cat <<EOF | tee build/macos/Liner.app/Contents/MacOS/Liner
 #!/bin/sh
 cd "\$(dirname "\$0")/../Resources" || exit 1
-exec /usr/bin/python3 -x ./liner.command
+# Keep the PyObjC status item out of the LaunchServices exec path.
+exec /bin/sh ./liner.command
 EOF
 	chmod 755 build/macos/Liner.app/Contents/MacOS/Liner
 	cat <<EOF | tee build/macos/Liner.app/Contents/Info.plist
