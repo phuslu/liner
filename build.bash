@@ -8,7 +8,7 @@ function liner::setup() {
 		Linux )
 			export DEBIAN_FRONTEND=noninteractive
 			apt update -y
-			apt install -yq git curl jq unzip zip xz-utils gh build-essential parallel upx
+			apt install -yq git curl jq unzip zip xz-utils gh build-essential parallel upx llvm
 			git config --global --add safe.directory '*'
 			;;
 	esac
@@ -126,6 +126,87 @@ EOF
 	rm -rf build/changelog.txt $(find build -mindepth 1 -maxdepth 1 -type d -name "liner_*")
 }
 
+function liner::build::macos() {
+	export CGO_ENABLED=0
+	export GOOS=darwin
+	export GOROOT=${GOROOT:-/tmp/go}
+	export GOPATH=${GOPATH:-/tmp/gopath}
+	export PATH=${GOPATH:-~/go}/bin:${GOROOT}/bin:$PATH
+	export REVSION=$(git rev-list --count HEAD)
+
+	go version
+	go env
+
+	rm -rf build
+	mkdir -p build/macos/Liner.app/Contents/MacOS build/macos/Liner.app/Contents/Resources
+
+	GOARCH=amd64 go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner_darwin_amd64
+	GOARCH=arm64 go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner_darwin_arm64
+	llvm-lipo-18 -create -output build/macos/Liner.app/Contents/Resources/liner build/liner_darwin_amd64 build/liner_darwin_arm64
+	chmod 755 build/macos/Liner.app/Contents/Resources/liner
+
+	cat <<EOF | tee build/macos/Liner.app/Contents/Resources/proxy.yaml
+global:
+  log_level: info
+  log_backups: 2
+  log_maxsize: 104857600
+  log_localtime: true
+  max_idle_conns: 64
+dialer:
+  sg-http3: "http3://username:password@phus.lu:443/"
+http:
+  - listen: ['127.0.0.1:8087']
+    forward:
+      policy: bypass_auth
+      dialer: sg-http3
+    web:
+      - location: /proxy.pac
+        index:
+          file: china.pac
+EOF
+	cp china.pac liner.command pyobjc.zip build/macos/Liner.app/Contents/Resources/
+	cat <<EOF | tee build/macos/Liner.app/Contents/MacOS/Liner
+#!/bin/sh
+cd "\$(dirname "\$0")/../Resources" || exit 1
+exec /usr/bin/python3 -x ./liner.command
+EOF
+	chmod 755 build/macos/Liner.app/Contents/MacOS/Liner
+	cat <<EOF | tee build/macos/Liner.app/Contents/Info.plist
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>Liner</string>
+	<key>CFBundleExecutable</key>
+	<string>Liner</string>
+	<key>CFBundleIdentifier</key>
+	<string>lu.phus.liner</string>
+	<key>CFBundleName</key>
+	<string>Liner</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.${REVSION}</string>
+	<key>CFBundleVersion</key>
+	<string>${REVSION}</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>11.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+</dict>
+</plist>
+EOF
+	echo "APPL????" | tee build/macos/Liner.app/Contents/PkgInfo
+	pushd build/macos
+	zip -r ../../liner_darwin_universal-${REVSION}.zip Liner.app
+	popd
+}
+
 function liner::python() {
 	rm -rf python && unzip liner-py.zip -d python && pushd python
 
@@ -191,41 +272,6 @@ function liner::python() {
 	zip -r liner_py-1.0.${REVSION}-cp32-abi3-${PLATFORM_TAG}.whl liner liner_py-1.0.${REVSION}.*
 
 	popd
-
-	if test "$(uname)" = "Darwin"; then
-		mkdir -p python/tarball
-		cp python/liner/liner.so python/tarball/
-		cat <<EOF | tee python/tarball/liner
-#!/usr/bin/python3
-import sys, liner
-len(sys.argv) == 1 and (print('Please run ./liner.command'), sys.exit(1))
-liner.liner()
-EOF
-		chmod 755 python/tarball/liner
-		cat <<EOF | tee python/tarball/proxy.yaml
-global:
-  log_level: info
-  log_backups: 2
-  log_maxsize: 104857600
-  log_localtime: true
-  max_idle_conns: 64
-dialer:
-  sg-http3: "http3://username:password@phus.lu:443/"
-http:
-  - listen: ['127.0.0.1:8087']
-    forward:
-      policy: bypass_auth
-      dialer: sg-http3
-    web:
-      - location: /proxy.pac
-        index:
-          file: china.pac
-EOF
-		cp china.pac liner.command pyobjc.zip python/tarball/
-		pushd python/tarball
-		COPYFILE_DISABLE=1 /usr/bin/tar cv --format=ustar * | gzip -9 >../liner_darwin_${GOARCH:-$(go env GOARCH)}-${REVSION}.tar.gz
-		popd
-	fi
 }
 
 function liner::python::windows() {
