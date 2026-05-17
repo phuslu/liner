@@ -132,6 +132,12 @@ function liner::build::macos() {
 	export GOPATH=${GOPATH:-/tmp/gopath}
 	export PATH=${GOPATH:-~/go}/bin:${GOROOT}/bin:$PATH
 	export REVSION=$(git rev-list --count HEAD)
+	
+	if test ! -d /usr/local/osxcross; then
+		curl -sSLf https://github.com/phuslu/osxcross/releases/download/e6ab3fa/osxcross-linux-amd64-sdk11.3-e6ab3fa.tar.xz | tar xvJ -C /usr/local
+	fi
+	export PATH=/usr/local/osxcross/bin:${GOROOT}/bin:$PATH
+	export LD_LIBRARY_PATH=/usr/local/osxcross/lib:${LD_LIBRARY_PATH:-}
 
 	go version
 	go env
@@ -141,13 +147,16 @@ function liner::build::macos() {
 
 	GOOS=darwin GOARCH=amd64 go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner_darwin_amd64
 	GOOS=darwin GOARCH=arm64 go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner_darwin_arm64
-	llvm-lipo-18 -create -output build/macos/Liner.app/Contents/Resources/liner build/liner_darwin_amd64 build/liner_darwin_arm64
+	lipo -create -output build/macos/Liner.app/Contents/Resources/liner build/liner_darwin_amd64 build/liner_darwin_arm64
 	chmod 755 build/macos/Liner.app/Contents/Resources/liner
 
-	go run liner-icns.go build/macos/Liner.app/Contents/Resources/Liner.icns
-	unzip -q pyobjc.zip -d build/macos/Liner.app/Contents/Resources/pyobjc
-	cp china.pac liner.command build/macos/Liner.app/Contents/Resources/
+	o64-clang -x objective-c -fobjc-arc -mmacosx-version-min=11.0 -framework Cocoa -framework SystemConfiguration -framework Security liner.m -o build/liner_objc_darwin_amd64
+	oa64-clang -x objective-c -fobjc-arc -mmacosx-version-min=11.0 -framework Cocoa -framework SystemConfiguration -framework Security liner.m -o build/liner_objc_darwin_arm64
+	lipo -create -output build/macos/Liner.app/Contents/MacOS/Liner build/liner_objc_darwin_amd64 build/liner_objc_darwin_arm64
+	chmod 755 build/macos/Liner.app/Contents/MacOS/Liner
 
+	go run liner-icns.go build/macos/Liner.app/Contents/Resources/Liner.icns
+	cp china.pac build/macos/Liner.app/Contents/Resources/
 	cat <<EOF | tee build/macos/Liner.app/Contents/Resources/proxy.yaml
 global:
   log_level: info
@@ -167,13 +176,6 @@ http:
         index:
           file: china.pac
 EOF
-	cat <<EOF | tee build/macos/Liner.app/Contents/MacOS/Liner
-#!/bin/sh
-cd "\$(dirname "\$0")/../Resources" || exit 1
-# Keep the PyObjC status item out of the LaunchServices exec path.
-exec /bin/sh ./liner.command
-EOF
-	chmod 755 build/macos/Liner.app/Contents/MacOS/Liner
 	cat <<EOF | tee build/macos/Liner.app/Contents/Info.plist
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
