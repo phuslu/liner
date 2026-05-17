@@ -110,7 +110,7 @@ EOF
 			;;
 		darwin_amd64 | darwin_arm64 )
 			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner
-			cp china.pac proxy.yaml liner.command pyobjc.zip build/
+			cp china.pac proxy.yaml build/
 			cd build
 			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
 			;;
