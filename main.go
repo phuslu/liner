@@ -71,6 +71,12 @@ func main() {
 		return
 	}
 
+	if runtime.GOOS == "windows" && len(os.Args) == 1 {
+		if _, err := os.Stat("liner.cmd"); err == nil {
+			println("No arguments provided. On Windows, please run liner.cmd instead.")
+		}
+	}
+
 	if g, p, m := runtime.Version(), os.Getenv("GOMAXPROCS"), GetMaxProcsFromCgroupV2(); g < "go1.25" && p == "" && m > 0 {
 		runtime.GOMAXPROCS(m)
 	}
