@@ -9,6 +9,10 @@ function liner::setup() {
 			export DEBIAN_FRONTEND=noninteractive
 			apt update -y
 			apt install -yq git curl jq unzip zip xz-utils gh build-essential parallel upx llvm
+			# osxcross for macos
+			test -d /usr/local/osxcross || \
+				curl -sSLf https://github.com/phuslu/osxcross/releases/download/e6ab3fa/osxcross-linux-amd64-sdk11.3-e6ab3fa.tar.xz | \
+				tar xvJ -C /usr/local
 			git config --global --add safe.directory '*'
 			;;
 	esac
@@ -27,6 +31,9 @@ function liner::build() {
 	export GOPATH=${GOPATH:-/tmp/gopath}
 	export PATH=${GOPATH:-~/go}/bin:${GOROOT}/bin:$PATH
 	export REVSION=$(git rev-list --count HEAD)
+	# osxcross for macos
+	export PATH=/usr/local/osxcross/bin:$PATH
+	export LD_LIBRARY_PATH=/usr/local/osxcross/lib:${LD_LIBRARY_PATH:-}
 
 	if grep -lr $(printf '\r\n') * | grep '.go$' ; then
 		echo -e "\e[1;31mPlease run dos2unix for go source files\e[0m"
@@ -110,6 +117,8 @@ EOF
 			;;
 		darwin_amd64 | darwin_arm64 )
 			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner
+			osxcross_clang=$(test ${GOARCH} = amd64 && echo o64-clang || echo oa64-clang)
+			${osxcross_clang} -x objective-c -fobjc-arc -mmacosx-version-min=11.0 -framework Cocoa -framework SystemConfiguration -framework Security liner.m -o build/liner-ui
 			cp china.pac proxy.yaml build/
 			cd build
 			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
@@ -132,11 +141,8 @@ function liner::build::macos() {
 	export GOPATH=${GOPATH:-/tmp/gopath}
 	export PATH=${GOPATH:-~/go}/bin:${GOROOT}/bin:$PATH
 	export REVSION=$(git rev-list --count HEAD)
-	
-	if test ! -d /usr/local/osxcross; then
-		curl -sSLf https://github.com/phuslu/osxcross/releases/download/e6ab3fa/osxcross-linux-amd64-sdk11.3-e6ab3fa.tar.xz | tar xvJ -C /usr/local
-	fi
-	export PATH=/usr/local/osxcross/bin:${GOROOT}/bin:$PATH
+	# osxcross for macos
+	export PATH=/usr/local/osxcross/bin:$PATH
 	export LD_LIBRARY_PATH=/usr/local/osxcross/lib:${LD_LIBRARY_PATH:-}
 
 	go version
