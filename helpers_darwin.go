@@ -18,6 +18,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/phuslu/log"
 	"golang.org/x/sys/unix"
 )
 
@@ -317,9 +318,118 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 		prefix netip.Prefix
 		scoped bool
 	}
+	type scopedRoute struct {
+		prefix netip.Prefix
+		iface  string
+	}
 	var addedBypass []netip.Prefix
 	var addedRoutes []tunRoute
+	var addedScopedRoutes []scopedRoute
+	parseRouteGetPrefix := func(msg string) (netip.Prefix, bool) {
+		var destination, mask string
+		for line := range strings.Lines(msg) {
+			key, value, ok := strings.Cut(strings.TrimSpace(line), ":")
+			if !ok {
+				continue
+			}
+			switch strings.TrimSpace(key) {
+			case "destination":
+				destination = strings.TrimSpace(value)
+			case "mask":
+				mask = strings.TrimSpace(value)
+			}
+		}
+		if destination == "" {
+			return netip.Prefix{}, false
+		}
+		if prefix, err := netip.ParsePrefix(destination); err == nil {
+			return prefix.Masked(), true
+		}
+		if destination == "default" {
+			return netip.PrefixFrom(netip.AddrFrom4([4]byte{}), 0), true
+		}
+		addr, err := netip.ParseAddr(destination)
+		if err != nil {
+			return netip.Prefix{}, false
+		}
+		bits := addr.BitLen()
+		if mask != "" && mask != "default" {
+			if ip, err := netip.ParseAddr(mask); err == nil && ip.Is4() {
+				raw := ip.As4()
+				if ones, size := net.IPMask(raw[:]).Size(); size == 32 {
+					bits = ones
+				}
+			} else if value, err := strconv.ParseUint(strings.TrimPrefix(mask, "0x"), 16, 32); err == nil {
+				var raw [4]byte
+				binary.BigEndian.PutUint32(raw[:], uint32(value))
+				if ones, size := net.IPMask(raw[:]).Size(); size == 32 {
+					bits = ones
+				}
+			}
+		}
+		return netip.PrefixFrom(addr, bits).Masked(), true
+	}
+	hasScopedRoute := func(prefix netip.Prefix, iface string) bool {
+		probeAddr := routeProbeAddr(prefix)
+		msg, err := run("route", "-n", "get", "-ifscope", iface, probeAddr.String())
+		if err != nil {
+			return false
+		}
+		var routeIface, routeIfscope string
+		for line := range strings.Lines(msg) {
+			key, value, ok := strings.Cut(strings.TrimSpace(line), ":")
+			if !ok {
+				continue
+			}
+			switch strings.TrimSpace(key) {
+			case "interface":
+				routeIface = strings.TrimSpace(value)
+			case "ifscope":
+				routeIfscope = strings.TrimSpace(value)
+			}
+		}
+		switch {
+		case routeIfscope != "":
+			if routeIfscope != iface {
+				return false
+			}
+		case routeIface != iface:
+			return false
+		}
+		got, ok := parseRouteGetPrefix(msg)
+		return ok && got == prefix.Masked()
+	}
+	deleteScopedRoute := func(prefix netip.Prefix, iface string) error {
+		for range 8 {
+			if !hasScopedRoute(prefix, iface) {
+				return nil
+			}
+			args := []string{"-n", "delete"}
+			if prefix.Addr().Is6() {
+				args = append(args, "-inet6")
+			}
+			args = append(args, "-net", "-ifscope", iface, prefix.Masked().String())
+			if msg, err := run("route", args...); err != nil && hasScopedRoute(prefix, iface) {
+				return fmt.Errorf("route %s: %w: %s", strings.Join(args, " "), err, msg)
+			}
+		}
+		if hasScopedRoute(prefix, iface) {
+			return fmt.Errorf("route -n delete -net -ifscope %s %s: scoped route still exists after 8 attempts", iface, prefix.Masked())
+		}
+		return nil
+	}
+	trackScopedRoute := func(route scopedRoute) {
+		if !slices.Contains(addedScopedRoutes, route) {
+			addedScopedRoutes = append(addedScopedRoutes, route)
+		}
+	}
 	cleanup := func() {
+		for i := len(addedScopedRoutes) - 1; i >= 0; i-- {
+			route := addedScopedRoutes[i]
+			if err := deleteScopedRoute(route.prefix, route.iface); err != nil {
+				log.Warn().Err(err).Str("tun_name", name).Str("tun_route", route.prefix.String()).Str("tun_route_iface", route.iface).Msg("delete tun scoped route failed")
+			}
+		}
 		for i := len(addedRoutes) - 1; i >= 0; i-- {
 			route := addedRoutes[i]
 			dst := route.prefix.Masked().String()
@@ -359,16 +469,12 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 		return nil, fmt.Errorf("set tun link up: ifconfig %s: %w: %s", strings.Join(args, " "), err, msg)
 	}
 
-	for _, prefix := range bypassPrefixes {
-		if prefix.Addr().IsLoopback() {
-			continue
-		}
-		probeAddr := routeProbeAddr(prefix)
-		msg, err := run("route", "-n", "get", probeAddr.String())
+	lookupRoute := func(prefix netip.Prefix) (probeAddr netip.Addr, gateway, iface, msg string, err error) {
+		probeAddr = routeProbeAddr(prefix)
+		msg, err = run("route", "-n", "get", probeAddr.String())
 		if err != nil {
-			return nil, fmt.Errorf("set tun bypass route: route -n get %s: %w: %s", probeAddr, err, msg)
+			return
 		}
-		var gateway, iface string
 		for line := range strings.Lines(msg) {
 			key, value, ok := strings.Cut(strings.TrimSpace(line), ":")
 			if !ok {
@@ -384,6 +490,17 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 					iface = strings.TrimSpace(value)
 				}
 			}
+		}
+		return
+	}
+
+	for _, prefix := range bypassPrefixes {
+		if prefix.Addr().IsLoopback() {
+			continue
+		}
+		probeAddr, gateway, iface, msg, err := lookupRoute(prefix)
+		if err != nil {
+			return nil, fmt.Errorf("set tun bypass route: route -n get %s: %w: %s", probeAddr, err, msg)
 		}
 		if iface == name {
 			return nil, fmt.Errorf("set tun bypass route: route to %s already uses %s", probeAddr, name)
@@ -427,6 +544,8 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 		routes = append(routes, route)
 	}
 	for _, route := range routes {
+		_, gateway, iface, _, lookupErr := lookupRoute(route)
+
 		args = []string{"-n", "add"}
 		if route.Addr().Is6() {
 			args = append(args, "-inet6")
@@ -437,12 +556,9 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 		delargs[1] = "delete"
 		exec.Command("route", delargs...).Run()
 		// Older builds added ifscoped copies; remove them to keep split defaults single.
-		scopedDelargs := []string{"-n", "delete"}
-		if route.Addr().Is6() {
-			scopedDelargs = append(scopedDelargs, "-inet6")
+		if err := deleteScopedRoute(route, name); err != nil {
+			return nil, fmt.Errorf("delete old tun ifscoped route %s on %s: %w", route, name, err)
 		}
-		scopedDelargs = append(scopedDelargs, "-net", "-ifscope", name, route.String(), "-interface", name)
-		exec.Command("route", scopedDelargs...).Run()
 
 		if msg, err := run("route", args...); err != nil {
 			if strings.Contains(msg, "File exists") {
@@ -451,6 +567,31 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 			return nil, fmt.Errorf("set tun route: route %s: %w: %s", strings.Join(args, " "), err, msg)
 		}
 		addedRoutes = append(addedRoutes, tunRoute{route, false})
+
+		if route.Addr().Is4() && lookupErr == nil && iface != "" && iface != name {
+			if err := deleteScopedRoute(route, iface); err != nil {
+				return nil, fmt.Errorf("delete old tun scoped escape route %s on %s: %w", route, iface, err)
+			}
+			scopedArgs := []string{"-n", "add", "-net", "-ifscope", iface, route.String()}
+			if gateway != "" && !strings.HasPrefix(gateway, "link#") {
+				scopedArgs = append(scopedArgs, gateway)
+			} else {
+				scopedArgs = append(scopedArgs, "-interface", iface)
+			}
+			if msg, err := run("route", scopedArgs...); err != nil {
+				if strings.Contains(msg, "File exists") {
+					if err := deleteScopedRoute(route, iface); err != nil {
+						return nil, fmt.Errorf("delete existing tun scoped escape route %s on %s: %w", route, iface, err)
+					}
+					msg, err = run("route", scopedArgs...)
+				}
+				if err != nil {
+					log.Warn().Err(err).Str("tun_name", name).Str("tun_route", route.String()).Str("tun_route_iface", iface).Str("tun_route_gateway", gateway).Str("command", "route "+strings.Join(scopedArgs, " ")).Str("output", msg).Msg("set tun scoped escape route failed")
+					continue
+				}
+			}
+			trackScopedRoute(scopedRoute{route, iface})
+		}
 	}
 
 	ok = true
