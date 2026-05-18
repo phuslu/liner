@@ -6,7 +6,9 @@
 #import <SystemConfiguration/SystemConfiguration.h>
 #import <dispatch/dispatch.h>
 #import <errno.h>
+#import <fcntl.h>
 #import <signal.h>
+#import <stdio.h>
 #import <stdint.h>
 #import <stdlib.h>
 #import <string.h>
@@ -17,6 +19,135 @@ static const NSUInteger ConsoleMaxLength = 2000000;
 static const NSUInteger ConsoleTrimExtra = 100000;
 static const NSTimeInterval ChildStopTimeout = 5.0;
 static const CGFloat ConsoleBorderWidth = 3.0;
+
+static int HasArgument(int argc, const char *argv[], const char *name) {
+    for (int i = 1; i < argc; i++) {
+        if (argv[i] && strcmp(argv[i], name) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int ShouldStayForeground(int argc, const char *argv[]) {
+    return getenv("LINER_UI_FOREGROUND") || HasArgument(argc, argv, "--foreground") || HasArgument(argc, argv, "--no-detach");
+}
+
+static int IsTerminalLaunch(void) {
+    if (isatty(STDIN_FILENO) || isatty(STDOUT_FILENO) || isatty(STDERR_FILENO)) {
+        return 1;
+    }
+
+    int fd = open("/dev/tty", O_RDONLY);
+    if (fd < 0) {
+        return 0;
+    }
+    close(fd);
+    return 1;
+}
+
+static int RedirectStandardFilesToNull(void) {
+    int fd = open("/dev/null", O_RDWR);
+    if (fd < 0) {
+        return errno;
+    }
+    if (fd != STDIN_FILENO) {
+        if (dup2(fd, STDIN_FILENO) < 0) {
+            int err = errno;
+            if (fd > STDERR_FILENO) {
+                close(fd);
+            }
+            return err;
+        }
+    }
+    if (fd != STDOUT_FILENO) {
+        if (dup2(fd, STDOUT_FILENO) < 0) {
+            int err = errno;
+            if (fd > STDERR_FILENO) {
+                close(fd);
+            }
+            return err;
+        }
+    }
+    if (fd != STDERR_FILENO) {
+        if (dup2(fd, STDERR_FILENO) < 0) {
+            int err = errno;
+            if (fd > STDERR_FILENO) {
+                close(fd);
+            }
+            return err;
+        }
+    }
+    if (fd > STDERR_FILENO) {
+        close(fd);
+    }
+    return 0;
+}
+
+static void DetachFromTerminalIfNeeded(int argc, const char *argv[]) {
+    if (!IsTerminalLaunch() || ShouldStayForeground(argc, argv)) {
+        return;
+    }
+
+    int statusPipe[2];
+    if (pipe(statusPipe) != 0) {
+        fprintf(stderr, "liner-ui: pipe failed: %s\n", strerror(errno));
+        return;
+    }
+    if (fcntl(statusPipe[1], F_SETFD, FD_CLOEXEC) < 0) {
+        int err = errno;
+        close(statusPipe[0]);
+        close(statusPipe[1]);
+        fprintf(stderr, "liner-ui: fcntl failed: %s\n", strerror(err));
+        return;
+    }
+
+    pid_t pid = fork();
+    if (pid < 0) {
+        int err = errno;
+        close(statusPipe[0]);
+        close(statusPipe[1]);
+        fprintf(stderr, "liner-ui: fork failed: %s\n", strerror(err));
+        return;
+    }
+
+    if (pid > 0) {
+        close(statusPipe[1]);
+        int childErr = 0;
+        ssize_t n = 0;
+        do {
+            n = read(statusPipe[0], &childErr, sizeof(childErr));
+        } while (n < 0 && errno == EINTR);
+        close(statusPipe[0]);
+        if (n > 0) {
+            fprintf(stderr, "liner-ui: detach failed: %s\n", strerror(childErr));
+            _exit(1);
+        }
+        if (n < 0) {
+            fprintf(stderr, "liner-ui: detach status read failed: %s\n", strerror(errno));
+            _exit(1);
+        }
+        fprintf(stderr, "liner-ui detached (pid %ld). Use --foreground to keep it attached.\n", (long)pid);
+        _exit(0);
+    }
+
+    close(statusPipe[0]);
+    if (setsid() < 0) {
+        int err = errno;
+        write(statusPipe[1], &err, sizeof(err));
+        _exit(1);
+    }
+    int redirectErr = RedirectStandardFilesToNull();
+    if (redirectErr != 0) {
+        write(statusPipe[1], &redirectErr, sizeof(redirectErr));
+        _exit(1);
+    }
+    execvp(argv[0], (char *const *)argv);
+
+    int err = errno;
+    write(statusPipe[1], &err, sizeof(err));
+    _exit(127);
+}
 
 static NSColor *RGB(CGFloat red, CGFloat green, CGFloat blue) {
     return [NSColor colorWithDeviceRed:red green:green blue:blue alpha:1.0];
@@ -1695,6 +1826,7 @@ static NSString *TrimSpaces(NSString *value) {
 @end
 
 int main(int argc, const char *argv[]) {
+    DetachFromTerminalIfNeeded(argc, argv);
     @autoreleasepool {
         NSApplication *app = NSApplication.sharedApplication;
         AppDelegate *delegate = [AppDelegate new];
