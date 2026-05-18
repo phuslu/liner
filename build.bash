@@ -57,7 +57,7 @@ function liner::build() {
 	golang_org_x_net="${GOPATH}/pkg/mod/$(go list -m golang.org/x/net | tr ' ' @)"
 	chmod -R +w ${golang_org_x_net}/http2
 	sed -i -E 's/const bufWriterPoolBufferSize = .+/var bufWriterPoolBufferSize = func() int { n, _ := strconv.Atoi(os.Getenv("HTTP2_WRITER_POOL_BUFFER_SIZE")); return max(n, 32768) }()/' ${golang_org_x_net}/http2/http2.go
-	grep -m1 'var bufWriterPoolBufferSize' ${golang_org_x_net}/http2/http2.go
+	grep -m1 'var bufWriterPoolBufferSize' ${golang_org_x_net}/http2/http2.go || true
 
 	go build -v -trimpath
 	# go test -v
