@@ -440,10 +440,13 @@ static NSString *TrimSpaces(NSString *value) {
 }
 
 - (void)updateProcessMenuState {
+    BOOL running = [self isChildRunning];
+    self.statusItem.button.appearsDisabled = !running;
+
     if (!self.startStopItem) {
         return;
     }
-    if ([self isChildRunning]) {
+    if (running) {
         self.startStopItem.title = @"Stop";
         self.startStopItem.action = @selector(stopChildAction:);
         [self setItemSymbol:self.startStopItem symbol:@"stop.circle" description:@"Stop"];
