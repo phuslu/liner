@@ -117,8 +117,8 @@ EOF
 			;;
 		darwin_amd64 | darwin_arm64 )
 			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner
-			osxcross_clang=$(test ${GOARCH} = amd64 && echo o64-clang || echo oa64-clang)
-			${osxcross_clang} -x objective-c -fobjc-arc -mmacosx-version-min=11.0 -framework Cocoa -framework SystemConfiguration -framework Security liner.m -o build/liner-ui
+			clang=$(test $(uname) = "Darwin" && echo clang || echo $(test "${GOARCH}" = amd64 && echo o64-clang || echo oa64-clang))
+			${clang} -x objective-c -fobjc-arc -mmacosx-version-min=11.0 -framework Cocoa -framework SystemConfiguration -framework Security liner.m -o build/liner-ui
 			cp china.pac proxy.yaml build/
 			cd build
 			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
