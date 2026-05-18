@@ -9,13 +9,13 @@ require (
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
 	github.com/libp2p/go-yamux/v5 v5.1.0
 	github.com/mileusna/useragent v1.3.5
-	github.com/oschwald/maxminddb-golang/v2 v2.2.0
+	github.com/oschwald/maxminddb-golang/v2 v2.3.0
 	github.com/phuslu/fastdns v0.17.0
 	github.com/phuslu/geosite v1.0.20250901
 	github.com/phuslu/gosh v0.0.0-20260518173600-79c5c6ff8a46
 	github.com/phuslu/log v1.0.124
 	github.com/phuslu/lru v1.0.19
-	github.com/phuslu/pty v0.0.0-20260515102020-389761547580
+	github.com/phuslu/pty v0.0.0-20260518141308-9cb014534fff
 	github.com/phuslu/tcp-brutal v1.0.1-0.20260428140401-68c78bad227a
 	github.com/pkg/sftp v1.13.10
 	github.com/puzpuzpuz/xsync/v4 v4.5.0
@@ -41,7 +41,7 @@ require (
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
 	go.uber.org/mock v0.6.0 // indirect
-	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa // indirect
+	golang.org/x/exp v0.0.0-20260508232706-74f9aab9d74a // indirect
 	golang.org/x/term v0.43.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
