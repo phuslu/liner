@@ -11,6 +11,7 @@ import (
 	"net/netip"
 	"os"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -417,35 +418,39 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 		addedBypass = append(addedBypass, prefix)
 	}
 
-	scopes := []bool{false, true}
 	routes := make([]netip.Prefix, 0, len(routePrefixes))
 	for _, route := range routePrefixes {
-		routes = append(routes, route.Masked())
+		route = route.Masked()
+		if slices.Contains(routes, route) {
+			continue
+		}
+		routes = append(routes, route)
 	}
 	for _, route := range routes {
-		for _, scoped := range scopes {
-			args = []string{"-n", "add"}
-			if route.Addr().Is6() {
-				args = append(args, "-inet6")
-			}
-			args = append(args, "-net")
-			if scoped {
-				args = append(args, "-ifscope", name)
-			}
-			args = append(args, route.String(), "-interface", name)
-			if route.Addr().Is6() {
-				delargs := append([]string(nil), args...)
-				delargs[1] = "delete"
-				exec.Command("route", delargs...).Run()
-			}
-			if msg, err := run("route", args...); err != nil {
-				if strings.Contains(msg, "File exists") {
-					continue
-				}
-				return nil, fmt.Errorf("set tun route: route %s: %w: %s", strings.Join(args, " "), err, msg)
-			}
-			addedRoutes = append(addedRoutes, tunRoute{route, scoped})
+		args = []string{"-n", "add"}
+		if route.Addr().Is6() {
+			args = append(args, "-inet6")
 		}
+		args = append(args, "-net", route.String(), "-interface", name)
+
+		delargs := append([]string(nil), args...)
+		delargs[1] = "delete"
+		exec.Command("route", delargs...).Run()
+		// Older builds added ifscoped copies; remove them to keep split defaults single.
+		scopedDelargs := []string{"-n", "delete"}
+		if route.Addr().Is6() {
+			scopedDelargs = append(scopedDelargs, "-inet6")
+		}
+		scopedDelargs = append(scopedDelargs, "-net", "-ifscope", name, route.String(), "-interface", name)
+		exec.Command("route", scopedDelargs...).Run()
+
+		if msg, err := run("route", args...); err != nil {
+			if strings.Contains(msg, "File exists") {
+				continue
+			}
+			return nil, fmt.Errorf("set tun route: route %s: %w: %s", strings.Join(args, " "), err, msg)
+		}
+		addedRoutes = append(addedRoutes, tunRoute{route, false})
 	}
 
 	ok = true

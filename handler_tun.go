@@ -158,6 +158,13 @@ func (h *TunHandler) Load(ctx context.Context) error {
 
 	routePrefixes := make([]netip.Prefix, 0)
 	bypassPrefixes := make([]netip.Prefix, 0)
+	addRoutePrefix := func(prefix netip.Prefix) {
+		prefix = prefix.Masked()
+		if slices.Contains(routePrefixes, prefix) {
+			return
+		}
+		routePrefixes = append(routePrefixes, prefix)
+	}
 
 	addBypassPrefix := func(value string) error {
 		value = strings.TrimSpace(value)
@@ -238,20 +245,18 @@ func (h *TunHandler) Load(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("parse tun route %q: %w", route, err)
 		}
-		routePrefixes = append(routePrefixes, prefix.Masked())
+		addRoutePrefix(prefix)
 	}
 	if runtime.GOOS == "windows" && len(h.Config.Routes) == 0 {
 		// Windows still needs a destination route for sockets bound only to the
 		// TUN source address. Keep it as a high-metric /0 so normal routing wins.
-		routePrefixes = append(routePrefixes, netip.PrefixFrom(netip.AddrFrom4([4]byte{}), 0))
+		addRoutePrefix(netip.PrefixFrom(netip.AddrFrom4([4]byte{}), 0))
 	}
 	// has default route
 	if slices.ContainsFunc(h.Config.Routes, func(route string) bool { return strings.TrimSpace(route) == "0.0.0.0/0" }) {
 		if h.Config.DisableIpv6 {
 			for _, prefix := range []netip.Prefix{netip.MustParsePrefix("::/1"), netip.MustParsePrefix("8000::/1")} {
-				if !slices.Contains(routePrefixes, prefix) {
-					routePrefixes = append(routePrefixes, prefix)
-				}
+				addRoutePrefix(prefix)
 			}
 		}
 		for _, dialer := range h.Dialers {
