@@ -1,6 +1,6 @@
 //go:build ingore
 // Liner macOS 状态栏托盘程序 —— Objective-C 单文件脚本版
-// Compile with: clang -x objective-c -fobjc-arc -framework Cocoa -framework SystemConfiguration -framework Security liner.m -o liner-ui
+// Compile with: clang -x objective-c -fobjc-arc -mmacosx-version-min=11.0 -framework Cocoa -framework SystemConfiguration -framework Security liner.m -o liner-ui
 #import <Cocoa/Cocoa.h>
 #import <Security/Security.h>
 #import <SystemConfiguration/SystemConfiguration.h>
@@ -225,7 +225,7 @@ static NSString *TrimSpaces(NSString *value) {
         return;
     }
 
-    [[NSColor windowFrameColor] setFill];
+    [[NSColor separatorColor] setFill];
     NSRectFill(NSMakeRect(NSMinX(bounds), NSMinY(bounds), NSWidth(bounds), borderWidth));
     NSRectFill(NSMakeRect(NSMinX(bounds), NSMaxY(bounds) - borderWidth, NSWidth(bounds), borderWidth));
     NSRectFill(NSMakeRect(NSMinX(bounds), NSMinY(bounds), borderWidth, NSHeight(bounds)));
@@ -243,7 +243,10 @@ static NSString *TrimSpaces(NSString *value) {
 }
 @end
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
 @interface AppDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate, NSUserNotificationCenterDelegate>
+#pragma clang diagnostic pop
 @property(nonatomic, copy) NSString *childBin;
 @property(nonatomic, copy) NSString *appTitle;
 @property(nonatomic, copy) NSString *logWindowTitle;
@@ -306,7 +309,7 @@ static NSString *TrimSpaces(NSString *value) {
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
     [[NSFileManager defaultManager] changeCurrentDirectoryPath:self.workDir];
-    [NSUserNotificationCenter defaultUserNotificationCenter].delegate = self;
+    [self setupNotifications];
     [self setupStatusItem];
     [self setupConsoleWindow];
     [self showStartupPrompt];
@@ -328,9 +331,19 @@ static NSString *TrimSpaces(NSString *value) {
     return NO;
 }
 
+- (void)setupNotifications {
+    #pragma clang diagnostic push
+    #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    [NSUserNotificationCenter defaultUserNotificationCenter].delegate = self;
+    #pragma clang diagnostic pop
+}
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
 - (BOOL)userNotificationCenter:(NSUserNotificationCenter *)center shouldPresentNotification:(NSUserNotification *)notification {
     return YES;
 }
+#pragma clang diagnostic pop
 
 + (NSURL *)resolveWorkDirURL {
     NSBundle *bundle = [NSBundle mainBundle];
@@ -378,8 +391,8 @@ static NSString *TrimSpaces(NSString *value) {
         [path lineToPoint:points[1].pointValue];
         [path lineToPoint:points[2].pointValue];
         path.lineWidth = 2.1;
-        path.lineCapStyle = NSRoundLineCapStyle;
-        path.lineJoinStyle = NSRoundLineJoinStyle;
+        path.lineCapStyle = NSLineCapStyleRound;
+        path.lineJoinStyle = NSLineJoinStyleRound;
         [path stroke];
     }
 
@@ -1451,11 +1464,14 @@ static NSString *TrimSpaces(NSString *value) {
 }
 
 - (void)sendNotificationWithTitle:(NSString *)title body:(NSString *)body {
+    #pragma clang diagnostic push
+    #pragma clang diagnostic ignored "-Wdeprecated-declarations"
     NSUserNotification *notification = [NSUserNotification new];
     notification.title = title;
     notification.informativeText = body;
     notification.soundName = NSUserNotificationDefaultSoundName;
     [[NSUserNotificationCenter defaultUserNotificationCenter] deliverNotification:notification];
+    #pragma clang diagnostic pop
 }
 
 - (void)showConsole:(id)sender {
@@ -1510,10 +1526,18 @@ static NSString *TrimSpaces(NSString *value) {
         return;
     }
 
-    if (![[NSWorkspace sharedWorkspace] openFile:configPath withApplication:@"TextEdit"]) {
-        [self appendToConsole:[NSString stringWithFormat:@"Open config failed: %@\n", configPath] color:self.ansiColors[1]];
-        [self showConsole:nil];
-    }
+    NSURL *configURL = [NSURL fileURLWithPath:configPath];
+    NSURL *textEditURL = [[NSWorkspace sharedWorkspace] URLForApplicationWithBundleIdentifier:@"com.apple.TextEdit"];
+    NSWorkspaceOpenConfiguration *configuration = [NSWorkspaceOpenConfiguration configuration];
+    [[NSWorkspace sharedWorkspace] openURLs:@[configURL] withApplicationAtURL:textEditURL configuration:configuration completionHandler:^(NSRunningApplication *app, NSError *error) {
+        if (!error) {
+            return;
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self appendToConsole:[NSString stringWithFormat:@"Open config failed: %@\n", configPath] color:self.ansiColors[1]];
+            [self showConsole:nil];
+        });
+    }];
 }
 
 - (void)reload:(id)sender {
