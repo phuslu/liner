@@ -82,6 +82,9 @@ public static class LinerNativeMethods
     [DllImport("user32.dll")]
     public static extern bool SetForegroundWindow(IntPtr hWnd);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool DestroyIcon(IntPtr hIcon);
+
     [DllImport("kernel32.dll", SetLastError = true)]
     public static extern bool AttachConsole(uint dwProcessId);
 
@@ -111,6 +114,8 @@ $script:ChildConsoleHandle = [IntPtr]::Zero
 $script:ExpectedStopPids = @{}
 
 $script:TrayIcon = $null
+$script:TrayIconRunning = $null
+$script:TrayIconStopped = $null
 $script:AppContext = $null
 $script:ContextMenu = $null
 $script:ConsoleItem = $null
@@ -783,11 +788,19 @@ function Update-ConsoleMenuState {
 }
 
 function Update-ProcessMenuState {
+    $running = Test-ChildRunning
+    if ($script:TrayIcon) {
+        if ($running -and $script:TrayIconRunning) {
+            $script:TrayIcon.Icon = $script:TrayIconRunning
+        } elseif ($script:TrayIconStopped) {
+            $script:TrayIcon.Icon = $script:TrayIconStopped
+        }
+    }
+
     if (-not $script:StartStopItem) {
         return
     }
 
-    $running = Test-ChildRunning
     if ($running) {
         $script:StartStopItem.Text = 'Stop'
     } else {
@@ -1062,46 +1075,93 @@ function Edit-Config {
 }
 
 function New-LinerIcon {
+    param([bool]$Stopped = $false)
+
     $bitmap = New-Object System.Drawing.Bitmap 32, 32
     $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-    $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-    $graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::Half
-    $graphics.Clear([System.Drawing.Color]::Transparent)
-
-    $systemUsesLightTheme = 0
+    $pen = $null
+    $nodeBrush = $null
+    $hicon = [IntPtr]::Zero
     try {
-        $personalize = Get-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -ErrorAction Stop
-        $systemUsesLightTheme = [int]$personalize.SystemUsesLightTheme
-    } catch {
+        $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::Half
+        $graphics.Clear([System.Drawing.Color]::Transparent)
+
         $systemUsesLightTheme = 0
+        try {
+            $personalize = Get-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -ErrorAction Stop
+            $systemUsesLightTheme = [int]$personalize.SystemUsesLightTheme
+        } catch {
+            $systemUsesLightTheme = 0
+        }
+
+        if ($Stopped) {
+            if ($systemUsesLightTheme -ne 0) {
+                $glyphColor = [System.Drawing.Color]::FromArgb(150, 150, 150)
+            } else {
+                $glyphColor = [System.Drawing.Color]::FromArgb(120, 120, 120)
+            }
+        } elseif ($systemUsesLightTheme -ne 0) {
+            $glyphColor = [System.Drawing.Color]::FromArgb(32, 32, 32)
+        } else {
+            $glyphColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+        }
+
+        $pen = New-Object System.Drawing.Pen $glyphColor, 3.8
+        $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $pen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
+        $nodeBrush = New-Object System.Drawing.SolidBrush $glyphColor
+
+        $graphics.DrawLine($pen, 8, 10, 16, 10)
+        $graphics.DrawLine($pen, 16, 10, 24, 16)
+        $graphics.DrawLine($pen, 8, 22, 16, 22)
+        $graphics.DrawLine($pen, 16, 22, 24, 16)
+
+        $graphics.FillEllipse($nodeBrush, 4.25, 6.25, 7.5, 7.5)
+        $graphics.FillEllipse($nodeBrush, 20.25, 12.25, 7.5, 7.5)
+        $graphics.FillEllipse($nodeBrush, 4.25, 18.25, 7.5, 7.5)
+
+        $hicon = $bitmap.GetHicon()
+        $icon = [System.Drawing.Icon]::FromHandle($hicon)
+        return ([System.Drawing.Icon]($icon.Clone()))
+    } finally {
+        if ($nodeBrush) {
+            $nodeBrush.Dispose()
+        }
+        if ($pen) {
+            $pen.Dispose()
+        }
+        if ($graphics) {
+            $graphics.Dispose()
+        }
+        if ($hicon -ne [IntPtr]::Zero) {
+            [LinerNativeMethods]::DestroyIcon($hicon) | Out-Null
+        }
+        if ($bitmap) {
+            $bitmap.Dispose()
+        }
     }
+}
 
-    if ($systemUsesLightTheme -ne 0) {
-        $glyphColor = [System.Drawing.Color]::FromArgb(32, 32, 32)
-    } else {
-        $glyphColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+function Dispose-TrayResources {
+    if ($script:TrayIcon) {
+        try {
+            $script:TrayIcon.Visible = $false
+            $script:TrayIcon.Icon = $null
+        } catch {
+        }
+        $script:TrayIcon.Dispose()
+        $script:TrayIcon = $null
     }
-
-    $pen = New-Object System.Drawing.Pen $glyphColor, 3.8
-    $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
-    $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
-    $pen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
-    $nodeBrush = New-Object System.Drawing.SolidBrush $glyphColor
-
-    $graphics.DrawLine($pen, 8, 10, 16, 10)
-    $graphics.DrawLine($pen, 16, 10, 24, 16)
-    $graphics.DrawLine($pen, 8, 22, 16, 22)
-    $graphics.DrawLine($pen, 16, 22, 24, 16)
-
-    $graphics.FillEllipse($nodeBrush, 4.25, 6.25, 7.5, 7.5)
-    $graphics.FillEllipse($nodeBrush, 20.25, 12.25, 7.5, 7.5)
-    $graphics.FillEllipse($nodeBrush, 4.25, 18.25, 7.5, 7.5)
-
-    $nodeBrush.Dispose()
-    $pen.Dispose()
-    $graphics.Dispose()
-
-    return [System.Drawing.Icon]::FromHandle($bitmap.GetHicon())
+    if ($script:TrayIconRunning) {
+        $script:TrayIconRunning.Dispose()
+        $script:TrayIconRunning = $null
+    }
+    if ($script:TrayIconStopped) {
+        $script:TrayIconStopped.Dispose()
+        $script:TrayIconStopped = $null
+    }
 }
 
 function New-MenuItem {
@@ -1121,8 +1181,11 @@ function New-MenuItem {
 }
 
 function Setup-Tray {
+    $script:TrayIconRunning = New-LinerIcon
+    $script:TrayIconStopped = New-LinerIcon -Stopped $true
+
     $script:TrayIcon = New-Object System.Windows.Forms.NotifyIcon
-    $script:TrayIcon.Icon = New-LinerIcon
+    $script:TrayIcon.Icon = $script:TrayIconStopped
     $script:TrayIcon.Text = $script:AppTitle
     $script:TrayIcon.Visible = $true
     $script:TrayIcon.Add_MouseClick({
@@ -1185,10 +1248,12 @@ function Setup-Tray {
     $script:ContextMenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
     $script:ContextMenu.Items.Add((New-MenuItem ('Quit ' + $script:AppTitle) {
         Stop-Child | Out-Null
-        $script:TrayIcon.Visible = $false
-        $script:TrayIcon.Dispose()
-        $script:Timer.Stop()
-        $script:Timer.Dispose()
+        Dispose-TrayResources
+        if ($script:Timer) {
+            $script:Timer.Stop()
+            $script:Timer.Dispose()
+            $script:Timer = $null
+        }
         $script:AppContext.ExitThread()
     })) | Out-Null
 
@@ -1215,8 +1280,5 @@ try {
         Stop-Child | Out-Null
     } catch {
     }
-    if ($script:TrayIcon) {
-        $script:TrayIcon.Visible = $false
-        $script:TrayIcon.Dispose()
-    }
+    Dispose-TrayResources
 }
