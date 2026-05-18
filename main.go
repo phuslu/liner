@@ -564,8 +564,20 @@ func main() {
 			}
 		}
 		localdialer := *dialer
-		if ip, err := GetPreferedLocalIP("1.1.1.1"); err == nil {
-			localdialer.Interface = ip.String()
+		ip, err := GetPreferedLocalIP("1.1.1.1")
+		if err != nil {
+			log.Fatal().Err(err).Str("tun_name", tunConfig.Name).Msg("tun get prefered ip error")
+		}
+		log.Info().Str("tun_name", tunConfig.Name).NetIPAddr("tun_local_ip", ip).Msg("tun set local dialer interface ip")
+		localdialer.Interface = ip.String()
+		switch runtime.GOOS {
+		case "darwin":
+			name, err := GetNetInterfaceByLocalIP(ip)
+			if err != nil {
+				log.Fatal().Err(err).Str("tun_name", tunConfig.Name).NetIPAddr("tun_local_ip", ip).Msg("tun get prefered inerface error")
+			}
+			log.Info().Str("tun_name", tunConfig.Name).NetIPAddr("tun_local_ip", ip).Str("tun_local_interface", name).Msg("tun set local dialer interface ip")
+			localdialer.Interface = name
 		}
 		h := &TunHandler{
 			Config:      tunConfig,

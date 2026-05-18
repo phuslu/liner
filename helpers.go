@@ -1312,7 +1312,42 @@ func GetPreferedLocalIP(remote string) (netip.Addr, error) {
 	}
 	defer conn.Close()
 
-	return AddrPortFromNetAddr(conn.LocalAddr()).Addr(), nil
+	return AddrPortFromNetAddr(conn.LocalAddr()).Addr().Unmap(), nil
+}
+
+func GetNetInterfaceByLocalIP(ip netip.Addr) (string, error) {
+	if ip.Is4In6() {
+		ip = ip.Unmap()
+	}
+
+	ifis, err := net.Interfaces()
+	if err != nil {
+		return "", err
+	}
+	for _, ifi := range ifis {
+		addrs, err := ifi.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			switch v := a.(type) {
+			case *net.IPNet:
+				if addr, ok := netip.AddrFromSlice(v.IP); ok && addr.Unmap() == ip {
+					return ifi.Name, nil
+				}
+			case *net.IPAddr:
+				if addr, ok := netip.AddrFromSlice(v.IP); ok && addr.Unmap() == ip {
+					return ifi.Name, nil
+				}
+			default:
+				prefix, err := netip.ParsePrefix(a.String())
+				if err == nil && prefix.Addr().Unmap() == ip {
+					return ifi.Name, nil
+				}
+			}
+		}
+	}
+	return "", fmt.Errorf("local interface not found for %s", ip)
 }
 
 func AddrPortFromNetAddr(addr net.Addr) (addrport netip.AddrPort) {
