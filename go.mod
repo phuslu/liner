@@ -12,7 +12,7 @@ require (
 	github.com/oschwald/maxminddb-golang/v2 v2.2.0
 	github.com/phuslu/fastdns v0.17.0
 	github.com/phuslu/geosite v1.0.20250901
-	github.com/phuslu/gosh v0.0.0-20260515182517-7bc71f592569
+	github.com/phuslu/gosh v0.0.0-20260518173600-79c5c6ff8a46
 	github.com/phuslu/log v1.0.124
 	github.com/phuslu/lru v1.0.19
 	github.com/phuslu/pty v0.0.0-20260515102020-389761547580
