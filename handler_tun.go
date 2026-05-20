@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"net/http"
 	"net/netip"
 	"net/url"
 	"os"
@@ -1324,9 +1323,9 @@ func (h *TunHandler) prepareDial(req TunRequest) (context.Context, Dialer, strin
 	case preferIPv6:
 		ctx = context.WithValue(ctx, DialerPreferIPv6ContextKey, struct{}{})
 	}
-	ctx = context.WithValue(ctx, DialerHTTPHeaderContextKey, http.Header{
-		"X-Forwarded-For": []string{req.RemoteAddr.Addr().String()},
-	})
+	// ctx = context.WithValue(ctx, DialerHTTPHeaderContextKey, http.Header{
+	// 	"X-Forwarded-For": []string{req.RemoteAddr.Addr().String()},
+	// })
 
 	return ctx, dialer, dialerName, true
 }
