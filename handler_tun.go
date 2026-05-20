@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"text/template"
 	"time"
 
@@ -1106,7 +1107,7 @@ func tunGetCopyBuffer(size int) []byte {
 	return b[:size]
 }
 
-func tunCopyConnWithActivity(dst, src net.Conn, active func()) {
+func tunCopyConnWithActivity(dst, src net.Conn, touch func()) {
 	buf := tunGetCopyBuffer(tunCopyBufferSize)
 	defer tunPutCopyBuffer(buf)
 	for {
@@ -1115,7 +1116,7 @@ func tunCopyConnWithActivity(dst, src net.Conn, active func()) {
 			if nw, werr := dst.Write(buf[:n]); werr != nil || nw != n {
 				return
 			}
-			active()
+			touch()
 		}
 		if err != nil {
 			return
@@ -1128,22 +1129,37 @@ func tunStartTCPIdleTimer(timeout time.Duration, conns ...net.Conn) (func(), fun
 		return func() {}, func() {}
 	}
 	var mu sync.Mutex
-	stopped := false
+	var stopped atomic.Bool
+	var nextTouch atomic.Int64
+	interval := timeout / 4
+	if interval <= 0 || interval > time.Second {
+		interval = time.Second
+	}
+	start := time.Now()
+	nextTouch.Store(int64(interval))
 	timer := time.AfterFunc(timeout, func() {
 		for _, conn := range conns {
 			_ = conn.Close()
 		}
 	})
 	touch := func() {
+		if stopped.Load() {
+			return
+		}
+		now := time.Since(start).Nanoseconds()
+		next := nextTouch.Load()
+		if now < next || !nextTouch.CompareAndSwap(next, now+int64(interval)) {
+			return
+		}
 		mu.Lock()
-		if !stopped {
+		if !stopped.Load() {
 			timer.Reset(timeout)
 		}
 		mu.Unlock()
 	}
 	stop := func() {
+		stopped.Store(true)
 		mu.Lock()
-		stopped = true
 		timer.Stop()
 		mu.Unlock()
 	}
