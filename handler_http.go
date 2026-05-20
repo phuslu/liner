@@ -110,9 +110,9 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 			ri.JA4 = b2s(v.JA4[:])
 		}
 		if req.ProtoMajor == 3 {
-			ri.ClientConnOps = ConnOps{nil, v.QuicConn}
+			ri.ClientConnOps = ConnOps{nil, v.QuicConn()}
 		} else {
-			conn := v.NetConn
+			conn := v.NetConn()
 			for conn != nil {
 				c, ok := conn.(interface {
 					NetConn() net.Conn

@@ -48,9 +48,14 @@ type TLSInspectorCacheValue struct {
 type TLSClientHelloInfo struct {
 	ClientHelloInfo *tls.ClientHelloInfo
 	JA4             [36]byte
-	NetConn         net.Conn
-	QuicConn        *quic.Conn
+
+	Conn  net.Conn
+	QConn *quic.Conn
 }
+
+func (info *TLSClientHelloInfo) NetConn() net.Conn { return info.Conn }
+
+func (info *TLSClientHelloInfo) QuicConn() *quic.Conn { return info.QConn }
 
 type TLSInspectorError string
 
@@ -283,7 +288,7 @@ func HTTPClientHelloInfoFromContext(ctx context.Context) *TLSClientHelloInfo {
 }
 
 func (m *TLSInspector) HTTPConnContext(ctx context.Context, conn net.Conn) context.Context {
-	return context.WithValue(ctx, HTTPClientHelloInfoContextKey, &TLSClientHelloInfo{NetConn: conn})
+	return context.WithValue(ctx, HTTPClientHelloInfoContextKey, &TLSClientHelloInfo{Conn: conn})
 }
 
 func (m *TLSInspector) HTTP3QUICConnContext(ctx context.Context, _ *quic.ClientInfo) (context.Context, error) {
@@ -292,7 +297,7 @@ func (m *TLSInspector) HTTP3QUICConnContext(ctx context.Context, _ *quic.ClientI
 
 func (m *TLSInspector) HTTP3ConnContext(ctx context.Context, conn *quic.Conn) context.Context {
 	if info := HTTPClientHelloInfoFromContext(ctx); info != nil {
-		info.QuicConn = conn
+		info.QConn = conn
 	}
 	return ctx
 }
