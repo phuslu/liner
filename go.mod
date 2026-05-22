@@ -12,11 +12,11 @@ require (
 	github.com/oschwald/maxminddb-golang/v2 v2.3.0
 	github.com/phuslu/fastdns v0.17.0
 	github.com/phuslu/geosite v1.0.20250901
-	github.com/phuslu/gosh v0.0.0-20260518173600-79c5c6ff8a46
+	github.com/phuslu/gosh v0.0.0-20260519045954-ab17f8903c1d
 	github.com/phuslu/log v1.0.124
 	github.com/phuslu/lru v1.0.19
 	github.com/phuslu/pty v0.0.0-20260518141308-9cb014534fff
-	github.com/phuslu/tcp-brutal v1.0.1-0.20260428140401-68c78bad227a
+	github.com/phuslu/tcp-brutal v1.0.1
 	github.com/pkg/sftp v1.13.10
 	github.com/puzpuzpuz/xsync/v4 v4.5.0
 	github.com/quic-go/quic-go v0.59.1
@@ -25,11 +25,11 @@ require (
 	github.com/smallnest/ringbuffer v0.1.1
 	github.com/valyala/bytebufferpool v1.0.0
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba
-	golang.org/x/crypto v0.51.0
-	golang.org/x/net v0.54.0
-	golang.org/x/sys v0.44.0
+	golang.org/x/crypto v0.52.0
+	golang.org/x/net v0.55.0
+	golang.org/x/sys v0.45.0
 	golang.zx2c4.com/wireguard v0.0.0-20250521234502-f333402bd9cb
-	gvisor.dev/gvisor v0.0.0-20260512224032-031492ed34ed
+	gvisor.dev/gvisor v0.0.0-20260519190036-266ba6c868f3
 )
 
 require (
