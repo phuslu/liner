@@ -5,7 +5,6 @@ import (
 	"crypto/sha1"
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -22,9 +21,6 @@ type SocksDialer struct {
 	Host        string
 	Port        string
 	PSK         string
-	Socks4      bool
-	Socks4A     bool
-	Socks5      bool
 	Socks5H     bool
 	Logger      *slog.Logger
 	DnsResolver *DnsResolver
@@ -32,129 +28,6 @@ type SocksDialer struct {
 }
 
 func (d *SocksDialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
-	switch {
-	case d.Socks4, d.Socks4A:
-		return d.dialsocks4(ctx, network, addr)
-	case d.Socks5, d.Socks5H:
-		return d.dialsocks5(ctx, network, addr)
-	}
-	return nil, errors.New("invaild socks dialer")
-}
-
-func (d *SocksDialer) dialsocks4(ctx context.Context, network, addr string) (net.Conn, error) {
-	switch network {
-	case "tcp", "tcp6", "tcp4":
-	default:
-		return nil, errors.ErrUnsupported
-	}
-
-	dialer := d.Dialer
-	if md := MemoryDialerOf(ctx, network, addr); md != nil {
-		if d.Logger != nil {
-			d.Logger.Info("socks4 dialer switch to memory dialer", "memory_dialer_address", md.Address)
-		}
-		if IsMemoryAddress(addr) {
-			// Target is a memory address, skip SOCKS CONNECT
-			return md.DialContext(ctx, network, net.JoinHostPort(d.Host, d.Port))
-		}
-		dialer = md
-	}
-
-	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(d.Host, d.Port))
-	if err != nil {
-		return nil, err
-	}
-	closeConn := &conn
-	defer func() {
-		if closeConn != nil {
-			(*closeConn).Close()
-		}
-	}()
-
-	if d.PSK != "" {
-		sha1sum := sha1.Sum(s2b(d.PSK))
-		nonce := binary.LittleEndian.Uint64(sha1sum[:8])
-		conn = &Chacha20NetConn{
-			Conn:   conn,
-			Writer: must(Chacha20NewStreamCipher([]byte(d.PSK), nonce)),
-			Reader: must(Chacha20NewStreamCipher([]byte(d.PSK), nonce)),
-		}
-	}
-
-	host, portStr, err := net.SplitHostPort(addr)
-	if err != nil {
-		return nil, err
-	}
-
-	port, err := strconv.Atoi(portStr)
-	if err != nil {
-		return nil, errors.New("socksdialer: failed to parse port number: " + portStr)
-	}
-	if port < 1 || port > 0xffff {
-		return nil, errors.New("socksdialer: port number out of range: " + portStr)
-	}
-
-	if d.DnsResolver != nil {
-		if ips, err := d.DnsResolver.LookupNetIP(ctx, "ip", host); err == nil && len(ips) > 0 {
-			host = ips[0].String()
-		}
-	}
-
-	buf := make([]byte, 0, 1024)
-
-	switch network {
-	case "tcp", "tcp6", "tcp4":
-		buf = append(buf, VersionSocks4, SocksCommandConnectTCP)
-	case "udp", "udp6", "udp4":
-		buf = append(buf, VersionSocks4, SocksCommandConnectUDP)
-	default:
-		return nil, errors.New("socksdialer: no support for SOCKS5 proxy connections of type " + network)
-	}
-
-	buf = append(buf, byte(port>>8), byte(port))
-	if d.Socks4A {
-		buf = append(buf, 0, 0, 0, 1, 0)
-		buf = append(buf, []byte(host+"\x00")...)
-	} else {
-		ips, err := d.DnsResolver.LookupNetIP(ctx, "ip", host)
-		if err != nil {
-			return nil, err
-		}
-		if len(ips) == 0 {
-			return nil, fmt.Errorf("socksdialer: resolve %s return empty ip list", host)
-		}
-		if !ips[0].Is4() {
-			return nil, errors.New("socksdialer: resolve ip address out of range: " + ips[0].String())
-		}
-		ip4 := ips[0].As4()
-		buf = append(buf, ip4[0], ip4[1], ip4[2], ip4[3], 0)
-	}
-
-	if deadline, ok := ctx.Deadline(); ok {
-		conn.SetDeadline(deadline)
-		defer conn.SetDeadline(time.Time{})
-	}
-
-	_, err = conn.Write(buf)
-	if err != nil {
-		return nil, err
-	}
-
-	var resp [8]byte
-	_, err = conn.Read(resp[:])
-	if err != nil && err != io.EOF {
-		return nil, err
-	}
-
-	if status := Socks4Status(resp[1]); status > 0 {
-		return nil, errors.New("socksdialer: SOCKS4 proxy at " + d.Host + " failed to connect: " + status.String())
-	}
-
-	closeConn = nil
-	return conn, nil
-}
-
-func (d *SocksDialer) dialsocks5(ctx context.Context, network, addr string) (net.Conn, error) {
 	dialer := d.Dialer
 	if md := MemoryDialerOf(ctx, network, addr); md != nil {
 		if d.Logger != nil {
@@ -346,30 +219,6 @@ const (
 	SocksCommandConnectTCP              = 1
 	SocksCommandConnectUDP              = 3
 )
-
-type Socks4Status byte
-
-const (
-	_                               Socks4Status = iota
-	Socks4StatusRequestGranted                   = 0x5a
-	Socks4StatusConnectionForbidden              = 0x5b
-	Socks4StatusIdentdRequired                   = 0x5c
-	Socks4StatusIdentdFailed                     = 0x5d
-)
-
-func (s Socks4Status) String() string {
-	switch s {
-	case Socks4StatusRequestGranted:
-		return "request granted"
-	case Socks4StatusConnectionForbidden:
-		return "connection forbidden"
-	case Socks4StatusIdentdRequired:
-		return "identd required"
-	case Socks4StatusIdentdFailed:
-		return "identd failed"
-	}
-	return "socks4 status: errno 0x" + strconv.FormatInt(int64(s), 16)
-}
 
 type Socks5AddressType byte
 

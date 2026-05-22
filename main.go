@@ -387,16 +387,13 @@ func main() {
 				TLSCache:  tlsClientSessionCache,
 				Logger:    slog.Default(),
 			}
-		case "socks4", "socks4a", "socks", "socks5", "socks5h":
+		case "socks5h":
 			return &SocksDialer{
 				Username:    u.User.Username(),
 				Password:    first(u.User.Password()),
 				Host:        u.Hostname(),
 				Port:        u.Port(),
 				PSK:         u.Query().Get("psk"),
-				Socks4:      u.Scheme == "socks4" || u.Scheme == "socks4a",
-				Socks4A:     u.Scheme == "socks4a",
-				Socks5:      u.Scheme == "socks" || u.Scheme == "socks5" || u.Scheme == "socks5h",
 				Socks5H:     u.Scheme == "socks5h",
 				Logger:      slog.Default(),
 				DnsResolver: dnsResolver,

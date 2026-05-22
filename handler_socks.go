@@ -107,12 +107,12 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 
 	req.Version = SocksVersion(b[0])
 	switch req.Version {
-	case VersionSocks4:
-		conn.Write([]byte{0x00, byte(Socks4StatusConnectionForbidden), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00})
-		log.Error().NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Int("socks_version", int(req.Version)).Msg("socks version unsupported")
-		return
 	case VersionSocks5:
+		break
+	case VersionSocks4:
+		fallthrough
 	default:
+		conn.Write([]byte{0x00, byte(0x5b), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00})
 		log.Error().NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Int("socks_version", int(req.Version)).Msg("socks version unsupported")
 		return
 	}
