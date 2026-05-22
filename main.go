@@ -609,16 +609,15 @@ func main() {
 	for _, server := range config.Https {
 		handler := &HTTPServerHandler{
 			ForwardHandler: &HTTPForwardHandler{
-				Config:          server,
-				DataLogger:      dataLogger,
-				MemoryDialers:   memoryDialers,
-				LocalDialer:     dialer,
-				LocalTransport:  transport,
-				Dialers:         dialers,
-				DnsResolver:     dnsResolver,
-				GeoResolver:     geoResolver,
-				PerferedLocalIP: first(GetPreferedLocalIP("1.1.1.1")).String(),
-				Functions:       functions,
+				Config:         server,
+				DataLogger:     dataLogger,
+				MemoryDialers:  memoryDialers,
+				LocalDialer:    dialer,
+				LocalTransport: transport,
+				Dialers:        dialers,
+				DnsResolver:    dnsResolver,
+				GeoResolver:    geoResolver,
+				Functions:      functions,
 			},
 			TunnelHandler: &HTTPTunnelHandler{
 				Config:        server,
@@ -848,16 +847,15 @@ func main() {
 		}
 		handler := &HTTPServerHandler{
 			ForwardHandler: &HTTPForwardHandler{
-				Config:          httpConfig,
-				DataLogger:      dataLogger,
-				MemoryDialers:   memoryDialers,
-				LocalDialer:     dialer,
-				LocalTransport:  transport,
-				Dialers:         dialers,
-				DnsResolver:     dnsResolver,
-				GeoResolver:     geoResolver,
-				PerferedLocalIP: first(GetPreferedLocalIP("1.1.1.1")).String(),
-				Functions:       functions,
+				Config:         httpConfig,
+				DataLogger:     dataLogger,
+				MemoryDialers:  memoryDialers,
+				LocalDialer:    dialer,
+				LocalTransport: transport,
+				Dialers:        dialers,
+				DnsResolver:    dnsResolver,
+				GeoResolver:    geoResolver,
+				Functions:      functions,
 			},
 			TunnelHandler: &HTTPTunnelHandler{
 				Config:        httpConfig,
