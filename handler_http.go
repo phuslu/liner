@@ -41,6 +41,7 @@ type HTTPRequestInfo struct {
 	TLSServerName   string
 	TLSVersion      uint16
 	JA4             string
+	Certificate     *tls.Certificate
 	ClientHelloInfo *tls.ClientHelloInfo
 	ClientHelloRaw  []byte
 	ClientConnOps   ConnOps
@@ -92,8 +93,9 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		ri.TLSVersion = 0
 	}
 
-	ri.ClientHelloInfo, ri.ClientHelloRaw, ri.JA4, ri.ClientConnOps = nil, nil, "", ConnOps{}
+	ri.Certificate, ri.ClientHelloInfo, ri.ClientHelloRaw, ri.JA4, ri.ClientConnOps = nil, nil, nil, "", ConnOps{}
 	if v := HTTPClientHelloInfoFromContext(req.Context()); v != nil {
+		ri.Certificate = v.Certificate
 		ri.ClientHelloInfo = v.ClientHelloInfo
 		if v.ClientHelloInfo != nil && v.ClientHelloInfo.Conn != nil {
 			var conn net.Conn = v.ClientHelloInfo.Conn
@@ -125,6 +127,18 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 			if tc, ok := conn.(*net.TCPConn); ok && tc != nil {
 				ri.ClientConnOps = ConnOps{tc, nil}
 			}
+		}
+	}
+
+	// fix empty sni for IP ceritifcate
+	if ri.TLSServerName == "" && ri.Certificate != nil && ri.Certificate.Leaf != nil {
+		switch {
+		case len(ri.Certificate.Leaf.DNSNames) > 0:
+			ri.TLSServerName = ri.Certificate.Leaf.DNSNames[0]
+		case len(ri.Certificate.Leaf.IPAddresses) > 0:
+			ri.TLSServerName = ri.Certificate.Leaf.IPAddresses[0].String()
+		default:
+			ri.TLSServerName = ri.Certificate.Leaf.Subject.CommonName
 		}
 	}
 
