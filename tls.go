@@ -47,6 +47,7 @@ type TLSInspectorCacheValue struct {
 
 type TLSClientHelloInfo struct {
 	ClientHelloInfo *tls.ClientHelloInfo
+	Certificate     *tls.Certificate
 	JA4             [36]byte
 
 	Conn  net.Conn
@@ -184,7 +185,8 @@ func (m *TLSInspector) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certific
 }
 
 func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Config, error) {
-	if info := HTTPClientHelloInfoFromContext(hello.Context()); info != nil {
+	info := HTTPClientHelloInfoFromContext(hello.Context())
+	if info != nil {
 		info.ClientHelloInfo = hello
 		AppendJA4Fingerprint(info.JA4[:0], info.ClientHelloInfo)
 	}
@@ -223,6 +225,9 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 	}
 
 	if v, _ := m.TLSConfigCache.Load(cacheKey); v.TLSConfig != nil && time.Now().Before(v.ExpiredAt) {
+		if info != nil {
+			info.Certificate = &v.TLSConfig.Certificates[0]
+		}
 		return v.TLSConfig, nil
 	}
 
@@ -237,6 +242,9 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 			}
 		}
 		return nil, fmt.Errorf("tls inspector cannot handle server name %#v: %w", hello.ServerName, err)
+	}
+	if info != nil {
+		info.Certificate = cert
 	}
 
 	config := &tls.Config{
