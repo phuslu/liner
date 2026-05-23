@@ -93,6 +93,12 @@ public static class LinerNativeMethods
 
     [DllImport("kernel32.dll")]
     public static extern IntPtr GetConsoleWindow();
+
+    [DllImport("kernel32.dll")]
+    public static extern IntPtr GetCurrentProcess();
+
+    [DllImport("psapi.dll", SetLastError = true)]
+    public static extern bool EmptyWorkingSet(IntPtr hProcess);
 }
 '@
 }
@@ -105,13 +111,16 @@ $script:AppTitle = 'Liner'
 $script:IgnoredProfileFiles = @('example.yaml')
 $script:InternetSettingsPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings'
 $script:ChildStopTimeoutMs = 5000
+$script:WorkingSetTrimInterval = [TimeSpan]::FromMinutes(10)
 
 $script:WorkDir = Split-Path -Parent $script:ScriptPath
 $script:Profiles = @()
+$script:ProfilesSignature = ''
 $script:SelectedProfile = $null
 $script:ChildProcess = $null
 $script:ChildConsoleHandle = [IntPtr]::Zero
 $script:ExpectedStopPids = @{}
+$script:LastWorkingSetTrim = [datetime]::MinValue
 
 $script:TrayIcon = $null
 $script:TrayIconRunning = $null
@@ -163,6 +172,18 @@ function Invoke-UiAction {
         & $Action
     } catch {
         Show-ErrorMessage $_.Exception.Message
+    }
+}
+
+function Invoke-WorkingSetTrim {
+    try {
+        [System.GC]::Collect()
+        [System.GC]::WaitForPendingFinalizers()
+        [System.GC]::Collect()
+        [LinerNativeMethods]::EmptyWorkingSet([LinerNativeMethods]::GetCurrentProcess()) | Out-Null
+    } catch {
+    } finally {
+        $script:LastWorkingSetTrim = [datetime]::UtcNow
     }
 }
 
@@ -255,6 +276,32 @@ function Load-Profiles {
     } elseif (-not ($script:Profiles -contains $script:SelectedProfile)) {
         $script:SelectedProfile = $null
     }
+}
+
+function Get-ProfilesSignature {
+    if (-not (Test-Path -LiteralPath $script:WorkDir -PathType Container)) {
+        return ''
+    }
+
+    $parts = @()
+    foreach ($entry in Get-ChildItem -LiteralPath $script:WorkDir -Filter '*.yaml' -File | Sort-Object Name) {
+        if ($script:IgnoredProfileFiles -contains $entry.Name) {
+            continue
+        }
+        $parts += ('{0}|{1}|{2}' -f $entry.Name, $entry.Length, $entry.LastWriteTimeUtc.Ticks)
+    }
+    return ($parts -join "`n")
+}
+
+function Refresh-ProfilesIfChanged {
+    $signature = Get-ProfilesSignature
+    if ($signature -eq $script:ProfilesSignature) {
+        return
+    }
+
+    $script:ProfilesSignature = $signature
+    Load-Profiles
+    Rebuild-ProfileMenu
 }
 
 function Get-ConfigDataPaths {
@@ -1198,8 +1245,7 @@ function Setup-Tray {
     $script:ContextMenu = New-Object System.Windows.Forms.ContextMenuStrip
     $script:ContextMenu.Add_Opening({
         Invoke-UiAction {
-            Load-Profiles
-            Rebuild-ProfileMenu
+            Refresh-ProfilesIfChanged
             Update-ProxyMenuState
             Update-ProcessMenuState
         }
@@ -1263,14 +1309,23 @@ function Setup-Tray {
     Update-ProcessMenuState
 }
 
+$script:ProfilesSignature = Get-ProfilesSignature
 Load-Profiles
 
 $script:AppContext = New-Object System.Windows.Forms.ApplicationContext
 Setup-Tray
+Invoke-WorkingSetTrim
 
 $script:Timer = New-Object System.Windows.Forms.Timer
 $script:Timer.Interval = 1000
-$script:Timer.Add_Tick({ Invoke-UiAction { Check-ChildProcess } })
+$script:Timer.Add_Tick({
+    Invoke-UiAction {
+        Check-ChildProcess
+        if (([datetime]::UtcNow - $script:LastWorkingSetTrim) -ge $script:WorkingSetTrimInterval) {
+            Invoke-WorkingSetTrim
+        }
+    }
+})
 $script:Timer.Start()
 
 try {
