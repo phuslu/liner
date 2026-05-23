@@ -94,7 +94,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	}
 
 	ri.Certificate, ri.ClientHelloInfo, ri.ClientHelloRaw, ri.JA4, ri.ClientConnOps = nil, nil, nil, "", ConnOps{}
-	if v := HTTPClientHelloInfoFromContext(req.Context()); v != nil {
+	if v := TLSClientInfoFromContext(req.Context()); v != nil {
 		ri.Certificate = v.Certificate
 		ri.ClientHelloInfo = v.ClientHelloInfo
 		if v.ClientHelloInfo != nil && v.ClientHelloInfo.Conn != nil {
@@ -112,9 +112,9 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 			ri.JA4 = b2s(v.JA4[:])
 		}
 		if req.ProtoMajor == 3 {
-			ri.ClientConnOps = ConnOps{nil, v.QuicConn()}
+			ri.ClientConnOps = ConnOps{nil, v.QuicConn}
 		} else {
-			conn := v.NetConn()
+			conn := v.NetConn
 			for conn != nil {
 				c, ok := conn.(interface {
 					NetConn() net.Conn
