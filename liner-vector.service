@@ -11,8 +11,7 @@ if ! command -v vector >/dev/null 2>&1; then \
     curl -sSLf https://github.com/vectordotdev/vector/releases/download/v0.46.1/vector-0.46.1-$(uname -m)-unknown-linux-gnu.tar.gz \
     | tar xvz -C /usr/local/bin/ --strip-components=3 --wildcards '*/vector'; \
 fi; \
-set -a; . ./*.env; set +a; \
-exec /usr/local/bin/vector -c $(pwd)/liner-vector.yaml"
+exec env $(cat liner-vector.env) /usr/local/bin/vector -c $(pwd)/liner-vector.yaml"
 
 [Install]
 WantedBy=default.target
