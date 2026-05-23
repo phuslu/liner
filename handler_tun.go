@@ -82,6 +82,7 @@ type TunHandler struct {
 
 type tunProcessDialer struct {
 	path        *regexp.Regexp
+	name        *regexp.Regexp
 	dialer      Dialer
 	dialerName  string
 	disableIPv6 bool
@@ -103,30 +104,25 @@ func (h *TunHandler) Load(ctx context.Context) error {
 			return err
 		}
 	}
-	for i, pd := range h.Config.Forward.ProcessDialer {
-		path := strings.TrimSpace(pd.Path)
-		if path == "" {
-			return fmt.Errorf("tun process_dialer[%d].path is empty", i)
-		}
-		re, err := regexp.Compile(path)
-		if err != nil {
-			return fmt.Errorf("compile tun process_dialer[%d].path: %w", i, err)
-		}
-		dialerValue := strings.TrimSpace(pd.Dialer)
-		if dialerValue == "" {
-			return fmt.Errorf("tun process_dialer[%d].dialer is empty", i)
-		}
-		dialer, dialerName, disableIPv6, preferIPv6, err := h.parseForwardDialer(dialerValue)
+	for i, config := range h.Config.Forward.ProcessDialer {
+		var err error
+		var pd tunProcessDialer
+		pd.dialer, pd.dialerName, pd.disableIPv6, pd.preferIPv6, err = h.parseForwardDialer(config.Dialer)
 		if err != nil {
 			return fmt.Errorf("parse tun process_dialer[%d].dialer: %w", i, err)
 		}
-		h.processDialers = append(h.processDialers, tunProcessDialer{
-			path:        re,
-			dialer:      dialer,
-			dialerName:  dialerName,
-			disableIPv6: disableIPv6,
-			preferIPv6:  preferIPv6,
-		})
+		switch {
+		case config.Path != "":
+			pd.path, err = regexp.Compile(config.Path)
+		case config.Name != "":
+			pd.name, err = regexp.Compile(config.Name)
+		}
+		if err != nil {
+			return fmt.Errorf("parse tun process_dialer[%d].dialer: %w", i, err)
+		}
+		if pd.path != nil || pd.name != nil {
+			h.processDialers = append(h.processDialers, pd)
+		}
 	}
 	if h.DnsResolver == nil && h.LocalDialer != nil {
 		h.DnsResolver = h.LocalDialer.DnsResolver
@@ -1268,7 +1264,7 @@ func (h *TunHandler) prepareDial(req TunRequest) (context.Context, Dialer, strin
 	if len(h.processDialers) > 0 {
 		if info, err := req.ProcessInfo(); err == nil && info != nil && info.Path != "" {
 			for _, pd := range h.processDialers {
-				if pd.path.MatchString(info.Path) {
+				if (pd.path != nil && pd.path.MatchString(info.Path)) || (pd.name != nil && pd.name.MatchString(info.Name)) {
 					dialer = pd.dialer
 					dialerName = pd.dialerName
 					disableIPv6 = pd.disableIPv6

@@ -153,6 +153,7 @@ type TunConfig struct {
 	Forward        struct {
 		ProcessDialer []struct {
 			Path   string `json:"path" yaml:"path"`
+			Name   string `json:"name" yaml:"name"`
 			Dialer string `json:"dialer" yaml:"dialer"`
 		} `json:"process_dialer" yaml:"process_dialer"`
 		Dialer         string `json:"dialer" yaml:"dialer"`
