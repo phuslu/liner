@@ -651,7 +651,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 					Xid("trace_id", ri.TraceID).
 					NetIPAddrPort("server_addr", ri.ServerAddr).
 					Str("server_name", cmp.Or(ri.TLSServerName, ri.ServerAddr.Addr().String())).
-					Str("tls_server_name", cmp.Or(ri.TLSServerName, ri.ServerAddr.Addr().String())).
+					Str("tls_server_name", ri.TLSServerName).
 					Str("tls_version", tls.VersionName(ri.TLSVersion)).
 					Str("ja4", ri.JA4).
 					Str("username", username).
@@ -780,7 +780,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 					Xid("trace_id", ri.TraceID).
 					NetIPAddrPort("server_addr", ri.ServerAddr).
 					Str("server_name", cmp.Or(ri.TLSServerName, ri.ServerAddr.Addr().String())).
-					Str("tls_server_name", cmp.Or(ri.TLSServerName, ri.ServerAddr.Addr().String())).
+					Str("tls_server_name", ri.TLSServerName).
 					Str("tls_version", tls.VersionName(ri.TLSVersion)).
 					Str("ja4", ri.JA4).
 					Str("username", username).
