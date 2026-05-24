@@ -49,4 +49,4 @@ require (
 	mvdan.cc/sh/v3 v3.13.1 // indirect
 )
 
-replace github.com/quic-go/quic-go v0.59.1 => github.com/phuslu/quic-go v0.0.0-20260513175713-0418df6414dd
+replace github.com/quic-go/quic-go v0.59.1 => github.com/phuslu/quic-go v0.0.0-20260524063431-69b50449c34c
