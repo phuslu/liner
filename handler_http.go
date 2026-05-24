@@ -131,14 +131,13 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	}
 
 	// fix empty sni for IP ceritifcate
-	if ri.TLSServerName == "" && ri.Certificate != nil && ri.Certificate.Leaf != nil {
-		switch {
-		case len(ri.Certificate.Leaf.IPAddresses) > 0:
-			ri.TLSServerName = ri.Certificate.Leaf.IPAddresses[0].String()
-		case len(ri.Certificate.Leaf.DNSNames) > 0:
-			ri.TLSServerName = ri.Certificate.Leaf.DNSNames[0]
-		default:
-			ri.TLSServerName = ri.Certificate.Leaf.Subject.CommonName
+	if ri.TLSServerName == "" && ri.Certificate != nil && ri.Certificate.Leaf != nil && len(ri.Certificate.Leaf.IPAddresses) > 0 {
+		ri.TLSServerName = ri.Certificate.Leaf.IPAddresses[0].String()
+		for _, addr := range ri.Certificate.Leaf.IPAddresses[1:] {
+			if (addr.To4() != nil && ri.ServerAddr.Addr().Is4()) || (addr.To4() == nil && ri.ServerAddr.Addr().Is6()) {
+				ri.TLSServerName = addr.String()
+				break
+			}
 		}
 	}
 
