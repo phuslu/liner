@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"net"
@@ -59,7 +60,10 @@ func (h *TunnelHandler) sshtunnel(ctx context.Context, dialerName, dialerURL str
 		hostport = net.JoinHostPort(resolve, port)
 	}
 
-	conn, err := (&net.Dialer{Timeout: time.Duration(h.Config.DialTimeout) * time.Second}).DialContext(ctx, "tcp", hostport)
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(cmp.Or(h.Config.DialTimeout, 10))*time.Second)
+	defer cancel()
+
+	conn, err := h.LocalDialer.DialContext(ctx, "tcp", hostport)
 	if err != nil {
 		log.Error().Err(err).Msgf("failed to dial %s", hostport)
 		return nil, fmt.Errorf("failed to dial %s: %w", hostport, err)
