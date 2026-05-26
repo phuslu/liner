@@ -1003,6 +1003,10 @@ type ConnOps struct {
 	qc *quic.Conn
 }
 
+func (ops ConnOps) QuicConn() *quic.Conn {
+	return ops.qc
+}
+
 func (ops ConnOps) SupportTCP() bool {
 	return ops.tc != nil
 }

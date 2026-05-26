@@ -446,7 +446,7 @@ func (h *HTTPTunnelHandler) h2tunnel(rw http.ResponseWriter, req *http.Request, 
 const HTTP3TunnelOpenFrame = "LQ\x01\x00"
 
 func (h *HTTPTunnelHandler) h3tunnel(rw http.ResponseWriter, req *http.Request, ri *HTTPRequestInfo, addrport netip.AddrPort, ln net.Listener) {
-	qconn := ri.ClientConnOps.qc
+	qconn := ri.ClientConnOps.QuicConn()
 	if qconn == nil {
 		http.Error(rw, "http3 quic connection is unavailable", http.StatusBadRequest)
 		return
