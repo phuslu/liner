@@ -453,7 +453,16 @@ func (h *TunHandler) Unload() error {
 	return nil
 }
 
-const tunPacketOffset = 16
+var tunPacketOffset = func() int {
+	switch runtime.GOOS {
+	case "windows":
+		return 0
+	case "darwin":
+		return 4
+	default:
+		return 16
+	}
+}()
 
 func (h *TunHandler) Serve(ctx context.Context) {
 	errc := make(chan error, 2)
