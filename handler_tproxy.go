@@ -24,13 +24,6 @@ import (
 	"github.com/valyala/bytebufferpool"
 )
 
-const (
-	tproxyUDPBufferSize  = 64 * 1024
-	tproxyUDPMaxSessions = 1024
-)
-
-var tproxyUDPBufferPool bytebufferpool.Pool
-
 type TProxyRequest struct {
 	RemoteAddr netip.AddrPort
 	ServerAddr netip.AddrPort
@@ -172,6 +165,8 @@ func (h *TProxyHandler) ServePacket(ctx context.Context, conn *net.UDPConn) {
 		}
 	}
 
+	const tproxyUDPMaxSessions = 1024
+
 	sessions := make(map[tproxyUDPKey]*tproxyUDPSession)
 	defer func() {
 		for _, session := range sessions {
@@ -215,9 +210,8 @@ func (h *TProxyHandler) ServePacket(ctx context.Context, conn *net.UDPConn) {
 		}
 	}
 
-	bb := tproxyGetUDPBuffer()
-	defer tproxyUDPBufferPool.Put(bb)
-	buf := bb.B
+	buf := tproxyGetUDPBuffer(tproxyUDPBufferSize)
+	defer tproxyUDPBufferPool.Put(&buf)
 	var oob [256]byte
 	for {
 		if cleanupInterval > 0 {
@@ -415,9 +409,8 @@ func (h *TProxyHandler) selectDialer(ctx context.Context, req TProxyRequest, tls
 }
 
 func (s *tproxyUDPSession) copyPacket(dst, src net.Conn) {
-	bb := tproxyGetUDPBuffer()
-	defer tproxyUDPBufferPool.Put(bb)
-	buf := bb.B
+	buf := tproxyGetUDPBuffer(tproxyUDPBufferSize)
+	defer tproxyUDPBufferPool.Put(&buf)
 	for {
 		n, err := src.Read(buf)
 		if err != nil {
@@ -435,14 +428,26 @@ func (s *tproxyUDPSession) copyPacket(dst, src net.Conn) {
 	}
 }
 
-func tproxyGetUDPBuffer() *bytebufferpool.ByteBuffer {
-	bb := tproxyUDPBufferPool.Get()
-	if cap(bb.B) < tproxyUDPBufferSize {
-		bb.B = make([]byte, tproxyUDPBufferSize)
-	} else {
-		bb.B = bb.B[:tproxyUDPBufferSize]
+const tproxyUDPBufferSize = 64 * 1024
+
+var tproxyUDPBufferPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, tproxyUDPBufferSize)
+		return &b
+	},
+}
+
+func tproxyGetUDPBuffer(size int) []byte {
+	if size <= 0 {
+		size = tproxyUDPBufferSize
 	}
-	return bb
+	p := tproxyUDPBufferPool.Get().(*[]byte)
+	b := *p
+	if cap(b) < size {
+		tproxyUDPBufferPool.Put(p)
+		return make([]byte, size)
+	}
+	return b[:size]
 }
 
 func (s *tproxyUDPSession) close() {
