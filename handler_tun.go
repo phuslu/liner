@@ -479,6 +479,7 @@ func (h *TunHandler) Serve(ctx context.Context) {
 				}
 			}
 		}
+		defer releaseViews()
 
 		for {
 			select {
@@ -490,20 +491,28 @@ func (h *TunHandler) Serve(ctx context.Context) {
 
 			size := tunPacketOffset + cmp.Or(h.mtu, 1500)
 			for i := range views {
-				view := buffer.NewViewSize(size)
-				views[i] = view
+				view := views[i]
+				if view == nil {
+					view = buffer.NewViewSize(size)
+					views[i] = view
+				} else if view.Capacity() < size {
+					view.Release()
+					view = buffer.NewViewSize(size)
+					views[i] = view
+				} else {
+					view.Reset()
+					view.Grow(size)
+				}
 				bufs[i] = view.AsSlice()
 				sizes[i] = 0
 			}
 
 			n, err := h.device.Read(bufs, sizes, tunPacketOffset)
 			if errors.Is(err, tun.ErrTooManySegments) {
-				releaseViews()
 				log.Warn().Err(err).Str("tun_name", h.name).Msg("tun read too many segments")
 				continue
 			}
 			if err != nil {
-				releaseViews()
 				errc <- err
 				return
 			}
@@ -542,7 +551,6 @@ func (h *TunHandler) Serve(ctx context.Context) {
 				h.endpoint.InjectInbound(network, pkt)
 				pkt.DecRef()
 			}
-			releaseViews()
 		}
 	}()
 	go func() {
