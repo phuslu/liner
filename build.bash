@@ -1,26 +1,31 @@
 #!/bin/bash -xe
 
 function liner::setup() {
-	case $(uname) in
-		Darwin )
-			brew list --formula -1 | grep python || brew install python
-			;;
-		Linux )
+	goos=$(uname | tr A-Z a-z)
+	goarch=$(test $(uname -m) = x86_64 && echo amd64 || echo arm64)
+
+	case ${goos} in
+		linux )
 			export DEBIAN_FRONTEND=noninteractive
 			apt update -y
 			apt install -yq git curl jq unzip zip xz-utils gh build-essential parallel upx llvm
-			# osxcross for macos
+			# phuslu go
+			test -d /tmp/go || \
+				curl -L https://github.com/phuslu/go/releases/download/v0.0.0/go1.26.${goos}-${goarch}.tar.xz | \
+				tar xvJ -C /tmp/
+			# osxcross for compiling liner.m
 			test -d /usr/local/osxcross || \
-				curl -sSLf https://github.com/phuslu/osxcross/releases/download/e6ab3fa/osxcross-linux-amd64-sdk11.3-e6ab3fa.tar.xz | \
+				curl -sSLf https://github.com/phuslu/osxcross/releases/download/e6ab3fa/osxcross-linux-${goarch}-sdk11.3-e6ab3fa.tar.xz | \
 				tar xvJ -C /usr/local
 			git config --global --add safe.directory '*'
 			;;
+		darwin )
+			brew list --formula -1 | grep python || brew install python
+			test -d /tmp/go || \
+				curl -L https://github.com/phuslu/go/releases/download/v0.0.0/go1.26.${goos}-${goarch}.tar.xz | \
+				tar xvJ -C /tmp/
+			;;
 	esac
-
-	goos=$(uname | tr A-Z a-z)
-	goarch=$(test $(uname -m) = aarch64 && echo arm64 || echo amd64)
-	curl -L https://github.com/phuslu/go/releases/download/v0.0.0/go1.26.${goos}-${goarch}.tar.xz | \
-	tar xvJ -C /tmp/
 }
 
 function liner::build() {
