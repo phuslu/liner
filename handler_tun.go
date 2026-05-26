@@ -811,7 +811,7 @@ func (h *TunHandler) forwardTCP(r *tcp.ForwarderRequest) {
 
 	h.logForward(req, dialerName)
 
-	touch, stop := tunStartTCPIdleTimer(tcpTimeout, lconn, rconn)
+	touch, stop := tunStartIdleTimer(tcpTimeout, lconn, rconn)
 	defer stop()
 
 	go tunCopyConnWithActivity(rconn, lconn, touch)
@@ -961,14 +961,8 @@ func (h *TunHandler) serveUDP(req TunRequest, lconn net.Conn) {
 
 	timeout := time.Duration(cmp.Or(h.Config.Forward.UdpTimeout, 120)) * time.Second
 	done := make(chan struct{}, 2)
-	var timer *time.Timer
-	if timeout > 0 {
-		timer = time.AfterFunc(timeout, func() {
-			lconn.Close()
-			rconn.Close()
-		})
-		defer timer.Stop()
-	}
+	touch, stop := tunStartIdleTimer(timeout, lconn, rconn)
+	defer stop()
 
 	copyPacket := func(dst, src net.Conn) {
 		defer func() { done <- struct{}{} }()
@@ -985,9 +979,7 @@ func (h *TunHandler) serveUDP(req TunRequest, lconn net.Conn) {
 			if _, err = dst.Write(buf[:n]); err != nil {
 				return
 			}
-			if timer != nil {
-				timer.Reset(timeout)
-			}
+			touch()
 		}
 	}
 
@@ -1136,7 +1128,7 @@ func tunCopyConnWithActivity(dst, src net.Conn, touch func()) {
 	}
 }
 
-func tunStartTCPIdleTimer(timeout time.Duration, conns ...net.Conn) (func(), func()) {
+func tunStartIdleTimer(timeout time.Duration, conns ...net.Conn) (func(), func()) {
 	if timeout <= 0 {
 		return func() {}, func() {}
 	}
