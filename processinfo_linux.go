@@ -385,7 +385,7 @@ func (entry linuxConnEntry) processInfo() (ConnProcessInfo, error) {
 			if name, err := os.ReadFile("/proc/" + entry.Name() + "/comm"); err == nil {
 				info.Name = strings.TrimSuffix(string(name), "\n")
 			}
-			if path, err := os.ReadFile("/proc/" + entry.Name() + "/exe"); err == nil {
+			if path, err := os.Readlink("/proc/" + entry.Name() + "/exe"); err == nil {
 				info.Path = strings.TrimSuffix(string(path), "\n")
 			}
 			return info, nil
