@@ -128,6 +128,17 @@ type RedsocksConfig struct {
 	} `json:"forward" yaml:"forward"`
 }
 
+type TProxyConfig struct {
+	Listen  []string `json:"listen" yaml:"listen"`
+	Forward struct {
+		Dialer      string `json:"dialer" yaml:"dialer"`
+		UdpTimeout  int    `json:"udp_timeout" yaml:"udp_timeout"`
+		DisableIpv6 bool   `json:"disable_ipv6" yaml:"disable_ipv6"`
+		PreferIpv6  bool   `json:"prefer_ipv6" yaml:"prefer_ipv6"`
+		Log         bool   `json:"log" yaml:"log"`
+	} `json:"forward" yaml:"forward"`
+}
+
 type StreamConfig struct {
 	Listen        []string `json:"listen" yaml:"listen"`
 	Keyfile       string   `json:"keyfile" yaml:"keyfile"`
@@ -248,6 +259,7 @@ type Config struct {
 	Http     []HTTPConfig      `json:"http" yaml:"http"`
 	Socks    []SocksConfig     `json:"socks" yaml:"socks"`
 	Redsocks []RedsocksConfig  `json:"redsocks" yaml:"redsocks"`
+	Tproxy   []TProxyConfig    `json:"tproxy" yaml:"tproxy"`
 	Tunnel   []TunnelConfig    `json:"tunnel" yaml:"tunnel"`
 	Stream   []StreamConfig    `json:"stream" yaml:"stream"`
 	Tun      []TunConfig       `json:"tun" yaml:"tun"`
@@ -320,6 +332,7 @@ func NewConfig(filename string) (*Config, error) {
 		config.Https = append(config.Https, c.Https...)
 		config.Http = append(config.Http, c.Http...)
 		config.Socks = append(config.Socks, c.Socks...)
+		config.Tproxy = append(config.Tproxy, c.Tproxy...)
 		config.Tunnel = append(config.Tunnel, c.Tunnel...)
 		config.Stream = append(config.Stream, c.Stream...)
 		config.Tun = append(config.Tun, c.Tun...)
@@ -364,6 +377,9 @@ func NewConfig(filename string) (*Config, error) {
 		config.Socks[i].Forward.Policy = read(config.Socks[i].Forward.Policy)
 		config.Socks[i].Forward.Dialer = read(config.Socks[i].Forward.Dialer)
 	}
+	for i := range config.Tproxy {
+		config.Tproxy[i].Forward.Dialer = read(config.Tproxy[i].Forward.Dialer)
+	}
 	for i := range config.Tun {
 		config.Tun[i].Forward.Dialer = read(config.Tun[i].Forward.Dialer)
 	}
@@ -389,6 +405,10 @@ func NewConfig(filename string) (*Config, error) {
 		default:
 			return nil, fmt.Errorf("invalid runtime GOOS with redsocks handler: %#v", runtime.GOOS)
 		}
+	}
+
+	if len(config.Tproxy) > 0 && runtime.GOOS != "linux" {
+		return nil, fmt.Errorf("invalid runtime GOOS with tproxy handler: %#v", runtime.GOOS)
 	}
 
 	return config, nil

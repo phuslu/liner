@@ -26,6 +26,7 @@ type ListenConfig struct {
 	FastOpen    bool
 	ReusePort   bool // macOS not supported
 	DeferAccept bool // macOS not supported
+	Transparent bool // macOS not supported
 }
 
 func (lc ListenConfig) Listen(ctx context.Context, network, address string) (net.Listener, error) {
@@ -51,10 +52,14 @@ func (lc ListenConfig) ListenPacket(ctx context.Context, network, address string
 }
 
 type DailerController struct {
-	Interface string
+	Interface   string
+	Transparent bool
 }
 
 func (dc DailerController) Control(network, addr string, c syscall.RawConn) (err error) {
+	if dc.Transparent {
+		return errors.ErrUnsupported
+	}
 	if dc.Interface == "" {
 		return nil
 	}

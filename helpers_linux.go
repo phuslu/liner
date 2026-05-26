@@ -25,6 +25,7 @@ type ListenConfig struct {
 	ReusePort   bool
 	FastOpen    bool
 	DeferAccept bool
+	Transparent bool
 }
 
 func (lc ListenConfig) Listen(ctx context.Context, network, address string) (net.Listener, error) {
@@ -32,7 +33,8 @@ func (lc ListenConfig) Listen(ctx context.Context, network, address string) (net
 	const TCP_FASTOPEN = 23
 	ln := &net.ListenConfig{
 		Control: func(network, address string, conn syscall.RawConn) error {
-			return conn.Control(func(fd uintptr) {
+			var controlErr error
+			if err := conn.Control(func(fd uintptr) {
 				if lc.ReusePort {
 					syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, SO_REUSEPORT, 1)
 				}
@@ -42,7 +44,13 @@ func (lc ListenConfig) Listen(ctx context.Context, network, address string) (net
 				if lc.DeferAccept {
 					syscall.SetsockoptInt(int(fd), syscall.IPPROTO_TCP, syscall.TCP_DEFER_ACCEPT, 1)
 				}
-			})
+				if lc.Transparent {
+					controlErr = linuxSetTransparentSocketOptions(fd, false)
+				}
+			}); err != nil {
+				return err
+			}
+			return controlErr
 		},
 	}
 
@@ -53,23 +61,90 @@ func (lc ListenConfig) ListenPacket(ctx context.Context, network, address string
 	const SO_REUSEPORT = 15
 	ln := &net.ListenConfig{
 		Control: func(network, address string, conn syscall.RawConn) error {
-			return conn.Control(func(fd uintptr) {
+			var controlErr error
+			if err := conn.Control(func(fd uintptr) {
 				if lc.ReusePort {
 					syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, SO_REUSEPORT, 1)
 				}
-			})
+				if lc.Transparent {
+					controlErr = linuxSetTransparentSocketOptions(fd, true)
+				}
+			}); err != nil {
+				return err
+			}
+			return controlErr
 		},
 	}
 
 	return ln.ListenPacket(ctx, network, address)
 }
 
+func linuxSetTransparentSocketOptions(fd uintptr, packet bool) error {
+	s := int(fd)
+	sa, err := unix.Getsockname(s)
+	if err != nil {
+		return os.NewSyscallError("getsockname", err)
+	}
+
+	set := func(level, name int, opname string, optional bool) error {
+		err := unix.SetsockoptInt(s, level, name, 1)
+		if err == nil {
+			return nil
+		}
+		if optional && (errors.Is(err, unix.EAFNOSUPPORT) || errors.Is(err, unix.EINVAL) || errors.Is(err, unix.ENOPROTOOPT)) {
+			return nil
+		}
+		return os.NewSyscallError("setsockopt "+opname, err)
+	}
+
+	switch sa.(type) {
+	case *unix.SockaddrInet4:
+		if err = set(unix.SOL_IP, unix.IP_TRANSPARENT, "IP_TRANSPARENT", false); err != nil {
+			return err
+		}
+		if packet {
+			return set(unix.SOL_IP, unix.IP_RECVORIGDSTADDR, "IP_RECVORIGDSTADDR", false)
+		}
+	case *unix.SockaddrInet6:
+		if err = set(unix.SOL_IPV6, unix.IPV6_TRANSPARENT, "IPV6_TRANSPARENT", false); err != nil {
+			return err
+		}
+		if err = set(unix.SOL_IP, unix.IP_TRANSPARENT, "IP_TRANSPARENT", true); err != nil {
+			return err
+		}
+		if packet {
+			if err = set(unix.SOL_IPV6, unix.IPV6_RECVORIGDSTADDR, "IPV6_RECVORIGDSTADDR", false); err != nil {
+				return err
+			}
+			return set(unix.SOL_IP, unix.IP_RECVORIGDSTADDR, "IP_RECVORIGDSTADDR", true)
+		}
+	default:
+		return errors.ErrUnsupported
+	}
+
+	return nil
+}
+
 type DailerController struct {
-	Interface string
+	Interface   string
+	Transparent bool
 }
 
 func (dc DailerController) Control(network, addr string, c syscall.RawConn) (err error) {
-	c.Control(func(fd uintptr) {
+	const SO_REUSEPORT = 15
+	if err = c.Control(func(fd uintptr) {
+		if dc.Transparent {
+			if err = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1); err != nil {
+				return
+			}
+			if err = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, SO_REUSEPORT, 1); err != nil {
+				return
+			}
+			err = linuxSetTransparentSocketOptions(fd, false)
+			if err != nil {
+				return
+			}
+		}
 		if ip, _ := netip.ParseAddr(dc.Interface); ip.IsValid() {
 			// LocalDialer passes IP bindings through net.Dialer.LocalAddr.
 			return
@@ -77,8 +152,10 @@ func (dc DailerController) Control(network, addr string, c syscall.RawConn) (err
 		if dc.Interface != "" {
 			err = syscall.BindToDevice(int(fd), dc.Interface)
 		}
-	})
-	return
+	}); err != nil {
+		return err
+	}
+	return err
 }
 
 type TCPInfo syscall.TCPInfo

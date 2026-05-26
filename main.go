@@ -1034,6 +1034,72 @@ func main() {
 		}
 	}
 
+	// tproxy handler
+	for _, tproxyConfig := range config.Tproxy {
+		h := &TProxyHandler{
+			Config:      tproxyConfig,
+			DataLogger:  dataLogger,
+			DnsResolver: dnsResolver,
+			GeoResolver: geoResolver,
+			LocalDialer: dialer,
+			Dialers:     dialers,
+			Functions:   functions,
+		}
+		if err = h.Load(); err != nil {
+			log.Fatal().Err(err).Strs("listen", tproxyConfig.Listen).Msg("tproxy handler load error")
+		}
+
+		for _, addr := range tproxyConfig.Listen {
+			network := "tcp"
+			if strings.Contains(addr, "://") {
+				u, err := url.Parse(addr)
+				if err != nil {
+					log.Fatal().Err(err).Str("address", addr).Msg("tproxy handler parse addr error")
+				}
+				network, addr = u.Scheme, u.Host
+			}
+
+			tlc := lc
+			tlc.Transparent = true
+
+			switch network {
+			case "tcp", "tcp4", "tcp6":
+				ln, err := tlc.Listen(context.Background(), network, addr)
+				if err != nil {
+					log.Fatal().Err(err).Str("address", addr).Msg("net.Listen error")
+				}
+
+				log.Info().Str("version", version).NetAddr("address", ln.Addr()).Msg("liner listen and serve tproxy")
+
+				go func(ln net.Listener, h *TProxyHandler) {
+					for {
+						conn, err := ln.Accept()
+						if err != nil {
+							log.Error().Err(err).Str("version", version).NetAddr("address", ln.Addr()).Msg("liner accept tproxy connection error")
+							time.Sleep(10 * time.Millisecond)
+							continue
+						}
+						go h.ServeConn(context.Background(), conn)
+					}
+				}(ln, h)
+			case "udp", "udp4", "udp6":
+				pc, err := tlc.ListenPacket(context.Background(), network, addr)
+				if err != nil {
+					log.Fatal().Err(err).Str("address", addr).Msg("net.ListenPacket error")
+				}
+				uc, ok := pc.(*net.UDPConn)
+				if !ok {
+					log.Fatal().Str("address", addr).Type("packet_conn_type", pc).Msg("tproxy packet conn is not UDP")
+				}
+
+				log.Info().Str("version", version).NetAddr("address", pc.LocalAddr()).Msg("liner listen and serve tproxy udp")
+				go h.ServePacket(context.Background(), uc)
+			default:
+				log.Fatal().Str("network", network).Str("address", addr).Msg("unsupported tproxy listen network")
+			}
+		}
+	}
+
 	// stream handler
 	for _, streamConfig := range config.Stream {
 		for _, addr := range streamConfig.Listen {

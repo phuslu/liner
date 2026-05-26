@@ -15,6 +15,7 @@ type ListenConfig struct {
 	ReusePort   bool
 	FastOpen    bool
 	DeferAccept bool
+	Transparent bool
 }
 
 func (ln ListenConfig) Listen(ctx context.Context, network, address string) (net.Listener, error) {
@@ -31,10 +32,14 @@ func (ln ListenConfig) ListenPacket(ctx context.Context, network, address string
 }
 
 type DailerController struct {
-	Interface string
+	Interface   string
+	Transparent bool
 }
 
 func (dc DailerController) Control(network, address string, c syscall.RawConn) error {
+	if dc.Transparent {
+		return errors.ErrUnsupported
+	}
 	return nil
 }
 

@@ -213,6 +213,12 @@ redsocks:
     forward:
       log: true
       dialer: proxy1
+tproxy:
+  - listen: ['tcp://0.0.0.0:12346', 'udp://0.0.0.0:12346']
+    forward:
+      log: true
+      udp_timeout: 120
+      dialer: proxy1
 tun:
   - name: utun53
     address: 198.18.0.1/15

@@ -203,6 +203,9 @@ The broader style rationale lives above in `Tacit Codebase Conventions`.
 - Preserve `global.forbid_local_addr` semantics in every new outbound path.
 - `cron` is top-level, not under `global`. HTTPS handlers intentionally reject
   `psk`; PSK wrapping belongs on plain HTTP listeners and compatible dialers.
+- `tproxy` is Linux-only and uses transparent sockets. TCP original destination
+  comes from the accepted local address; UDP requires original-destination
+  control messages and transparent reply sockets.
 
 ### Dialer Contract
 
@@ -273,6 +276,14 @@ dialer=proxy1&disable_ipv6=true
 - SSH shell, exec, SFTP, env, direct-tcpip, authorized keys, auth tables, and
   `shell: "$"` GOSH re-entry are command/trust-boundary code. Be deliberate
   about environment inheritance and logged command data.
+
+### Redsocks and TProxy
+
+- `redsocks` is for TCP transparent REDIRECT/rdr paths that recover the
+  original destination through platform socket APIs.
+- `tproxy` is Linux-only. Its listeners must set transparent socket options;
+  UDP handling must preserve the original destination as the source address
+  when writing packets back to the intercepted client.
 
 ### TUN
 
@@ -355,7 +366,7 @@ touching TUN behavior.
 - When route, TUN, socket option, process lookup, or TCP pacing behavior changes
   on one OS, inspect the others and update them or leave an explicit unsupported
   path.
-- Privileged features such as TUN, redsocks, tcp-brutal, route changes, and
+- Privileged features such as TUN, redsocks, tproxy, tcp-brutal, route changes, and
   platform socket options may require manual validation. Do not claim full
   coverage from `go test` alone.
 - Keep c-shared entry points and build constraints intact in `liner-dll.go` and
@@ -416,7 +427,7 @@ If the Go build cache is not writable, use a cache under `/tmp`, for example:
 GOCACHE=/tmp/liner-go-build go test ./...
 ```
 
-Network resolver tests, TUN, redsocks, tcp-brutal, route configuration, and
+Network resolver tests, TUN, redsocks, tproxy, tcp-brutal, route configuration, and
 privileged socket behavior may need network access, platform support, or
 elevated privileges.
 
