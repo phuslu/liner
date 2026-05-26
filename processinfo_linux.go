@@ -66,6 +66,9 @@ var (
 	linuxIPv6UDPProcessSnapshotPtr atomic.Pointer[linuxProcessSnapshot]
 	linuxIPv4UDPProcessSnapshotMu  sync.Mutex
 	linuxIPv6UDPProcessSnapshotMu  sync.Mutex
+
+	linuxProcessInfoSnapshotPtr atomic.Pointer[linuxProcessInfoSnapshot]
+	linuxProcessInfoSnapshotMu  sync.Mutex
 )
 
 type linuxProcessFinder struct {
@@ -86,6 +89,11 @@ type linuxConnEntry struct {
 type linuxProcessSnapshot struct {
 	createdAt time.Time
 	entries   []linuxConnEntry
+}
+
+type linuxProcessInfoSnapshot struct {
+	createdAt time.Time
+	infos     map[uint64]ConnProcessInfo
 }
 
 func newLinuxProcessFinder(conn net.Conn, protocol int) (linuxProcessFinder, bool) {
@@ -358,38 +366,126 @@ func (finder linuxProcessFinder) parseInetDiagMsg(payload []byte) (linuxConnEntr
 }
 
 func (entry linuxConnEntry) processInfo() (ConnProcessInfo, error) {
-	needle := "socket:[" + strconv.FormatUint(entry.inode, 10) + "]"
-	entries, err := os.ReadDir("/proc")
+	if entry.inode == 0 {
+		return ConnProcessInfo{}, os.ErrNotExist
+	}
+	snapshot := linuxProcessInfoSnapshotPtr.Load()
+	if snapshot.fresh() {
+		if info, ok := snapshot.find(entry.inode); ok {
+			return info, nil
+		}
+		refreshed, err := linuxLoadProcessInfoSnapshot(true, snapshot)
+		if err != nil {
+			return ConnProcessInfo{}, err
+		}
+		if info, ok := refreshed.find(entry.inode); ok {
+			return info, nil
+		}
+		return ConnProcessInfo{}, os.ErrNotExist
+	}
+
+	var err error
+	snapshot, err = linuxLoadProcessInfoSnapshot(false, snapshot)
 	if err != nil {
 		return ConnProcessInfo{}, err
 	}
-	for _, entry := range entries {
-		if !entry.IsDir() {
+	if info, ok := snapshot.find(entry.inode); ok {
+		return info, nil
+	}
+	return ConnProcessInfo{}, os.ErrNotExist
+}
+
+func linuxLoadProcessInfoSnapshot(force bool, seen *linuxProcessInfoSnapshot) (*linuxProcessInfoSnapshot, error) {
+	if !force {
+		if snapshot := linuxProcessInfoSnapshotPtr.Load(); snapshot.fresh() {
+			return snapshot, nil
+		}
+	}
+
+	linuxProcessInfoSnapshotMu.Lock()
+	defer linuxProcessInfoSnapshotMu.Unlock()
+
+	if snapshot := linuxProcessInfoSnapshotPtr.Load(); snapshot.fresh() {
+		if !force || snapshot != seen {
+			return snapshot, nil
+		}
+	}
+
+	snapshot, err := linuxBuildProcessInfoSnapshot()
+	if err != nil {
+		return nil, err
+	}
+	linuxProcessInfoSnapshotPtr.Store(snapshot)
+	return snapshot, nil
+}
+
+func (snapshot *linuxProcessInfoSnapshot) fresh() bool {
+	const ttl = 200 * time.Millisecond
+	return snapshot != nil && time.Since(snapshot.createdAt) < ttl
+}
+
+func (snapshot *linuxProcessInfoSnapshot) find(inode uint64) (ConnProcessInfo, bool) {
+	if snapshot == nil {
+		return ConnProcessInfo{}, false
+	}
+	info, ok := snapshot.infos[inode]
+	return info, ok
+}
+
+func linuxBuildProcessInfoSnapshot() (*linuxProcessInfoSnapshot, error) {
+	procs, err := os.ReadDir("/proc")
+	if err != nil {
+		return nil, err
+	}
+	snapshot := &linuxProcessInfoSnapshot{
+		createdAt: time.Now(),
+		infos:     make(map[uint64]ConnProcessInfo),
+	}
+	for _, proc := range procs {
+		if !proc.IsDir() {
 			continue
 		}
-		pid, err := strconv.ParseUint(entry.Name(), 10, 64)
+		pid, err := strconv.ParseUint(proc.Name(), 10, 64)
 		if err != nil {
 			continue
 		}
-		dir := "/proc/" + entry.Name() + "/fd"
+		procDir := "/proc/" + proc.Name()
+		dir := procDir + "/fd"
 		fds, err := os.ReadDir(dir)
 		if err != nil {
 			continue
 		}
+		var info ConnProcessInfo
+		infoLoaded := false
 		for _, fd := range fds {
 			target, err := os.Readlink(dir + "/" + fd.Name())
-			if err != nil || target != needle {
+			if err != nil {
 				continue
 			}
-			info := ConnProcessInfo{ID: pid}
-			if name, err := os.ReadFile("/proc/" + entry.Name() + "/comm"); err == nil {
-				info.Name = strings.TrimSuffix(string(name), "\n")
+			target, ok := strings.CutPrefix(target, "socket:[")
+			if !ok {
+				continue
 			}
-			if path, err := os.Readlink("/proc/" + entry.Name() + "/exe"); err == nil {
-				info.Path = strings.TrimSuffix(string(path), "\n")
+			target, ok = strings.CutSuffix(target, "]")
+			if !ok {
+				continue
 			}
-			return info, nil
+			inode, err := strconv.ParseUint(target, 10, 64)
+			if err != nil || inode == 0 {
+				continue
+			}
+			if !infoLoaded {
+				info = ConnProcessInfo{ID: pid}
+				if name, err := os.ReadFile(procDir + "/comm"); err == nil {
+					info.Name = strings.TrimSuffix(string(name), "\n")
+				}
+				if path, err := os.Readlink(procDir + "/exe"); err == nil {
+					info.Path = strings.TrimSuffix(string(path), "\n")
+				}
+				infoLoaded = true
+			}
+			snapshot.infos[inode] = info
 		}
 	}
-	return ConnProcessInfo{}, os.ErrNotExist
+	return snapshot, nil
 }
