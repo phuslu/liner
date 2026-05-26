@@ -207,12 +207,12 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 		return
 	}
 	if SocksVersion(b[0]) != VersionSocks5 {
-		WriteSocks5Status(conn, Socks5StatusGeneralFailure)
+		socksWriteStatus(conn, Socks5StatusGeneralFailure)
 		log.Error().NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Int("socks_version", int(b[0])).Str("forward_policy", h.Config.Forward.Policy).Msg("socks request version unsupported")
 		return
 	}
 	if b[2] != 0 {
-		WriteSocks5Status(conn, Socks5StatusGeneralFailure)
+		socksWriteStatus(conn, Socks5StatusGeneralFailure)
 		log.Error().NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Int("socks_reserved", int(b[2])).Str("forward_policy", h.Config.Forward.Policy).Msg("socks request reserved byte invalid")
 		return
 	}
@@ -233,7 +233,7 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 		}
 		domainLen := int(b[0])
 		if domainLen == 0 {
-			WriteSocks5Status(conn, Socks5StatusAddressTypeNotSupported)
+			socksWriteStatus(conn, Socks5StatusAddressTypeNotSupported)
 			log.Error().NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("forward_policy", h.Config.Forward.Policy).Msg("socks empty domain")
 			return
 		}
@@ -249,7 +249,7 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 		}
 		req.Host = netip.AddrFrom16(*(*[16]byte)(b[:16])).String()
 	default:
-		WriteSocks5Status(conn, Socks5StatusAddressTypeNotSupported)
+		socksWriteStatus(conn, Socks5StatusAddressTypeNotSupported)
 		log.Error().NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Int("socks_address_type", int(addressType)).Str("forward_policy", h.Config.Forward.Policy).Msg("socks address type unsupported")
 		return
 	}
@@ -267,10 +267,10 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 	switch req.ConnectType {
 	case SocksCommandConnectTCP:
 	case SocksCommandConnectUDP:
-		h.ServeUDP(ctx, conn, req)
+		h.serveUDP(ctx, conn, req)
 		return
 	default:
-		WriteSocks5Status(conn, Socks5StatusCommandNotSupported)
+		socksWriteStatus(conn, Socks5StatusCommandNotSupported)
 		log.Error().NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Int("socks_command", int(req.ConnectType)).Str("forward_policy", h.Config.Forward.Policy).Msg("socks command unsupported")
 		return
 	}
@@ -311,7 +311,7 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 
 		switch policyName {
 		case "reject", "deny":
-			WriteSocks5Status(conn, Socks5StatusConnectionNotAllowedByRuleset)
+			socksWriteStatus(conn, Socks5StatusConnectionNotAllowedByRuleset)
 			return
 		}
 	}
@@ -340,7 +340,7 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 		}
 		if err != nil {
 			log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("forward_dialer_name", h.Config.Forward.Dialer).Msg("execute forward_dialer error")
-			WriteSocks5Status(conn, Socks5StatusGeneralFailure)
+			socksWriteStatus(conn, Socks5StatusGeneralFailure)
 			return
 		}
 		dialerValue = strings.TrimSpace(bb.String())
@@ -408,7 +408,7 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 	rconn, err := dialer.DialContext(ctx, network, net.JoinHostPort(req.Host, strconv.Itoa(req.Port)))
 	if err != nil {
 		log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("forward_dialer_name", h.Config.Forward.Dialer).Str("socks_host", req.Host).Int("socks_port", req.Port).Int("socks_version", int(req.Version)).Str("forward_policy_name", policyName).Str("forward_dialer_name", dialerName).Msg("connect remote host failed")
-		WriteSocks5Status(conn, Socks5StatusNetworkUnreachable)
+		socksWriteStatus(conn, Socks5StatusNetworkUnreachable)
 		if rconn != nil {
 			rconn.Close()
 		}
@@ -416,7 +416,7 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 	}
 	defer rconn.Close()
 
-	WriteSocks5Status(conn, Socks5StatusRequestGranted)
+	socksWriteStatus(conn, Socks5StatusRequestGranted)
 
 	if tc, _ := conn.(*net.TCPConn); conn != nil && speedLimit > 0 {
 		(ConnOps{tc, nil}).SetTcpMaxPacingRate(int(speedLimit))
@@ -459,11 +459,7 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 	}
 }
 
-func WriteSocks5Status(conn net.Conn, status Socks5Status) (int, error) {
-	return conn.Write([]byte{VersionSocks5, byte(status), 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00})
-}
-
-func (h *SocksHandler) ServeUDP(ctx context.Context, conn net.Conn, req SocksRequest) {
+func (h *SocksHandler) serveUDP(ctx context.Context, conn net.Conn, req SocksRequest) {
 	type udpSession struct {
 		conn       net.Conn
 		header     []byte
@@ -595,7 +591,7 @@ func (h *SocksHandler) ServeUDP(ctx context.Context, conn net.Conn, req SocksReq
 
 	policyName, ok := executePolicy(req)
 	if !ok {
-		WriteSocks5Status(conn, Socks5StatusConnectionNotAllowedByRuleset)
+		socksWriteStatus(conn, Socks5StatusConnectionNotAllowedByRuleset)
 		return
 	}
 
@@ -606,7 +602,7 @@ func (h *SocksHandler) ServeUDP(ctx context.Context, conn net.Conn, req SocksReq
 	relay, err := net.ListenUDP("udp", net.UDPAddrFromAddrPort(netip.AddrPortFrom(addr, 0)))
 	if err != nil {
 		log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("forward_policy_name", policyName).Msg("socks udp listen error")
-		WriteSocks5Status(conn, Socks5StatusGeneralFailure)
+		socksWriteStatus(conn, Socks5StatusGeneralFailure)
 		return
 	}
 	defer relay.Close()
@@ -804,4 +800,8 @@ func (h *SocksHandler) ServeUDP(ctx context.Context, conn net.Conn, req SocksReq
 			delete(sessions, sessionKey)
 		}
 	}
+}
+
+func socksWriteStatus(conn net.Conn, status Socks5Status) (int, error) {
+	return conn.Write([]byte{VersionSocks5, byte(status), 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00})
 }
