@@ -1,5 +1,5 @@
 //go:build ingore
-// Liner macOS 状态栏托盘程序 —— Objective-C 单文件脚本版
+// Liner macOS status bar tray app
 // Compile with: clang -x objective-c -fobjc-arc -mmacosx-version-min=11.0 -framework Cocoa -framework SystemConfiguration -framework Security liner.m -o liner-ui
 #import <Cocoa/Cocoa.h>
 #import <Security/Security.h>
@@ -1157,7 +1157,7 @@ static NSString *TrimSpaces(NSString *value) {
 
 - (BOOL)confirmTunAdmin {
     NSAlert *alert = [NSAlert new];
-    alert.messageText = @"TUN 需要管理员权限";
+    alert.messageText = @"TUN Requires Administrator Privileges";
     alert.informativeText = @"The selected profile contains a tun: section. Liner needs administrator privileges to create and configure the TUN interface.";
     [alert addButtonWithTitle:@"Continue"];
     [alert addButtonWithTitle:@"Cancel"];
