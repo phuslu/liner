@@ -5,6 +5,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"strings"
 
@@ -51,14 +52,14 @@ func linex() *C.PyObject {
 	args := strings.Split(strings.Join(os.Args, "\x00"), "\x00")
 	SetProcessName(os.Args[0])
 	gosh.Run(gosh.Config{
-		Version:               version,
-		Args:                  args,
-		Stdin:                 os.Stdin,
-		Stdout:                os.Stdout,
-		Stderr:                os.Stderr,
-		NotifySignals:         true,
-		IsTerminal:            pty.IsTerminal(os.Stdin.Fd()) && pty.IsTerminal(os.Stderr.Fd()),
-		EnableVirtualTerminal: pty.EnableVirtualTerminal,
+		Version:       version,
+		Args:          args,
+		Stdin:         os.Stdin,
+		Stdout:        os.Stdout,
+		Stderr:        os.Stderr,
+		NotifySignals: true,
+		IsTerminal:    pty.IsTerminal(os.Stdin.Fd()) && pty.IsTerminal(os.Stderr.Fd()),
+		OnPromptReset: func(context.Context) { pty.EnableVirtualTerminal(true, false, false) },
 	})
 	C.Py_IncRef(C.Py_None)
 	return C.Py_None

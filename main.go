@@ -56,14 +56,14 @@ var (
 func main() {
 	if s := filepath.Base(os.Args[0]); s == "linex" || s == "linex.exe" || s == "gosh" || s == "gosh.exe" || os.Getenv("GOSH") == "1" {
 		err := gosh.Run(gosh.Config{
-			Version:               version,
-			Args:                  os.Args,
-			Stdin:                 os.Stdin,
-			Stdout:                os.Stdout,
-			Stderr:                os.Stderr,
-			NotifySignals:         true,
-			IsTerminal:            pty.IsTerminal(os.Stdin.Fd()) && pty.IsTerminal(os.Stderr.Fd()),
-			EnableVirtualTerminal: pty.EnableVirtualTerminal,
+			Version:       version,
+			Args:          os.Args,
+			Stdin:         os.Stdin,
+			Stdout:        os.Stdout,
+			Stderr:        os.Stderr,
+			NotifySignals: true,
+			IsTerminal:    pty.IsTerminal(os.Stdin.Fd()) && pty.IsTerminal(os.Stderr.Fd()),
+			OnPromptReset: func(context.Context) { pty.EnableVirtualTerminal(true, false, false) },
 		})
 		if err != nil {
 			os.Exit(gosh.ExitCode(err))

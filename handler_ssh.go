@@ -716,16 +716,16 @@ func (h *SshHandler) startExec(ctx context.Context, channel ssh.Channel, command
 			env = gosh.SetEnv(env, "GOSH", "1")
 		}
 		err = gosh.Run(gosh.Config{
-			Version:               version,
-			Context:               ctx,
-			Args:                  []string{shell, "-c", script},
-			Stdin:                 channel,
-			Stdout:                channel,
-			Stderr:                channel.Stderr(),
-			Env:                   env,
-			Dir:                   home,
-			IsTerminal:            false,
-			EnableVirtualTerminal: pty.EnableVirtualTerminal,
+			Version:       version,
+			Context:       ctx,
+			Args:          []string{shell, "-c", script},
+			Stdin:         channel,
+			Stdout:        channel,
+			Stderr:        channel.Stderr(),
+			Env:           env,
+			Dir:           home,
+			IsTerminal:    false,
+			OnPromptReset: func(context.Context) { pty.EnableVirtualTerminal(true, false, false) },
 		})
 		if err != nil && !gosh.IsExitStatus(err) && !errors.Is(err, context.Canceled) {
 			fmt.Fprintln(channel.Stderr(), err)

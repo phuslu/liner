@@ -16,6 +16,7 @@ del ctypes, os, dll
 package main
 
 import (
+	"context"
 	"os"
 
 	"github.com/phuslu/gosh"
@@ -32,13 +33,13 @@ func liner() {
 //export linex
 func linex() {
 	gosh.Run(gosh.Config{
-		Version:               version,
-		Args:                  os.Args,
-		Stdin:                 os.Stdin,
-		Stdout:                os.Stdout,
-		Stderr:                os.Stderr,
-		NotifySignals:         true,
-		IsTerminal:            pty.IsTerminal(os.Stdin.Fd()) && pty.IsTerminal(os.Stderr.Fd()),
-		EnableVirtualTerminal: pty.EnableVirtualTerminal,
+		Version:       version,
+		Args:          os.Args,
+		Stdin:         os.Stdin,
+		Stdout:        os.Stdout,
+		Stderr:        os.Stderr,
+		NotifySignals: true,
+		IsTerminal:    pty.IsTerminal(os.Stdin.Fd()) && pty.IsTerminal(os.Stderr.Fd()),
+		OnPromptReset: func(context.Context) { pty.EnableVirtualTerminal(true, false, false) },
 	})
 }
