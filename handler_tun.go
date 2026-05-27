@@ -670,9 +670,10 @@ func (h *TunHandler) forwardTCP(r *tcp.ForwarderRequest) {
 		TraceID:    log.NewXID(),
 	}
 	var (
-		wq        waiter.Queue
-		lconn     net.Conn
-		completed bool
+		wq           waiter.Queue
+		lconn        net.Conn
+		completed    bool
+		localConnErr error
 	)
 	defer func() {
 		if lconn != nil {
@@ -684,12 +685,19 @@ func (h *TunHandler) forwardTCP(r *tcp.ForwarderRequest) {
 		if lconn != nil {
 			return lconn, nil
 		}
+		if completed {
+			if localConnErr != nil {
+				return nil, localConnErr
+			}
+			return nil, errors.New("tun tcp forwarder request already completed")
+		}
 		ep, tcpipErr := r.CreateEndpoint(&wq)
 		if tcpipErr != nil {
 			log.Error().Xid("trace_id", req.TraceID).Str("tun_name", h.name).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).NetIPAddrPort("req_hostport", req.ServerAddr).Str("tun_host", req.Host).Uint16("tun_port", req.Port).Str("forward_dialer_name", h.Config.Forward.Dialer).Str("error", tcpipErr.String()).Msg("tun tcp create endpoint error")
 			r.Complete(true)
 			completed = true
-			return nil, fmt.Errorf("create tun tcp endpoint: %s", tcpipErr.String())
+			localConnErr = fmt.Errorf("create tun tcp endpoint: %s", tcpipErr.String())
+			return nil, localConnErr
 		}
 		r.Complete(false)
 		completed = true
@@ -784,6 +792,9 @@ func (h *TunHandler) forwardTCP(r *tcp.ForwarderRequest) {
 		if !completed {
 			r.Complete(true)
 		}
+		return
+	}
+	if localConnErr != nil {
 		return
 	}
 
