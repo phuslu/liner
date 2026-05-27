@@ -1,5 +1,5 @@
 rem =======================================================
-rem Liner windows 状态栏托盘程序 —— PowerShell 单文件脚本版
+rem Liner Windows system tray app
 rem =======================================================
 @echo off
 setlocal
