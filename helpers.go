@@ -955,6 +955,53 @@ func (c *ConnWithData) Read(b []byte) (int, error) {
 	return n, nil
 }
 
+type noReadFrom struct{}
+
+func (noReadFrom) ReadFrom(io.Reader) (int64, error) {
+	panic("can't happen")
+}
+
+type PreReadConn struct {
+	noWriteTo
+	noReadFrom
+	net.Conn
+
+	rede bool
+	data []byte
+}
+
+func (c *PreReadConn) NetConn() net.Conn {
+	return c.Conn
+}
+
+func (c *PreReadConn) Read(b []byte) (int, error) {
+	if c.rede {
+		if c.data == nil {
+			if c.Conn == nil {
+				return 0, io.EOF
+			}
+			return c.Conn.Read(b)
+		}
+		n := copy(b, c.data)
+		if n < len(c.data) {
+			c.data = c.data[n:]
+		} else {
+			c.data = nil
+		}
+		return n, nil
+	} else {
+		n, err := c.Conn.Read(b)
+		if n > 0 {
+			c.data = append(c.data, b[:n]...)
+		}
+		return n, err
+	}
+}
+
+func (c *PreReadConn) Rede() {
+	c.rede = true
+}
+
 func (c *ConnWithData) Write(b []byte) (int, error) {
 	if c.Conn == nil {
 		return 0, errors.ErrUnsupported
