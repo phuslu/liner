@@ -46,9 +46,6 @@ if ([Threading.Thread]::CurrentThread.GetApartmentState() -ne 'STA') {
     exit
 }
 
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
-
 if (-not ([System.Management.Automation.PSTypeName]'LinerNativeMethods').Type) {
     Add-Type @'
 using System;
@@ -85,6 +82,18 @@ public static class LinerNativeMethods
     [DllImport("user32.dll", SetLastError = true)]
     public static extern bool DestroyIcon(IntPtr hIcon);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool SetProcessDpiAwarenessContext(IntPtr dpiContext);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr dpiContext);
+
+    [DllImport("shcore.dll", SetLastError = true)]
+    public static extern int SetProcessDpiAwareness(int value);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool SetProcessDPIAware();
+
     [DllImport("kernel32.dll", SetLastError = true)]
     public static extern bool AttachConsole(uint dwProcessId);
 
@@ -102,6 +111,60 @@ public static class LinerNativeMethods
 }
 '@
 }
+
+function Initialize-DpiAwareness {
+    $perMonitorV2 = [IntPtr](-4)
+    $perMonitor = [IntPtr](-3)
+
+    # Must run before WinForms creates any HWND, otherwise Windows bitmap-scales the tray menu.
+    foreach ($context in @($perMonitorV2, $perMonitor)) {
+        try {
+            if ([LinerNativeMethods]::SetProcessDpiAwarenessContext($context)) {
+                try {
+                    [LinerNativeMethods]::SetThreadDpiAwarenessContext($context) | Out-Null
+                } catch {
+                }
+                return
+            }
+        } catch [System.EntryPointNotFoundException] {
+            break
+        } catch {
+        }
+    }
+
+    try {
+        if ([LinerNativeMethods]::SetProcessDpiAwareness(2) -eq 0) {
+            try {
+                [LinerNativeMethods]::SetThreadDpiAwarenessContext($perMonitor) | Out-Null
+            } catch {
+            }
+            return
+        }
+    } catch [System.EntryPointNotFoundException] {
+    } catch [System.DllNotFoundException] {
+    } catch {
+    }
+
+    try {
+        [LinerNativeMethods]::SetProcessDPIAware() | Out-Null
+    } catch {
+    }
+
+    foreach ($context in @($perMonitorV2, $perMonitor)) {
+        try {
+            [LinerNativeMethods]::SetThreadDpiAwarenessContext($context) | Out-Null
+            break
+        } catch [System.EntryPointNotFoundException] {
+            break
+        } catch {
+        }
+    }
+}
+
+Initialize-DpiAwareness
+
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
 
 [System.Windows.Forms.Application]::EnableVisualStyles()
 [System.Windows.Forms.Application]::SetCompatibleTextRenderingDefault($false)
