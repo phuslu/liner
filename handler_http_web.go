@@ -92,6 +92,13 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 					AllowAttr: "allow_index",
 				}
 			}
+			if tcpCongestion := web.Proxy.TcpCongestion; tcpCongestion != "" {
+				router.handler = &HTTPWebMiddlewareTcpCongestion{
+					Handler:       router.handler,
+					Location:      router.location,
+					TcpCongestion: tcpCongestion,
+				}
+			}
 			if cdnjs := web.Index.CdnjsZip; cdnjs != "" {
 				router.handler = &HTTPWebMiddlewareCDNJS{
 					Handler:  router.handler,
@@ -115,6 +122,13 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 					Location:  router.location,
 					AuthTable: table,
 					AllowAttr: "allow_proxy",
+				}
+			}
+			if tcpCongestion := web.Proxy.TcpCongestion; tcpCongestion != "" {
+				router.handler = &HTTPWebMiddlewareTcpCongestion{
+					Handler:       router.handler,
+					Location:      router.location,
+					TcpCongestion: tcpCongestion,
 				}
 			}
 			if tiny := web.Proxy.TinyAuth; tiny != "" {
@@ -359,6 +373,64 @@ func (m *HTTPWebMiddlewareAuthTable) ServeHTTP(rw http.ResponseWriter, req *http
 			rw.Header().Set("www-authenticate", `Basic realm="Login to continue"`)
 			http.Error(rw, "401 unauthorised: "+err.Error(), http.StatusUnauthorized)
 			return
+		}
+	}
+	m.Handler.ServeHTTP(rw, req)
+}
+
+var _ HTTPHandler = (*HTTPWebMiddlewareTcpCongestion)(nil)
+
+type HTTPWebMiddlewareTcpCongestion struct {
+	Handler  HTTPHandler
+	Location string
+
+	TcpCongestion string
+
+	prefix string
+}
+
+func (m *HTTPWebMiddlewareTcpCongestion) Load(ctx context.Context) error {
+	m.prefix = strings.TrimSuffix(m.Location, "/") + "/"
+	if m.TcpCongestion != "" {
+		// TODO
+	}
+
+	return m.Handler.Load(ctx)
+}
+
+func (m *HTTPWebMiddlewareTcpCongestion) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	ri := req.Context().Value(HTTPRequestInfoContextKey).(*HTTPRequestInfo)
+	if ri.ClientConnOps.SupportTCP() && strings.HasPrefix(req.RequestURI, m.prefix) && m.TcpCongestion != "" {
+		log.Debug().Context(ri.LogContext).Str("web_tcp_congestion", m.TcpCongestion).Msg("execute web_tcp_congestion middleware")
+		if options := strings.Fields(m.TcpCongestion); len(options) >= 1 {
+			switch name := options[0]; name {
+			case "brutal":
+				if len(options) < 2 {
+					log.Error().Context(ri.LogContext).Strs("web_tcp_congestion_options", options).Msg("parse web_tcp_congestion error")
+					http.Error(rw, "invalid tcp_congestion value", http.StatusBadGateway)
+					return
+				}
+				if rate, _ := strconv.Atoi(options[1]); rate > 0 {
+					gain := 20 // hysteria2 default
+					if len(options) >= 3 {
+						if n, _ := strconv.Atoi(options[2]); n > 0 {
+							gain = n
+						}
+					}
+					if err := ri.ClientConnOps.SetTcpCongestion(name, uint64(rate), uint32(gain)); err != nil {
+						log.Error().Context(ri.LogContext).Strs("web_tcp_congestion_options", options).Msg("set web_tcp_congestion error")
+						http.Error(rw, err.Error(), http.StatusBadGateway)
+						return
+					}
+					log.Debug().NetIPAddr("remote_ip", ri.RealIP).Strs("web_tcp_congestion_options", options).Msg("set web_tcp_congestion ok")
+				}
+			default:
+				if err := ri.ClientConnOps.SetTcpCongestion(name); err != nil {
+					log.Error().Context(ri.LogContext).Strs("web_tcp_congestion_options", options).Msg("set web_tcp_congestion error")
+					http.Error(rw, err.Error(), http.StatusBadGateway)
+					return
+				}
+			}
 		}
 	}
 	m.Handler.ServeHTTP(rw, req)
