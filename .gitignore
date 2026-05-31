@@ -2,6 +2,7 @@
 CHANGELOG
 liner
 *.csv
+*.dll
 *.egg-info
 *.env
 *.exe
