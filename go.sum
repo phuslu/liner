@@ -54,8 +54,8 @@ github.com/phuslu/pty v0.0.0-20260518141308-9cb014534fff h1:KXhTWvO/g40Tv48tFCYR
 github.com/phuslu/pty v0.0.0-20260518141308-9cb014534fff/go.mod h1:6Uo+7yNShVyWgMNWfBjpR3FQ9bHOiKUDJLuc8KEJsLE=
 github.com/phuslu/quic-go v0.0.0-20260524063431-69b50449c34c h1:bfN96mW15dJqRNfVRzV3hLBL54eKKtHNZLfEeovK7Qg=
 github.com/phuslu/quic-go v0.0.0-20260524063431-69b50449c34c/go.mod h1:Qo7P+JbYz92mjcsElTEefHt/s95AO2mugAs6DaNTAJY=
-github.com/phuslu/tcp-brutal v1.0.1 h1:esYc4BB2ojNG4A3lDrNrAtS1BykTsu3/d/YHJTJO4jA=
-github.com/phuslu/tcp-brutal v1.0.1/go.mod h1:KIy0oH2sKrMGLM89+3SHBujPLLui0V/jwg13QAfiQL0=
+github.com/phuslu/tcp-brutal v1.0.0 h1:YUR1Xj3/8SwX7qTKCXtX1S2V4bSgmsIyj8wu7TdiVwc=
+github.com/phuslu/tcp-brutal v1.0.0/go.mod h1:KIy0oH2sKrMGLM89+3SHBujPLLui0V/jwg13QAfiQL0=
 github.com/pkg/sftp v1.13.10 h1:+5FbKNTe5Z9aspU88DPIKJ9z2KZoaGCu6Sr6kKR/5mU=
 github.com/pkg/sftp v1.13.10/go.mod h1:bJ1a7uDhrX/4OII+agvy28lzRvQrmIQuaHrcI1HbeGA=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
