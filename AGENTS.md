@@ -251,6 +251,17 @@ dialer=proxy1&disable_ipv6=true
   `reset`, `close`, empty, and `proxy_pass` are behavior surface.
 - HTTP/3 `CONNECT-UDP` depends on HTTP datagrams and datagram context ID 0.
   Keep client and server `EnableDatagrams` behavior in sync.
+- HTTPS `http3_listen` controls both HTTP/3 UDP listeners and the Alt-Svc
+  advertised port. When omitted or all entries are empty, Alt-Svc uses the TCP
+  port unchanged (zero intrusion on existing behavior). A single non-empty value
+  is shared by all TCP listeners; values matching `listen` length are positional,
+  and an empty positional value means that position keeps its TCP port. The
+  Alt-Svc override map only stores entries where the UDP port differs from the
+  TCP port.
+- HTTP/3 dialer `udp_port` query parameter (e.g.,
+  `http3://host:443/?udp_port=8443`) tells the QUIC dialer to connect on a
+  different port than the URL port. When omitted, the dialer uses the URL port
+  (default 443). This is the client-side counterpart of server-side `http3_listen`.
 - HTTP/1.1 and HTTP/2 reverse tunnels use yamux over the request stream.
   HTTP/3 reverse tunnels use raw QUIC streams with `HTTP3TunnelOpenFrame`.
   Do not merge those paths casually.

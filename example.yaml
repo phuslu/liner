@@ -16,6 +16,8 @@ dialer:
   proxy1: https://user:passwd@proxy1.example.org:443/?user_agent=liner-1984
   proxy2: http2://foobar:123456@proxy2.example.com:443/?user_agent=liner-1984
   proxy3: http3://foobar:123456@proxy3.example.com:443/?user_agent=liner-1984
+  # http3 dialer with custom UDP port for Alt-Svc (QUIC connects to 8443, logical service port is 443)
+  proxy4: http3://foobar:123456@proxy4.example.com:443/?udp_port=8443&user_agent=liner-1984
   proxychain: |
     ssh://foobar:123456@cn.phus.lu:22/
     http2://foobar:123456@ipv6.phus.lu:443/?user_agent=liner-jumper-cn
@@ -48,6 +50,7 @@ ssh:
     log: true
 https:
   - listen: [':443']
+    # http3_listen: [':8443'] # optional; http3 listens and advertises this UDP port. Empty uses listen.
     server_name: ['example.org']
     server_config:
       example.org:
