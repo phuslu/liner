@@ -28,13 +28,12 @@ import (
 )
 
 type HTTPWebHandler struct {
-	Config           HTTPConfig
-	DnsResolverPool  *DnsResolverPool
-	MemoryDialers    *MemoryDialers
-	MemoryLogWriter  *ringbuffer.RingBuffer
-	Transport        *http.Transport
-	Functions        *Functions
-	HTTP3AltSvcPorts http3AltSvcPorts
+	Config          HTTPConfig
+	DnsResolverPool *DnsResolverPool
+	MemoryDialers   *MemoryDialers
+	MemoryLogWriter *ringbuffer.RingBuffer
+	Transport       *http.Transport
+	Functions       *Functions
 
 	wildcards []struct {
 		location string
@@ -250,11 +249,7 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 func (h *HTTPWebHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	if config := h.Config.ServerConfig[req.Host]; !config.DisableHttp3 && req.ProtoMajor != 3 && req.TLS != nil {
 		if addr, ok := req.Context().Value(http.LocalAddrContextKey).(net.Addr).(*net.TCPAddr); ok {
-			port := addr.Port
-			if p, ok := h.HTTP3AltSvcPorts[addr.Port]; ok {
-				port = p
-			}
-			rw.Header().Add("alt-svc", `h3=":`+strconv.Itoa(port)+`"`)
+			rw.Header().Add("alt-svc", `h3=":`+strconv.Itoa(addr.Port)+`"`)
 		}
 	}
 	for _, x := range h.wildcards {

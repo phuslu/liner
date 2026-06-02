@@ -14,7 +14,6 @@ import (
 	"net/url"
 	"os"
 	"slices"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -31,7 +30,6 @@ type HTTP3Dialer struct {
 	Password  string
 	Host      string
 	Port      string
-	UdpPort   string
 	UserAgent string
 	Insecure  bool
 	Resolve   string
@@ -41,8 +39,6 @@ type HTTP3Dialer struct {
 
 	mu   sync.Mutex
 	conn atomic.Pointer[http3ClientConn]
-
-	altSvcPort string // discovered UDP port from Alt-Svc; accessed under d.mu
 }
 
 type http3ClientConn struct {
@@ -364,16 +360,7 @@ func (d *HTTP3Dialer) dialClientConn(ctx context.Context) (*http3.ClientConn, *q
 
 	qconn, err := d.dialQUICConn(ctx)
 	if err != nil {
-		// QUIC failed on URL port. If UdpPort not explicitly set, try Alt-Svc discovery.
-		if d.UdpPort == "" {
-			if port, ok := d.discoverUdpPort(ctx); ok {
-				d.UdpPort = port
-				qconn, err = d.dialQUICConn(ctx)
-			}
-		}
-		if err != nil {
-			return nil, nil, err
-		}
+		return nil, nil, err
 	}
 	cc := (&http3.Transport{
 		DisableCompression: false,
@@ -383,68 +370,6 @@ func (d *HTTP3Dialer) dialClientConn(ctx context.Context) (*http3.ClientConn, *q
 	return cc, qconn, nil
 }
 
-func (d *HTTP3Dialer) discoverUdpPort(ctx context.Context) (string, bool) {
-	if d.altSvcPort != "" {
-		return d.altSvcPort, true
-	}
-
-	// Make an HTTPS HEAD request to discover Alt-Svc
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{
-			NextProtos:         []string{"h2", "http/1.1"},
-			InsecureSkipVerify: d.Insecure,
-			ServerName:         d.Host,
-			ClientSessionCache: d.TLSCache,
-		},
-	}
-	defer tr.CloseIdleConnections()
-
-	client := &http.Client{Transport: tr}
-	url := fmt.Sprintf("https://%s/", net.JoinHostPort(d.Host, cmp.Or(d.Port, "443")))
-	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
-	if err != nil {
-		return "", false
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", false
-	}
-	resp.Body.Close()
-
-	port := parseAltSvcH3Port(resp.Header.Get("alt-svc"))
-	if port == "" {
-		return "", false
-	}
-
-	d.altSvcPort = port
-	return port, true
-}
-
-func parseAltSvcH3Port(header string) string {
-	// Parse Alt-Svc header for h3 port. Handles:
-	//   h3=":8443"
-	//   h3=":8443", h3-29=":8443"
-	//   h3="host:8443"
-	const mark = `h3="`
-	i := strings.Index(header, mark)
-	if i < 0 {
-		return ""
-	}
-	rest := header[i+len(mark):]
-	j := strings.IndexByte(rest, '"')
-	if j < 0 {
-		return ""
-	}
-	value := rest[:j]
-	// Value is "host:port" or ":port". Extract port after last colon.
-	k := strings.LastIndexByte(value, ':')
-	if k < 0 {
-		return ""
-	}
-	return value[k+1:]
-}
-
 func (d *HTTP3Dialer) dialQUICConn(ctx context.Context) (*quic.Conn, error) {
 	const concurrency = 2
 	type connerr struct {
@@ -452,7 +377,7 @@ func (d *HTTP3Dialer) dialQUICConn(ctx context.Context) (*quic.Conn, error) {
 		err  error
 	}
 
-	hostport := net.JoinHostPort(cmp.Or(d.Resolve, d.Host), cmp.Or(d.UdpPort, d.Port, "443"))
+	hostport := net.JoinHostPort(cmp.Or(d.Resolve, d.Host), cmp.Or(d.Port, "443"))
 	connc := make(chan *connerr, concurrency)
 	conns := make([]*connerr, 0, concurrency)
 	for range concurrency {

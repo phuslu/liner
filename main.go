@@ -7,7 +7,6 @@ import (
 	"crypto/tls"
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"io"
 	stdLog "log"
 	"log/slog"
@@ -53,79 +52,6 @@ var (
 	DefaultUserAgent = "Liner/" + version + " (" + runtime.GOOS + "; " + runtime.GOARCH + ")"
 	ChromeUserAgent  = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + utls.HelloChrome_Auto.Version + ".0.0.0 Safari/537.36"
 )
-
-type httpServerHandlers struct {
-	Names map[string]HTTPHandler
-	Affix []struct {
-		Prefix  string
-		Suffix  string
-		Handler HTTPHandler
-	}
-}
-
-type http3AltSvcPorts map[int]int
-
-func http3AltSvcPortsForServer(server HTTPConfig) (http3AltSvcPorts, error) {
-	ports := make(http3AltSvcPorts)
-	switch len(server.Http3Listen) {
-	case 0:
-		// no http3_listen: Alt-Svc uses tcp port, no overrides needed
-	case 1:
-		if server.Http3Listen[0] == "" {
-			// [""] means fallback to each tcp listen port, no overrides needed
-			break
-		}
-		udpPort, err := listenPort(server.Http3Listen[0])
-		if err != nil {
-			return ports, fmt.Errorf("parse http3_listen port %q: %w", server.Http3Listen[0], err)
-		}
-		for _, listen := range server.Listen {
-			tcpPort, err := listenPort(listen)
-			if err != nil {
-				return ports, fmt.Errorf("parse listen port %q: %w", listen, err)
-			}
-			if tcpPort != udpPort {
-				ports[tcpPort] = udpPort
-			}
-		}
-	default:
-		if len(server.Http3Listen) != len(server.Listen) {
-			return ports, fmt.Errorf("http3_listen count must be 1 or equal listen count: listen=%#v http3_listen=%#v", server.Listen, server.Http3Listen)
-		}
-		for i, listen := range server.Listen {
-			if server.Http3Listen[i] == "" {
-				continue
-			}
-			tcpPort, err := listenPort(listen)
-			if err != nil {
-				return ports, fmt.Errorf("parse listen port %q: %w", listen, err)
-			}
-			udpPort, err := listenPort(server.Http3Listen[i])
-			if err != nil {
-				return ports, fmt.Errorf("parse http3_listen port %q: %w", server.Http3Listen[i], err)
-			}
-			if tcpPort != udpPort {
-				ports[tcpPort] = udpPort
-			}
-		}
-	}
-	return ports, nil
-}
-
-func listenPort(addr string) (int, error) {
-	_, port, err := net.SplitHostPort(addr)
-	if err != nil {
-		return 0, err
-	}
-	n, err := strconv.Atoi(port)
-	if err != nil {
-		return 0, err
-	}
-	if n < 1 || n > 65535 {
-		return 0, fmt.Errorf("invalid port %d", n)
-	}
-	return n, nil
-}
 
 func main() {
 	if s := filepath.Base(os.Args[0]); s == "linex" || s == "linex.exe" || s == "gosh" || s == "gosh.exe" || os.Getenv("GOSH") == "1" {
@@ -454,7 +380,6 @@ func main() {
 				Password:  first(u.User.Password()),
 				Host:      u.Hostname(),
 				Port:      u.Port(),
-				UdpPort:   u.Query().Get("udp_port"),
 				UserAgent: cmp.Or(u.Query().Get("user_agent"), DefaultUserAgent),
 				Insecure:  u.Query().Get("insecure") == "true",
 				Resolve:   u.Query().Get("resolve"),
@@ -673,13 +598,15 @@ func main() {
 	}
 
 	// listen and serve https
-	h2handlers := map[string]*httpServerHandlers{}
-	h3handlers := map[string]*httpServerHandlers{}
-	for _, server := range config.Https {
-		altSvcPorts, err := http3AltSvcPortsForServer(server)
-		if err != nil {
-			log.Fatal().Err(err).Strs("listen", server.Listen).Strs("http3_listen", server.Http3Listen).Msg("https http3 alt-svc config error")
+	h2handlers := map[string]*struct {
+		Names map[string]HTTPHandler
+		Affix []struct {
+			Prefix  string
+			Suffix  string
+			Handler HTTPHandler
 		}
+	}{}
+	for _, server := range config.Https {
 		handler := &HTTPServerHandler{
 			ForwardHandler: &HTTPForwardHandler{
 				Config:         server,
@@ -698,13 +625,12 @@ func main() {
 				Functions:     functions,
 			},
 			WebHandler: &HTTPWebHandler{
-				Config:           server,
-				DnsResolverPool:  dnsResolverPool,
-				MemoryDialers:    memoryDialers,
-				MemoryLogWriter:  memoryLogWriter,
-				Transport:        transport,
-				Functions:        functions,
-				HTTP3AltSvcPorts: altSvcPorts,
+				Config:          server,
+				DnsResolverPool: dnsResolverPool,
+				MemoryDialers:   memoryDialers,
+				MemoryLogWriter: memoryLogWriter,
+				Transport:       transport,
+				Functions:       functions,
 			},
 			Hostnames: filter(server.ServerName, func(s string) bool {
 				return !strings.Contains(s, "*")
@@ -764,22 +690,34 @@ func main() {
 					PreferChacha20: config.PreferChacha20,
 				})
 				if _, ok := h2handlers[listen]; !ok {
-					h2handlers[listen] = newHTTPServerHandlers()
+					h2handlers[listen] = &struct {
+						Names map[string]HTTPHandler
+						Affix []struct {
+							Prefix  string
+							Suffix  string
+							Handler HTTPHandler
+						}
+					}{
+						Names: make(map[string]HTTPHandler),
+					}
 				}
-				h2handlers[listen].Add(name, handler)
-			}
-		}
-
-		h3listens, err := http3ListenAddrs(server)
-		if err != nil {
-			log.Fatal().Err(err).Strs("listen", server.Listen).Strs("http3_listen", server.Http3Listen).Msg("https http3 listen config error")
-		}
-		for _, listen := range h3listens {
-			for _, name := range server.ServerName {
-				if _, ok := h3handlers[listen]; !ok {
-					h3handlers[listen] = newHTTPServerHandlers()
+				switch strings.Count(name, "*") {
+				case 0:
+					h2handlers[listen].Names[name] = handler
+				case 1:
+					before, after, _ := strings.Cut(name, "*")
+					h2handlers[listen].Affix = append(h2handlers[listen].Affix, struct {
+						Prefix  string
+						Suffix  string
+						Handler HTTPHandler
+					}{
+						Prefix:  before,
+						Suffix:  after,
+						Handler: handler,
+					})
+				default:
+					panic("unsupported wildcard servername: " + name)
 				}
-				h3handlers[listen].Add(name, handler)
 			}
 		}
 	}
@@ -796,7 +734,23 @@ func main() {
 
 		server := &http.Server{
 			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				h, matched := handlers.Match(r.TLS.ServerName)
+				h, matched := handlers.Names[r.TLS.ServerName]
+				if !matched {
+					for _, affix := range handlers.Affix {
+						switch {
+						case affix.Prefix == "":
+							matched = strings.HasSuffix(r.TLS.ServerName, affix.Suffix)
+						case affix.Suffix == "":
+							matched = strings.HasPrefix(r.TLS.ServerName, affix.Prefix)
+						default:
+							matched = strings.HasPrefix(r.TLS.ServerName, affix.Prefix) && strings.HasSuffix(r.TLS.ServerName, affix.Suffix)
+						}
+						if matched {
+							h = affix.Handler
+							break
+						}
+					}
+				}
 				if !matched {
 					http.NotFound(w, r)
 					return
@@ -837,9 +791,6 @@ func main() {
 			MirrorHeader:    true,
 			TLSConfig:       server.TLSConfig,
 		})
-	}
-
-	for addr, handlers := range h3handlers {
 
 		// start http3 server
 		if !config.Global.DisableHttp3 {
@@ -851,19 +802,9 @@ func main() {
 			log.Info().Str("version", version).NetAddr("address", pc.LocalAddr()).Msg("liner listen and serve http3")
 
 			http3Server := &http3.Server{
-				Addr: addr,
-				Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					h, matched := handlers.Match(r.TLS.ServerName)
-					if !matched {
-						http.NotFound(w, r)
-						return
-					}
-					h.ServeHTTP(w, r)
-				}),
-				TLSConfig: &tls.Config{
-					GetConfigForClient: tlsConfigurator.GetConfigForClient,
-					NextProtos:         []string{"h3", "h3-29"},
-				},
+				Addr:            addr,
+				Handler:         server.Handler,
+				TLSConfig:       server.TLSConfig,
 				EnableDatagrams: true,
 				QUICConfig: &quic.Config{
 					Allow0RTT:                  true,
@@ -882,7 +823,7 @@ func main() {
 				ConnContext: tlsConfigurator.HTTP3QUICConnContext,
 			}
 
-			ln, err := tr.ListenEarly(http3.ConfigureTLSConfig(http3Server.TLSConfig), http3Server.QUICConfig)
+			ln, err := tr.ListenEarly(http3.ConfigureTLSConfig(server.TLSConfig), http3Server.QUICConfig)
 			if err != nil {
 				log.Fatal().Err(err).Str("address", addr).Msg("quic.ListenEarly error")
 			}
@@ -1382,78 +1323,4 @@ func main() {
 		log.Info().Str("exit_name", name).Err(atexit[name]()).Msg("liner exit")
 	}
 	log.Info().Msg("liner exited.")
-}
-func newHTTPServerHandlers() *httpServerHandlers {
-	return &httpServerHandlers{
-		Names: make(map[string]HTTPHandler),
-	}
-}
-
-func (handlers *httpServerHandlers) Add(name string, handler HTTPHandler) {
-	switch strings.Count(name, "*") {
-	case 0:
-		handlers.Names[name] = handler
-	case 1:
-		before, after, _ := strings.Cut(name, "*")
-		handlers.Affix = append(handlers.Affix, struct {
-			Prefix  string
-			Suffix  string
-			Handler HTTPHandler
-		}{
-			Prefix:  before,
-			Suffix:  after,
-			Handler: handler,
-		})
-	default:
-		panic("unsupported wildcard servername: " + name)
-	}
-}
-
-func (handlers *httpServerHandlers) Match(serverName string) (HTTPHandler, bool) {
-	if h, matched := handlers.Names[serverName]; matched {
-		return h, true
-	}
-	for _, affix := range handlers.Affix {
-		var matched bool
-		switch {
-		case affix.Prefix == "":
-			matched = strings.HasSuffix(serverName, affix.Suffix)
-		case affix.Suffix == "":
-			matched = strings.HasPrefix(serverName, affix.Prefix)
-		default:
-			matched = strings.HasPrefix(serverName, affix.Prefix) && strings.HasSuffix(serverName, affix.Suffix)
-		}
-		if matched {
-			return affix.Handler, true
-		}
-	}
-	return nil, false
-}
-
-func http3ListenAddrs(server HTTPConfig) ([]string, error) {
-	if len(server.Http3Listen) == 0 {
-		return server.Listen, nil
-	}
-	if len(server.Http3Listen) == 1 {
-		if server.Http3Listen[0] == "" {
-			return server.Listen, nil
-		}
-		return server.Http3Listen, nil
-	}
-	if len(server.Http3Listen) != len(server.Listen) {
-		return nil, fmt.Errorf("http3_listen count must be 1 or equal listen count: listen=%#v http3_listen=%#v", server.Listen, server.Http3Listen)
-	}
-	addrs := make([]string, 0, len(server.Http3Listen))
-	seen := map[string]struct{}{}
-	for i, addr := range server.Http3Listen {
-		if addr == "" {
-			addr = server.Listen[i]
-		}
-		if _, ok := seen[addr]; ok {
-			continue
-		}
-		seen[addr] = struct{}{}
-		addrs = append(addrs, addr)
-	}
-	return addrs, nil
 }
