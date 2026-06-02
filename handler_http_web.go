@@ -249,7 +249,14 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 func (h *HTTPWebHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	if config := h.Config.ServerConfig[req.Host]; !config.DisableHttp3 && req.ProtoMajor != 3 && req.TLS != nil {
 		if addr, ok := req.Context().Value(http.LocalAddrContextKey).(net.Addr).(*net.TCPAddr); ok {
-			rw.Header().Add("alt-svc", `h3=":`+strconv.Itoa(addr.Port)+`"`)
+			h3addr := ":" + strconv.Itoa(addr.Port)
+			for _, s := range h.Config.Http3Listen {
+				if strings.HasPrefix(s, ":") || strings.HasPrefix(s, "0.0.0.0:") || strings.HasPrefix(s, "[::]:") {
+					h3addr = s
+					break
+				}
+			}
+			rw.Header().Add("alt-svc", `h3="`+h3addr+`"`)
 		}
 	}
 	for _, x := range h.wildcards {

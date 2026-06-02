@@ -598,7 +598,9 @@ func main() {
 	}
 
 	// listen and serve https
-	h2handlers := map[string]*struct {
+	h2h3handlers := map[string]*struct {
+		Http2 bool
+		Http3 bool
 		Names map[string]HTTPHandler
 		Affix []struct {
 			Prefix  string
@@ -672,7 +674,7 @@ func main() {
 			}
 		}
 
-		for _, listen := range server.Listen {
+		for index, listen := range slices.Concat(server.Listen, server.Http3Listen) {
 			for _, name := range server.ServerName {
 				config := server.ServerConfig[name]
 				if config.Keyfile == "" {
@@ -689,8 +691,10 @@ func main() {
 					DisableTLS11:   config.DisableTls11,
 					PreferChacha20: config.PreferChacha20,
 				})
-				if _, ok := h2handlers[listen]; !ok {
-					h2handlers[listen] = &struct {
+				if _, ok := h2h3handlers[listen]; !ok {
+					h2h3handlers[listen] = &struct {
+						Http2 bool
+						Http3 bool
 						Names map[string]HTTPHandler
 						Affix []struct {
 							Prefix  string
@@ -701,12 +705,20 @@ func main() {
 						Names: make(map[string]HTTPHandler),
 					}
 				}
+				if index < len(server.Listen) {
+					h2h3handlers[listen].Http2 = true
+					if len(server.Http3Listen) == 0 {
+						h2h3handlers[listen].Http3 = true
+					}
+				} else {
+					h2h3handlers[listen].Http3 = true
+				}
 				switch strings.Count(name, "*") {
 				case 0:
-					h2handlers[listen].Names[name] = handler
+					h2h3handlers[listen].Names[name] = handler
 				case 1:
 					before, after, _ := strings.Cut(name, "*")
-					h2handlers[listen].Affix = append(h2handlers[listen].Affix, struct {
+					h2h3handlers[listen].Affix = append(h2h3handlers[listen].Affix, struct {
 						Prefix  string
 						Suffix  string
 						Handler HTTPHandler
@@ -722,15 +734,7 @@ func main() {
 		}
 	}
 
-	for addr, handlers := range h2handlers {
-
-		var ln net.Listener
-
-		if ln, err = lc.Listen(context.Background(), "tcp", addr); err != nil {
-			log.Fatal().Err(err).Str("address", addr).Msg("net.Listen error")
-		}
-
-		log.Info().Str("version", version).NetAddr("address", ln.Addr()).Msg("liner listen and serve https")
+	for addr, handlers := range h2h3handlers {
 
 		server := &http.Server{
 			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -783,17 +787,26 @@ func main() {
 			}(),
 		}
 
-		go server.Serve(TCPListener{
-			TCPListener:     ln.(*net.TCPListener),
-			KeepAlivePeriod: 3 * time.Minute,
-			ReadBufferSize:  config.Global.TcpReadBuffer,
-			WriteBufferSize: config.Global.TcpWriteBuffer,
-			MirrorHeader:    true,
-			TLSConfig:       server.TLSConfig,
-		})
+		// start http2 server
+		if handlers.Http2 {
+			ln, err := lc.Listen(context.Background(), "tcp", addr)
+			if err != nil {
+				log.Fatal().Err(err).Str("address", addr).Msg("net.Listen error")
+			}
+			log.Info().Str("version", version).NetAddr("address", ln.Addr()).Msg("liner listen and serve https")
+
+			go server.Serve(TCPListener{
+				TCPListener:     ln.(*net.TCPListener),
+				KeepAlivePeriod: 3 * time.Minute,
+				ReadBufferSize:  config.Global.TcpReadBuffer,
+				WriteBufferSize: config.Global.TcpWriteBuffer,
+				MirrorHeader:    true,
+				TLSConfig:       server.TLSConfig,
+			})
+		}
 
 		// start http3 server
-		if !config.Global.DisableHttp3 {
+		if handlers.Http3 && !config.Global.DisableHttp3 {
 			pc, err := lc.ListenPacket(context.Background(), "udp", addr)
 			if err != nil {
 				log.Fatal().Err(err).Str("address", addr).Msg("net.ListenPacket error")
