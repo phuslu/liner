@@ -1281,7 +1281,11 @@ func main() {
 	}
 	runner := cron.New(cronOptions...)
 	if config.Global.LogLevel != "discard" && !pty.IsTerminal(os.Stderr.Fd()) {
-		runner.AddFunc("0 0 0 * * *", func() { (*log.DefaultLogger.Writer.(*log.MultiEntryWriter))[0].(*log.FileWriter).Rotate() })
+		runner.AddFunc("0 0 0 * * *", func() {
+			if w, ok := (*log.DefaultLogger.Writer.(*log.MultiEntryWriter))[0].(*log.FileWriter); ok {
+				w.Rotate()
+			}
+		})
 		if slices.ContainsFunc(config.Http, func(c HTTPConfig) bool { return c.Forward.Log }) ||
 			slices.ContainsFunc(config.Https, func(c HTTPConfig) bool { return c.Forward.Log }) ||
 			slices.ContainsFunc(config.Tun, func(c TunConfig) bool { return c.Forward.Log }) ||
