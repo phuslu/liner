@@ -185,6 +185,8 @@ func main() {
 
 	slog.SetDefault(log.DefaultLogger.Slog())
 
+	log.Info().Str("version", version).Msg("liner starting")
+
 	// load tcp-brutal
 	if !config.Global.DisableBrutal && runtime.GOOS == "linux" {
 		if slices.ContainsFunc(config.Http, func(c HTTPConfig) bool { return c.Forward.TcpCongestion != "" || c.Tunnel.TcpCongestion != "" }) ||
