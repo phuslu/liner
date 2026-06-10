@@ -1,6 +1,6 @@
 module liner
 
-go 1.26
+go 1.26.4
 
 require (
 	github.com/coder/websocket v1.8.14
@@ -13,13 +13,13 @@ require (
 	github.com/phuslu/fastdns v0.17.0
 	github.com/phuslu/geosite v1.0.20250901
 	github.com/phuslu/gosh v0.0.0-20260528105038-250a6b893c6d
-	github.com/phuslu/log v1.0.124
+	github.com/phuslu/log v1.0.125-0.20260610090906-0f6bce85a4bc
 	github.com/phuslu/lru v1.0.19
 	github.com/phuslu/pty v0.0.0-20260518141308-9cb014534fff
 	github.com/phuslu/tcp-brutal v1.0.0
 	github.com/pkg/sftp v1.13.10
 	github.com/puzpuzpuz/xsync/v4 v4.5.0
-	github.com/quic-go/quic-go v0.59.1
+	github.com/quic-go/quic-go v0.60.0
 	github.com/refraction-networking/utls v1.8.2
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/smallnest/ringbuffer v0.1.1
@@ -29,7 +29,7 @@ require (
 	golang.org/x/net v0.55.0
 	golang.org/x/sys v0.45.0
 	golang.zx2c4.com/wireguard v0.0.0-20250521234502-f333402bd9cb
-	gvisor.dev/gvisor v0.0.0-20260519190036-266ba6c868f3
+	gvisor.dev/gvisor v0.0.0-20260609190117-5b5430a559c4
 )
 
 require (
@@ -49,4 +49,4 @@ require (
 	mvdan.cc/sh/v3 v3.13.1 // indirect
 )
 
-replace github.com/quic-go/quic-go v0.59.1 => github.com/phuslu/quic-go v0.0.0-20260524063431-69b50449c34c
+replace github.com/quic-go/quic-go v0.60.0 => github.com/phuslu/quic-go v0.0.0-20260610091901-404fa6c503bf
