@@ -1,6 +1,7 @@
 .DS_Store
 CHANGELOG
 liner
+make.bash
 *.csv
 *.dll
 *.egg-info

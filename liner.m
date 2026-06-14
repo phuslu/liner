@@ -272,7 +272,9 @@ static NSString *TrimSpaces(NSString *value) {
 @property(nonatomic, strong) NSArray<NSString *> *profiles;
 @property(nonatomic, copy) NSString *selectedProfile;
 @property(nonatomic, strong) NSMenuItem *preferencesItem;
+@property(nonatomic, strong) NSMenuItem *idleDisplaySleepItem;
 @property(nonatomic, strong) NSMenuItem *startStopItem;
+@property(nonatomic, strong) id idleDisplaySleepActivity;
 @property(nonatomic, copy) NSString *sudoAskpassPath;
 @end
 
@@ -319,6 +321,7 @@ static NSString *TrimSpaces(NSString *value) {
 
 - (void)applicationWillTerminate:(NSNotification *)notification {
     [self stopChild];
+    [self endIdleDisplaySleepActivity];
     [self cleanupSudoAskpass];
     if (self.authorization) {
         AuthorizationFree(self.authorization, kAuthorizationFlagDefaults);
@@ -447,6 +450,8 @@ static NSString *TrimSpaces(NSString *value) {
 
     self.preferencesItem = [self makeItem:@"Preferences…" action:@selector(editConfig:) symbol:@"slider.horizontal.3"];
     [menu addItem:self.preferencesItem];
+    self.idleDisplaySleepItem = [self makeItem:@"Prevent Display Sleep" action:@selector(toggleIdleDisplaySleep:) symbol:@"display"];
+    [menu addItem:self.idleDisplaySleepItem];
     [menu addItem:NSMenuItem.separatorItem];
 
     self.startStopItem = [self makeItem:@"Start" action:@selector(startChildAction:) symbol:@"play.circle"];
@@ -459,6 +464,7 @@ static NSString *TrimSpaces(NSString *value) {
     [self updateProxyMenuState];
     [self updateProfileMenuState];
     [self updatePreferencesMenuState];
+    [self updateIdleDisplaySleepMenuState];
     [self updateProcessMenuState];
 }
 
@@ -1490,6 +1496,32 @@ static NSString *TrimSpaces(NSString *value) {
 
 - (void)setProxyHTTP:(id)sender {
     [self applyProxyMode:@"http"];
+}
+
+- (void)toggleIdleDisplaySleep:(id)sender {
+    if (self.idleDisplaySleepActivity) {
+        [self endIdleDisplaySleepActivity];
+        [self appendToConsole:@"Prevent display sleep disabled.\n" color:self.ansiColors[3]];
+        return;
+    }
+
+    self.idleDisplaySleepActivity = [[NSProcessInfo processInfo] beginActivityWithOptions:NSActivityIdleDisplaySleepDisabled reason:self.appTitle];
+    [self updateIdleDisplaySleepMenuState];
+    [self appendToConsole:@"Prevent display sleep enabled.\n" color:self.ansiColors[2]];
+}
+
+- (void)endIdleDisplaySleepActivity {
+    id activity = self.idleDisplaySleepActivity;
+    if (!activity) {
+        return;
+    }
+    self.idleDisplaySleepActivity = nil;
+    [[NSProcessInfo processInfo] endActivity:activity];
+    [self updateIdleDisplaySleepMenuState];
+}
+
+- (void)updateIdleDisplaySleepMenuState {
+    self.idleDisplaySleepItem.state = self.idleDisplaySleepActivity ? NSControlStateValueOn : NSControlStateValueOff;
 }
 
 - (void)selectProfile:(NSMenuItem *)sender {
