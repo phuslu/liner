@@ -90,7 +90,7 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		return
 	}
 
-	log.Info().Context(ri.LogContext).Str("username", ri.AuthUserInfo.Username).Str("password", ri.AuthUserInfo.Password).Msg("tunnel verify user")
+	log.Info().Context(ri.LogContext).Str("username", ri.AuthUserInfo.Username).Msg("tunnel verify user")
 
 	err := h.userchecker.CheckAuthUser(req.Context(), &ri.AuthUserInfo)
 	if err != nil {

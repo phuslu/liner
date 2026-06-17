@@ -37,10 +37,11 @@ func (h *TunnelHandler) Load() error {
 func (h *TunnelHandler) Serve(ctx context.Context) {
 	loop := func(ctx context.Context) bool {
 		dialerURL := h.Dialers[h.Config.Dialer]
+		dialerScheme := strings.Split(dialerURL, "://")[0]
 
 		var ln net.Listener
 		var err error
-		switch strings.Split(dialerURL, "://")[0] {
+		switch dialerScheme {
 		case "http", "https", "ws", "wss":
 			ln, err = h.h1tunnel(ctx, h.Config.Dialer, dialerURL)
 		case "http2":
@@ -50,7 +51,7 @@ func (h *TunnelHandler) Serve(ctx context.Context) {
 		case "ssh", "ssh2":
 			ln, err = h.sshtunnel(ctx, h.Config.Dialer, dialerURL)
 		default:
-			log.Fatal().Str("dialer_url", dialerURL).Msg("dialer tunnel is unsupported")
+			log.Fatal().Str("tunnel_dialer_name", h.Config.Dialer).Str("tunnel_dialer_scheme", dialerScheme).Msg("dialer tunnel is unsupported")
 		}
 		if err != nil {
 			log.Error().Err(err).Msgf("Failed to listen remote %s", h.Config.RemoteListen[0])

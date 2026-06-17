@@ -464,7 +464,12 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			dialer = h.LocalDialer
 		}
 
-		ctx := req.Context()
+		ctx := context.WithoutCancel(req.Context())
+		if deadline, ok := req.Context().Deadline(); ok {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithDeadline(ctx, deadline)
+			defer cancel()
+		}
 		switch {
 		case disableIPv6:
 			ctx = context.WithValue(ctx, DialerDisableIPv6ContextKey, struct{}{})
