@@ -41,6 +41,8 @@ type HTTP3Dialer struct {
 	conn atomic.Pointer[http3ClientConn]
 }
 
+const maxHTTP3DialRetries = 2
+
 type http3ClientConn struct {
 	client *http3.ClientConn
 	conn   *quic.Conn
@@ -107,127 +109,64 @@ func (d *HTTP3Dialer) dialTCP(ctx context.Context, network, addr string) (net.Co
 		}
 	}
 
-	cc, qconn, err := d.dialClientConn(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	// The caller context bounds CONNECT setup; the returned stream must outlive it.
-	streamCtx, streamCancel := context.WithCancel(context.WithoutCancel(ctx))
-	stopDialCancel := context.AfterFunc(ctx, streamCancel)
-
-	stream, err := cc.OpenRequestStream(streamCtx)
-	if err != nil {
-		stopDialCancel()
-		streamCancel()
-		if qconn.Context().Err() != nil {
-			d.closeHTTP3ClientConn(qconn)
-		} else {
-			d.forgetHTTP3ClientConn(qconn)
-		}
-		return nil, err
-	}
-	stopDialCancel()
-	stopRequestCancel := context.AfterFunc(ctx, func() {
-		streamCancel()
-		stream.CancelRead(0)
-		stream.CancelWrite(0)
-	})
-
-	req = req.WithContext(streamCtx)
-	if err := stream.SendRequestHeader(req); err != nil {
-		stopRequestCancel()
-		streamCancel()
-		stream.CancelRead(0)
-		stream.CancelWrite(0)
-		if err := ctx.Err(); err != nil {
+	var lastErr error
+	for range maxHTTP3DialRetries {
+		cc, qconn, err := d.dialClientConn(ctx)
+		if err != nil {
 			return nil, err
 		}
-		return nil, err
-	}
 
-	resp, err := stream.ReadResponse()
-	if err != nil {
-		stopRequestCancel()
-		streamCancel()
-		stream.CancelRead(0)
-		stream.CancelWrite(0)
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		return nil, err
-	}
-
-	if !stopRequestCancel() {
-		_ = resp.Body.Close()
-		streamCancel()
-		stream.CancelRead(0)
-		stream.CancelWrite(0)
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		return nil, context.Canceled
-	}
-
-	if d.Logger != nil {
-		d.Logger.Debug("http3dialer websocket response", "resp_statuscode", resp.StatusCode, "resp_header", resp.Header)
-	}
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusSwitchingProtocols {
-		data, _ := io.ReadAll(resp.Body)
-		_ = resp.Body.Close()
-		streamCancel()
-		stream.CancelWrite(0)
-		err := errors.New("proxy: read from " + d.Host + " error: " + resp.Status + ": " + string(data))
-		return nil, err
-	}
-
-	return &http3Stream{
-		body:   resp.Body,
-		stream: stream,
-		conn:   qconn,
-		closeRead: func(error) error {
-			stream.CancelRead(0)
-			return resp.Body.Close()
-		},
-		closeWrite: func(err error) error {
-			if err != nil {
-				stream.CancelWrite(0)
+		stream, resp, _, streamCancel, err := openHTTP3RequestStream(ctx, cc, req)
+		if err != nil {
+			if err := ctx.Err(); err != nil {
+				return nil, err
 			}
-			return stream.Close()
-		},
-		cancel: streamCancel,
-	}, nil
+			d.discardHTTP3ClientConn(qconn)
+			lastErr = err
+			if d.Logger != nil {
+				d.Logger.Debug("http3 tcp dial retry after error", "error", err)
+			}
+			continue
+		}
+
+		if d.Logger != nil {
+			d.Logger.Debug("http3dialer websocket response", "resp_statuscode", resp.StatusCode, "resp_header", resp.Header)
+		}
+
+		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusSwitchingProtocols {
+			data, _ := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			streamCancel()
+			stream.CancelWrite(0)
+			err := errors.New("proxy: read from " + d.Host + " error: " + resp.Status + ": " + string(data))
+			return nil, err
+		}
+
+		return &http3Stream{
+			body:   resp.Body,
+			stream: stream,
+			conn:   qconn,
+			closeRead: func(error) error {
+				stream.CancelRead(0)
+				return resp.Body.Close()
+			},
+			closeWrite: func(err error) error {
+				if err != nil {
+					stream.CancelWrite(0)
+				}
+				return stream.Close()
+			},
+			cancel: streamCancel,
+		}, nil
+	}
+
+	return nil, lastErr
 }
 
 func (d *HTTP3Dialer) dialUDP(ctx context.Context, network, addr string) (net.Conn, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, err
-	}
-
-	cc, qconn, err := d.dialClientConn(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	select {
-	case <-cc.ReceivedSettings():
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case <-qconn.Context().Done():
-		d.closeHTTP3ClientConn(qconn)
-		return nil, context.Cause(qconn.Context())
-	}
-
-	settings := cc.Settings()
-	switch {
-	case settings == nil:
-		return nil, errors.New("http3: server settings unavailable")
-	case !settings.EnableExtendedConnect:
-		return nil, errors.New("http3: server didn't enable Extended CONNECT")
-	case !settings.EnableDatagrams:
-		return nil, errors.New("http3: server didn't enable HTTP Datagrams")
 	}
 
 	req := &http.Request{
@@ -262,6 +201,83 @@ func (d *HTTP3Dialer) dialUDP(ctx context.Context, network, addr string) (net.Co
 		req.Header.Set("proxy-authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(d.Username+":"+d.Password)))
 	}
 
+	var lastErr error
+	for range maxHTTP3DialRetries {
+		cc, qconn, err := d.dialClientConn(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		select {
+		case <-cc.ReceivedSettings():
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-qconn.Context().Done():
+			d.closeHTTP3ClientConn(qconn)
+			lastErr = cmp.Or(context.Cause(qconn.Context()), qconn.Context().Err(), context.Canceled)
+			if d.Logger != nil {
+				d.Logger.Debug("http3 udp dial retry after stale quic conn", "error", lastErr)
+			}
+			continue
+		}
+
+		settings := cc.Settings()
+		switch {
+		case settings == nil:
+			return nil, errors.New("http3: server settings unavailable")
+		case !settings.EnableExtendedConnect:
+			return nil, errors.New("http3: server didn't enable Extended CONNECT")
+		case !settings.EnableDatagrams:
+			return nil, errors.New("http3: server didn't enable HTTP Datagrams")
+		}
+
+		stream, resp, streamCtx, streamCancel, err := openHTTP3RequestStream(ctx, cc, req)
+		if err != nil {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			d.discardHTTP3ClientConn(qconn)
+			lastErr = err
+			if d.Logger != nil {
+				d.Logger.Debug("http3 udp dial retry after error", "error", err)
+			}
+			continue
+		}
+
+		if d.Logger != nil {
+			d.Logger.Debug("http3 udp dialer response", "resp_statuscode", resp.StatusCode, "resp_header", resp.Header)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			data, _ := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			streamCancel()
+			err := errors.New("proxy: read from " + d.Host + " error: " + resp.Status + ": " + string(data))
+			return nil, err
+		}
+
+		return &http3Datagram{
+			stream: stream,
+			conn:   qconn,
+			ctx:    streamCtx,
+			cancel: streamCancel,
+			closeRead: func(error) error {
+				stream.CancelRead(0)
+				return resp.Body.Close()
+			},
+			closeWrite: func(err error) error {
+				if err != nil {
+					stream.CancelWrite(0)
+				}
+				return stream.Close()
+			},
+		}, nil
+	}
+
+	return nil, lastErr
+}
+
+func openHTTP3RequestStream(ctx context.Context, cc *http3.ClientConn, req *http.Request) (*http3.RequestStream, *http.Response, context.Context, context.CancelFunc, error) {
 	streamCtx, streamCancel := context.WithCancel(context.WithoutCancel(ctx))
 	stopDialCancel := context.AfterFunc(ctx, streamCancel)
 
@@ -269,81 +285,49 @@ func (d *HTTP3Dialer) dialUDP(ctx context.Context, network, addr string) (net.Co
 	if err != nil {
 		stopDialCancel()
 		streamCancel()
-		if qconn.Context().Err() != nil {
-			d.closeHTTP3ClientConn(qconn)
-		} else {
-			d.forgetHTTP3ClientConn(qconn)
+		if err := ctx.Err(); err != nil {
+			return nil, nil, nil, nil, err
 		}
-		return nil, err
+		return nil, nil, nil, nil, err
 	}
 	stopDialCancel()
-	stopRequestCancel := context.AfterFunc(ctx, func() {
+
+	cancelStream := func() {
 		streamCancel()
 		stream.CancelRead(0)
 		stream.CancelWrite(0)
-	})
-	req = req.WithContext(streamCtx)
-	if err := stream.SendRequestHeader(req); err != nil {
+	}
+	stopRequestCancel := context.AfterFunc(ctx, cancelStream)
+
+	if err := stream.SendRequestHeader(req.WithContext(streamCtx)); err != nil {
 		stopRequestCancel()
-		streamCancel()
-		stream.CancelRead(0)
-		stream.CancelWrite(0)
+		cancelStream()
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return nil, nil, nil, nil, err
 		}
-		return nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	resp, err := stream.ReadResponse()
 	if err != nil {
 		stopRequestCancel()
-		streamCancel()
-		stream.CancelRead(0)
-		stream.CancelWrite(0)
+		cancelStream()
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return nil, nil, nil, nil, err
 		}
-		return nil, err
+		return nil, nil, nil, nil, err
 	}
+
 	if !stopRequestCancel() {
 		_ = resp.Body.Close()
-		streamCancel()
-		stream.CancelRead(0)
-		stream.CancelWrite(0)
+		cancelStream()
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return nil, nil, nil, nil, err
 		}
-		return nil, context.Canceled
+		return nil, nil, nil, nil, context.Canceled
 	}
 
-	if d.Logger != nil {
-		d.Logger.Debug("http3 udp dialer response", "resp_statuscode", resp.StatusCode, "resp_header", resp.Header)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		data, _ := io.ReadAll(resp.Body)
-		_ = resp.Body.Close()
-		streamCancel()
-		err := errors.New("proxy: read from " + d.Host + " error: " + resp.Status + ": " + string(data))
-		return nil, err
-	}
-
-	return &http3Datagram{
-		stream: stream,
-		conn:   qconn,
-		ctx:    streamCtx,
-		cancel: streamCancel,
-		closeRead: func(error) error {
-			stream.CancelRead(0)
-			return resp.Body.Close()
-		},
-		closeWrite: func(err error) error {
-			if err != nil {
-				stream.CancelWrite(0)
-			}
-			return stream.Close()
-		},
-	}, nil
+	return stream, resp, streamCtx, streamCancel, nil
 }
 
 func (d *HTTP3Dialer) dialClientConn(ctx context.Context) (*http3.ClientConn, *quic.Conn, error) {
@@ -378,6 +362,10 @@ func (d *HTTP3Dialer) dialQUICConn(ctx context.Context) (*quic.Conn, error) {
 	}
 
 	hostport := net.JoinHostPort(cmp.Or(d.Resolve, d.Host), cmp.Or(d.Port, "443"))
+	var tlsCache tls.ClientSessionCache
+	if d.TLSCache != nil {
+		tlsCache = d.TLSCache
+	}
 	connc := make(chan *connerr, concurrency)
 	conns := make([]*connerr, 0, concurrency)
 	for range concurrency {
@@ -388,11 +376,13 @@ func (d *HTTP3Dialer) dialQUICConn(ctx context.Context) (*quic.Conn, error) {
 					NextProtos:         []string{"h3"},
 					InsecureSkipVerify: d.Insecure,
 					ServerName:         d.Host,
-					ClientSessionCache: d.TLSCache,
+					ClientSessionCache: tlsCache,
 				},
 				&quic.Config{
 					DisablePathMTUDiscovery:    false,
 					EnableDatagrams:            true,
+					KeepAlivePeriod:            15 * time.Second,
+					MaxIdleTimeout:             46 * time.Second,
 					MaxIncomingUniStreams:      200,
 					MaxIncomingStreams:         200,
 					MaxStreamReceiveWindow:     12 * 1024 * 1024,
@@ -496,6 +486,14 @@ func (d *HTTP3Dialer) forgetHTTP3ClientConn(conn *quic.Conn) {
 func (d *HTTP3Dialer) closeHTTP3ClientConn(conn *quic.Conn) {
 	d.forgetHTTP3ClientConn(conn)
 	_ = conn.CloseWithError(0, "")
+}
+
+func (d *HTTP3Dialer) discardHTTP3ClientConn(conn *quic.Conn) {
+	if conn.Context().Err() != nil {
+		d.closeHTTP3ClientConn(conn)
+		return
+	}
+	d.forgetHTTP3ClientConn(conn)
 }
 
 type http3Stream struct {
