@@ -356,6 +356,7 @@ func main() {
 				ClientCert:  u.Query().Get("cert"),
 				Logger:      slog.Default(),
 				Resolve:     u.Query().Get("resolve"),
+				Headers:     u.Query()["header"],
 				TLSCache:    tlsClientSessionCache,
 				DnsResolver: dnsResolver,
 				Dialer:      underlay,

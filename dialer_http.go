@@ -36,6 +36,7 @@ type HTTPDialer struct {
 	ClientKey   string
 	ClientCert  string
 	Resolve     string
+	Headers     []string
 	Dialer      Dialer
 	TLSCache    *TLSClientSessionCache
 	Logger      *slog.Logger
@@ -180,6 +181,9 @@ func (d *HTTPDialer) DialContext(ctx context.Context, network, addr string) (net
 		}
 	}
 	buf = buf.Str("User-Agent: ").Str(cmp.Or(d.UserAgent, DefaultUserAgent)).Str("\r\n")
+	for _, s := range d.Headers {
+		buf = buf.Str(s).Str("\r\n")
+	}
 	buf = buf.Str("\r\n")
 
 	if _, err := conn.Write(buf); err != nil {
