@@ -8,8 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"net/netip"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -68,7 +66,6 @@ type TLSInspector struct {
 	EntryMap            map[string]TLSInspectorEntry // key: TLS ServerName
 	EntryWildcard       []TLSInspectorEntry
 	AutoCert            *autocert.Manager
-	RootCA              *RootCA
 	TLSConfigCache      *xsync.Map[TLSInspectorCacheKey, TLSInspectorCacheValue]
 	TLSServerNameHandle TLSServerNameHandle
 }
@@ -84,29 +81,6 @@ func (m *TLSInspector) AddEntry(entry TLSInspectorEntry) error {
 			Prompt:     autocert.AcceptTOS,
 			HostPolicy: m.HostPolicy,
 			ForceRSA:   false,
-		}
-	}
-
-	if m.RootCA == nil {
-		m.RootCA = &RootCA{
-			DirName:    "certs",
-			FileName:   "RootCA.crt",
-			CommonName: "RootCA",
-			Country:    "US",
-			Province:   "California",
-			Locality:   "Los Angeles",
-			Duration:   3 * 365 * 24 * time.Hour,
-			ForceRSA:   true,
-		}
-	}
-
-	if addr, err := netip.ParseAddr(entry.ServerName); err == nil && addr.IsValid() {
-		if entry.KeyFile == "" {
-			// a pure ip server name, generate a self-sign certificate
-			if err := m.RootCA.Issue(entry.ServerName); err != nil {
-				return fmt.Errorf("issue ip certificate for %q: %w", entry.ServerName, err)
-			}
-			entry.KeyFile = filepath.Join(m.RootCA.DirName, entry.ServerName+".crt")
 		}
 	}
 
