@@ -14,7 +14,7 @@ require (
 	github.com/phuslu/geosite v1.0.20250901
 	github.com/phuslu/gosh v0.0.0-20260528105038-250a6b893c6d
 	github.com/phuslu/log v1.0.127
-	github.com/phuslu/lru v1.0.20
+	github.com/phuslu/lru v1.0.21
 	github.com/phuslu/pty v0.0.0-20260518141308-9cb014534fff
 	github.com/phuslu/tcp-brutal v1.0.1
 	github.com/pkg/sftp v1.13.10
