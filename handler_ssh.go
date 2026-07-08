@@ -92,7 +92,7 @@ func (h *SshHandler) Load(ctx context.Context) error {
 		ServerVersion: cmp.Or(h.Config.ServerVersion, fmt.Sprintf("SSH-2.0-liner-%s", version)),
 		PreAuthConnCallback: func(conn ssh.ServerPreAuthConn) {
 			bannerData := h.Config.BannerFile
-			if file := h.Config.BannerFile; file != "" && strings.IndexAny(file, "{} \n") < 0 {
+			if file := h.Config.BannerFile; file != "" && !strings.ContainsAny(file, "{} \n") {
 				data, err := os.ReadFile(file)
 				if os.IsNotExist(err) {
 					data, err = os.ReadFile("/etc/issue.net")
