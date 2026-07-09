@@ -766,7 +766,7 @@ func main() {
 			}),
 			HTTP2: &http.HTTP2Config{
 				MaxConcurrentStreams:          100,
-				MaxReceiveBufferPerStream:     1024 * 1024,
+				MaxReceiveBufferPerStream:     4 * 1024 * 1024, // per-stream upload throughput is capped at window/RTT
 				MaxReceiveBufferPerConnection: 100 * 1024 * 1024, // 100 MB, https://github.com/golang/go/issues/54330#issuecomment-1213576274
 				MaxReadFrameSize:              1024 * 1024,       // 1MB read frame, https://github.com/golang/go/issues/47840
 			},
