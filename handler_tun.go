@@ -133,6 +133,7 @@ func (h *TunHandler) Load(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	h.device = tunNewBatchDevice(h.device)
 	if h.name, err = h.device.Name(); err != nil {
 		h.name = cmp.Or(h.Config.Name, "tun")
 	}
