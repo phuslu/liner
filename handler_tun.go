@@ -382,6 +382,12 @@ func (h *TunHandler) Load(ctx context.Context) error {
 	if err := s.SetTransportProtocolOption(tcp.ProtocolNumber, &sackEnabledOpt); err != nil {
 		return fmt.Errorf("enable tcp sack: %s", err)
 	}
+	// gvisor defaults to reno; cubic recovers faster from drops on the
+	// stack-to-tun path (channel queue or tun ring overflow).
+	congestionControlOpt := tcpip.CongestionControlOption("cubic")
+	if err := s.SetTransportProtocolOption(tcp.ProtocolNumber, &congestionControlOpt); err != nil {
+		return fmt.Errorf("set tcp congestion control: %s", err)
+	}
 	tcpBufferSize := cmp.Or(h.Config.Forward.TcpBufferSize, tcp.MaxBufferSize)
 	if tcpBufferSize < tcp.MinBufferSize {
 		tcpBufferSize = tcp.MinBufferSize
