@@ -407,6 +407,12 @@ func (h *TunHandler) Load(ctx context.Context) error {
 
 	ep = channel.New(cmp.Or(h.Config.StackQueueSize, 4096), uint32(h.mtu), "")
 	ep.LinkEPCapabilities = stack.CapabilityRXChecksumOffload
+	// With gVisor GSO the tcp sender builds super-segments up to the
+	// endpoint GSOMaxSize (32KB) and splits them into MSS-sized packets
+	// only at write time, amortizing the per-segment send-loop, route and
+	// packet-delivery costs. Packets reaching the tun write loop are still
+	// at most MSS bytes, so the device-level GRO/GSO offload is unaffected.
+	ep.SupportedGSOKind = stack.GVisorGSOSupported
 	if err := s.CreateNIC(1, ep); err != nil {
 		return fmt.Errorf("create tun stack nic: %s", err)
 	}
