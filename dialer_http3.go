@@ -370,7 +370,7 @@ func (d *HTTP3Dialer) dialQUICConn(ctx context.Context) (*quic.Conn, error) {
 	conns := make([]*connerr, 0, concurrency)
 	for range concurrency {
 		go func() {
-			conn, err := quic.DialAddrEarly(ctx,
+			conn, err := quic.DialAddr(ctx,
 				hostport,
 				&tls.Config{
 					NextProtos:         []string{"h3"},

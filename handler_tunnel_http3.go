@@ -171,7 +171,7 @@ func (h *TunnelHandler) h3dail(ctx context.Context, u *url.URL) (*quic.Conn, err
 	conns := make([]*connerr, 0, concurrency)
 	for range concurrency {
 		go func() {
-			conn, err := quic.DialAddrEarly(ctx,
+			conn, err := quic.DialAddr(ctx,
 				hostport,
 				&tls.Config{
 					NextProtos:         []string{"h3"},
