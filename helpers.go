@@ -584,8 +584,9 @@ func GetNetConnFromServerPreAuthConn(conn ssh.ServerPreAuthConn) (net.Conn, erro
 		return nil, fmt.Errorf("GetNetConnFromServerPreAuthConn: got an nil *ssh.connection data: %s", s)
 	}
 
+	// see https://github.com/golang/crypto/blob/master/ssh/connection.go#L103C1-L103C23
 	type sshconnection struct {
-		transport *struct{}
+		transport [2]unsafe.Pointer
 		sshConn   struct {
 			conn net.Conn
 		}
