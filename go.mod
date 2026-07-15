@@ -17,7 +17,7 @@ require (
 	github.com/phuslu/lru v1.0.21
 	github.com/phuslu/pty v0.0.0-20260518141308-9cb014534fff
 	github.com/phuslu/tcp-brutal v1.0.1
-	github.com/pkg/sftp v1.13.10
+	github.com/pkg/sftp v1.13.11
 	github.com/puzpuzpuz/xsync/v4 v4.5.0
 	github.com/quic-go/quic-go v0.60.0
 	github.com/refraction-networking/utls v1.8.2
@@ -25,11 +25,11 @@ require (
 	github.com/smallnest/ringbuffer v0.1.1
 	github.com/valyala/bytebufferpool v1.0.0
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba
-	golang.org/x/crypto v0.53.0
-	golang.org/x/net v0.56.0
-	golang.org/x/sys v0.46.0
+	golang.org/x/crypto v0.54.0
+	golang.org/x/net v0.57.0
+	golang.org/x/sys v0.47.0
 	golang.zx2c4.com/wireguard v0.0.0-20260522210424-ecfc5a8d5446
-	gvisor.dev/gvisor v0.0.0-20260629210000-4c5bd8da3237
+	gvisor.dev/gvisor v0.0.0-20260715073107-67db8f16ca32
 )
 
 require (
@@ -41,9 +41,9 @@ require (
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
 	go.uber.org/mock v0.6.0 // indirect
-	golang.org/x/exp v0.0.0-20260611194520-c48552f49976 // indirect
-	golang.org/x/term v0.44.0 // indirect
-	golang.org/x/text v0.38.0 // indirect
+	golang.org/x/exp v0.0.0-20260709172345-9ea1abe57597 // indirect
+	golang.org/x/term v0.45.0 // indirect
+	golang.org/x/text v0.40.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
 	mvdan.cc/sh/v3 v3.13.1 // indirect
