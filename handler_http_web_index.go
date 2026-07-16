@@ -331,6 +331,11 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		return
 	}
 
+	if strings.HasPrefix(req.RequestURI, "/.well-known/") {
+		http.NotFound(rw, req)
+		return
+	}
+
 	entries, err := os.ReadDir(fullname)
 	if err != nil {
 		http.Error(rw, "500 internal server error", http.StatusInternalServerError)
