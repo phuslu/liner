@@ -287,7 +287,7 @@ func (h *SshHandler) Load(ctx context.Context) error {
 		}
 	}
 
-	if h.Config.AuthTable == "" && h.Config.AuthorizedKeys == "" && runtime.GOOS == "linux" {
+	if h.Config.AuthPam {
 		h.sshConfig.PasswordCallback = func(c ssh.ConnMetadata, pass []byte) (*ssh.Permissions, error) {
 			currentUser, err := user.Current()
 			if err != nil {

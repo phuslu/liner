@@ -40,7 +40,7 @@ require (
 	github.com/klauspost/compress v1.19.0 // indirect
 	github.com/kr/fs v0.1.0 // indirect
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
-	github.com/phuslu/pamtester v0.0.0-20260721123258-46e714b5ee6c
+	github.com/phuslu/pamtester v0.0.0-20260721145316-046288ee694e
 	github.com/quic-go/qpack v0.6.0 // indirect
 	go.uber.org/mock v0.6.0 // indirect
 	golang.org/x/exp v0.0.0-20260709172345-9ea1abe57597 // indirect

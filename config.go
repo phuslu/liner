@@ -212,6 +212,7 @@ type SshConfig struct {
 	BannerFile       string   `json:"banner_file" yaml:"banner_file"`
 	HostKey          string   `json:"host_key" yaml:"host_key"`
 	AuthTable        string   `json:"auth_table" yaml:"auth_table"`
+	AuthPam          bool     `json:"auth_pam" yaml:"auth_pam"`
 	AuthorizedKeys   string   `json:"authorized_keys" yaml:"authorized_keys"`
 	Env              string   `json:"env" yaml:"env"`
 	EnvFile          string   `json:"env_file" yaml:"env_file"`
