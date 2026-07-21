@@ -15,7 +15,7 @@ jobs:
           - linux_arm
           - darwin_amd64
           - darwin_arm64
-          - android_arm64
+          # - android_arm64
           - windows_amd64
           - windows_arm64
     steps:
