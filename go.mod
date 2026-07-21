@@ -35,10 +35,12 @@ require (
 require (
 	github.com/andybalholm/brotli v1.2.2 // indirect
 	github.com/chzyer/readline v1.5.1 // indirect
+	github.com/ebitengine/purego v0.10.2 // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/klauspost/compress v1.19.0 // indirect
 	github.com/kr/fs v0.1.0 // indirect
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
+	github.com/phuslu/pamtester v0.0.0-20260721123258-46e714b5ee6c
 	github.com/quic-go/qpack v0.6.0 // indirect
 	go.uber.org/mock v0.6.0 // indirect
 	golang.org/x/exp v0.0.0-20260709172345-9ea1abe57597 // indirect

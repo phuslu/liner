@@ -26,6 +26,7 @@ import (
 	"github.com/libp2p/go-yamux/v5"
 	"github.com/phuslu/gosh"
 	"github.com/phuslu/log"
+	"github.com/phuslu/pamtester"
 	"github.com/phuslu/pty"
 	"github.com/pkg/sftp"
 	"github.com/quic-go/quic-go"
@@ -283,6 +284,28 @@ func (h *SshHandler) Load(ctx context.Context) error {
 					"pubkey-fp": ssh.FingerprintSHA256(pub),
 				},
 			}, nil
+		}
+	}
+
+	if h.Config.AuthTable == "" && h.Config.AuthorizedKeys == "" && runtime.GOOS == "linux" {
+		h.sshConfig.PasswordCallback = func(c ssh.ConnMetadata, pass []byte) (*ssh.Permissions, error) {
+			currentUser, err := user.Current()
+			if err != nil {
+				return nil, err
+			}
+			if c.User() != currentUser.Username {
+				return nil, fmt.Errorf("invalid login username: %q", c.User())
+			}
+			pam, err := pamtester.Start(c.User(), nil)
+			if err != nil {
+				return nil, err
+			}
+			defer pam.Close()
+			err = pam.Authenticate(string(pass))
+			if err != nil {
+				return nil, err
+			}
+			return nil, nil
 		}
 	}
 
