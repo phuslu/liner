@@ -19,7 +19,7 @@ require (
 	github.com/phuslu/tcp-brutal v1.0.1
 	github.com/pkg/sftp v1.13.11
 	github.com/puzpuzpuz/xsync/v4 v4.5.0
-	github.com/quic-go/quic-go v0.60.0
+	github.com/quic-go/quic-go v0.61.0
 	github.com/refraction-networking/utls v1.8.2
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/smallnest/ringbuffer v0.1.1
@@ -29,7 +29,7 @@ require (
 	golang.org/x/net v0.57.0
 	golang.org/x/sys v0.47.0
 	golang.zx2c4.com/wireguard v0.0.0-20260522210424-ecfc5a8d5446
-	gvisor.dev/gvisor v0.0.0-20260721223538-98cc75378104
+	gvisor.dev/gvisor v0.0.0-20260722212953-d9874d35ea2a
 )
 
 require (
@@ -40,7 +40,7 @@ require (
 	github.com/klauspost/compress v1.19.1 // indirect
 	github.com/kr/fs v0.1.0 // indirect
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
-	github.com/phuslu/pamtester v0.0.0-20260721150110-4e3369bddf4e
+	github.com/phuslu/pamtester v0.0.0-20260723064746-2abeb25850e7
 	github.com/quic-go/qpack v0.6.0 // indirect
 	go.uber.org/mock v0.6.0 // indirect
 	golang.org/x/exp v0.0.0-20260718201538-764159d718ef // indirect
@@ -51,4 +51,4 @@ require (
 	mvdan.cc/sh/v3 v3.13.1 // indirect
 )
 
-replace github.com/quic-go/quic-go => github.com/phuslu/quic-go v0.0.0-20260717121330-7a0ae88df9d8
+replace github.com/quic-go/quic-go => github.com/phuslu/quic-go v0.0.0-20260721170003-6a7c5e8221c6
