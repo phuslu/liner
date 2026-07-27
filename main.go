@@ -128,7 +128,7 @@ func main() {
 			Writer: log.IOWriter{Writer: io.Discard},
 		}
 		dataLogger = log.DefaultLogger
-	} else if os.Getenv("LINER_LOG_TO_STDERR") == "1" || pty.IsTerminal(os.Stderr.Fd()) {
+	} else if config.Global.LogToStderr || os.Getenv("LINER_LOG_TO_STDERR") == "1" || pty.IsTerminal(os.Stderr.Fd()) {
 		log.DefaultLogger = log.Logger{
 			Level:      log.ParseLevel(cmp.Or(config.Global.LogLevel, "info")),
 			Caller:     1,
@@ -765,8 +765,8 @@ func main() {
 				h.ServeHTTP(w, r)
 			}),
 			HTTP2: &http.HTTP2Config{
-				MaxConcurrentStreams:          1024, // browsers queue CONNECT streams beyond this limit per session
-				MaxReceiveBufferPerStream:     4 * 1024 * 1024, // per-stream upload throughput is capped at window/RTT
+				MaxConcurrentStreams:          1024,              // browsers queue CONNECT streams beyond this limit per session
+				MaxReceiveBufferPerStream:     4 * 1024 * 1024,   // per-stream upload throughput is capped at window/RTT
 				MaxReceiveBufferPerConnection: 100 * 1024 * 1024, // 100 MB, https://github.com/golang/go/issues/54330#issuecomment-1213576274
 				MaxReadFrameSize:              1024 * 1024,       // 1MB read frame, https://github.com/golang/go/issues/47840
 			},

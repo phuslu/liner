@@ -229,6 +229,7 @@ type Config struct {
 		LogMaxsize       int64  `json:"log_maxsize" yaml:"log_maxsize"`
 		LogLocaltime     bool   `json:"log_localtime" yaml:"log_localtime"`
 		LogChannelSize   uint   `json:"log_channel_size" yaml:"log_channel_size"`
+		LogToStderr      bool   `json:"log_to_stderr" yaml:"log_to_stderr"`
 		ForbidLocalAddr  bool   `json:"forbid_local_addr" yaml:"forbid_local_addr"`
 		DialTimeout      int    `json:"dial_timeout" yaml:"dial_timeout"`
 		DialReadBuffer   int    `json:"dial_read_buffer" yaml:"dial_read_buffer"` // Danger, see https://issues.apache.org/jira/browse/KAFKA-16496
