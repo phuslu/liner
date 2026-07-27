@@ -4,6 +4,7 @@ rem =======================================================
 @echo off
 setlocal
 set "LINER_CMD_SELF=%~f0"
+set "LINER_CMD_ARG=%~1"
 start "" powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -WindowStyle Hidden -Command "$p=$env:LINER_CMD_SELF; $s=[IO.File]::ReadAllText($p); $m=([char]35)+' POWERSHELL_BEGIN'; $i=$s.IndexOf($m); if($i -lt 0){throw 'PowerShell marker not found'}; iex $s.Substring($i + $m.Length)"
 exit /b
 # POWERSHELL_BEGIN
@@ -33,6 +34,9 @@ if ([Threading.Thread]::CurrentThread.GetApartmentState() -ne 'STA') {
         exit 1
     }
     [Environment]::SetEnvironmentVariable('LINER_CMD_SELF', $script:ScriptPath, 'Process')
+    if ($env:LINER_CMD_ARG) {
+        [Environment]::SetEnvironmentVariable('LINER_CMD_ARG', $env:LINER_CMD_ARG, 'Process')
+    }
     Start-Process -FilePath 'powershell.exe' -ArgumentList @(
         '-NoProfile',
         '-STA',
@@ -1377,6 +1381,25 @@ Load-Profiles
 
 $script:AppContext = New-Object System.Windows.Forms.ApplicationContext
 Setup-Tray
+
+$script:AutoStartArg = $env:LINER_CMD_ARG
+if ($script:AutoStartArg) {
+    $argFileName = [System.IO.Path]::GetFileName($script:AutoStartArg)
+    if ($argFileName -and ($script:Profiles -contains $argFileName)) {
+        $script:SelectedProfile = $argFileName
+        Update-ProfileMenuState
+        Update-ProxyMenuState
+        try {
+            Start-Child | Out-Null
+            Show-ChildConsole
+        } catch {
+            Show-ErrorMessage $_.Exception.Message
+        }
+    } elseif ($argFileName) {
+        Show-ErrorMessage "Profile not found: $argFileName"
+    }
+}
+
 Invoke-WorkingSetTrim
 
 $script:Timer = New-Object System.Windows.Forms.Timer
