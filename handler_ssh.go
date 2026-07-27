@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -347,6 +348,32 @@ func (h *SshHandler) Serve(ctx context.Context, ln net.Listener) error {
 					Interval: 15 * time.Second,
 					Count:    9,
 				})
+			}
+			if options := strings.Fields(h.Config.TcpCongestion); len(options) >= 1 {
+				switch name := options[0]; name {
+				case "brutal":
+					if len(options) < 2 {
+						return fmt.Errorf("invalid tcp_congestion options: %q", options)
+					}
+					if rate, _ := strconv.Atoi(options[1]); rate > 0 {
+						gain := 20 // hysteria2 default
+						if len(options) >= 3 {
+							if n, _ := strconv.Atoi(options[2]); n > 0 {
+								gain = n
+							}
+						}
+						if err := (&ConnOps{v, nil}).SetTcpCongestion(name, uint64(rate), uint32(gain)); err != nil {
+							log.Error().Err(err).NetAddr("remote_ip", v.RemoteAddr()).Strs("ssh_tcp_congestion_options", options).Msg("set ssh_tcp_congestion error")
+							return fmt.Errorf("set tcp_congestion options: %q", options)
+						}
+						log.Debug().NetAddr("remote_ip", v.RemoteAddr()).Strs("ssh_tcp_congestion_options", options).Msg("set ssh_tcp_congestion ok")
+					}
+				default:
+					if err := (&ConnOps{v, nil}).SetTcpCongestion(name); err != nil {
+						log.Error().Err(err).NetAddr("remote_ip", v.RemoteAddr()).Strs("ssh_tcp_congestion_options", options).Msg("set ssh_tcp_congestion error")
+						return fmt.Errorf("set tcp_congestion options: %q", options)
+					}
+				}
 			}
 		case *yamux.Stream:
 			break

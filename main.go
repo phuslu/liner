@@ -191,6 +191,7 @@ func main() {
 	if !config.Global.DisableBrutal && runtime.GOOS == "linux" {
 		if slices.ContainsFunc(config.Http, func(c HTTPConfig) bool { return c.Forward.TcpCongestion != "" || c.Tunnel.TcpCongestion != "" }) ||
 			slices.ContainsFunc(config.Https, func(c HTTPConfig) bool { return c.Forward.TcpCongestion != "" || c.Tunnel.TcpCongestion != "" }) ||
+			slices.ContainsFunc(config.Ssh, func(c SshConfig) bool { return c.TcpCongestion != "" }) ||
 			slices.ContainsFunc(slices.Collect(maps.Values(config.Dialer)), func(v string) bool { return strings.Contains(v, "brutal_rate=") }) {
 			if err := brutal.Load(); err != nil {
 				log.Error().Err(err).Msg("load tcp-brutal eBPF program failed")
