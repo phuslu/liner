@@ -1043,8 +1043,11 @@ function Apply-ProxyMode {
 }
 
 function Start-Child {
+    param([switch]$Quiet)
     if (Test-ChildRunning) {
-        Show-Notice $script:AppTitle 'liner is already running.'
+        if (-not $Quiet) {
+            Show-Notice $script:AppTitle 'liner is already running.'
+        }
         Update-ProcessMenuState
         Update-ProxyMenuState
         return $true
@@ -1085,7 +1088,9 @@ function Start-Child {
     $script:ChildConsoleHandle = [IntPtr]::Zero
     Update-ProcessMenuState
     Update-ProxyMenuState
-    Show-Notice $script:AppTitle 'Started.'
+    if (-not $Quiet) {
+        Show-Notice $script:AppTitle 'Started.'
+    }
     return $true
 }
 
@@ -1138,7 +1143,7 @@ function Stop-Child {
 
 function Restart-Child {
     Stop-Child | Out-Null
-    Start-Child | Out-Null
+    Start-Child -Quiet | Out-Null
 }
 
 function Check-ChildProcess {
