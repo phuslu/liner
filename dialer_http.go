@@ -159,20 +159,20 @@ func (d *HTTPDialer) DialContext(ctx context.Context, network, addr string) (net
 
 	if !d.Websocket {
 		buf = buf.Str("CONNECT ").Str(addr).Str(" HTTP/1.1\r\n")
-		buf = buf.Str("Host: ").Str(addr).Str("\r\n")
+		buf = buf.Str("host: ").Str(addr).Str("\r\n")
 	} else {
 		// see https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-connect-tcp-05
 		host, port, _ := net.SplitHostPort(addr)
 		key := base64.StdEncoding.EncodeToString(fmt.Appendf(nil, "%x%x\n", fastrandn(1<<32-1), fastrandn(1<<32-1)))
 		buf = buf.Str("GET ").Str(HTTPWellknownBase64PathPrefix).Base64(s2b(HTTPTunnelConnectTCPPathPrefix + host + "/" + port + "/")).Str(" HTTP/1.1\r\n")
-		buf = buf.Str("Host: ").Str(d.Host).Str("\r\n")
-		buf = buf.Str("Connection: Upgrade\r\n")
-		buf = buf.Str("Upgrade: websocket\r\n")
-		buf = buf.Str("Sec-WebSocket-Version: 13\r\n")
-		buf = buf.Str("Sec-WebSocket-Key: ").Str(key).Str("\r\n")
+		buf = buf.Str("host: ").Str(d.Host).Str("\r\n")
+		buf = buf.Str("connection: Upgrade\r\n")
+		buf = buf.Str("upgrade: websocket\r\n")
+		buf = buf.Str("sec-websocket-version: 13\r\n")
+		buf = buf.Str("sec-websocket-key: ").Str(key).Str("\r\n")
 	}
 	if d.Username != "" {
-		buf = buf.Str("Proxy-Authorization: Basic ").Base64(s2b(d.Username + ":" + d.Password)).Str("\r\n")
+		buf = buf.Str("proxy-authorization: Basic ").Base64(s2b(d.Username + ":" + d.Password)).Str("\r\n")
 	}
 	if header, _ := ctx.Value(DialerHTTPHeaderContextKey).(http.Header); header != nil {
 		for key, values := range header {
@@ -181,9 +181,9 @@ func (d *HTTPDialer) DialContext(ctx context.Context, network, addr string) (net
 			}
 		}
 	}
-	buf = buf.Str("User-Agent: ").Str(cmp.Or(d.UserAgent, DefaultUserAgent)).Str("\r\n")
+	buf = buf.Str("user-agent: ").Str(cmp.Or(d.UserAgent, DefaultUserAgent)).Str("\r\n")
 	if d.IdleTimeout >= time.Second {
-		buf = buf.Str("X-Forwarded-IdleTimeout: ").Str(d.IdleTimeout.String()).Str("\r\n")
+		buf = buf.Str("x-forwarded-idletimeout: ").Str(d.IdleTimeout.String()).Str("\r\n")
 	}
 	for _, s := range d.Headers {
 		buf = buf.Str(s).Str("\r\n")
