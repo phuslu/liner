@@ -26,16 +26,17 @@ import (
 var _ Dialer = (*HTTP3Dialer)(nil)
 
 type HTTP3Dialer struct {
-	Username  string
-	Password  string
-	Host      string
-	Port      string
-	UserAgent string
-	Insecure  bool
-	Resolve   string
-	Websocket bool
-	TLSCache  *TLSClientSessionCache
-	Logger    *slog.Logger
+	Username    string
+	Password    string
+	Host        string
+	Port        string
+	UserAgent   string
+	Insecure    bool
+	Resolve     string
+	Websocket   bool
+	IdleTimeout time.Duration
+	TLSCache    *TLSClientSessionCache
+	Logger      *slog.Logger
 
 	mu   sync.Mutex
 	conn atomic.Pointer[http3ClientConn]
@@ -73,6 +74,9 @@ func (d *HTTP3Dialer) dialTCP(ctx context.Context, network, addr string) (net.Co
 			"user-agent":          []string{cmp.Or(d.UserAgent, DefaultUserAgent)},
 			"x-forwarded-network": []string{network},
 		},
+	}
+	if d.IdleTimeout >= time.Second {
+		req.Header.Add("x-forwarded-idletimeout", d.IdleTimeout.String())
 	}
 	if header, _ := ctx.Value(DialerHTTPHeaderContextKey).(http.Header); header != nil {
 		if d.Logger != nil {

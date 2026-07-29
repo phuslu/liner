@@ -25,16 +25,17 @@ import (
 var _ Dialer = (*HTTP2Dialer)(nil)
 
 type HTTP2Dialer struct {
-	Username   string
-	Password   string
-	Host       string
-	Port       string
-	UserAgent  string
-	Insecure   bool
-	CACert     string
-	ClientKey  string
-	ClientCert string
-	Resolve    string
+	Username    string
+	Password    string
+	Host        string
+	Port        string
+	UserAgent   string
+	Insecure    bool
+	CACert      string
+	ClientKey   string
+	ClientCert  string
+	Resolve     string
+	IdleTimeout time.Duration
 
 	Logger   *slog.Logger
 	TLSCache utls.ClientSessionCache
@@ -143,6 +144,9 @@ func (d *HTTP2Dialer) DialContext(ctx context.Context, network, addr string) (ne
 		},
 		Body:          pr,
 		ContentLength: -1,
+	}
+	if d.IdleTimeout >= time.Second {
+		req.Header.Add("x-forwarded-idletimeout", d.IdleTimeout.String())
 	}
 	if header, _ := ctx.Value(DialerHTTPHeaderContextKey).(http.Header); header != nil {
 		for key, values := range header {

@@ -36,6 +36,7 @@ type HTTPDialer struct {
 	ClientKey   string
 	ClientCert  string
 	Resolve     string
+	IdleTimeout time.Duration
 	Headers     []string
 	Dialer      Dialer
 	TLSCache    *TLSClientSessionCache
@@ -181,6 +182,9 @@ func (d *HTTPDialer) DialContext(ctx context.Context, network, addr string) (net
 		}
 	}
 	buf = buf.Str("User-Agent: ").Str(cmp.Or(d.UserAgent, DefaultUserAgent)).Str("\r\n")
+	if d.IdleTimeout >= time.Second {
+		buf = buf.Str("X-Forwarded-IdleTimeout: ").Str(d.IdleTimeout.String()).Str("\r\n")
+	}
 	for _, s := range d.Headers {
 		buf = buf.Str(s).Str("\r\n")
 	}
