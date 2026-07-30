@@ -129,18 +129,18 @@ func (h *TunnelHandler) h1tunnel(ctx context.Context, dialerName, dialerURL stri
 	// see https://www.ietf.org/archive/id/draft-kazuho-httpbis-reverse-tunnel-00.html
 	buf := AppendableBytes(make([]byte, 0, 2048))
 	buf = buf.Str("GET ").Str(HTTPWellknownBase64PathPrefix).Base64(s2b(HTTPTunnelReverseTCPPathPrefix + targetHost + "/" + targetPort + "/")).Str(" HTTP/1.1\r\n")
-	buf = buf.Str("Host: ").Str(u.Hostname()).Str("\r\n")
-	buf = buf.Str("Authorization: Basic ").Base64(AppendableBytes(make([]byte, 0, 128)).Str(u.User.Username()).Byte(':').Str(first(u.User.Password()))).Str("\r\n")
-	buf = buf.Str("User-Agent: ").Str(TunnelUserAgent).Str("\r\n")
+	buf = buf.Str("host: ").Str(u.Hostname()).Str("\r\n")
+	buf = buf.Str("authorization: Basic ").Base64(AppendableBytes(make([]byte, 0, 128)).Str(u.User.Username()).Byte(':').Str(first(u.User.Password()))).Str("\r\n")
+	buf = buf.Str("user-agent: ").Str(TunnelUserAgent).Str("\r\n")
 	switch u.Scheme {
 	case "ws", "wss":
-		buf = buf.Str("Connection: Upgrade\r\n")
-		buf = buf.Str("Upgrade: websocket\r\n")
-		buf = buf.Str("Sec-WebSocket-Version: 13\r\n")
-		buf = buf.Str("Sec-WebSocket-Key: ").Base64(strconv.AppendUint(make([]byte, 0, 64), uint64(fastrandn(1<<32-1)), 10)).Str("\r\n")
+		buf = buf.Str("connection: Upgrade\r\n")
+		buf = buf.Str("upgrade: websocket\r\n")
+		buf = buf.Str("sec-websocket-version: 13\r\n")
+		buf = buf.Str("sec-websocket-key: ").Base64(strconv.AppendUint(make([]byte, 0, 64), uint64(fastrandn(1<<32-1)), 10)).Str("\r\n")
 	default:
-		buf = buf.Str("Connection: Upgrade\r\n")
-		buf = buf.Str("Upgrade: reverse\r\n")
+		buf = buf.Str("connection: Upgrade\r\n")
+		buf = buf.Str("upgrade: reverse\r\n")
 	}
 	buf = buf.Str("\r\n")
 
