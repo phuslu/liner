@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"cmp"
 	"context"
@@ -182,19 +183,10 @@ func (h *TunnelHandler) h1tunnel(ctx context.Context, dialerName, dialerURL stri
 		}
 	}
 
-	status := 0
-	n := bytes.IndexByte(b, ' ')
-	if n < 0 {
-		return nil, fmt.Errorf("tunnel: failed to tunnel remote %s via %s: %s", h.Config.RemoteListen[0], conn.RemoteAddr().String(), bytes.TrimRight(b, "\x00"))
-	}
-	for i, c := range b[n+1:] {
-		if i == 3 || c < '0' || c > '9' {
-			break
-		}
-		status = status*10 + int(c-'0')
-	}
-	if status != http.StatusOK && status != http.StatusSwitchingProtocols {
-		return nil, fmt.Errorf("tunnel: failed to tunnel remote %s via %s: %s", h.Config.RemoteListen[0], conn.RemoteAddr().String(), bytes.TrimRight(b, "\x00"))
+	b = bytes.TrimRight(b, "\x00")
+	resp, err := http.ReadResponse(bufio.NewReader(bytes.NewReader(b)), nil)
+	if err != nil || resp.StatusCode >= http.StatusBadRequest {
+		return nil, fmt.Errorf("tunnel: failed to tunnel remote %s via %s: %s: %w", h.Config.RemoteListen[0], conn.RemoteAddr().String(), b, err)
 	}
 
 	if !h.Config.DisableKeepalive {
