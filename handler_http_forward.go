@@ -520,7 +520,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		}
 
 		timeout := int64(first(time.ParseDuration(req.Header.Get("x-forwarded-idletimeout"))) / time.Second)
-		if timeout = cmp.Or(timeout, h.Config.Forward.IdleTimeout, 600); timeout > 0 {
+		if timeout = cmp.Or(timeout, h.Config.Forward.IdleTimeout, 900); timeout > 0 {
 			conn = &IdleTimeoutConn{
 				Conn:        conn,
 				IdleTimeout: time.Duration(timeout) * time.Second,
