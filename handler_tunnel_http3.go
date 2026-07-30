@@ -144,7 +144,11 @@ func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL stri
 		cancel: reqCancel,
 		ctx:    ctx,
 		stop:   stop,
-		idle:   time.Duration(cmp.Or(h.Config.IdleTimeout, 900)) * time.Second,
+		idle: time.Duration(cmp.Or(
+			h.Config.IdleTimeout,
+			first(strconv.ParseInt(resp.Header.Get("x-tunnel-idletimeout"), 10, 64)),
+			900,
+		)) * time.Second,
 	}
 
 	go ln.drain()

@@ -191,8 +191,12 @@ func (h *TunnelHandler) h1tunnel(ctx context.Context, dialerName, dialerURL stri
 
 	if !h.Config.DisableKeepalive {
 		conn = &IdleTimeoutConn{
-			Conn:        conn,
-			IdleTimeout: time.Duration(cmp.Or(h.Config.IdleTimeout, 900)) * time.Second,
+			Conn: conn,
+			IdleTimeout: time.Duration(cmp.Or(
+				h.Config.IdleTimeout,
+				first(strconv.ParseInt(resp.Header.Get("x-tunnel-idletimeout"), 10, 64)),
+				900,
+			)) * time.Second,
 		}
 	}
 
