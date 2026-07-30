@@ -456,6 +456,11 @@ func (h *HTTPTunnelHandler) h3tunnel(rw http.ResponseWriter, req *http.Request, 
 		key := sha1.Sum([]byte(req.Header.Get("Sec-WebSocket-Key") + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
 		rw.Header().Set("sec-websocket-accept", base64.StdEncoding.EncodeToString(key[:]))
 	}
+
+	if h.Config.Tunnel.IdleTimeout > 0 {
+		rw.Header().Set("x-tunnel-idletimeout", strconv.FormatInt(h.Config.Tunnel.IdleTimeout, 10))
+	}
+
 	rw.WriteHeader(http.StatusOK)
 	http.NewResponseController(rw).Flush()
 
