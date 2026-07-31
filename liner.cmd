@@ -188,6 +188,7 @@ $script:ChildProcess = $null
 $script:ChildConsoleHandle = [IntPtr]::Zero
 $script:ExpectedStopPids = @{}
 $script:LastWorkingSetTrim = [datetime]::MinValue
+$script:WorkingSetTrimmed = $false
 
 $script:TrayIcon = $null
 $script:TrayIconRunning = $null
@@ -1437,14 +1438,17 @@ if ($script:AutoStartArg) {
 }
 
 Invoke-WorkingSetTrim
+$script:LastWorkingSetTrim = [datetime]::UtcNow
 
 $script:Timer = New-Object System.Windows.Forms.Timer
 $script:Timer.Interval = 1000
 $script:Timer.Add_Tick({
     Invoke-UiAction {
         Check-ChildProcess
-        if (([datetime]::UtcNow - $script:LastWorkingSetTrim) -ge $script:WorkingSetTrimInterval) {
+        $interval = if ($script:WorkingSetTrimmed) { $script:WorkingSetTrimInterval } else { [TimeSpan]::FromMinutes(1) }
+        if (([datetime]::UtcNow - $script:LastWorkingSetTrim) -ge $interval) {
             Invoke-WorkingSetTrim
+            $script:WorkingSetTrimmed = $true
         }
     }
 })
