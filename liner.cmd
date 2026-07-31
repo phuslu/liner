@@ -254,6 +254,32 @@ function Invoke-WorkingSetTrim {
     }
 }
 
+function Get-LinerVersion {
+    param([string]$BinPath)
+    if (-not (Test-Path -LiteralPath $BinPath -PathType Leaf)) {
+        return ''
+    }
+    $bytes = $null
+    $text = $null
+    try {
+        $bytes = [System.IO.File]::ReadAllBytes($BinPath)
+        $text = [System.Text.Encoding]::ASCII.GetString($bytes)
+        if ($text -match '1\.0\.(\d{4})\.') {
+            return $Matches[1]
+        }
+    } catch {
+    } finally {
+        if ($bytes) {
+            [array]::Clear($bytes, 0, $bytes.Length)
+        }
+        $bytes = $null
+        $text = $null
+        # [System.GC]::Collect()
+        # [System.GC]::WaitForPendingFinalizers()
+    }
+    return ''
+}
+
 function Strip-MatchingQuotes {
     param([string]$Value)
     if ($null -eq $Value) {
@@ -1383,6 +1409,11 @@ function Setup-Tray {
 
 $script:ProfilesSignature = Get-ProfilesSignature
 Load-Profiles
+
+$linerVersion = Get-LinerVersion (Join-Path $script:WorkDir $script:ChildBin)
+if ($linerVersion) {
+    $script:AppTitle = "$script:AppTitle $linerVersion"
+}
 
 $script:AppContext = New-Object System.Windows.Forms.ApplicationContext
 Setup-Tray
