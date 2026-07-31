@@ -586,7 +586,7 @@ func GetNetConnFromServerPreAuthConn(conn ssh.ServerPreAuthConn) (net.Conn, erro
 
 	// see https://github.com/golang/crypto/blob/master/ssh/connection.go#L103C1-L103C23
 	type sshconnection struct {
-		transport [2]unsafe.Pointer
+		transport interface{}
 		sshConn   struct {
 			conn net.Conn
 		}
