@@ -189,6 +189,7 @@ $script:ChildConsoleHandle = [IntPtr]::Zero
 $script:ExpectedStopPids = @{}
 $script:LastWorkingSetTrim = [datetime]::MinValue
 $script:WorkingSetTrimmed = $false
+$script:SleepDetectionTick = [Environment]::TickCount64
 
 $script:TrayIcon = $null
 $script:TrayIconRunning = $null
@@ -1450,6 +1451,18 @@ $script:Timer.Add_Tick({
             Invoke-WorkingSetTrim
             $script:WorkingSetTrimmed = $true
         }
+        $currentTick = [Environment]::TickCount64
+        if ($script:SleepDetectionTick -gt 0) {
+            $tickDelta = $currentTick - $script:SleepDetectionTick
+            if ($tickDelta -gt 30000) {
+                if (Test-ChildRunning) {
+                    Start-Sleep -Seconds 2
+                    Restart-Child
+                    Show-Notice $script:AppTitle 'Restarted after system wake-up.'
+                }
+            }
+        }
+        $script:SleepDetectionTick = $currentTick
     }
 })
 $script:Timer.Start()
