@@ -206,6 +206,7 @@ $script:ProxyManualItem = $null
 $script:PreferencesItem = $null
 $script:StartStopItem = $null
 $script:Timer = $null
+$script:LastTrayHoverTick = 0
 
 function Show-ErrorMessage {
     param([string]$Message)
@@ -1327,6 +1328,21 @@ function New-MenuItem {
     return $item
 }
 
+function Update-TrayTooltip {
+    $hoverDelta = [Environment]::TickCount64 - $script:LastTrayHoverTick
+    if ($hoverDelta -lt 2000 -and (Test-ChildRunning)) {
+        try {
+            $script:ChildProcess.Refresh()
+            $memMB = [math]::Round($script:ChildProcess.WorkingSet64 / 1MB)
+            $script:TrayIcon.Text = '{0} {1}MB' -f $script:AppTitle, $memMB
+        } catch {
+            $script:TrayIcon.Text = $script:AppTitle
+        }
+    } else {
+        $script:TrayIcon.Text = $script:AppTitle
+    }
+}
+
 function Setup-Tray {
     $script:TrayIconRunning = New-LinerIcon
     $script:TrayIconStopped = New-LinerIcon -Stopped $true
@@ -1340,6 +1356,9 @@ function Setup-Tray {
         if ($eventArgs.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
             Invoke-UiAction { Toggle-ChildConsole }
         }
+    })
+    $script:TrayIcon.Add_MouseMove({
+        $script:LastTrayHoverTick = [Environment]::TickCount64
     })
 
     $script:ContextMenu = New-Object System.Windows.Forms.ContextMenuStrip
@@ -1463,6 +1482,7 @@ $script:Timer.Add_Tick({
             }
         }
         $script:SleepDetectionTick = $currentTick
+        Update-TrayTooltip
     }
 })
 $script:Timer.Start()
