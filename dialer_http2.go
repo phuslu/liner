@@ -245,6 +245,23 @@ func (c *http2Stream) Close() (err error) {
 	return c.closeWithError(net.ErrClosed)
 }
 
+func (c *http2Stream) CloseWrite() error {
+	c.mu.Lock()
+	if c.closed || c.writeErr != nil {
+		c.mu.Unlock()
+		return nil
+	}
+	c.writeErr = net.ErrClosed
+	closeWrite := c.closeWrite
+	c.closeWrite = nil
+	c.mu.Unlock()
+
+	if closeWrite != nil {
+		return closeWrite(nil)
+	}
+	return nil
+}
+
 func (c *http2Stream) RemoteAddr() net.Addr {
 	return c.conn.RemoteAddr()
 }

@@ -495,6 +495,13 @@ func (c *Chacha20NetConn) Close() (err error) {
 	return c.Conn.Close()
 }
 
+func (c *Chacha20NetConn) CloseWrite() error {
+	if conn, ok := c.Conn.(interface{ CloseWrite() error }); ok {
+		return conn.CloseWrite()
+	}
+	return errors.ErrUnsupported
+}
+
 func (c *Chacha20NetConn) RemoteAddr() net.Addr {
 	return c.Conn.RemoteAddr()
 }
@@ -546,6 +553,13 @@ func (c *IdleTimeoutConn) Write(b []byte) (n int, err error) {
 
 func (c *IdleTimeoutConn) Close() error {
 	return c.Conn.Close()
+}
+
+func (c *IdleTimeoutConn) CloseWrite() error {
+	if conn, ok := c.Conn.(interface{ CloseWrite() error }); ok {
+		return conn.CloseWrite()
+	}
+	return errors.ErrUnsupported
 }
 
 func (c *IdleTimeoutConn) LocalAddr() net.Addr {

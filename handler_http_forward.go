@@ -464,12 +464,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			dialer = h.LocalDialer
 		}
 
-		ctx := context.WithoutCancel(req.Context())
-		if deadline, ok := req.Context().Deadline(); ok {
-			var cancel context.CancelFunc
-			ctx, cancel = context.WithDeadline(ctx, deadline)
-			defer cancel()
-		}
+		ctx := req.Context()
 		switch {
 		case disableIPv6:
 			ctx = context.WithValue(ctx, DialerDisableIPv6ContextKey, struct{}{})
@@ -605,7 +600,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		}
 
 		var w io.Writer
-		var r io.Reader
+		var r io.ReadCloser
 
 		if req.ProtoAtLeast(2, 0) {
 			if tcpTunnel && req.Header.Get("Sec-Websocket-Key") != "" {
@@ -642,7 +637,25 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 
 		defer conn.Close()
 
-		go io.Copy(conn, r)
+		type copyResult struct {
+			n   int64
+			err error
+		}
+		receiveDone := make(chan copyResult, 1)
+		stopRequestCancel := context.AfterFunc(req.Context(), func() {
+			_ = conn.Close()
+		})
+		defer stopRequestCancel()
+
+		go func() {
+			n, err := io.Copy(conn, r)
+			if err != nil {
+				_ = conn.Close()
+			} else if conn, ok := conn.(interface{ CloseWrite() error }); ok {
+				_ = conn.CloseWrite()
+			}
+			receiveDone <- copyResult{n: n, err: err}
+		}()
 
 		if userLog {
 			username := ri.ProxyUserInfo.Username
@@ -696,7 +709,10 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		} else {
 			transmitBytes, err = io.Copy(w, conn) // splice to
 		}
-		log.Debug().Context(ri.LogContext).Str("geosite", geosite.Site).Str("username", ri.ProxyUserInfo.Username).Str("http_domain", domain).Int64("speed_limit", speedLimit).Int64("transmit_bytes", transmitBytes).Err(err).Msg("forward log")
+		_ = conn.Close()
+		_ = r.Close()
+		receive := <-receiveDone
+		log.Debug().Context(ri.LogContext).Str("geosite", geosite.Site).Str("username", ri.ProxyUserInfo.Username).Str("http_domain", domain).Int64("speed_limit", speedLimit).Int64("receive_bytes", receive.n).Int64("transmit_bytes", transmitBytes).AnErr("receive_error", receive.err).Err(err).Msg("forward log")
 	default:
 		if req.Host == "" {
 			http.NotFound(rw, req)
