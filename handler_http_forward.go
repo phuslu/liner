@@ -690,7 +690,8 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 			if tc, ok := conn.(*net.TCPConn); ok {
 				src = tcpConnWithoutWriteTo{TCPConn: tc}
 			}
-			n := cmp.Or(h.Config.Forward.IoCopyBuffer, first(strconv.Atoi(os.Getenv("HTTP2_WRITER_POOL_BUFFER_SIZE"))), 256*1024)
+			// buffer size should large than chrome kMaxSpdyFrameChunkSize (16KiB)
+			n := cmp.Or(h.Config.Forward.IoCopyBuffer, first(strconv.Atoi(os.Getenv("HTTP2_WRITER_POOL_BUFFER_SIZE"))), 128*1024)
 			transmitBytes, err = io.CopyBuffer(w, src, make([]byte, n))
 		} else {
 			transmitBytes, err = io.Copy(w, conn) // splice to
@@ -812,8 +813,8 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 				Interval:  cmp.Or(h.Config.Forward.LogInterval, 1),
 			}
 		}
-
-		transmitBytes, err := io.CopyBuffer(w, resp.Body, make([]byte, 256*1024)) // buffer size should align to http2.MaxReadFrameSize
+		// buffer size should large than chrome kMaxSpdyFrameChunkSize (16KiB)
+		transmitBytes, err := io.CopyBuffer(w, resp.Body, make([]byte, 256*1024))
 		log.Debug().Context(ri.LogContext).Str("geosite", geosite.Site).Str("username", ri.ProxyUserInfo.Username).Str("http_domain", domain).Int64("transmit_bytes", transmitBytes).Int64("speed_limit", speedLimit).Err(err).Msg("forward log")
 	}
 }
