@@ -46,14 +46,12 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialerName, dialerURL stri
 			if dialer == nil {
 				dialer = &net.Dialer{}
 			}
-			ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-			defer cancel()
 			conn, err := dialer.DialContext(ctx, "tcp", hostport)
 			if err != nil {
 				return nil, err
 			}
 
-			if tc, _ := conn.(*net.TCPConn); conn != nil {
+			if tc, _ := conn.(*net.TCPConn); tc != nil {
 				if rate, _ := strconv.ParseUint(u.Query().Get("brutal_rate"), 10, 64); rate > 0 {
 					err := (ConnOps{tc, nil}).SetTcpCongestion("brutal", uint64(rate), uint32(20))
 					log.DefaultLogger.Err(err).Str("tunnel_proxy_pass", h.Config.ProxyPass).Str("tunnel_dialer_name", h.Config.Dialer).Uint64("tunnel_brutal_rate", rate).Msg("set tunnel brutal rate")
@@ -73,6 +71,7 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialerName, dialerURL stri
 
 			err = tlsConn.HandshakeContext(ctx)
 			if err != nil {
+				_ = conn.Close()
 				return nil, err
 			}
 
@@ -85,11 +84,17 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialerName, dialerURL stri
 		return nil, fmt.Errorf("invalid remote_listen addr: %s", h.Config.RemoteListen[0])
 	}
 
+	setupCtx, setupCancel := context.WithTimeout(ctx, time.Duration(cmp.Or(h.Config.DialTimeout, 10))*time.Second)
+	defer setupCancel()
+	streamCtx, streamCancel := context.WithCancel(ctx)
+
 	pr, pw := ringbuffer.New(8192).Pipe()
 
 	// see https://www.ietf.org/archive/id/draft-kazuho-httpbis-reverse-tunnel-00.html
-	req, err := http.NewRequestWithContext(ctx, http.MethodConnect, "https://"+u.Host+HTTPTunnelReverseTCPPathPrefix+targetHost+"/"+targetPort+"/", pr)
+	req, err := http.NewRequestWithContext(streamCtx, http.MethodConnect, "https://"+u.Host+HTTPTunnelReverseTCPPathPrefix+targetHost+"/"+targetPort+"/", pr)
 	if err != nil {
+		streamCancel()
+		_ = pw.CloseWithError(err)
 		return nil, err
 	}
 	req.ContentLength = -1
@@ -110,16 +115,43 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialerName, dialerURL stri
 
 	var remoteAddr, localAddr net.Addr
 	var netConn net.Conn
+	closeTransport := func() error {
+		var err error
+		if netConn != nil {
+			err = netConn.Close()
+		}
+		transport.CloseIdleConnections()
+		return err
+	}
 
-	req = req.WithContext(httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+	req = req.WithContext(httptrace.WithClientTrace(streamCtx, &httptrace.ClientTrace{
 		GotConn: func(connInfo httptrace.GotConnInfo) {
 			remoteAddr, localAddr = connInfo.Conn.RemoteAddr(), connInfo.Conn.LocalAddr()
 			netConn = connInfo.Conn
 		},
 	}))
 
+	stopSetupCancel := context.AfterFunc(setupCtx, streamCancel)
 	resp, err := transport.RoundTrip(req)
 	if err != nil {
+		stopSetupCancel()
+		streamCancel()
+		_ = pw.CloseWithError(err)
+		_ = closeTransport()
+		if err := setupCtx.Err(); err != nil {
+			return nil, err
+		}
+		return nil, err
+	}
+	if !stopSetupCancel() {
+		_ = resp.Body.Close()
+		streamCancel()
+		err := setupCtx.Err()
+		if err == nil {
+			err = context.Canceled
+		}
+		_ = pw.CloseWithError(err)
+		_ = closeTransport()
 		return nil, err
 	}
 
@@ -128,7 +160,11 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialerName, dialerURL stri
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusSwitchingProtocols {
 		data, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
-		return nil, errors.New("proxy: read from " + u.Host + " error: " + resp.Status + ": " + string(data))
+		streamCancel()
+		err := errors.New("proxy: read from " + u.Host + " error: " + resp.Status + ": " + string(data))
+		_ = pw.CloseWithError(err)
+		_ = closeTransport()
+		return nil, err
 	}
 
 	if remoteAddr == nil || localAddr == nil {
@@ -140,7 +176,7 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialerName, dialerURL stri
 		pipe: pw,
 		conn: netConn,
 		closeRead: func(error) error {
-			return resp.Body.Close()
+			return errors.Join(resp.Body.Close(), closeTransport())
 		},
 		closeWrite: func(err error) error {
 			if err != nil {
@@ -148,7 +184,7 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialerName, dialerURL stri
 			}
 			return pw.Close()
 		},
-		cancel: nil,
+		cancel: streamCancel,
 	}
 
 	session, err := yamux.Server(conn, &yamux.Config{
@@ -174,6 +210,6 @@ func (h *TunnelHandler) h2tunnel(ctx context.Context, dialerName, dialerURL stri
 	return &TunnelListener{
 		Listener: session,
 		closer:   conn,
-		ctx:      nil,
+		ctx:      streamCtx,
 	}, nil
 }

@@ -359,12 +359,15 @@ func (h *HTTPTunnelHandler) h2tunnel(rw http.ResponseWriter, req *http.Request, 
 				}
 				log.Error().Err(err).Msg("failed to accept remote connection")
 				time.Sleep(10 * time.Millisecond)
-				rconn.Close()
+				if rconn != nil {
+					_ = rconn.Close()
+				}
 				continue
 			}
 
 			lconn, err := session.OpenStream(ctx)
 			if err != nil {
+				_ = rconn.Close()
 				log.Error().Err(err).Msg("failed to open local session")
 				exit <- err
 				return
