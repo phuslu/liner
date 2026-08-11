@@ -67,7 +67,7 @@ func (h *TunnelHandler) h1tunnel(ctx context.Context, dialerName, dialerURL stri
 	}
 	if port == "" {
 		switch u.Scheme {
-		case "http,", "ws":
+		case "http", "ws":
 			port = "80"
 		default:
 			port = "443"
