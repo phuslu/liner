@@ -103,6 +103,9 @@ func (h *TunHandler) Load(ctx context.Context) error {
 		if h.static.Dialer, h.static.DialerName, h.static.DisableIPv6, h.static.PreferIPv6, err = h.parseForwardDialer(h.Config.Forward.Dialer); err != nil {
 			return err
 		}
+	} else {
+		h.static.DisableIPv6 = h.Config.Forward.DisableIpv6
+		h.static.PreferIPv6 = h.Config.Forward.PreferIpv6
 	}
 	for i, config := range h.Config.Forward.ProcessDialer {
 		var err error
@@ -1282,6 +1285,17 @@ func (h *TunHandler) parseForwardDialer(dialerValue string) (Dialer, string, boo
 }
 
 func (h *TunHandler) prepareDial(req TunRequest) (context.Context, Dialer, string, bool) {
+	if addr := req.ServerAddr.Addr(); IsReservedIP(addr) && !IsMemoryAddress(addr) {
+		ctx := context.Background()
+		switch {
+		case h.static.DisableIPv6:
+			ctx = context.WithValue(ctx, DialerDisableIPv6ContextKey, struct{}{})
+		case h.static.PreferIPv6:
+			ctx = context.WithValue(ctx, DialerPreferIPv6ContextKey, struct{}{})
+		}
+		return ctx, h.LocalDialer, "direct", true
+	}
+
 	dialer := h.static.Dialer
 	dialerName := h.static.DialerName
 	disableIPv6 := h.static.DisableIPv6
