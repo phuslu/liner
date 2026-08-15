@@ -1,11 +1,18 @@
-// v{{.ServerVersion}} updated at {{.FileInfo.ModTime.Format "2006-01-02T15:04:05Z07:00"}}
+// liner china.pac v{{.ServerVersion}} updated at {{.FileInfo.ModTime.Format "2006-01-02T15:04:05Z07:00"}}
+// see https://github.com/phuslu/liner/blob/master/china.pac
 
 var direct = 'DIRECT'
-{{if .Request.TLS -}}
-var proxy = 'HTTPS {{.Request.Host}}:443'
-{{else}}
-var proxy = 'HTTP {{.Request.Host}}:8080'
-{{end}}
+{{ $host := .Request.Host -}}
+{{ if eq (host $host) $host -}}
+{{ $host = printf "%s:%s" $host (empty .Request.TLS | ternary "80" "443") -}}
+{{ end -}}
+{{ if .Request.URL.Query.Get "proxy" -}}
+var proxy = '{{ .Request.URL.Query.Get "proxy" }}'
+{{ else if .Request.TLS -}}
+var proxy = 'HTTPS {{ $host }}'
+{{ else }}
+var proxy = 'HTTP {{ $host }}'
+{{ end }}
 
 var prelude = {
 	{{ .Request.URL.Query.Get "prelude" -}}
