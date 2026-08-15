@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title></title>
     <meta name="description" content="Liner WebShell" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
     <style>
         body {
             margin: 0;
@@ -43,10 +42,6 @@
             box-shadow: 0 0 12px rgba(0, 0, 0, 0.45);
         }
     </style>
-    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-webgl@0.18.0/lib/addon-webgl.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-web-links@0.11.0/lib/addon-web-links.js"></script>
 </head>
 <body>
     <div class="webshell">
@@ -54,39 +49,29 @@
         <div id="reconnect-overlay"><div id="reconnect-box">Press ⏎ to Reconnect</div></div>
     </div>
 
-    <script>
+    <script type="module">
+        import { init, Terminal, FitAddon } from 'https://cdn.jsdelivr.net/npm/ghostty-web@0.4.0/dist/ghostty-web.js';
+
         document.title = "{{ index .Values `title` }}" || "liner webshell";
 
-        const term = new Terminal({
-            allowProposedApi: true,
-            cursorBlink: true,
-            disableStdin: false,
-            fontSize: parseInt("{{ .Request.URL.Query.Get `font_size` | default (index .Values `font_size`) }}") || 14,
-            fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-            theme: { background: '#101010' },
-            scrollback: 5000,
-            windowsMode: "{{ .Request.URL.Query.Get `windows_mode` | default (index .Values `windows_mode`) }}" == "true",
-        });
-
-        const fitAddon = new FitAddon.FitAddon();
-        term.loadAddon(fitAddon);
-
-        try {
-            const webglAddon = new WebglAddon.WebglAddon();
-            webglAddon.onContextLoss(e => { webglAddon.dispose(); });
-            term.loadAddon(webglAddon);
-        } catch (e) {
-            console.warn("WebGL not supported, falling back to canvas");
-        }
-
-        term.loadAddon(new WebLinksAddon.WebLinksAddon());
-
         const terminal = document.getElementById('terminal');
-        term.open(terminal);
-        fitAddon.fit();
-
         const overlay = document.getElementById('reconnect-overlay');
         let reconnectMode = false;
+        let term;
+        let fitAddon;
+        let ws;
+
+        const encoder = new TextEncoder();
+        let framePending = false;
+        let queue = [];
+
+        function flushQueue() {
+            framePending = false;
+            for (let i = 0; i < queue.length; i++) {
+                term.write(queue[i]);
+            }
+            queue.length = 0;
+        }
 
         function showReconnectOverlay() {
             reconnectMode = true;
@@ -101,65 +86,8 @@
             term.focus();
         }
 
-        const ws = new WebSocket(
-            location.protocol.replace('http', 'ws') + '//' +
-            location.host +
-            location.pathname.replace(/\/[^/]*$/, '') + '/ws'
-        );
-        ws.binaryType = 'arraybuffer';
-
-        let framePending = false;
-        let queue = [];
-
-        ws.onmessage = (event) => {
-            if (event.data instanceof ArrayBuffer) {
-                queue.push(new Uint8Array(event.data));
-            } else {
-                queue.push(event.data);
-            }
-            if (!framePending) {
-                framePending = true;
-                requestAnimationFrame(flushQueue);
-            }
-        };
-
-        const decoder = new TextDecoder();
-        function flushQueue() {
-            framePending = false;
-            for (let i = 0; i < queue.length; i++) {
-                const chunk = queue[i];
-                if (chunk instanceof Uint8Array) {
-                    try {
-                        term.writeUtf8(chunk);
-                    } catch (_) {
-                        term.write(decoder.decode(chunk));
-                    }
-                } else {
-                    term.write(chunk);
-                }
-            }
-            queue.length = 0;
-        }
-
-        ws.onopen = () => {
-            hideReconnectOverlay();
-            sendResize();
-        };
-
-        ws.onclose = () => {
-            showReconnectOverlay();
-        };
-
-        const encoder = new TextEncoder();
-        term.onData((data) => {
-            if (reconnectMode) return;
-            if (ws.readyState === WebSocket.OPEN) {
-                ws.send(encoder.encode(data));
-            }
-        });
-
         function sendResize() {
-            if (ws.readyState === WebSocket.OPEN) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({
                     type: 'resize',
                     cols: term.cols,
@@ -168,17 +96,71 @@
             }
         }
 
-        const resizeObserver = new ResizeObserver(entries => {
-            requestAnimationFrame(() => {
-                if (!entries.length) return;
-                try {
-                    fitAddon.fit();
-                    sendResize();
-                } catch (e) {}
-            });
-         });
+        async function initTerminal() {
+            await init();
 
-        resizeObserver.observe(terminal);
+            const windowsMode = "{{ .Request.URL.Query.Get `windows_mode` | default (index .Values `windows_mode`) }}" == "true";
+
+            term = new Terminal({
+                cursorBlink: true,
+                disableStdin: false,
+                fontSize: parseInt("{{ .Request.URL.Query.Get `font_size` | default (index .Values `font_size`) }}") || 14,
+                fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+                theme: { background: '#101010' },
+                scrollback: 5000,
+                convertEol: windowsMode,
+            });
+
+            fitAddon = new FitAddon();
+            term.loadAddon(fitAddon);
+
+            term.open(terminal);
+            fitAddon.fit();
+            fitAddon.observeResize();
+            window.addEventListener('resize', () => fitAddon.fit());
+
+            term.onResize(() => sendResize());
+
+            term.onData((data) => {
+                if (reconnectMode) return;
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(encoder.encode(data));
+                }
+            });
+
+            ws = new WebSocket(
+                location.protocol.replace('http', 'ws') + '//' +
+                location.host +
+                location.pathname.replace(/\/[^/]*$/, '') + '/ws'
+            );
+            ws.binaryType = 'arraybuffer';
+
+            ws.onmessage = (event) => {
+                if (event.data instanceof ArrayBuffer) {
+                    queue.push(new Uint8Array(event.data));
+                } else {
+                    queue.push(event.data);
+                }
+                if (!framePending) {
+                    framePending = true;
+                    requestAnimationFrame(flushQueue);
+                }
+            };
+
+            ws.onopen = () => {
+                hideReconnectOverlay();
+                sendResize();
+            };
+
+            ws.onclose = () => {
+                showReconnectOverlay();
+            };
+        }
+
+        initTerminal().catch((error) => {
+            console.error('Failed to initialize ghostty-web:', error);
+            terminal.textContent = 'Failed to initialize terminal: ' + (error && error.message ? error.message : error);
+        });
 
         window.addEventListener('keydown', (e) => {
             if (reconnectMode && e.key === 'Enter') {
