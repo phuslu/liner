@@ -9,12 +9,12 @@ require (
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
 	github.com/libp2p/go-yamux/v5 v5.1.0
 	github.com/mileusna/useragent v1.3.5
-	github.com/oschwald/maxminddb-golang/v2 v2.4.1
+	github.com/oschwald/maxminddb-golang/v2 v2.5.0
 	github.com/phuslu/fastdns v0.17.1
 	github.com/phuslu/geosite v1.0.20250901
 	github.com/phuslu/gosh v0.0.0-20260528105038-250a6b893c6d
 	github.com/phuslu/log v1.0.128
-	github.com/phuslu/lru v1.0.21
+	github.com/phuslu/lru v1.0.22
 	github.com/phuslu/pty v0.0.0-20260518141308-9cb014534fff
 	github.com/phuslu/tcp-brutal v1.0.1
 	github.com/pkg/sftp v1.13.11
@@ -25,11 +25,11 @@ require (
 	github.com/smallnest/ringbuffer v0.1.1
 	github.com/valyala/bytebufferpool v1.0.0
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba
-	golang.org/x/crypto v0.54.0
-	golang.org/x/net v0.57.0
+	golang.org/x/crypto v0.55.0
+	golang.org/x/net v0.58.0
 	golang.org/x/sys v0.47.0
 	golang.zx2c4.com/wireguard v0.0.0-20260522210424-ecfc5a8d5446
-	gvisor.dev/gvisor v0.0.0-20260730080753-99012c9af411
+	gvisor.dev/gvisor v0.0.0-20260815055033-7d8fb7f28de4
 )
 
 require (
@@ -37,15 +37,15 @@ require (
 	github.com/chzyer/readline v1.5.1 // indirect
 	github.com/ebitengine/purego v0.10.2 // indirect
 	github.com/google/btree v1.1.3 // indirect
-	github.com/klauspost/compress v1.19.1 // indirect
+	github.com/klauspost/compress v1.19.2 // indirect
 	github.com/kr/fs v0.1.0 // indirect
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
 	github.com/phuslu/pamtester v0.0.0-20260723064746-2abeb25850e7
 	github.com/quic-go/qpack v0.6.0 // indirect
 	go.uber.org/mock v0.6.0 // indirect
-	golang.org/x/exp v0.0.0-20260727155853-b88d891fe743 // indirect
+	golang.org/x/exp v0.0.0-20260813180055-c1d0aacb2297 // indirect
 	golang.org/x/term v0.45.0 // indirect
-	golang.org/x/text v0.40.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
 	mvdan.cc/sh/v3 v3.13.1 // indirect
