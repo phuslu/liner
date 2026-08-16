@@ -1162,9 +1162,10 @@ func main() {
 	for _, ssh := range config.Ssh {
 		for _, addr := range ssh.Listen {
 			h := &SshHandler{
-				Config:    ssh,
-				Functions: functions,
-				Logger:    log.DefaultLogger,
+				Config:        ssh,
+				Logger:        log.DefaultLogger,
+				Functions:     functions,
+				MemoryDialers: memoryDialers,
 			}
 
 			var ln net.Listener

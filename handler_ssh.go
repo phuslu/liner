@@ -36,9 +36,10 @@ import (
 )
 
 type SshHandler struct {
-	Config    SshConfig
-	Logger    log.Logger
-	Functions *Functions
+	Config        SshConfig
+	Logger        log.Logger
+	Functions     *Functions
+	MemoryDialers *MemoryDialers
 
 	sshConfig   *ssh.ServerConfig
 	userchecker AuthUserChecker
@@ -442,7 +443,17 @@ func (h *SshHandler) handleDirectTCPIP(ctx context.Context, newChannel ssh.NewCh
 
 	targetAddr := net.JoinHostPort(payload.HostToConnect, fmt.Sprintf("%d", payload.PortToConnect))
 
-	rconn, err := (&net.Dialer{Timeout: 15 * time.Second}).DialContext(ctx, "tcp", targetAddr)
+	var rconn net.Conn
+	var err error
+	if IsMemoryAddress(targetAddr) && h.MemoryDialers != nil {
+		if md, ok := h.MemoryDialers.Load(targetAddr); ok && md != nil {
+			rconn, err = md.DialContext(ctx, "tcp", targetAddr)
+		} else {
+			err = net.InvalidAddrError("memory address is not exists: " + targetAddr)
+		}
+	} else {
+		rconn, err = (&net.Dialer{Timeout: 15 * time.Second}).DialContext(ctx, "tcp", targetAddr)
+	}
 	if err != nil {
 		h.Logger.Error().Err(err).Str("target_addr", targetAddr).Msg("handleDirectTCPIP: failed to dial target")
 		newChannel.Reject(ssh.ConnectionFailed, err.Error())
