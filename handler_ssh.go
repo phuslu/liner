@@ -512,6 +512,7 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 	var winsize pty.Winsize
 	var modes = map[byte]uint32{}
 	var envs = map[string]string{}
+	var sessionBusy bool
 
 	if raddr, laddr := conn.RemoteAddr(), conn.LocalAddr(); raddr != nil && laddr != nil {
 		rap, lap := AddrPortFromNetAddr(raddr), AddrPortFromNetAddr(laddr)
@@ -538,30 +539,43 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 			}
 			req.Reply(true, nil)
 		case "exec":
-			req.Reply(true, nil)
+			if sessionBusy {
+				req.Reply(false, nil)
+				continue
+			}
 			var payload struct {
 				Command string
 			}
 			if err := ssh.Unmarshal(req.Payload, &payload); err != nil {
 				h.Logger.Error().Err(err).Msgf("ssh exec unmarshal error")
+				req.Reply(false, nil)
 				continue
 			}
+			sessionBusy = true
+			req.Reply(true, nil)
 			h.Logger.Info().Str("command", payload.Command).Msg("ssh exec command")
 			go h.startExec(ctx, channel, payload.Command, maps.Clone(envs))
 		case "shell":
+			if sessionBusy {
+				req.Reply(false, nil)
+				continue
+			}
 			// We only accept the default shell
 			// (i.e. no command in the Payload)
-			if len(req.Payload) == 0 {
-				var err error
-				// Fire up bash for this session
-				shell, err = h.startShell(ctx, h.shellPath, winsize, modes, envs, channel)
-				if err != nil {
-					h.Logger.Error().Err(err).Str("req_type", req.Type).Str("shell", h.shellPath).Any("envs", envs).Msg("handle ssh request")
-					req.Reply(false, nil)
-					continue
-				}
-				req.Reply(true, nil)
+			if len(req.Payload) != 0 {
+				req.Reply(false, nil)
+				continue
 			}
+			var err error
+			// Fire up bash for this session
+			shell, err = h.startShell(ctx, h.shellPath, winsize, modes, envs, channel)
+			if err != nil {
+				h.Logger.Error().Err(err).Str("req_type", req.Type).Str("shell", h.shellPath).Any("envs", envs).Msg("handle ssh request")
+				req.Reply(false, nil)
+				continue
+			}
+			sessionBusy = true
+			req.Reply(true, nil)
 		case "pty-req":
 			if len(req.Payload) < 4 {
 				h.Logger.Error().Int("payload_length", len(req.Payload)).Msg("ssh pty-req payload too short")
@@ -615,34 +629,41 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 				pty.SetSize(shell, &winsize)
 			}
 		case "subsystem":
+			if sessionBusy {
+				req.Reply(false, nil)
+				continue
+			}
 			var payload struct {
 				SubSystem string
 			}
 			if err := ssh.Unmarshal(req.Payload, &payload); err != nil {
 				h.Logger.Error().Err(err).Msgf("ssh subsystem unmarshal error")
+				req.Reply(false, nil)
 				continue
 			}
 			switch payload.SubSystem {
 			case "sftp", "internal-sftp":
 				h.Logger.Printf("sftp server serving: %s", req.Payload)
+				opts := []sftp.ServerOption{
+					sftp.WithServerWorkingDirectory(cmp.Or(h.Config.Home, os.Getenv("HOME"), "/")),
+				}
+				server, err := sftp.NewServer(channel, opts...)
+				if err != nil {
+					h.Logger.Printf("could not start sftp server: %s", err)
+					req.Reply(false, nil)
+					continue
+				}
+				sessionBusy = true
+				req.Reply(true, nil)
 				go func() {
+					defer server.Close()
 					defer channel.Close()
-					opts := []sftp.ServerOption{
-						sftp.WithServerWorkingDirectory(cmp.Or(h.Config.Home, os.Getenv("HOME"), "/")),
-					}
-					server, err := sftp.NewServer(channel, opts...)
-					if err != nil {
-						h.Logger.Printf("could not start sftp server: %s", err)
-						return
-					}
 					if err := server.Serve(); err == io.EOF {
-						server.Close()
 						h.Logger.Printf("sftp client exited session.")
 					} else if err != nil {
 						h.Logger.Printf("sftp server exited with error: %s", err)
 					}
 				}()
-				req.Reply(true, nil)
 			default:
 				h.Logger.Printf("ssh subsystem request %#v not supportted", req)
 				req.Reply(false, append([]byte("ssh subsystem is not supportted: "), req.Payload...))
