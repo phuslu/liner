@@ -62,7 +62,7 @@ func (c *AuthUserLoadChecker) CheckAuthUser(ctx context.Context, user *AuthUserI
 	switch {
 	case !ok:
 		err = fmt.Errorf("invalid username: %v", user.Username)
-	case user.Password == record.Password:
+	case subtle.ConstantTimeCompare([]byte(user.Password), []byte(record.Password)) == 1:
 		*user = record
 	case strings.HasPrefix(record.Password, "0x"):
 		var b []byte
