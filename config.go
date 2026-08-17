@@ -215,6 +215,7 @@ type SshConfig struct {
 	AuthTable        string   `json:"auth_table" yaml:"auth_table"`
 	AuthPam          bool     `json:"auth_pam" yaml:"auth_pam"`
 	AuthorizedKeys   string   `json:"authorized_keys" yaml:"authorized_keys"`
+	AcceptEnv        string   `json:"accept_env" yaml:"accept_env"`
 	Env              string   `json:"env" yaml:"env"`
 	EnvFile          string   `json:"env_file" yaml:"env_file"`
 	Home             string   `json:"home" yaml:"home"`

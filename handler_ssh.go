@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"path"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -51,10 +52,43 @@ type SshHandler struct {
 	envTemplate *template.Template
 	envFileText string
 	envFileTmpl *template.Template
+	acceptEnv   []string
 	closed      atomic.Bool
 
 	listenerMu sync.Mutex
 	listener   net.Listener
+}
+
+// defaultAcceptEnv mirrors common OpenSSH deployments: locale and
+// terminal capability hints are safe to accept; anything that can
+// influence command execution (PATH, LD_PRELOAD, EDITOR, ...) is not.
+const defaultAcceptEnv = "LANG LANGUAGE LC_* TERM COLORTERM TERM_PROGRAM TERM_PROGRAM_VERSION"
+
+func parseAcceptEnv(spec string) ([]string, error) {
+	if strings.TrimSpace(spec) == "" {
+		return strings.Fields(defaultAcceptEnv), nil
+	}
+	patterns := strings.FieldsFunc(spec, func(r rune) bool {
+		return r == ' ' || r == '\t' || r == ','
+	})
+	for _, pattern := range patterns {
+		if _, err := path.Match(pattern, ""); err != nil {
+			return nil, fmt.Errorf("invalid accept_env pattern %q: %w", pattern, err)
+		}
+	}
+	return patterns, nil
+}
+
+func (h *SshHandler) acceptEnvKey(key string) bool {
+	if key == "" || strings.ContainsAny(key, "=\x00") {
+		return false
+	}
+	for _, pattern := range h.acceptEnv {
+		if ok, _ := path.Match(pattern, key); ok {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *SshHandler) Load(ctx context.Context) error {
@@ -365,6 +399,11 @@ func (h *SshHandler) Load(ctx context.Context) error {
 			h.envFileTmpl = tmpl
 		}
 	}
+	acceptEnv, err := parseAcceptEnv(h.Config.AcceptEnv)
+	if err != nil {
+		return err
+	}
+	h.acceptEnv = acceptEnv
 	if options := strings.Fields(h.Config.TcpCongestion); len(options) > 0 {
 		switch options[0] {
 		case "brutal":
@@ -633,8 +672,12 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 					req.Reply(false, nil)
 					continue
 				}
-				envs[payload.Key] = payload.Value
-				h.Logger.Debug().Str("req_type", req.Type).Str("key", payload.Key).Msg("handle ssh request")
+				if h.acceptEnvKey(payload.Key) {
+					envs[payload.Key] = payload.Value
+					h.Logger.Debug().Str("req_type", req.Type).Str("key", payload.Key).Msg("handle ssh request")
+				} else {
+					h.Logger.Debug().Str("req_type", req.Type).Str("key", payload.Key).Msg("ssh env request rejected")
+				}
 			}
 			req.Reply(true, nil)
 		case "exec":

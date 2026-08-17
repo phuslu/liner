@@ -276,6 +276,10 @@ dialer=proxy1&disable_ipv6=true
 - SSH shell, exec, SFTP, env, direct-tcpip, authorized keys, auth tables, and
   `shell: "$"` GOSH re-entry are command/trust-boundary code. Be deliberate
   about environment inheritance and logged command data.
+- `ssh[].accept_env` is a space/comma-separated wildcard pattern list for
+  client `env` requests; when unset locale and terminal hints such as
+  `LANG`, `LC_*` and `TERM` are accepted, and other client environment
+  variables never reach the session.
 
 ### Redsocks and TProxy
 
