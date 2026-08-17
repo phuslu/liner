@@ -1167,6 +1167,7 @@ func main() {
 				DataLogger:    dataLogger,
 				Functions:     functions,
 				MemoryDialers: memoryDialers,
+				LocalDialer:   dialer,
 			}
 
 			var ln net.Listener

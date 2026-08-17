@@ -42,6 +42,7 @@ type SshHandler struct {
 	DataLogger    log.Logger
 	Functions     *Functions
 	MemoryDialers *MemoryDialers
+	LocalDialer   Dialer
 
 	sshConfig   *ssh.ServerConfig
 	userchecker AuthUserChecker
@@ -556,6 +557,8 @@ func (h *SshHandler) handleDirectTCPIP(ctx context.Context, newChannel ssh.NewCh
 		} else {
 			err = net.InvalidAddrError("memory address is not exists: " + targetAddr)
 		}
+	} else if h.LocalDialer != nil {
+		rconn, err = h.LocalDialer.DialContext(ctx, "tcp", targetAddr)
 	} else {
 		rconn, err = (&net.Dialer{Timeout: 15 * time.Second}).DialContext(ctx, "tcp", targetAddr)
 	}
