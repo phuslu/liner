@@ -992,6 +992,7 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, winsize p
 			isgosh = true
 			shell = exec.CommandContext(ctx, exe)
 		}
+		shell.Dir = os.ExpandEnv(cmp.Or(h.Config.Home, currentUser.HomeDir))
 	} else {
 		shellArgs, err := shlex.Split(shellPath)
 		if err != nil {
