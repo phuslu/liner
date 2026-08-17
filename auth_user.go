@@ -142,7 +142,10 @@ var authfileloaders = xsync.NewMap[string, *FileLoader[map[string]AuthUserInfo]]
 
 func (loader *AuthUserFileLoader) LoadAuthUsers(ctx context.Context) (map[string]AuthUserInfo, error) {
 	if loader.fileloader != nil {
-		return *loader.fileloader.Load(), nil
+		if records := loader.fileloader.Load(); records != nil {
+			return *records, nil
+		}
+		return nil, fmt.Errorf("load auth users %q failed", loader.Filename)
 	}
 
 	loader.onceloader.Do(func() {
@@ -157,7 +160,10 @@ func (loader *AuthUserFileLoader) LoadAuthUsers(ctx context.Context) (map[string
 		})
 	})
 
-	return *loader.fileloader.Load(), nil
+	if records := loader.fileloader.Load(); records != nil {
+		return *records, nil
+	}
+	return nil, fmt.Errorf("load auth users %q failed", loader.Filename)
 }
 
 /*
