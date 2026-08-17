@@ -45,8 +45,8 @@ func (h *TunnelHandler) sshtunnel(ctx context.Context, dialerName, dialerURL str
 		}
 		signer, err := ssh.ParsePrivateKey(data)
 		if err != nil {
-			log.Error().Err(err).Msgf("invalid ssh key %s", data)
-			return nil, fmt.Errorf("invalid ssh key %s: %w", data, err)
+			log.Error().Err(err).Str("ssh_key_file", key).Msg("invalid ssh key")
+			return nil, fmt.Errorf("invalid ssh key %s: %w", key, err)
 		}
 		config.Auth = append([]ssh.AuthMethod{ssh.PublicKeys(signer)}, config.Auth...)
 	}
