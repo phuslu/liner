@@ -46,6 +46,9 @@ type SshHandler struct {
 	keyloader   *FileLoader[[]string]
 	shellPath   string
 	closed      atomic.Bool
+
+	listenerMu sync.Mutex
+	listener   net.Listener
 }
 
 func (h *SshHandler) Load(ctx context.Context) error {
@@ -329,15 +332,25 @@ func (h *SshHandler) Load(ctx context.Context) error {
 
 // ListenAndServe let the server listen and serve.
 func (h *SshHandler) Serve(ctx context.Context, ln net.Listener) error {
+	h.listenerMu.Lock()
+	h.listener = ln
+	h.listenerMu.Unlock()
+	defer func() {
+		h.listenerMu.Lock()
+		h.listener = nil
+		h.listenerMu.Unlock()
+	}()
+
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
 			if h.closed.Load() {
 				return nil
 			}
-			return fmt.Errorf("accept incoming connection: %s", err)
+			h.Logger.Error().Err(err).Strs("ssh_listens", h.Config.Listen).Msg("ssh accept error")
+			time.Sleep(10 * time.Millisecond)
+			continue
 		}
-		h.Logger.Info()
 		switch v := conn.(type) {
 		case *net.TCPConn:
 			v.SetReadBuffer(cmp.Or(h.Config.TcpReadBuffer, 128*1024))
@@ -354,7 +367,8 @@ func (h *SshHandler) Serve(ctx context.Context, ln net.Listener) error {
 				switch name := options[0]; name {
 				case "brutal":
 					if len(options) < 2 {
-						return fmt.Errorf("invalid tcp_congestion options: %q", options)
+						h.Logger.Error().Strs("ssh_tcp_congestion_options", options).Msg("invalid tcp_congestion options")
+						break
 					}
 					if rate, _ := strconv.Atoi(options[1]); rate > 0 {
 						gain := 20 // hysteria2 default
@@ -364,15 +378,13 @@ func (h *SshHandler) Serve(ctx context.Context, ln net.Listener) error {
 							}
 						}
 						if err := (&ConnOps{v, nil}).SetTcpCongestion(name, uint64(rate), uint32(gain)); err != nil {
-							log.Error().Err(err).NetAddr("remote_ip", v.RemoteAddr()).Strs("ssh_tcp_congestion_options", options).Msg("set ssh_tcp_congestion error")
-							return fmt.Errorf("set tcp_congestion options: %q", options)
+							h.Logger.Error().Err(err).NetAddr("remote_ip", v.RemoteAddr()).Strs("ssh_tcp_congestion_options", options).Msg("set ssh_tcp_congestion error")
 						}
-						log.Debug().NetAddr("remote_ip", v.RemoteAddr()).Strs("ssh_tcp_congestion_options", options).Msg("set ssh_tcp_congestion ok")
+						h.Logger.Debug().NetAddr("remote_ip", v.RemoteAddr()).Strs("ssh_tcp_congestion_options", options).Msg("set ssh_tcp_congestion ok")
 					}
 				default:
 					if err := (&ConnOps{v, nil}).SetTcpCongestion(name); err != nil {
-						log.Error().Err(err).NetAddr("remote_ip", v.RemoteAddr()).Strs("ssh_tcp_congestion_options", options).Msg("set ssh_tcp_congestion error")
-						return fmt.Errorf("set tcp_congestion options: %q", options)
+						h.Logger.Error().Err(err).NetAddr("remote_ip", v.RemoteAddr()).Strs("ssh_tcp_congestion_options", options).Msg("set ssh_tcp_congestion error")
 					}
 				}
 			}
@@ -382,6 +394,17 @@ func (h *SshHandler) Serve(ctx context.Context, ln net.Listener) error {
 		// Before use, a handshake must be performed on the incoming net.Conn.
 		go h.handleConn(ctx, conn)
 	}
+}
+
+func (h *SshHandler) Close() error {
+	h.closed.Store(true)
+	h.listenerMu.Lock()
+	ln := h.listener
+	h.listenerMu.Unlock()
+	if ln != nil {
+		return ln.Close()
+	}
+	return nil
 }
 
 func (h *SshHandler) handleConn(ctx context.Context, netConn net.Conn) {
