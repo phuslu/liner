@@ -497,3 +497,31 @@ func AppendSetSidToSysProcAttr(old *syscall.SysProcAttr, uid, gid int) *syscall.
 
 	return &spa
 }
+
+func sshSignalByName(name string) (os.Signal, bool) {
+	switch name {
+	case "HUP":
+		return syscall.SIGHUP, true
+	case "INT":
+		return syscall.SIGINT, true
+	case "QUIT":
+		return syscall.SIGQUIT, true
+	case "KILL":
+		return syscall.SIGKILL, true
+	case "TERM":
+		return syscall.SIGTERM, true
+	case "ABRT":
+		return syscall.SIGABRT, true
+	case "ALRM":
+		return syscall.SIGALRM, true
+	case "PIPE":
+		return syscall.SIGPIPE, true
+	case "FPE":
+		return syscall.SIGFPE, true
+	case "ILL":
+		return syscall.SIGILL, true
+	case "SEGV":
+		return syscall.SIGSEGV, true
+	}
+	return nil, false
+}

@@ -7,9 +7,20 @@ import (
 	"errors"
 	"net"
 	"net/netip"
+	"os"
 	"syscall"
 	"time"
 )
+
+func sshSignalByName(name string) (os.Signal, bool) {
+	switch name {
+	case "INT":
+		return os.Interrupt, true
+	case "KILL":
+		return os.Kill, true
+	}
+	return nil, false
+}
 
 type ListenConfig struct {
 	ReusePort   bool

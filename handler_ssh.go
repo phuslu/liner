@@ -536,6 +536,7 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 	var modes = map[byte]uint32{}
 	var envs = map[string]string{}
 	var sessionBusy bool
+	var sessionProc atomic.Pointer[os.Process]
 
 	if raddr, laddr := conn.RemoteAddr(), conn.LocalAddr(); raddr != nil && laddr != nil {
 		rap, lap := AddrPortFromNetAddr(raddr), AddrPortFromNetAddr(laddr)
@@ -577,7 +578,7 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 			sessionBusy = true
 			req.Reply(true, nil)
 			h.Logger.Info().Str("command", payload.Command).Msg("ssh exec command")
-			go h.startExec(ctx, channel, payload.Command, maps.Clone(envs))
+			go h.startExec(ctx, channel, payload.Command, maps.Clone(envs), &sessionProc)
 		case "shell":
 			if sessionBusy {
 				req.Reply(false, nil)
@@ -591,7 +592,7 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 			}
 			var err error
 			// Fire up bash for this session
-			shell, err = h.startShell(ctx, h.shellPath, winsize, modes, envs, channel)
+			shell, err = h.startShell(ctx, h.shellPath, winsize, modes, envs, channel, &sessionProc)
 			if err != nil {
 				h.Logger.Error().Err(err).Str("req_type", req.Type).Str("shell", h.shellPath).Any("envs", envs).Msg("handle ssh request")
 				req.Reply(false, nil)
@@ -693,6 +694,27 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 			}
 		case "keepalive@openssh.com":
 			req.Reply(true, nil)
+		case "eow@openssh.com":
+			req.Reply(true, nil)
+		case "signal":
+			var payload struct {
+				SignalName string
+			}
+			if err := ssh.Unmarshal(req.Payload, &payload); err != nil {
+				h.Logger.Error().Err(err).Msgf("ssh signal unmarshal error")
+				req.Reply(false, nil)
+				continue
+			}
+			if proc := sessionProc.Load(); proc != nil {
+				if sig, ok := sshSignalByName(payload.SignalName); ok {
+					if err := proc.Signal(sig); err != nil {
+						h.Logger.Error().Err(err).Str("signal_name", payload.SignalName).Msg("ssh signal error")
+					}
+				}
+			}
+			req.Reply(true, nil)
+		case "break", "xon-xoff":
+			req.Reply(false, nil)
 		default:
 			req.Reply(false, nil)
 		}
@@ -790,7 +812,7 @@ func (h *SshHandler) sshShellEnv(currentUser *user.User, shell string, shellPath
 	return env, nil
 }
 
-func (h *SshHandler) startExec(ctx context.Context, channel ssh.Channel, command string, envs map[string]string) {
+func (h *SshHandler) startExec(ctx context.Context, channel ssh.Channel, command string, envs map[string]string, sessionProc *atomic.Pointer[os.Process]) {
 	defer channel.Close()
 
 	exitStatus := 127
@@ -906,6 +928,9 @@ func (h *SshHandler) startExec(ctx context.Context, channel ssh.Channel, command
 		fmt.Fprintln(channel.Stderr(), err)
 		return
 	}
+	if sessionProc != nil {
+		sessionProc.Store(shellcmd.Process)
+	}
 
 	var wg sync.WaitGroup
 	wg.Go(func() {
@@ -939,7 +964,7 @@ func (h *SshHandler) startExec(ctx context.Context, channel ssh.Channel, command
 	}
 }
 
-func (h *SshHandler) startShell(ctx context.Context, shellPath string, winsize pty.Winsize, modes map[byte]uint32, envs map[string]string, channel ssh.Channel) (pty.Pty, error) {
+func (h *SshHandler) startShell(ctx context.Context, shellPath string, winsize pty.Winsize, modes map[byte]uint32, envs map[string]string, channel ssh.Channel, sessionProc *atomic.Pointer[os.Process]) (pty.Pty, error) {
 	currentUser, err := user.Current()
 	if err != nil {
 		return nil, err
@@ -1004,14 +1029,21 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, winsize p
 			shell.Process.Signal(os.Interrupt)
 			timer := time.AfterFunc(time.Minute, func() { shell.Process.Signal(os.Kill) })
 			defer timer.Stop()
-		}
-		channel.Close()
-		if shell.Process != nil {
 			_, err := shell.Process.Wait()
 			if err != nil {
 				h.Logger.Printf("Failed to exit shell (%s)", err)
 			}
+			exitStatus := 128
+			if code := shell.ProcessState.ExitCode(); code >= 0 {
+				exitStatus = code
+			}
+			var b [4]byte
+			binary.BigEndian.PutUint32(b[:], uint32(exitStatus))
+			if _, err := channel.SendRequest("exit-status", false, b[:]); err != nil {
+				h.Logger.Error().Err(err).Int("exit_status", exitStatus).Msg("ssh shell send exit-status error")
+			}
 		}
+		channel.Close()
 		h.Logger.Printf("Session closed")
 	}
 
@@ -1022,6 +1054,9 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, winsize p
 		h.Logger.Printf("Could not start pty (%s)", err)
 		close()
 		return nil, err
+	}
+	if sessionProc != nil {
+		sessionProc.Store(shell.Process)
 	}
 
 	//pipe session to shell and visa-versa

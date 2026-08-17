@@ -645,3 +645,35 @@ func RedirectOutputToFile(filename string) error {
 func AppendSetSidToSysProcAttr(old *syscall.SysProcAttr, uid, gid int) *syscall.SysProcAttr {
 	return old
 }
+
+func sshSignalByName(name string) (os.Signal, bool) {
+	switch name {
+	case "HUP":
+		return syscall.SIGHUP, true
+	case "INT":
+		return syscall.SIGINT, true
+	case "QUIT":
+		return syscall.SIGQUIT, true
+	case "KILL":
+		return syscall.SIGKILL, true
+	case "TERM":
+		return syscall.SIGTERM, true
+	case "USR1":
+		return syscall.SIGUSR1, true
+	case "USR2":
+		return syscall.SIGUSR2, true
+	case "ABRT":
+		return syscall.SIGABRT, true
+	case "ALRM":
+		return syscall.SIGALRM, true
+	case "PIPE":
+		return syscall.SIGPIPE, true
+	case "FPE":
+		return syscall.SIGFPE, true
+	case "ILL":
+		return syscall.SIGILL, true
+	case "SEGV":
+		return syscall.SIGSEGV, true
+	}
+	return nil, false
+}
