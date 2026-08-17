@@ -60,6 +60,9 @@ func (h *SshHandler) Load(ctx context.Context) error {
 	if len(h.Config.Listen) != 1 {
 		return fmt.Errorf("invalid ssh listen: %v", h.Config.Listen)
 	}
+	if v := h.Config.ServerVersion; v != "" && (!strings.HasPrefix(v, "SSH-2.0-") || strings.ContainsAny(v, "\r\n")) {
+		return fmt.Errorf("invalid ssh server_version %q: must start with SSH-2.0- and contain no CR/LF", v)
+	}
 
 	var sshSigner ssh.Signer
 	if hostKey := os.ExpandEnv(h.Config.HostKey); hostKey != "" {
