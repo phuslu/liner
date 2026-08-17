@@ -630,6 +630,7 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 				}
 				if err := ssh.Unmarshal(req.Payload, &payload); err != nil {
 					h.Logger.Error().Err(err).Msgf("ssh env unmarshal error")
+					req.Reply(false, nil)
 					continue
 				}
 				envs[payload.Key] = payload.Value
