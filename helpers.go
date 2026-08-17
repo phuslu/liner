@@ -869,7 +869,9 @@ func (ln *MemoryListener) Addr() net.Addr {
 }
 
 func (ln *MemoryListener) Close() (err error) {
-	err = ln.Listener.Close()
+	if ln.Listener != nil {
+		err = ln.Listener.Close()
+	}
 	for item := range ln.queue {
 		if item.conn != nil {
 			_ = item.conn.Close()
