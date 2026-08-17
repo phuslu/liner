@@ -3,6 +3,7 @@ package main
 import (
 	"cmp"
 	"context"
+	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/pem"
@@ -32,7 +33,6 @@ import (
 	"github.com/phuslu/pty"
 	"github.com/pkg/sftp"
 	"github.com/quic-go/quic-go"
-	"golang.org/x/crypto/ed25519"
 	"golang.org/x/crypto/ssh"
 )
 
