@@ -385,6 +385,12 @@ func (h *SshHandler) Serve(ctx context.Context, ln net.Listener) error {
 }
 
 func (h *SshHandler) handleConn(ctx context.Context, netConn net.Conn) {
+	defer func() {
+		if r := recover(); r != nil {
+			h.Logger.Error().Any("panic", r).Msg("ssh handler panic recovered")
+		}
+	}()
+
 	// Before use, a handshake must be performed on the incoming net.Conn.
 	conn, chans, reqs, err := ssh.NewServerConn(netConn, h.sshConfig)
 	if err != nil {
@@ -404,9 +410,21 @@ func (h *SshHandler) handleChannels(ctx context.Context, chans <-chan ssh.NewCha
 	for newChannel := range chans {
 		switch newChannel.ChannelType() {
 		case "direct-tcpip":
-			go h.handleDirectTCPIP(ctx, newChannel, conn)
+			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						h.Logger.Error().Any("panic", r).Msg("ssh direct-tcpip handler panic recovered")
+					}
+				}()
+				h.handleDirectTCPIP(ctx, newChannel, conn)
+			}()
 		case "session":
 			go func(ctx context.Context, newChannel ssh.NewChannel, conn *ssh.ServerConn) {
+				defer func() {
+					if r := recover(); r != nil {
+						h.Logger.Error().Any("panic", r).Msg("ssh session handler panic recovered")
+					}
+				}()
 				channel, requests, err := newChannel.Accept()
 				if err != nil {
 					h.Logger.Printf("Could not accept channel (%s)", err)
@@ -546,11 +564,15 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 			}
 		case "pty-req":
 			if len(req.Payload) < 4 {
-				h.Logger.Error().Msgf("ssh pty-req payload length error")
+				h.Logger.Error().Int("payload_length", len(req.Payload)).Msg("ssh pty-req payload too short")
+				req.Reply(false, nil)
+				continue
 			}
 			length := int(binary.BigEndian.Uint32(req.Payload))
-			if len(req.Payload) < 4+length+4+4+4+4 {
-				h.Logger.Error().Msgf("ssh pty-req payload length error")
+			if length < 0 || len(req.Payload) < 4+length+4+4+4+4 {
+				h.Logger.Error().Int("payload_length", len(req.Payload)).Int("term_length", length).Msg("ssh pty-req payload length error")
+				req.Reply(false, nil)
+				continue
 			}
 			envs["TERM"] = string(req.Payload[4 : 4+length])
 			winsize.Cols = uint16(binary.BigEndian.Uint32(req.Payload[length+4:]))
@@ -582,7 +604,9 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 			req.Reply(true, nil)
 		case "window-change":
 			if len(req.Payload) < 8 {
-				h.Logger.Error().Msgf("ssh window-change payload length error")
+				h.Logger.Error().Int("payload_length", len(req.Payload)).Msg("ssh window-change payload length error")
+				req.Reply(false, nil)
+				continue
 			}
 			winsize.Cols = uint16(binary.BigEndian.Uint32(req.Payload[0:]))
 			winsize.Rows = uint16(binary.BigEndian.Uint32(req.Payload[4:]))
