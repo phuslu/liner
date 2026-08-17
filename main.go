@@ -1164,6 +1164,7 @@ func main() {
 			h := &SshHandler{
 				Config:        ssh,
 				Logger:        log.DefaultLogger,
+				DataLogger:    dataLogger,
 				Functions:     functions,
 				MemoryDialers: memoryDialers,
 			}

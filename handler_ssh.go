@@ -39,6 +39,7 @@ import (
 type SshHandler struct {
 	Config        SshConfig
 	Logger        log.Logger
+	DataLogger    log.Logger
 	Functions     *Functions
 	MemoryDialers *MemoryDialers
 
@@ -180,11 +181,11 @@ func (h *SshHandler) Load(ctx context.Context) error {
 						})
 					}
 					if err != nil {
-						log.Error().Err(err).Strs("ssh_listens", h.Config.Listen).NetAddr("net_conn_addr", nc.RemoteAddr()).Str("ssh_banner_file", h.Config.BannerFile).Msg("motd eval template error")
+						h.Logger.Error().Err(err).Strs("ssh_listens", h.Config.Listen).NetAddr("net_conn_addr", nc.RemoteAddr()).Str("ssh_banner_file", h.Config.BannerFile).Msg("motd eval template error")
 					}
 					err = conn.SendAuthBanner(sb.String())
 					if err != nil {
-						log.Error().Err(err).Strs("ssh_listens", h.Config.Listen).NetAddr("net_conn_addr", nc.RemoteAddr()).Str("ssh_banner_file", h.Config.BannerFile).Msg("motd send auth banner error")
+						h.Logger.Error().Err(err).Strs("ssh_listens", h.Config.Listen).NetAddr("net_conn_addr", nc.RemoteAddr()).Str("ssh_banner_file", h.Config.BannerFile).Msg("motd send auth banner error")
 					}
 				}
 			} else {
@@ -450,6 +451,15 @@ func (h *SshHandler) handleConn(ctx context.Context, netConn net.Conn) {
 		return
 	}
 	h.Logger.Printf("New SSH connection from %T %s (%s)", netConn, conn.RemoteAddr(), conn.ClientVersion())
+	if h.Config.Log {
+		h.DataLogger.Log().
+			Str("logger", "ssh").
+			Str("username", conn.User()).
+			NetAddr("remote_addr", conn.RemoteAddr()).
+			NetAddr("server_addr", conn.LocalAddr()).
+			Str("client_version", string(conn.ClientVersion())).
+			Msg("ssh connection")
+	}
 	// Discard all global out-of-band Requests
 	go ssh.DiscardRequests(reqs)
 	// Accept all channels
@@ -573,7 +583,7 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 	}
 
 	for req := range requests {
-		h.Logger.Info().NetAddr("remote_addr", conn.RemoteAddr()).Any("request", req).Msg("process ssh channel request")
+		h.Logger.Debug().NetAddr("remote_addr", conn.RemoteAddr()).Str("req_type", req.Type).Msg("process ssh channel request")
 		switch req.Type {
 		case "env":
 			if len(req.Payload) != 0 {
@@ -586,7 +596,7 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 					continue
 				}
 				envs[payload.Key] = payload.Value
-				h.Logger.Info().Str("req_type", req.Type).Str("key", payload.Key).Str("value", payload.Value).Msg("handle ssh request")
+				h.Logger.Debug().Str("req_type", req.Type).Str("key", payload.Key).Msg("handle ssh request")
 			}
 			req.Reply(true, nil)
 		case "exec":
@@ -605,7 +615,14 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 			sessionBusy = true
 			req.Reply(true, nil)
 			envs["SSH_ORIGINAL_COMMAND"] = payload.Command
-			h.Logger.Info().Str("command", payload.Command).Msg("ssh exec command")
+			if h.Config.Log {
+				h.DataLogger.Log().
+					Str("logger", "ssh").
+					Str("username", conn.User()).
+					NetAddr("remote_addr", conn.RemoteAddr()).
+					Str("command", payload.Command).
+					Msg("ssh exec command")
+			}
 			go h.startExec(ctx, channel, payload.Command, maps.Clone(envs), &sessionProc)
 		case "shell":
 			if sessionBusy {
