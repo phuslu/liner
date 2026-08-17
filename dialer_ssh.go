@@ -102,7 +102,7 @@ func (d *SSHDialer) DialContext(ctx context.Context, network, addr string) (net.
 				IdleTimeout: d.IdleTimeout,
 			}
 		}
-		c, chans, reqs, err := ssh.NewClientConn(conn, addr, config)
+		c, chans, reqs, err := ssh.NewClientConn(conn, hostport, config)
 		if err != nil {
 			return nil, err
 		}
