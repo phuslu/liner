@@ -10,7 +10,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"unsafe"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
@@ -34,7 +33,7 @@ type SSHDialer struct {
 	Dialer                Dialer
 
 	mu     sync.Mutex
-	client *ssh.Client
+	client atomic.Pointer[ssh.Client]
 }
 
 func (d *SSHDialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -109,29 +108,46 @@ func (d *SSHDialer) DialContext(ctx context.Context, network, addr string) (net.
 		return ssh.NewClient(c, chans, reqs), nil
 	}
 
-	if atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&d.client))) == nil {
+	if d.client.Load() == nil {
 		d.mu.Lock()
-		if d.client == nil {
+		if d.client.Load() == nil {
 			c, err := connect(ctx)
 			if err != nil {
 				d.mu.Unlock()
 				return nil, err
 			}
-			atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&d.client)), unsafe.Pointer(c))
+			d.client.Store(c)
 		}
 		d.mu.Unlock()
 	}
 
-	conn, err := d.client.DialContext(ctx, network, addr)
+	conn, err := d.client.Load().DialContext(ctx, network, addr)
 	if err != nil {
+		// A rejected channel means the target refused the connection while
+		// the ssh transport is still healthy; reconnecting would not help.
+		var openErr *ssh.OpenChannelError
+		if errors.As(err, &openErr) {
+			return conn, err
+		}
+
 		time.Sleep(time.Duration(100+fastrandn(200)) * time.Millisecond)
-		old := d.client
+		old := d.client.Load()
 		d.mu.Lock()
-		if d.client == old {
-			d.client, err = connect(ctx)
+		replaced := false
+		if d.client.Load() == old {
+			c, cerr := connect(ctx)
+			if cerr == nil {
+				d.client.Store(c)
+				replaced = true
+			} else {
+				err = cerr
+			}
 		}
 		d.mu.Unlock()
-		if c := d.client; c != nil && c != old {
+		if replaced {
+			old.Close()
+			conn, err = d.client.Load().DialContext(ctx, network, addr)
+		} else if c := d.client.Load(); c != nil && c != old {
 			conn, err = c.DialContext(ctx, network, addr)
 		}
 	}
