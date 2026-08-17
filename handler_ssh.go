@@ -552,15 +552,15 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 			// We only accept the default shell
 			// (i.e. no command in the Payload)
 			if len(req.Payload) == 0 {
-				req.Reply(true, nil)
-
 				var err error
 				// Fire up bash for this session
 				shell, err = h.startShell(ctx, h.shellPath, winsize, modes, envs, channel)
 				if err != nil {
 					h.Logger.Error().Err(err).Str("req_type", req.Type).Str("shell", h.shellPath).Any("envs", envs).Msg("handle ssh request")
 					req.Reply(false, nil)
+					continue
 				}
+				req.Reply(true, nil)
 			}
 		case "pty-req":
 			if len(req.Payload) < 4 {
