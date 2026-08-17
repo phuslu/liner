@@ -68,6 +68,28 @@ func (h *TunnelHandler) sshtunnel(ctx context.Context, dialerName, dialerURL str
 		log.Error().Err(err).Msgf("failed to dial %s", hostport)
 		return nil, fmt.Errorf("failed to dial %s: %w", hostport, err)
 	}
+	if tc, ok := conn.(*net.TCPConn); ok {
+		if !h.Config.DisableKeepalive {
+			config := net.KeepAliveConfig{
+				Enable:   true,
+				Idle:     15 * time.Second,
+				Interval: 15 * time.Second,
+				Count:    3,
+			}
+			err := tc.SetKeepAliveConfig(config)
+			log.DefaultLogger.Err(err).Str("tunnel_host", hostport).Any("keepalive_config", config).Msg("set tunnel host keepalive")
+		}
+		if h.Config.SpeedLimit > 0 {
+			err := (ConnOps{tc, nil}).SetTcpMaxPacingRate(int(h.Config.SpeedLimit))
+			log.DefaultLogger.Err(err).Str("tunnel_proxy_pass", h.Config.ProxyPass).Str("tunnel_dialer_name", h.Config.Dialer).Int64("tunnel_speedlimit", h.Config.SpeedLimit).Msg("set speedlimit")
+		}
+	}
+	if !h.Config.DisableKeepalive {
+		conn = &IdleTimeoutConn{
+			Conn:        conn,
+			IdleTimeout: time.Duration(cmp.Or(h.Config.IdleTimeout, 900)) * time.Second,
+		}
+	}
 
 	c, chans, reqs, err := ssh.NewClientConn(conn, hostport, config)
 	if err != nil {
@@ -83,11 +105,6 @@ func (h *TunnelHandler) sshtunnel(ctx context.Context, dialerName, dialerURL str
 		log.Error().Err(err).Msgf("failed to remote listen %s", h.Config.RemoteListen[0])
 		client.Close()
 		return nil, fmt.Errorf("failed to dial remote %s: %w", h.Config.RemoteListen[0], err)
-	}
-
-	if tc, _ := conn.(*net.TCPConn); conn != nil && h.Config.SpeedLimit > 0 {
-		err := (ConnOps{tc, nil}).SetTcpMaxPacingRate(int(h.Config.SpeedLimit))
-		log.DefaultLogger.Err(err).Str("tunnel_proxy_pass", h.Config.ProxyPass).Str("tunnel_dialer_name", h.Config.Dialer).Int64("tunnel_speedlimit", h.Config.SpeedLimit).Msg("set speedlimit")
 	}
 
 	return &TunnelListener{
