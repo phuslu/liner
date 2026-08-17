@@ -199,6 +199,13 @@ func (h *SshHandler) Load(ctx context.Context) error {
 	}
 	h.sshConfig.AddHostKey(sshSigner)
 
+	if h.Config.AuthPam && h.Config.AuthTable != "" {
+		return fmt.Errorf("auth_pam and auth_table cannot be configured together")
+	}
+	if h.Config.AuthTable == "" && h.Config.AuthorizedKeys == "" && !h.Config.AuthPam {
+		return fmt.Errorf("no ssh authentication method configured: set auth_table, authorized_keys or auth_pam")
+	}
+
 	if h.Config.AuthTable != "" {
 		if table := os.ExpandEnv(h.Config.AuthTable); table != "" {
 			loader := NewAuthUserLoaderFromTable(table)
