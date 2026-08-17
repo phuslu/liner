@@ -604,6 +604,7 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 			}
 			sessionBusy = true
 			req.Reply(true, nil)
+			envs["SSH_ORIGINAL_COMMAND"] = payload.Command
 			h.Logger.Info().Str("command", payload.Command).Msg("ssh exec command")
 			go h.startExec(ctx, channel, payload.Command, maps.Clone(envs), &sessionProc)
 		case "shell":
@@ -791,8 +792,14 @@ func (h *SshHandler) evalSshShellText(text string, tmpl *template.Template, shel
 }
 
 func (h *SshHandler) sshShellEnv(currentUser *user.User, shell string, shellPath string, envs map[string]string) ([]string, error) {
+	// SSH users are not mapped to OS accounts; every session runs as the
+	// liner process user, so USER/LOGNAME/HOME reflect that identity.
+	path := os.Getenv("PATH")
+	if path == "" && runtime.GOOS != "windows" {
+		path = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+	}
 	env := []string{
-		"PATH=" + os.Getenv("PATH"),
+		"PATH=" + path,
 		"LOGNAME=" + currentUser.Username,
 		"USER=" + currentUser.Username,
 		"HOME=" + os.ExpandEnv(cmp.Or(h.Config.Home, currentUser.HomeDir)),
