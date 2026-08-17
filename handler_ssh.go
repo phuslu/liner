@@ -968,12 +968,18 @@ func (h *SshHandler) startExec(ctx context.Context, channel ssh.Channel, command
 	shellcmd.Dir = home
 	shellcmd.Env = env
 
-	in, err := shellcmd.StdinPipe()
+	pr, pw, err := os.Pipe()
 	if err != nil {
-		h.Logger.Printf("Could not get stdin pipe (%s)", err)
+		h.Logger.Printf("Could not create stdin pipe (%s)", err)
 		fmt.Fprintln(channel.Stderr(), err)
 		return
 	}
+	shellcmd.Stdin = pr
+	go func() {
+		defer pw.Close()
+		io.Copy(pw, channel)
+	}()
+
 	out, err := shellcmd.StdoutPipe()
 	if err != nil {
 		h.Logger.Printf("Could not get stdout pipe (%s)", err)
@@ -987,10 +993,13 @@ func (h *SshHandler) startExec(ctx context.Context, channel ssh.Channel, command
 		return
 	}
 	if err := shellcmd.Start(); err != nil {
+		pw.Close()
+		pr.Close()
 		h.Logger.Printf("Could not start shell (%s)", err)
 		fmt.Fprintln(channel.Stderr(), err)
 		return
 	}
+	pr.Close()
 	if sessionProc != nil {
 		sessionProc.Store(shellcmd.Process)
 	}
@@ -1002,13 +1011,8 @@ func (h *SshHandler) startExec(ctx context.Context, channel ssh.Channel, command
 	wg.Go(func() {
 		io.Copy(channel.Stderr(), errout)
 	})
-	go func() {
-		io.Copy(in, channel)
-		in.Close()
-	}()
 
 	err = shellcmd.Wait()
-	in.Close()
 	wg.Wait()
 	switch {
 	case err == nil:
