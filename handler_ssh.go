@@ -357,6 +357,30 @@ func (h *SshHandler) Load(ctx context.Context) error {
 			h.envFileTmpl = tmpl
 		}
 	}
+	if options := strings.Fields(h.Config.TcpCongestion); len(options) > 0 {
+		switch options[0] {
+		case "brutal":
+			if len(options) < 2 {
+				return fmt.Errorf("invalid tcp_congestion options: %q", options)
+			}
+			rate, err := strconv.Atoi(options[1])
+			if err != nil {
+				return fmt.Errorf("invalid tcp_congestion rate %q: %w", options[1], err)
+			}
+			if rate <= 0 {
+				return fmt.Errorf("invalid tcp_congestion rate %q: must be positive", options[1])
+			}
+			if len(options) >= 3 {
+				gain, err := strconv.Atoi(options[2])
+				if err != nil {
+					return fmt.Errorf("invalid tcp_congestion gain %q: %w", options[2], err)
+				}
+				if gain <= 0 {
+					return fmt.Errorf("invalid tcp_congestion gain %q: must be positive", options[2])
+				}
+			}
+		}
+	}
 
 	return nil
 }
