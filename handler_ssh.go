@@ -954,7 +954,10 @@ func (h *SshHandler) startExec(ctx context.Context, channel ssh.Channel, command
 		fmt.Fprintln(channel.Stderr(), "empty ssh shell")
 		return
 	}
-	shell := os.ExpandEnv(shellArgs[0])
+	for i := range shellArgs {
+		shellArgs[i] = os.ExpandEnv(shellArgs[i])
+	}
+	shell := shellArgs[0]
 	env, err := h.sshShellEnv(currentUser, shell, shellPath, envs)
 	if err != nil {
 		fmt.Fprintln(channel.Stderr(), err)
@@ -1058,7 +1061,10 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, winsize p
 		if err != nil {
 			return nil, err
 		}
-		shell = exec.CommandContext(ctx, os.ExpandEnv(shellArgs[0]), shellArgs[1:]...)
+		for i := range shellArgs {
+			shellArgs[i] = os.ExpandEnv(shellArgs[i])
+		}
+		shell = exec.CommandContext(ctx, shellArgs[0], shellArgs[1:]...)
 		shell.Dir = os.ExpandEnv(cmp.Or(h.Config.Home, currentUser.HomeDir))
 	}
 
