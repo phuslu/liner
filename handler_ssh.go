@@ -21,6 +21,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"text/template"
 	"time"
 
 	"github.com/google/shlex"
@@ -45,6 +46,9 @@ type SshHandler struct {
 	userchecker AuthUserChecker
 	keyloader   *FileLoader[[]string]
 	shellPath   string
+	envTemplate *template.Template
+	envFileText string
+	envFileTmpl *template.Template
 	closed      atomic.Bool
 
 	listenerMu sync.Mutex
@@ -324,6 +328,29 @@ func (h *SshHandler) Load(ctx context.Context) error {
 	default:
 		if _, err := exec.LookPath(h.shellPath); err != nil {
 			return fmt.Errorf("invalid shell path: %w", err)
+		}
+	}
+
+	if h.Config.Env != "" && strings.Contains(h.Config.Env, "{{") {
+		tmpl, err := h.Functions.ParseTemplate("ssh_env", h.Config.Env)
+		if err != nil {
+			return fmt.Errorf("parse ssh env: %w", err)
+		}
+		h.envTemplate = tmpl
+	}
+	if h.Config.EnvFile != "" {
+		file := os.ExpandEnv(h.Config.EnvFile)
+		data, err := os.ReadFile(file)
+		if err != nil {
+			return fmt.Errorf("read ssh env_file %s: %w", file, err)
+		}
+		h.envFileText = string(data)
+		if strings.Contains(h.envFileText, "{{") {
+			tmpl, err := h.Functions.ParseTemplate("ssh_env_file", h.envFileText)
+			if err != nil {
+				return fmt.Errorf("parse ssh env_file %s: %w", file, err)
+			}
+			h.envFileTmpl = tmpl
 		}
 	}
 
@@ -669,7 +696,7 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 			case "sftp", "internal-sftp":
 				h.Logger.Printf("sftp server serving: %s", req.Payload)
 				opts := []sftp.ServerOption{
-					sftp.WithServerWorkingDirectory(cmp.Or(h.Config.Home, os.Getenv("HOME"), "/")),
+					sftp.WithServerWorkingDirectory(os.ExpandEnv(cmp.Or(h.Config.Home, os.Getenv("HOME"), "/"))),
 				}
 				server, err := sftp.NewServer(channel, opts...)
 				if err != nil {
@@ -721,25 +748,31 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 	}
 }
 
-func (h *SshHandler) evalSshShellText(text string, shell string, currentUser *user.User, envs map[string]string) (string, error) {
-	if !strings.Contains(text, "{{") {
-		return text, nil
-	}
-	tmpl, err := h.Functions.ParseTemplate(text, text)
-	if err != nil {
-		return "", err
+func (h *SshHandler) evalSshShellText(text string, tmpl *template.Template, shell string, currentUser *user.User, envs map[string]string) (string, error) {
+	if tmpl == nil {
+		if !strings.Contains(text, "{{") {
+			return text, nil
+		}
+		var err error
+		tmpl, err = h.Functions.ParseTemplate(text, text)
+		if err != nil {
+			return "", err
+		}
 	}
 
 	var sb strings.Builder
 	if obfuscated {
-		err = tmpl.Execute(&sb, map[string]any{
+		err := tmpl.Execute(&sb, map[string]any{
 			"Version": version,
 			"User":    currentUser,
 			"Shell":   shell,
 			"Env":     envs,
 		})
+		if err != nil {
+			return "", err
+		}
 	} else {
-		err = tmpl.Execute(&sb, struct {
+		err := tmpl.Execute(&sb, struct {
 			Version string
 			User    *user.User
 			Env     map[string]string
@@ -750,9 +783,9 @@ func (h *SshHandler) evalSshShellText(text string, shell string, currentUser *us
 			Shell:   shell,
 			Env:     envs,
 		})
-	}
-	if err != nil {
-		return "", err
+		if err != nil {
+			return "", err
+		}
 	}
 	return strings.TrimSpace(sb.String()), nil
 }
@@ -762,7 +795,7 @@ func (h *SshHandler) sshShellEnv(currentUser *user.User, shell string, shellPath
 		"PATH=" + os.Getenv("PATH"),
 		"LOGNAME=" + currentUser.Username,
 		"USER=" + currentUser.Username,
-		"HOME=" + cmp.Or(h.Config.Home, currentUser.HomeDir),
+		"HOME=" + os.ExpandEnv(cmp.Or(h.Config.Home, currentUser.HomeDir)),
 		"SHELL=" + shell,
 	}
 	switch runtime.GOOS {
@@ -780,14 +813,14 @@ func (h *SshHandler) sshShellEnv(currentUser *user.User, shell string, shellPath
 	if h.Config.Env != "" || h.Config.EnvFile != "" {
 		var text string
 		if data := h.Config.Env; data != "" {
-			output, err := h.evalSshShellText(data, shellPath, currentUser, envs)
+			output, err := h.evalSshShellText(data, h.envTemplate, shellPath, currentUser, envs)
 			if err != nil {
 				return nil, err
 			}
 			text += os.ExpandEnv(output) + "\n"
 		}
-		if data, err := os.ReadFile(h.Config.EnvFile); err == nil {
-			output, err := h.evalSshShellText(string(data), shellPath, currentUser, envs)
+		if h.envFileText != "" {
+			output, err := h.evalSshShellText(h.envFileText, h.envFileTmpl, shellPath, currentUser, envs)
 			if err != nil {
 				return nil, err
 			}
@@ -831,7 +864,7 @@ func (h *SshHandler) startExec(ctx context.Context, channel ssh.Channel, command
 		return
 	}
 
-	shellPath, err := h.evalSshShellText(h.shellPath, h.shellPath, currentUser, envs)
+	shellPath, err := h.evalSshShellText(h.shellPath, nil, h.shellPath, currentUser, envs)
 	if err != nil {
 		fmt.Fprintln(channel.Stderr(), err)
 		return
@@ -970,7 +1003,7 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, winsize p
 		return nil, err
 	}
 
-	shellPath, err = h.evalSshShellText(shellPath, shellPath, currentUser, envs)
+	shellPath, err = h.evalSshShellText(shellPath, nil, shellPath, currentUser, envs)
 	if err != nil {
 		return nil, err
 	}
