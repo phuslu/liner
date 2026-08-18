@@ -1178,7 +1178,11 @@ func main() {
 				memoryListeners.Store(addr, mln)
 				ln = mln
 			} else {
-				if ln, err = lc.Listen(context.Background(), "tcp", addr); err != nil {
+				// SSH speaks server-first, so the shared ListenConfig's
+				// TCP_DEFER_ACCEPT would delay the version banner by up to 1s
+				// for raw TCP clients that do not send data first.
+				// if ln, err = lc.Listen(context.Background(), "tcp", addr); err != nil {
+				if ln, err = (&net.ListenConfig{}).Listen(context.Background(), "tcp", addr); err != nil {
 					log.Fatal().Err(err).Str("address", addr).Msg("net.Listen error")
 				}
 				log.Info().Str("version", version).NetAddr("address", ln.Addr()).Msg("liner listen and serve ssh")
