@@ -349,6 +349,7 @@ func (h *SshHandler) Load(ctx context.Context) error {
 				return nil, err
 			}
 			if c.User() != cmp.Or(h.Config.AuthPamLoginName, currentUser.Username) {
+				time.Sleep(1 * time.Second)
 				return nil, fmt.Errorf("invalid login username: %q", c.User())
 			}
 			pam, err := pamtester.Start(currentUser.Username, nil)
