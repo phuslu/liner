@@ -51,6 +51,18 @@ type TLSClientInfo struct {
 	JA4             [36]byte
 }
 
+func (info *TLSClientInfo) ConnectionState() (tls.ConnectionState, bool) {
+	if info.QuicConn != nil {
+		return info.QuicConn.ConnectionState().TLS, true
+	}
+	if conn, ok := info.NetConn.(interface {
+		ConnectionState() tls.ConnectionState
+	}); ok {
+		return conn.ConnectionState(), true
+	}
+	return tls.ConnectionState{}, false
+}
+
 type TLSInspectorError string
 
 func (err TLSInspectorError) Error() string { return string(err) }

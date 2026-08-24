@@ -742,9 +742,20 @@ func main() {
 	}
 
 	for addr, handlers := range h2h3handlers {
-
 		server := &http.Server{
 			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.TLS == nil {
+					if info := TLSClientInfoFromContext(r.Context()); info != nil {
+						if state, ok := info.ConnectionState(); ok {
+							r.TLS = &state
+						}
+					}
+				}
+				if r.TLS == nil {
+					http.Error(w, "failed to get tls connection state", http.StatusInternalServerError)
+					return
+				}
+
 				h, matched := handlers.Names[r.TLS.ServerName]
 				if !matched {
 					for _, affix := range handlers.Affix {
