@@ -56,8 +56,13 @@ function liner::build() {
 	go mod download -x
 	# http2 patch
 	# https://github.com/golang/go/issues/47840#issuecomment-983558795
-	sed -i -E 's/const http2bufWriterPoolBufferSize = .+/var http2bufWriterPoolBufferSize = func() int { n, _ := strconv.Atoi(os.Getenv("HTTP2_WRITER_POOL_BUFFER_SIZE")); return max(n, 32768) }()/' ${GOROOT}/src/net/http/h2_bundle.go
-	grep -m1 http2bufWriterPoolBufferSize ${GOROOT}/src/net/http/h2_bundle.go
+	if test -f ${GOROOT}/src/net/http/internal/http2/http2.go; then
+		sed -i -E 's/const bufWriterPoolBufferSize = .+/var bufWriterPoolBufferSize = func() int { n, _ := strconv.Atoi(os.Getenv("HTTP2_WRITER_POOL_BUFFER_SIZE")); return max(n, 32768) }()/' ${GOROOT}/src/net/http/internal/http2/http2.go
+		grep -m2 bufWriterPoolBufferSize ${GOROOT}/src/net/http/internal/http2/http2.go
+	else
+		sed -i -E 's/const http2bufWriterPoolBufferSize = .+/var http2bufWriterPoolBufferSize = func() int { n, _ := strconv.Atoi(os.Getenv("HTTP2_WRITER_POOL_BUFFER_SIZE")); return max(n, 32768) }()/' ${GOROOT}/src/net/http/h2_bundle.go
+		grep -m1 http2bufWriterPoolBufferSize ${GOROOT}/src/net/http/h2_bundle.go
+	fi
 	# x/net/http2 patch
 	golang_org_x_net="${GOPATH}/pkg/mod/$(go list -m golang.org/x/net | tr ' ' @)"
 	chmod -R +w ${golang_org_x_net}/http2
