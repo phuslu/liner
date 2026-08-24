@@ -320,8 +320,8 @@ function liner::python::windows() {
 	mv liner_py-1.0.1984.dist-info liner_py-1.0.${REVSION}.dist-info
 
 	if ! command -v zig; then
-		curl -sSLf https://download.zigmirror.com/zig-$(uname -m)-linux-0.15.2.tar.xz | tar xvJ -C /tmp/
-		export PATH=$PATH:/tmp/zig-$(uname -m)-linux-0.15.2
+		curl -sSLf https://download.zigmirror.com/zig-$(uname -m)-linux-0.16.0.tar.xz | tar xvJ -C /tmp/
+		export PATH=$PATH:/tmp/zig-$(uname -m)-linux-0.16.0
 	fi
 
 	if command -v garble; then
