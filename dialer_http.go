@@ -225,11 +225,11 @@ func (d *HTTPDialer) DialContext(ctx context.Context, network, addr string) (net
 	}
 
 	status := 0
-	n := bytes.IndexByte(b, ' ')
-	if n < 0 {
+	_, after, ok := bytes.Cut(b, []byte{' '})
+	if !ok {
 		return nil, fmt.Errorf("httpdialer: failed to connect %s via %s: %s", addr, d.Host, bytes.TrimRight(b, "\x00"))
 	}
-	for i, c := range b[n+1:] {
+	for i, c := range after {
 		if i == 3 || c < '0' || c > '9' {
 			break
 		}

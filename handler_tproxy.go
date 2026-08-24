@@ -159,10 +159,7 @@ func (h *TProxyHandler) ServePacket(ctx context.Context, conn *net.UDPConn) {
 	}
 	var cleanupInterval time.Duration
 	if timeout > 0 {
-		cleanupInterval = timeout
-		if cleanupInterval > time.Minute {
-			cleanupInterval = time.Minute
-		}
+		cleanupInterval = min(timeout, time.Minute)
 	}
 
 	const tproxyUDPMaxSessions = 1024

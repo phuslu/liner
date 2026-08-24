@@ -392,10 +392,7 @@ func (h *TunHandler) Load(ctx context.Context) error {
 	if err := s.SetTransportProtocolOption(tcp.ProtocolNumber, &congestionControlOpt); err != nil {
 		return fmt.Errorf("set tcp congestion control: %s", err)
 	}
-	tcpBufferSize := cmp.Or(h.Config.Forward.TcpBufferSize, tcp.MaxBufferSize)
-	if tcpBufferSize < tcp.MinBufferSize {
-		tcpBufferSize = tcp.MinBufferSize
-	}
+	tcpBufferSize := max(cmp.Or(h.Config.Forward.TcpBufferSize, tcp.MaxBufferSize), tcp.MinBufferSize)
 	tcpBufferSizeOpt := tcpip.TCPSendBufferSizeRangeOption{
 		Min:     tcp.MinBufferSize,
 		Default: tcpBufferSize,
@@ -533,7 +530,7 @@ func (h *TunHandler) Serve(ctx context.Context) {
 				return
 			}
 
-			for i := 0; i < n; i++ {
+			for i := range n {
 				view := views[i]
 				views[i] = nil
 				if sizes[i] == 0 {

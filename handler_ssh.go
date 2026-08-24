@@ -1098,8 +1098,7 @@ func (h *SshHandler) startExec(ctx context.Context, channel ssh.Channel, command
 	case errors.Is(err, context.Canceled):
 		exitStatus = 130
 	default:
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
+		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 			if code := exitErr.ExitCode(); code >= 0 {
 				exitStatus = code
 			} else {

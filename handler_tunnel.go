@@ -37,7 +37,7 @@ func (h *TunnelHandler) Load() error {
 func (h *TunnelHandler) Serve(ctx context.Context) {
 	loop := func(ctx context.Context) bool {
 		dialerURL := h.Dialers[h.Config.Dialer]
-		dialerScheme := strings.Split(dialerURL, "://")[0]
+		dialerScheme, _, _ := strings.Cut(dialerURL, "://")
 
 		var ln net.Listener
 		var err error

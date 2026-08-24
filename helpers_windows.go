@@ -12,6 +12,7 @@ import (
 	"net/netip"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -297,8 +298,8 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 	var addedBypass []netip.Prefix
 	var addedRoutes []netip.Prefix
 	cleanup := func() {
-		for i := len(addedRoutes) - 1; i >= 0; i-- {
-			route := addedRoutes[i]
+		for _, route := range slices.Backward(addedRoutes) {
+
 			if route.Addr().Is4() {
 				exec.Command("netsh", "interface", "ipv4", "delete", "route", "prefix="+route.String(), "interface="+name).Run()
 			} else {
@@ -327,10 +328,7 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 	if metric <= 0 {
 		metric = 32767
 	}
-	interfaceMetric := metric
-	if interfaceMetric > 9999 {
-		interfaceMetric = 9999
-	}
+	interfaceMetric := min(metric, 9999)
 	args = []string{"interface", "ipv4", "set", "interface", "interface=" + name, fmt.Sprintf("metric=%d", interfaceMetric), "store=active"}
 	if msg, err := run(args...); err != nil {
 		return nil, fmt.Errorf("set tun interface metric: netsh %s: %w: %s", strings.Join(args, " "), err, msg)

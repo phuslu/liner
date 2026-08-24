@@ -692,8 +692,7 @@ func (c *http3Datagram) Write(b []byte) (int, error) {
 	data := make([]byte, len(b)+1)
 	copy(data[1:], b)
 	if err := c.stream.SendDatagram(data); err != nil {
-		var dtle *quic.DatagramTooLargeError
-		if errors.As(err, &dtle) {
+		if _, ok := errors.AsType[*quic.DatagramTooLargeError](err); ok {
 			return 0, err
 		}
 		return 0, c.writeError(err)

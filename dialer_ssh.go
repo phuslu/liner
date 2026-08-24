@@ -125,8 +125,7 @@ func (d *SSHDialer) DialContext(ctx context.Context, network, addr string) (net.
 	if err != nil {
 		// A rejected channel means the target refused the connection while
 		// the ssh transport is still healthy; reconnecting would not help.
-		var openErr *ssh.OpenChannelError
-		if errors.As(err, &openErr) {
+		if _, ok := errors.AsType[*ssh.OpenChannelError](err); ok {
 			return conn, err
 		}
 

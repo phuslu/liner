@@ -130,7 +130,7 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 	}
 
 	var supportNoAuth bool
-	for i := 0; i < nmethods; i++ {
+	for i := range nmethods {
 		switch b[i] {
 		case Socks5AuthMethodNone:
 			supportNoAuth = true

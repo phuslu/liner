@@ -578,8 +578,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 					}
 					buf[0] = 0
 					if err := stream.SendDatagram(buf[:n+1]); err != nil {
-						var dtle *quic.DatagramTooLargeError
-						if errors.As(err, &dtle) {
+						if _, ok := errors.AsType[*quic.DatagramTooLargeError](err); ok {
 							continue
 						}
 						done <- err
