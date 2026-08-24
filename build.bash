@@ -11,7 +11,7 @@ function liner::setup() {
 			apt install -yq git curl jq unzip zip xz-utils gh build-essential parallel upx llvm
 			# phuslu go
 			test -d /tmp/go || \
-				curl -L https://github.com/phuslu/go/releases/download/v0.0.0/go1.26.${goos}-${goarch}.tar.xz | \
+				curl -L https://github.com/phuslu/go/releases/download/v0.0.0/go1.27.${goos}-${goarch}.tar.xz | \
 				tar xvJ -C /tmp/
 			# osxcross for compiling liner.m
 			test -d /usr/local/osxcross || \
@@ -22,7 +22,7 @@ function liner::setup() {
 		darwin )
 			brew list --formula -1 | grep python || brew install python
 			test -d /tmp/go || \
-				curl -L https://github.com/phuslu/go/releases/download/v0.0.0/go1.26.${goos}-${goarch}.tar.xz | \
+				curl -L https://github.com/phuslu/go/releases/download/v0.0.0/go1.27.${goos}-${goarch}.tar.xz | \
 				tar xvJ -C /tmp/
 			;;
 	esac
