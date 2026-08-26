@@ -521,7 +521,7 @@ func (h *SshHandler) handleConn(ctx context.Context, netConn net.Conn) {
 	conn, chans, reqs, err := ssh.NewServerConn(netConn, h.sshConfig)
 	if err != nil {
 		if err != io.EOF {
-			h.Logger.Printf("Failed to handshake (%s)", err)
+			h.Logger.Printf("Failed to handshake from %T %s (%s)", netConn, netConn.RemoteAddr(), err)
 		}
 		return
 	}
