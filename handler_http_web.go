@@ -10,6 +10,7 @@ import (
 	"expvar"
 	"fmt"
 	"io"
+	"io/fs"
 	"maps"
 	"net"
 	"net/http"
@@ -271,7 +272,7 @@ func (h *HTTPWebHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 var _ HTTPHandler = (*HTTPWebMiddlewareCDNJS)(nil)
 
 var HTTPCDNJSReplacerContextKey any = &HTTPContextKey{"http-cdnjs-replacer"}
-var HTTPCDNJSFilesytems = xsync.NewMap[string, http.FileSystem]()
+var HTTPCDNJSFilesytems = xsync.NewMap[string, fs.FS]()
 
 type HTTPWebMiddlewareCDNJS struct {
 	Handler  HTTPHandler
@@ -280,7 +281,7 @@ type HTTPWebMiddlewareCDNJS struct {
 	CdnjsZip string
 
 	prefix     string
-	filesystem http.FileSystem
+	filesystem fs.FS
 	replacer   *strings.Replacer
 }
 
@@ -290,25 +291,23 @@ var cdnjsZip []byte
 func (m *HTTPWebMiddlewareCDNJS) Load(ctx context.Context) error {
 	m.prefix = strings.TrimSuffix(m.Location, "/") + "/.cdnjs/"
 
-	m.filesystem, _ = HTTPCDNJSFilesytems.LoadOrCompute(m.CdnjsZip, func() (http.FileSystem, bool) {
+	m.filesystem, _ = HTTPCDNJSFilesytems.LoadOrCompute(m.CdnjsZip, func() (fs.FS, bool) {
 		if m.CdnjsZip != "" {
 			if data, err := os.ReadFile(m.CdnjsZip); err == nil {
 				if zipreader, err := zip.NewReader(bytes.NewReader(data), int64(len(data))); err == nil {
-					return http.FS(zipreader), false
+					return zipreader, false
 				}
 			}
 		}
 		zipreader, _ := zip.NewReader(bytes.NewReader(cdnjsZip), int64(len(cdnjsZip)))
-		return http.FS(zipreader), false
+		return zipreader, false
 	})
 
 	replaces := make([]string, 0)
-	if root, err := m.filesystem.Open("/"); err == nil {
-		if infos, err := root.Readdir(-1); err == nil {
-			for _, info := range infos {
-				if info.IsDir() {
-					replaces = append(replaces, "https://"+info.Name()+"/", m.prefix+info.Name()+"/")
-				}
+	if entries, err := fs.ReadDir(m.filesystem, "."); err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() {
+				replaces = append(replaces, "https://"+entry.Name()+"/", m.prefix+entry.Name()+"/")
 			}
 		}
 	}
