@@ -12,7 +12,7 @@ require (
 	github.com/oschwald/maxminddb-golang/v2 v2.5.0
 	github.com/phuslu/fastdns v0.17.1
 	github.com/phuslu/geosite v1.0.20250901
-	github.com/phuslu/gosh v0.0.0-20260528105038-250a6b893c6d
+	github.com/phuslu/gosh v0.0.0-20260901064421-690ceb4b7d4b
 	github.com/phuslu/log v1.0.128
 	github.com/phuslu/lru v1.0.22
 	github.com/phuslu/pty v0.0.0-20260518141308-9cb014534fff
@@ -34,7 +34,6 @@ require (
 
 require (
 	github.com/andybalholm/brotli v1.2.2 // indirect
-	github.com/chzyer/readline v1.5.1 // indirect
 	github.com/ebitengine/purego v0.10.2 // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/klauspost/compress v1.19.2 // indirect
@@ -48,7 +47,7 @@ require (
 	golang.org/x/text v0.41.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
-	mvdan.cc/sh/v3 v3.13.1 // indirect
+	mvdan.cc/sh/v3 v3.14.0 // indirect
 )
 
 replace github.com/quic-go/quic-go => github.com/phuslu/quic-go v0.0.0-20260830170003-3b9aa9b39bdf
