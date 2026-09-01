@@ -38,8 +38,8 @@ github.com/phuslu/fastdns v0.17.1 h1:3InpjKL34KgI+zBdonLcrPCJ5FIGe0qW05zWiKcdoyc
 github.com/phuslu/fastdns v0.17.1/go.mod h1:whxYhN/LvgE3EK+n2E73vt5CY44cZVbk6j9ZsqE8G3Q=
 github.com/phuslu/geosite v1.0.20250901 h1:9BHxSm7M1OMic7H8q3Nzyd9PvjFtzMtUX2d1hE5WiIQ=
 github.com/phuslu/geosite v1.0.20250901/go.mod h1:qKR55nWrjbN1JOvK1WvZIqh341CGpq22OHx2BLMOrKE=
-github.com/phuslu/gosh v0.0.0-20260901064421-690ceb4b7d4b h1:Y0qe2dYp+RiU64gzbv9INjmDFw6kSAaoC4G+6hzQHrY=
-github.com/phuslu/gosh v0.0.0-20260901064421-690ceb4b7d4b/go.mod h1:Mm2n3Q++oTRkWvCe0uCQFiJzBtVNCutC/UjPY1sRe04=
+github.com/phuslu/gosh v0.0.0-20260901072121-f527d37deded h1:CXTK2Jh4qmH6eN4WPyFl8a/yN4jgoHU77pBP64AutPA=
+github.com/phuslu/gosh v0.0.0-20260901072121-f527d37deded/go.mod h1:Mm2n3Q++oTRkWvCe0uCQFiJzBtVNCutC/UjPY1sRe04=
 github.com/phuslu/log v1.0.128 h1:g9dioj35SZiuFWBaIrHJjDyppIYdhhQpwZJ+DlLW//U=
 github.com/phuslu/log v1.0.128/go.mod h1:F8osGJADo5qLK/0F88djWwdyoZZ9xDJQL1HYRHFEkS0=
 github.com/phuslu/lru v1.0.22 h1:VLe5+PPMvmWlbVLGdXzTCNW+GrVCBtReF+ENDA6oRHE=
