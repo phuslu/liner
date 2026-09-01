@@ -19,7 +19,7 @@ require (
 	github.com/phuslu/tcp-brutal v1.0.1
 	github.com/pkg/sftp v1.13.11
 	github.com/puzpuzpuz/xsync/v4 v4.5.0
-	github.com/quic-go/quic-go v0.61.0
+	github.com/quic-go/quic-go v0.62.0
 	github.com/refraction-networking/utls v1.8.2
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/smallnest/ringbuffer v0.1.1
@@ -29,7 +29,7 @@ require (
 	golang.org/x/net v0.58.0
 	golang.org/x/sys v0.47.0
 	golang.zx2c4.com/wireguard v0.0.0-20260522210424-ecfc5a8d5446
-	gvisor.dev/gvisor v0.0.0-20260822015030-d53e01b47280
+	gvisor.dev/gvisor v0.0.0-20260901031041-613e6e00d9a2
 )
 
 require (
@@ -51,4 +51,4 @@ require (
 	mvdan.cc/sh/v3 v3.13.1 // indirect
 )
 
-replace github.com/quic-go/quic-go => github.com/phuslu/quic-go v0.0.0-20260721170003-6a7c5e8221c6
+replace github.com/quic-go/quic-go => github.com/phuslu/quic-go v0.0.0-20260830170003-3b9aa9b39bdf
