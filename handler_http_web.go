@@ -457,16 +457,24 @@ type HTTPWebMiddlewareTinyAuth struct {
 
 // TinyAuthUserInfo is tinyauth user info, see https://demo.tinyauth.app/api/context/user
 type TinyAuthUserInfo struct {
-	Status      int    `json:"status"`
-	Message     string `json:"message"`
-	IsLoggedIn  bool   `json:"isLoggedIn"`
-	Username    string `json:"username"`
-	Name        string `json:"name"`
-	Email       string `json:"email"`
-	Provider    string `json:"provider"`
-	Oauth       bool   `json:"oauth"`
-	TotpPending bool   `json:"totpPending"`
-	OauthName   string `json:"oauthName"`
+	Status  int    `json:"status"`
+	Message string `json:"message"`
+	Auth    struct {
+		Authenticated bool   `json:"authenticated"`
+		Username      string `json:"username"`
+		Name          string `json:"name"`
+		Email         string `json:"email"`
+		ProviderID    string `json:"providerId"`
+	} `json:"auth"`
+	Oauth struct {
+		Active      bool   `json:"active"`
+		DisplayName string `json:"displayName"`
+	} `json:"oauth"`
+	Totp struct {
+		Pending bool `json:"pending"`
+	} `json:"totp"`
+	Tailscale struct {
+	} `json:"tailscale"`
 }
 
 func (m *HTTPWebMiddlewareTinyAuth) Load(ctx context.Context) error {
@@ -524,7 +532,7 @@ func (m *HTTPWebMiddlewareTinyAuth) ServeHTTP(rw http.ResponseWriter, req *http.
 			http.Error(rw, err.Error(), http.StatusBadGateway)
 			return
 		}
-		if info.Status != http.StatusOK || !info.IsLoggedIn || info.TotpPending {
+		if info.Status != http.StatusOK || !info.Auth.Authenticated || info.Totp.Pending {
 			http.Redirect(rw, req, loginURL, http.StatusTemporaryRedirect)
 			// http.Error(rw, "invaild username or password", http.StatusForbidden)
 			return
