@@ -597,7 +597,7 @@ func main() {
 			log.Fatal().Err(err).Str("tun_name", tunConfig.Name).Msg("tun handler load error")
 		}
 
-		log.Info().Str("version", version).Str("tun_name", h.name).Int("tun_mtu", h.mtu).Msg("liner create and serve tun")
+		log.Info().Str("version", version).Str("tun_name", h.name).Int("tun_mtu", int(h.mtu.Load())).Msg("liner create and serve tun")
 
 		go h.Serve(context.Background())
 		// at exit

@@ -65,10 +65,12 @@ type TunHandler struct {
 	endpoint *channel.Endpoint
 	stack    *stack.Stack
 	name     string
-	mtu      int
+	mtu      atomic.Int64
 	cleanup  func()
 	once     sync.Once
 	address  netip.Prefix
+	ctx      context.Context
+	cancel   context.CancelFunc
 
 	dialer         *template.Template
 	processDialers []tunProcessDialer
@@ -131,8 +133,8 @@ func (h *TunHandler) Load(ctx context.Context) error {
 		h.DnsResolver = h.LocalDialer.DnsResolver
 	}
 
-	h.mtu = cmp.Or(h.Config.MTU, map[bool]int{false: 9000, true: 4064}[runtime.GOOS == "darwin"])
-	h.device, err = tun.CreateTUN(cmp.Or(h.Config.Name, "tun%d"), h.mtu)
+	h.mtu.Store(int64(cmp.Or(h.Config.MTU, map[bool]int{false: 9000, true: 4064}[runtime.GOOS == "darwin"])))
+	h.device, err = tun.CreateTUN(cmp.Or(h.Config.Name, "tun%d"), int(h.mtu.Load()))
 	if err != nil {
 		return err
 	}
@@ -141,7 +143,7 @@ func (h *TunHandler) Load(ctx context.Context) error {
 		h.name = cmp.Or(h.Config.Name, "tun")
 	}
 	if mtu, err := h.device.MTU(); err == nil && mtu > 0 {
-		h.mtu = mtu
+		h.mtu.Store(int64(mtu))
 	}
 
 	defer func() {
@@ -312,6 +314,9 @@ func (h *TunHandler) Load(ctx context.Context) error {
 	log.Info().Str("tun_name", h.name).Str("tun_address", addressPrefix.String()).Msg("wait tun address update")
 	deadline := time.Now().Add(10 * time.Second)
 	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		addr := addressPrefix.Addr().Unmap()
 		ready := false
 		ifis, err := net.Interfaces()
@@ -354,7 +359,11 @@ func (h *TunHandler) Load(ctx context.Context) error {
 		if time.Now().After(deadline) {
 			return fmt.Errorf("wait tun address %s ready timeout: interface=%s", addressPrefix, h.name)
 		}
-		time.Sleep(200 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(200 * time.Millisecond):
+		}
 	}
 	log.Info().Str("tun_name", h.name).Str("tun_address", addressPrefix.String()).Msg("tun address updated")
 	log.Info().Str("tun_name", h.name).Msg("tun link up")
@@ -379,6 +388,7 @@ func (h *TunHandler) Load(ctx context.Context) error {
 				ep.Close()
 			}
 			s.Close()
+			s.Wait()
 		}
 	}()
 
@@ -406,7 +416,7 @@ func (h *TunHandler) Load(ctx context.Context) error {
 		return fmt.Errorf("set tcp receive buffer size: %s", err)
 	}
 
-	ep = channel.New(cmp.Or(h.Config.StackQueueSize, 4096), uint32(h.mtu), "")
+	ep = channel.New(cmp.Or(h.Config.StackQueueSize, 4096), uint32(h.mtu.Load()), "")
 	ep.LinkEPCapabilities = stack.CapabilityRXChecksumOffload
 	// With gVisor GSO the tcp sender builds super-segments up to the
 	// endpoint GSOMaxSize (32KB) and splits them into MSS-sized packets
@@ -444,14 +454,16 @@ func (h *TunHandler) Load(ctx context.Context) error {
 	h.stack = s
 	h.endpoint = ep
 	h.cleanup = cleanup
+	// Load's context bounds setup; returned streams live until Unload.
+	h.ctx, h.cancel = context.WithCancel(context.Background())
 	loaded = true
 	return nil
 }
 
 func (h *TunHandler) Unload() error {
 	h.once.Do(func() {
-		if h.cleanup != nil {
-			h.cleanup()
+		if h.cancel != nil {
+			h.cancel()
 		}
 		if h.device != nil {
 			h.device.Close()
@@ -461,6 +473,9 @@ func (h *TunHandler) Unload() error {
 		}
 		if h.stack != nil {
 			h.stack.Close()
+		}
+		if h.cleanup != nil {
+			h.cleanup()
 		}
 	})
 	return nil
@@ -478,8 +493,11 @@ var tunPacketOffset = func() int {
 }()
 
 func (h *TunHandler) Serve(ctx context.Context) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var wg sync.WaitGroup
 	errc := make(chan error, 2)
-	go func() {
+	wg.Go(func() {
 		batchSize := cmp.Or(h.device.BatchSize(), 1)
 		bufs := make([][]byte, batchSize)
 		sizes := make([]int, batchSize)
@@ -502,7 +520,7 @@ func (h *TunHandler) Serve(ctx context.Context) {
 			default:
 			}
 
-			size := tunPacketOffset + cmp.Or(h.mtu, 1500)
+			size := tunPacketOffset + cmp.Or(int(h.mtu.Load()), 1500)
 			for i := range views {
 				view := views[i]
 				if view == nil {
@@ -565,8 +583,8 @@ func (h *TunHandler) Serve(ctx context.Context) {
 				pkt.DecRef()
 			}
 		}
-	}()
-	go func() {
+	})
+	wg.Go(func() {
 		batchSize := cmp.Or(h.device.BatchSize(), 1)
 		pkts := make([]*stack.PacketBuffer, 0, batchSize)
 		bufs := make([][]byte, 0, batchSize)
@@ -622,8 +640,8 @@ func (h *TunHandler) Serve(ctx context.Context) {
 				return
 			}
 		}
-	}()
-	go func() {
+	})
+	wg.Go(func() {
 		for {
 			select {
 			case <-ctx.Done():
@@ -645,14 +663,14 @@ func (h *TunHandler) Serve(ctx context.Context) {
 						continue
 					}
 					if mtu > 0 {
-						h.mtu = mtu
+						h.mtu.Store(int64(mtu))
 						h.endpoint.SetMTU(uint32(mtu))
 					}
 					log.Info().Str("tun_name", h.name).Int("tun_mtu", mtu).Msg("tun mtu updated")
 				}
 			}
 		}
-	}()
+	})
 
 	select {
 	case <-ctx.Done():
@@ -662,7 +680,12 @@ func (h *TunHandler) Serve(ctx context.Context) {
 		}
 	}
 
+	cancel()
 	h.Unload()
+	wg.Wait()
+	if h.stack != nil {
+		h.stack.Wait()
+	}
 }
 
 func (h *TunHandler) forwardTCP(r *tcp.ForwarderRequest) {
@@ -687,8 +710,12 @@ func (h *TunHandler) forwardTCP(r *tcp.ForwarderRequest) {
 		lconn        net.Conn
 		completed    bool
 		localConnErr error
+		stopLocal    func() bool
 	)
 	defer func() {
+		if stopLocal != nil {
+			stopLocal()
+		}
 		if lconn != nil {
 			lconn.Close()
 		}
@@ -714,7 +741,9 @@ func (h *TunHandler) forwardTCP(r *tcp.ForwarderRequest) {
 		}
 		r.Complete(false)
 		completed = true
-		lconn = gonet.NewTCPConn(&wq, ep)
+		conn := gonet.NewTCPConn(&wq, ep)
+		lconn = conn
+		stopLocal = context.AfterFunc(cmp.Or(h.ctx, context.Background()), func() { conn.Close() })
 		if tcpTimeout > 0 {
 			_ = lconn.SetDeadline(time.Now().Add(tcpTimeout))
 		}
@@ -825,6 +854,8 @@ func (h *TunHandler) forwardTCP(r *tcp.ForwarderRequest) {
 		return
 	}
 	defer rconn.Close()
+	stopRemote := context.AfterFunc(ctx, func() { rconn.Close() })
+	defer stopRemote()
 
 	if _, err = ensureLocalConn(); err != nil {
 		return
@@ -838,8 +869,7 @@ func (h *TunHandler) forwardTCP(r *tcp.ForwarderRequest) {
 	touch, stop := tunStartIdleTimer(tcpTimeout, lconn, rconn)
 	defer stop()
 
-	go tunCopyConnWithActivity(rconn, lconn, touch)
-	tunCopyConnWithActivity(lconn, rconn, touch)
+	tunRelayTCP(lconn, rconn, touch)
 
 	h.logData(context.Background(), req, dialerName)
 }
@@ -921,6 +951,8 @@ func (h *TunHandler) forwardUDP(r *udp.ForwarderRequest) bool {
 
 func (h *TunHandler) serveUDP(req TunRequest, lconn net.Conn) {
 	defer lconn.Close()
+	stopLocal := context.AfterFunc(cmp.Or(h.ctx, context.Background()), func() { lconn.Close() })
+	defer stopLocal()
 
 	var (
 		processInfoOnce sync.Once
@@ -990,7 +1022,7 @@ func (h *TunHandler) serveUDP(req TunRequest, lconn net.Conn) {
 
 	copyPacket := func(dst, src net.Conn) {
 		defer func() { done <- struct{}{} }()
-		buf := tunGetCopyBuffer(cmp.Or(h.mtu, 1500))
+		buf := tunGetCopyBuffer(cmp.Or(int(h.mtu.Load()), 1500))
 		defer tunPutCopyBuffer(buf)
 		for {
 			n, err := src.Read(buf)
@@ -1009,6 +1041,9 @@ func (h *TunHandler) serveUDP(req TunRequest, lconn net.Conn) {
 
 	go copyPacket(rconn, lconn)
 	go copyPacket(lconn, rconn)
+	<-done
+	lconn.Close()
+	rconn.Close()
 	<-done
 
 	h.logData(context.Background(), req, dialerName)
@@ -1135,19 +1170,41 @@ func tunGetCopyBuffer(size int) []byte {
 	return b[:size]
 }
 
-func tunCopyConnWithActivity(dst, src net.Conn, touch func()) {
+func tunRelayTCP(lconn, rconn net.Conn, touch func()) {
+	copyConn := func(dst, src net.Conn) {
+		if err := tunCopyConnWithActivity(dst, src, touch); errors.Is(err, io.EOF) {
+			if c, ok := dst.(interface{ CloseWrite() error }); ok && c.CloseWrite() == nil {
+				return
+			}
+		}
+		lconn.Close()
+		rconn.Close()
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		copyConn(rconn, lconn)
+	}()
+	copyConn(lconn, rconn)
+	<-done
+}
+
+func tunCopyConnWithActivity(dst, src net.Conn, touch func()) error {
 	buf := tunGetCopyBuffer(tunCopyBufferSize)
 	defer tunPutCopyBuffer(buf)
 	for {
 		n, err := src.Read(buf)
 		if n > 0 {
-			if nw, werr := dst.Write(buf[:n]); werr != nil || nw != n {
-				return
+			touch()
+			if nw, werr := dst.Write(buf[:n]); werr != nil {
+				return werr
+			} else if nw != n {
+				return io.ErrShortWrite
 			}
 			touch()
 		}
 		if err != nil {
-			return
+			return err
 		}
 	}
 }
@@ -1157,37 +1214,38 @@ func tunStartIdleTimer(timeout time.Duration, conns ...net.Conn) (func(), func()
 		return func() {}, func() {}
 	}
 	var mu sync.Mutex
-	var stopped atomic.Bool
-	var nextTouch atomic.Int64
-	interval := timeout / 4
-	if interval <= 0 || interval > time.Second {
-		interval = time.Second
-	}
+	var stopped bool
+	var lastTouch atomic.Int64
 	start := time.Now()
-	nextTouch.Store(int64(interval))
-	timer := time.AfterFunc(timeout, func() {
+	var timer *time.Timer
+	mu.Lock()
+	timer = time.AfterFunc(timeout, func() {
+		mu.Lock()
+		defer mu.Unlock()
+		if stopped {
+			return
+		}
+		if remaining := timeout - (time.Since(start) - time.Duration(lastTouch.Load())); remaining > 0 {
+			timer.Reset(remaining)
+			return
+		}
+		stopped = true
 		for _, conn := range conns {
 			_ = conn.Close()
 		}
 	})
+	mu.Unlock()
 	touch := func() {
-		if stopped.Load() {
-			return
-		}
 		now := time.Since(start).Nanoseconds()
-		next := nextTouch.Load()
-		if now < next || !nextTouch.CompareAndSwap(next, now+int64(interval)) {
-			return
+		for last := lastTouch.Load(); now > last; last = lastTouch.Load() {
+			if lastTouch.CompareAndSwap(last, now) {
+				break
+			}
 		}
-		mu.Lock()
-		if !stopped.Load() {
-			timer.Reset(timeout)
-		}
-		mu.Unlock()
 	}
 	stop := func() {
-		stopped.Store(true)
 		mu.Lock()
+		stopped = true
 		timer.Stop()
 		mu.Unlock()
 	}
@@ -1283,7 +1341,7 @@ func (h *TunHandler) parseForwardDialer(dialerValue string) (Dialer, string, boo
 
 func (h *TunHandler) prepareDial(req TunRequest) (context.Context, Dialer, string, bool) {
 	if addr := req.ServerAddr.Addr(); IsReservedIP(addr) && !IsMemoryAddress(addr) {
-		ctx := context.Background()
+		ctx := cmp.Or(h.ctx, context.Background())
 		switch {
 		case h.static.DisableIPv6:
 			ctx = context.WithValue(ctx, DialerDisableIPv6ContextKey, struct{}{})
@@ -1356,7 +1414,7 @@ func (h *TunHandler) prepareDial(req TunRequest) (context.Context, Dialer, strin
 		}
 	}
 
-	ctx := context.Background()
+	ctx := cmp.Or(h.ctx, context.Background())
 	switch {
 	case disableIPv6:
 		ctx = context.WithValue(ctx, DialerDisableIPv6ContextKey, struct{}{})

@@ -954,6 +954,13 @@ func (c *ConnWithData) NetConn() net.Conn {
 	return c.Conn
 }
 
+func (c *ConnWithData) CloseWrite() error {
+	if conn, ok := c.Conn.(interface{ CloseWrite() error }); ok {
+		return conn.CloseWrite()
+	}
+	return errors.ErrUnsupported
+}
+
 func (c *ConnWithData) Read(b []byte) (int, error) {
 	if c.Data == nil {
 		if c.Conn == nil {
