@@ -135,6 +135,43 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		req = req.WithContext(MemoryDialersWith(req.Context(), h.MemoryDialers))
 	}
 
+	if proxypass.Scheme == "tcp" {
+		var conn net.Conn
+		var err error
+		if md, ok := h.MemoryDialers.Load(proxypass.Host); ok {
+			conn, err = md.DialContext(req.Context(), "tcp", proxypass.Host)
+		} else {
+			conn, err = h.Transport.DialContext(req.Context(), "tcp", proxypass.Host)
+		}
+		if err != nil {
+			http.Error(rw, fmt.Sprintf("proxy pass dial to %s error: %+v", proxypass, err), http.StatusBadGateway)
+			return
+		}
+
+		b := AppendableBytes(make([]byte, 0, 1024))
+		b = b.Str(req.Method).Str(" ").Str(req.RequestURI).Str(" HTTP/1.1\r\n")
+		for key, values := range req.Header {
+			for _, value := range values {
+				b = b.Str(key).Str(": ").Str(value).Str("\r\n")
+			}
+		}
+		b = b.Str("\r\n")
+
+		_, err = conn.Write(b)
+		if err != nil {
+			http.Error(rw, fmt.Sprintf("proxy pass write to %s error: %+v", conn.RemoteAddr(), err), http.StatusBadGateway)
+			return
+		}
+
+		rwc := HTTPRequestStream{req.Body, rw, http.NewResponseController(rw), net.TCPAddrFromAddrPort(ri.RemoteAddr), net.TCPAddrFromAddrPort(ri.ServerAddr)}
+		defer rwc.Close()
+
+		go io.Copy(rwc, conn)
+		io.Copy(conn, rwc)
+
+		return
+	}
+
 	if protocol := req.Header.Get(":protocol"); protocol != "" && req.ProtoMajor == 2 && req.Method == http.MethodConnect && strings.HasPrefix(req.RequestURI, "/") {
 		switch protocol {
 		case "websocket":
