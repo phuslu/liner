@@ -135,30 +135,43 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		req = req.WithContext(MemoryDialersWith(req.Context(), h.MemoryDialers))
 	}
 
-	if proxypass.Scheme == "tcp" {
+	switch proxypass.Scheme {
+	case "tcp", "tcp4", "tcp6":
 		var conn net.Conn
 		var err error
 		if md, ok := h.MemoryDialers.Load(proxypass.Host); ok {
-			conn, err = md.DialContext(req.Context(), "tcp", proxypass.Host)
+			conn, err = md.DialContext(req.Context(), proxypass.Scheme, proxypass.Host)
 		} else {
-			conn, err = h.Transport.DialContext(req.Context(), "tcp", proxypass.Host)
+			conn, err = h.Transport.DialContext(req.Context(), proxypass.Scheme, proxypass.Host)
 		}
 		if err != nil {
 			http.Error(rw, fmt.Sprintf("proxy pass dial to %s error: %+v", proxypass, err), http.StatusBadGateway)
 			return
 		}
+		defer conn.Close()
 
 		b := AppendableBytes(make([]byte, 0, 1024))
 		b = b.Str(req.Method).Str(" ").Str(req.RequestURI).Str(" HTTP/1.1\r\n")
 		for key, values := range req.Header {
+			switch strings.ToLower(key) {
+			case "host", "connection", "proxy-connection", "keep-alive":
+				continue
+			}
 			for _, value := range values {
 				b = b.Str(key).Str(": ").Str(value).Str("\r\n")
 			}
 		}
+		if req.Host == "" {
+			b = b.Str("Host: ").Str(proxypass.Host).Str("\r\n")
+		} else {
+			b = b.Str("Host: ").Str(req.Host).Str("\r\n")
+		}
+		b = b.Str("Connection: close\r\n")
 		b = b.Str("\r\n")
 
 		_, err = conn.Write(b)
 		if err != nil {
+			log.Error().Context(ri.LogContext).Err(err).Str("proxypass", proxypass.String()).Str("conn_remote_addr", conn.RemoteAddr().String()).Msg("proxy pass tcp write request head error")
 			http.Error(rw, fmt.Sprintf("proxy pass write to %s error: %+v", conn.RemoteAddr(), err), http.StatusBadGateway)
 			return
 		}
@@ -166,8 +179,33 @@ func (h *HTTPWebProxyHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		rwc := HTTPRequestStream{req.Body, rw, http.NewResponseController(rw), net.TCPAddrFromAddrPort(ri.RemoteAddr), net.TCPAddrFromAddrPort(ri.ServerAddr)}
 		defer rwc.Close()
 
-		go io.Copy(rwc, conn)
-		io.Copy(conn, rwc)
+		receiveDone := make(chan error, 1)
+		stopRequestCancel := context.AfterFunc(req.Context(), func() {
+			_ = conn.Close()
+		})
+		defer stopRequestCancel()
+
+		go func() {
+			_, err := io.Copy(conn, rwc)
+			if err != nil {
+				_ = conn.Close()
+			} else if cw, ok := conn.(interface{ CloseWrite() error }); ok {
+				_ = cw.CloseWrite()
+			}
+			receiveDone <- err
+		}()
+
+		_, err = io.Copy(rwc, conn)
+		_ = conn.Close()
+		_ = rwc.Close()
+		if err == nil {
+			err = <-receiveDone
+		} else {
+			<-receiveDone
+		}
+		if err != nil {
+			log.Warn().Context(ri.LogContext).Err(err).Str("proxypass", proxypass.String()).Str("conn_remote_addr", conn.RemoteAddr().String()).Msg("proxy pass tcp copy error")
+		}
 
 		return
 	}
