@@ -113,7 +113,7 @@ EOF
 			;;
 		linux_arm )
 			export GOARM=7
-			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -gcflags='liner=-N' -o build/liner
+			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -tags nopamtester -gcflags='liner=-N' -o build/liner
 			upx -9 build/liner
 			cp china.pac proxy.yaml build/
 			cd build
