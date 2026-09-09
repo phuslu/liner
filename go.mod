@@ -9,12 +9,12 @@ require (
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
 	github.com/libp2p/go-yamux/v5 v5.1.0
 	github.com/mileusna/useragent v1.3.5
-	github.com/oschwald/maxminddb-golang/v2 v2.5.0
+	github.com/oschwald/maxminddb-golang/v2 v2.6.0
 	github.com/phuslu/fastdns v0.17.1
 	github.com/phuslu/geosite v1.0.20250901
 	github.com/phuslu/gosh v0.0.0-20260904131414-03b284ffb928
-	github.com/phuslu/log v1.0.128
-	github.com/phuslu/lru v1.0.22
+	github.com/phuslu/log v1.0.131
+	github.com/phuslu/lru v1.0.23
 	github.com/phuslu/pty v0.0.0-20260904123709-7bfbeb22b99f
 	github.com/phuslu/tcp-brutal v1.0.1
 	github.com/pkg/sftp v1.13.11
@@ -25,11 +25,11 @@ require (
 	github.com/smallnest/ringbuffer v0.1.1
 	github.com/valyala/bytebufferpool v1.0.0
 	go4.org/netipx v0.0.0-20260823151212-3075585bcbeb
-	golang.org/x/crypto v0.56.0
-	golang.org/x/net v0.58.0
-	golang.org/x/sys v0.47.0
+	golang.org/x/crypto v0.57.0
+	golang.org/x/net v0.59.0
+	golang.org/x/sys v0.48.0
 	golang.zx2c4.com/wireguard v0.0.0-20260522210424-ecfc5a8d5446
-	gvisor.dev/gvisor v0.0.0-20260902041217-f0f1b2ea279a
+	gvisor.dev/gvisor v0.0.0-20260909030358-2b21ae51bbaa
 )
 
 require (
@@ -42,12 +42,12 @@ require (
 	github.com/phuslu/pamtester v0.0.0-20260908135300-75f72d81971a
 	github.com/quic-go/qpack v0.6.0 // indirect
 	go.uber.org/mock v0.6.0 // indirect
-	golang.org/x/exp v0.0.0-20260824195058-e88cd73687aa // indirect
-	golang.org/x/term v0.45.0 // indirect
-	golang.org/x/text v0.41.0 // indirect
-	golang.org/x/time v0.15.0 // indirect
+	golang.org/x/exp v0.0.0-20260908205506-85c1c2202aba // indirect
+	golang.org/x/term v0.46.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
+	golang.org/x/time v0.16.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
-	mvdan.cc/sh/v3 v3.14.0 // indirect
+	mvdan.cc/sh/v3 v3.14.1 // indirect
 )
 
 replace github.com/quic-go/quic-go => github.com/phuslu/quic-go v0.0.0-20260830170003-3b9aa9b39bdf
