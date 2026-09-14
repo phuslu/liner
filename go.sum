@@ -40,8 +40,8 @@ github.com/phuslu/geosite v1.0.20250901 h1:9BHxSm7M1OMic7H8q3Nzyd9PvjFtzMtUX2d1h
 github.com/phuslu/geosite v1.0.20250901/go.mod h1:qKR55nWrjbN1JOvK1WvZIqh341CGpq22OHx2BLMOrKE=
 github.com/phuslu/gosh v0.0.0-20260913133919-f9eccf3ed150 h1:HVlNGACdReKwoZhm4o8hx/nAFH0t+V653vP1gp24eBY=
 github.com/phuslu/gosh v0.0.0-20260913133919-f9eccf3ed150/go.mod h1:z1PIKBsyHRJIeilFRsaJKaEkMmBA3uJAoKDN80hp+5E=
-github.com/phuslu/log v1.0.132 h1:VC9qE40eX3xq9xQhxObD2MTBCryV+zqTdAXisiKmvYg=
-github.com/phuslu/log v1.0.132/go.mod h1:GYElPZLxBdIMMGZkGggLHDQ33zQJjqsHdJns+flCTyE=
+github.com/phuslu/log v1.0.133 h1:BjoqIqO4gP1rNHJI6tBQ3hXtQ1PHvkG6RF9EzuM+qus=
+github.com/phuslu/log v1.0.133/go.mod h1:GYElPZLxBdIMMGZkGggLHDQ33zQJjqsHdJns+flCTyE=
 github.com/phuslu/lru v1.0.23 h1:h7mx01aGdvo8EcxonoiYTnWVX3OC4E4OioozQolT0Kw=
 github.com/phuslu/lru v1.0.23/go.mod h1:wbS5UKUUelTd/ffXNB7lfER8+H66ryqIEWiw+jmeahM=
 github.com/phuslu/pamtester v0.0.0-20260908135300-75f72d81971a h1:O49i0P4jAbzdfWgJh0KfUjO397jZxitpOPTgK76rhC8=
