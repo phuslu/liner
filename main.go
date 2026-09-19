@@ -417,10 +417,13 @@ func main() {
 				UserKnownHostsFile:    cmp.Or(u.Query().Get("UserKnownHostsFile"), u.Query().Get("user_known_hosts_file")),
 				Timeout:               time.Duration(cmp.Or(first(strconv.Atoi(u.Query().Get("timeout"))), 10)) * time.Second,
 				IdleTimeout:           time.Duration(cmp.Or(first(strconv.Atoi(u.Query().Get("idle_timeout"))), 600)) * time.Second,
-				TcpReadBuffer:         cmp.Or(first(strconv.Atoi(u.Query().Get("tcp_read_buffer"))), 128*1024),
-				TcpWriteBuffer:        cmp.Or(first(strconv.Atoi(u.Query().Get("tcp_write_buffer"))), 128*1024),
-				Logger:                slog.Default(),
-				Dialer:                underlay,
+				// tcp_*_buffer wins over the global dial buffers, which win over
+				// the default: a locked 128k buffer caps a high latency transport
+				// at a few MB/s, see the bdp of the multiplexed ssh connection.
+				TcpReadBuffer:  cmp.Or(first(strconv.Atoi(u.Query().Get("tcp_read_buffer"))), config.Global.DialReadBuffer, 1*1024*1024),
+				TcpWriteBuffer: cmp.Or(first(strconv.Atoi(u.Query().Get("tcp_write_buffer"))), config.Global.DialWriteBuffer, 1*1024*1024),
+				Logger:         slog.Default(),
+				Dialer:         underlay,
 			}
 		case "wireguard", "wg":
 			return &WireGuardDialer{
