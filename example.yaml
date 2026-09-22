@@ -140,6 +140,12 @@ https:
             title: "webshell"
             font_size: "14"
             windows_mode: "true"
+      - location: /cgi-bin/
+        cgi:
+          root: /usr/lib/cgi-bin
+          auth_table: authuser.csv
+          timeout: 30
+          max_concurrency: 8
       - location: /
         proxy:
           set_headers: |

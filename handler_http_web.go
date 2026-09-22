@@ -169,6 +169,21 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 				Location: router.location,
 				CdnjsZip: "",
 			}
+		case web.Cgi.Root != "":
+			router.handler = &HTTPWebCgiHandler{
+				Location:       web.Location,
+				Root:           web.Cgi.Root,
+				Timeout:        web.Cgi.Timeout,
+				MaxConcurrency: web.Cgi.MaxConcurrency,
+			}
+			if table := web.Cgi.AuthTable; table != "" {
+				router.handler = &HTTPWebMiddlewareAuthTable{
+					Handler:   router.handler,
+					Location:  router.location,
+					AuthTable: table,
+					AllowAttr: "allow_cgi",
+				}
+			}
 		case web.Logtail.Enabled:
 			router.handler = &HTTPWebLogtailHandler{
 				Location:        web.Location,

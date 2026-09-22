@@ -73,6 +73,12 @@ type HTTPConfig struct {
 			Body          string `json:"body" yaml:"body"`
 			File          string `json:"file" yaml:"file"`
 		} `json:"index" yaml:"index"`
+		Cgi struct {
+			Root           string `json:"root" yaml:"root"`
+			AuthTable      string `json:"auth_table" yaml:"auth_table"`
+			Timeout        int    `json:"timeout" yaml:"timeout"`
+			MaxConcurrency int    `json:"max_concurrency" yaml:"max_concurrency"`
+		} `json:"cgi" yaml:"cgi"`
 		Proxy struct {
 			Pass          string `json:"pass" yaml:"pass"`
 			AuthTable     string `json:"auth_table" yaml:"auth_table"`
