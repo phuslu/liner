@@ -169,10 +169,11 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 				Location: router.location,
 				CdnjsZip: "",
 			}
-		case web.Cgi.Root != "":
+		case web.Cgi.Root != "" || web.Cgi.File != "":
 			router.handler = &HTTPWebCgiHandler{
 				Location:       web.Location,
 				Root:           web.Cgi.Root,
+				File:           web.Cgi.File,
 				Timeout:        web.Cgi.Timeout,
 				MaxConcurrency: web.Cgi.MaxConcurrency,
 			}

@@ -23,21 +23,44 @@ import (
 type HTTPWebCgiHandler struct {
 	Location string
 	Root     string
+	File     string
 	Timeout  int
 
 	MaxConcurrency int
 
 	prefix string
 	root   string
+	file   string
 	sem    chan struct{}
 }
 
 func (h *HTTPWebCgiHandler) Load(_ context.Context) error {
-	fullname, err := filepath.Abs(h.Root)
-	if err != nil {
-		return err
+	if h.Root != "" && h.File != "" {
+		return fmt.Errorf("cgi root and file can not be set at the same time")
 	}
-	root, err := filepath.EvalSymlinks(fullname)
+
+	h.prefix = strings.TrimSuffix(h.Location, "/") + "/"
+	if h.MaxConcurrency > 0 {
+		h.sem = make(chan struct{}, h.MaxConcurrency)
+	}
+
+	if h.File != "" {
+		file, err := resolveCgiPath(h.File)
+		if err != nil {
+			return fmt.Errorf("cgi file %q is unusable: %w", h.File, err)
+		}
+		fi, err := os.Stat(file)
+		if err != nil {
+			return fmt.Errorf("cgi file %q is unusable: %w", h.File, err)
+		}
+		if fi.IsDir() {
+			return fmt.Errorf("cgi file %q is a directory", h.File)
+		}
+		h.file, h.root = file, filepath.Dir(file)
+		return nil
+	}
+
+	root, err := resolveCgiPath(h.Root)
 	if err != nil {
 		return fmt.Errorf("cgi root %q is unusable: %w", h.Root, err)
 	}
@@ -49,17 +72,51 @@ func (h *HTTPWebCgiHandler) Load(_ context.Context) error {
 		return fmt.Errorf("cgi root %q is not a directory", h.Root)
 	}
 	h.root = root
-	h.prefix = strings.TrimSuffix(h.Location, "/") + "/"
-	if h.MaxConcurrency > 0 {
-		h.sem = make(chan struct{}, h.MaxConcurrency)
-	}
 	return nil
+}
+
+func resolveCgiPath(name string) (string, error) {
+	fullname, err := filepath.Abs(name)
+	if err != nil {
+		return "", err
+	}
+	return filepath.EvalSymlinks(fullname)
 }
 
 // locate resolves the request path into an executable script, its SCRIPT_NAME and
 // the trailing PATH_INFO. It rejects path traversal and any script that resolves
 // outside the configured root through a symlink.
 func (h *HTTPWebCgiHandler) locate(req *http.Request) (scriptPath, scriptName, pathInfo string, ok bool) {
+	if h.file != "" {
+		return h.locateFile(req)
+	}
+	return h.locateRoot(req)
+}
+
+// locateFile maps the whole configured location onto a single script file, the
+// sub path after the location becomes PATH_INFO.
+func (h *HTTPWebCgiHandler) locateFile(req *http.Request) (scriptPath, scriptName, pathInfo string, ok bool) {
+	base := strings.TrimSuffix(h.Location, "/")
+	reqPath := req.URL.Path
+	switch {
+	case base == "":
+		scriptName = "/"
+		pathInfo = strings.TrimSuffix(reqPath, "/")
+	case reqPath == base:
+		scriptName = base
+	case strings.HasPrefix(reqPath, base+"/"):
+		scriptName = base
+		pathInfo = strings.TrimPrefix(reqPath, base)
+	default:
+		return
+	}
+	if strings.Contains(pathInfo, "..") {
+		return
+	}
+	return h.file, scriptName, pathInfo, true
+}
+
+func (h *HTTPWebCgiHandler) locateRoot(req *http.Request) (scriptPath, scriptName, pathInfo string, ok bool) {
 	if !strings.HasPrefix(req.URL.Path, h.prefix) {
 		return
 	}

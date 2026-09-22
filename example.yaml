@@ -146,6 +146,11 @@ https:
           auth_table: authuser.csv
           timeout: 30
           max_concurrency: 8
+      - location: /metrics
+        cgi:
+          file: /usr/lib/cgi-bin/node-exporter.cgi
+          timeout: 30
+          max_concurrency: 8
       - location: /
         proxy:
           set_headers: |

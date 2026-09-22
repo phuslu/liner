@@ -75,6 +75,7 @@ type HTTPConfig struct {
 		} `json:"index" yaml:"index"`
 		Cgi struct {
 			Root           string `json:"root" yaml:"root"`
+			File           string `json:"file" yaml:"file"`
 			AuthTable      string `json:"auth_table" yaml:"auth_table"`
 			Timeout        int    `json:"timeout" yaml:"timeout"`
 			MaxConcurrency int    `json:"max_concurrency" yaml:"max_concurrency"`
