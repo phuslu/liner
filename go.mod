@@ -13,13 +13,13 @@ require (
 	github.com/phuslu/fastdns v0.17.1
 	github.com/phuslu/geosite v1.0.20250901
 	github.com/phuslu/gosh v0.0.0-20260913133919-f9eccf3ed150
-	github.com/phuslu/log v1.0.134
-	github.com/phuslu/lru v1.0.23
+	github.com/phuslu/log v1.0.136
+	github.com/phuslu/lru v1.0.24
 	github.com/phuslu/pty v0.0.0-20260904123709-7bfbeb22b99f
 	github.com/phuslu/tcp-brutal v1.0.1
 	github.com/pkg/sftp v1.13.11
 	github.com/puzpuzpuz/xsync/v4 v4.5.0
-	github.com/quic-go/quic-go v0.62.0
+	github.com/quic-go/quic-go v0.63.0
 	github.com/refraction-networking/utls v1.8.2
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/smallnest/ringbuffer v0.1.1
@@ -29,14 +29,14 @@ require (
 	golang.org/x/net v0.59.0
 	golang.org/x/sys v0.48.0
 	golang.zx2c4.com/wireguard v0.0.0-20260522210424-ecfc5a8d5446
-	gvisor.dev/gvisor v0.0.0-20260913055325-045f9ebf5d16
+	gvisor.dev/gvisor v0.0.0-20260925065542-288d9a174338
 )
 
 require (
-	github.com/andybalholm/brotli v1.2.4 // indirect
-	github.com/ebitengine/purego v0.11.0 // indirect
+	github.com/andybalholm/brotli v1.2.5 // indirect
+	github.com/ebitengine/purego v0.11.1 // indirect
 	github.com/google/btree v1.1.3 // indirect
-	github.com/klauspost/compress v1.20.0 // indirect
+	github.com/klauspost/compress v1.20.1 // indirect
 	github.com/kr/fs v0.1.0 // indirect
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
 	github.com/phuslu/pamtester v0.0.0-20260908135300-75f72d81971a
@@ -50,4 +50,4 @@ require (
 	mvdan.cc/sh/v3 v3.14.1 // indirect
 )
 
-replace github.com/quic-go/quic-go => github.com/phuslu/quic-go v0.0.0-20260830170003-3b9aa9b39bdf
+replace github.com/quic-go/quic-go => github.com/phuslu/quic-go v0.0.0-20260922170004-3f8fe368278e
