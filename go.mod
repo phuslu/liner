@@ -9,11 +9,11 @@ require (
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
 	github.com/libp2p/go-yamux/v5 v5.1.0
 	github.com/mileusna/useragent v1.3.5
-	github.com/oschwald/maxminddb-golang/v2 v2.6.0
+	github.com/oschwald/maxminddb-golang/v2 v2.7.0
 	github.com/phuslu/fastdns v0.17.1
 	github.com/phuslu/geosite v1.0.20250901
-	github.com/phuslu/gosh v0.0.0-20260913133919-f9eccf3ed150
-	github.com/phuslu/log v1.0.136
+	github.com/phuslu/gosh v0.0.0-20260927162804-bf75f9ea0d01
+	github.com/phuslu/log v1.0.137
 	github.com/phuslu/lru v1.0.24
 	github.com/phuslu/pty v0.0.0-20260904123709-7bfbeb22b99f
 	github.com/phuslu/tcp-brutal v1.0.1
@@ -29,11 +29,11 @@ require (
 	golang.org/x/net v0.59.0
 	golang.org/x/sys v0.48.0
 	golang.zx2c4.com/wireguard v0.0.0-20260522210424-ecfc5a8d5446
-	gvisor.dev/gvisor v0.0.0-20260925065542-288d9a174338
+	gvisor.dev/gvisor v0.0.0-20261002100546-241dc5aff927
 )
 
 require (
-	github.com/andybalholm/brotli v1.2.5 // indirect
+	github.com/andybalholm/brotli v1.2.6 // indirect
 	github.com/ebitengine/purego v0.11.1 // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/klauspost/compress v1.20.1 // indirect
