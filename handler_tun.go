@@ -1,3 +1,5 @@
+//go:build !notuntap
+
 package main
 
 import (
