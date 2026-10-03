@@ -16,7 +16,6 @@ require (
 	github.com/phuslu/log v1.0.137
 	github.com/phuslu/lru v1.0.24
 	github.com/phuslu/pty v0.0.0-20260904123709-7bfbeb22b99f
-	github.com/phuslu/tcp-brutal v1.0.1
 	github.com/pkg/sftp v1.13.11
 	github.com/puzpuzpuz/xsync/v4 v4.5.0
 	github.com/quic-go/quic-go v0.63.0
