@@ -8,7 +8,7 @@ function liner::setup() {
 		linux )
 			export DEBIAN_FRONTEND=noninteractive
 			apt update -y
-			apt install -yq git curl jq unzip zip xz-utils gh build-essential parallel upx llvm
+			apt install -yq git curl jq unzip zip xz-utils gh build-essential parallel llvm
 			# phuslu go
 			test -d /tmp/go || \
 				curl -L https://github.com/phuslu/go/releases/download/v0.0.0/go1.27.${goos}-${goarch}.tar.xz | \
@@ -105,16 +105,14 @@ EOF
 			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
 			;;
 		linux_arm64 )
-			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -gcflags='liner=-N' -o build/liner
-			upx -9 build/liner
+			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -tags notuntap -gcflags='liner=-N' -o build/liner
 			cp china.pac proxy.yaml liner@.service build/
 			cd build
 			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
 			;;
 		linux_arm )
 			export GOARM=7
-			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -tags nopamtester -gcflags='liner=-N' -o build/liner
-			upx -9 build/liner
+			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -tags nopamtester,notuntap -gcflags='liner=-N' -o build/liner
 			cp china.pac proxy.yaml build/
 			cd build
 			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
