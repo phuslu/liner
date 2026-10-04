@@ -50,6 +50,8 @@ github.com/phuslu/pty v0.0.0-20260904123709-7bfbeb22b99f h1:l2jjAPmReaWPaJ2plzGg
 github.com/phuslu/pty v0.0.0-20260904123709-7bfbeb22b99f/go.mod h1:Il19e8y9rohviw75Vr5Wst0zBy6nNhBnCQ8R9jaKayc=
 github.com/phuslu/quic-go v0.0.0-20261001191727-68e4bc0f4eb3 h1:uKZtL3svEy91m0JpIMFkJDi9v2Db3m7E3fWSxKqsoLA=
 github.com/phuslu/quic-go v0.0.0-20261001191727-68e4bc0f4eb3/go.mod h1:RAro2j2yN9a9EiPACLHT9IB2NXCvGQmmo/alT0yYI0w=
+github.com/phuslu/tcp-brutal v1.0.1 h1:esYc4BB2ojNG4A3lDrNrAtS1BykTsu3/d/YHJTJO4jA=
+github.com/phuslu/tcp-brutal v1.0.1/go.mod h1:KIy0oH2sKrMGLM89+3SHBujPLLui0V/jwg13QAfiQL0=
 github.com/pkg/sftp v1.13.11 h1:0N92SLTB8JqASJB14ZLHHzFnBV8mG9zw4K7jghEFWuE=
 github.com/pkg/sftp v1.13.11/go.mod h1:uNkH9roSXglNJqM+glJJi+TQXQUm0fXFWqCFmT8hsN0=
 github.com/puzpuzpuz/xsync/v4 v4.5.0 h1:vOSWu6b57/emh+L/Cw0BeQfvxa/cogFywXHeGUxQxAg=

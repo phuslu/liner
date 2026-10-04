@@ -373,7 +373,7 @@ touching TUN behavior.
 - When route, TUN, socket option, process lookup, or TCP pacing behavior changes
   on one OS, inspect the others and update them or leave an explicit unsupported
   path.
-- Privileged features such as TUN, redsocks, tproxy, route changes, and
+- Privileged features such as TUN, redsocks, tproxy, tcp-brutal, route changes, and
   platform socket options may require manual validation. Do not claim full
   coverage from `go test` alone.
 - Keep c-shared entry points and build constraints intact in `liner-dll.go` and
@@ -434,7 +434,7 @@ If the Go build cache is not writable, use a cache under `/tmp`, for example:
 GOCACHE=/tmp/liner-go-build go test ./...
 ```
 
-Network resolver tests, TUN, redsocks, tproxy, route configuration, and
+Network resolver tests, TUN, redsocks, tproxy, tcp-brutal, route configuration, and
 privileged socket behavior may need network access, platform support, or
 elevated privileges.
 
