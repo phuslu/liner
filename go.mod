@@ -29,7 +29,7 @@ require (
 	golang.org/x/net v0.59.0
 	golang.org/x/sys v0.48.0
 	golang.zx2c4.com/wireguard v0.0.0-20260522210424-ecfc5a8d5446
-	gvisor.dev/gvisor v0.0.0-20261002100546-241dc5aff927
+	gvisor.dev/gvisor v0.0.0-20261006105650-4dc49d6b02bf
 )
 
 require (
@@ -42,7 +42,7 @@ require (
 	github.com/phuslu/pamtester v0.0.0-20260908135300-75f72d81971a
 	github.com/quic-go/qpack v0.6.0 // indirect
 	go.uber.org/mock v0.6.0 // indirect
-	golang.org/x/exp v0.0.0-20260908205506-85c1c2202aba // indirect
+	golang.org/x/exp v0.0.0-20261005173118-76772065c9b0 // indirect
 	golang.org/x/term v0.46.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/time v0.16.0 // indirect
@@ -50,4 +50,4 @@ require (
 	mvdan.cc/sh/v3 v3.14.1 // indirect
 )
 
-replace github.com/quic-go/quic-go => github.com/phuslu/quic-go v0.0.0-20261001191727-68e4bc0f4eb3
+replace github.com/quic-go/quic-go => github.com/phuslu/quic-go v0.0.0-20261007133036-5766a7d20da0

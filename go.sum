@@ -48,8 +48,8 @@ github.com/phuslu/pamtester v0.0.0-20260908135300-75f72d81971a h1:O49i0P4jAbzdfW
 github.com/phuslu/pamtester v0.0.0-20260908135300-75f72d81971a/go.mod h1:3Xwm9PBsjkhMrVKl+wrrYTynI0Lbn35S5Vvj2KtI+gM=
 github.com/phuslu/pty v0.0.0-20260904123709-7bfbeb22b99f h1:l2jjAPmReaWPaJ2plzGgW1ppvSJOd+rdEWirJwNmuRs=
 github.com/phuslu/pty v0.0.0-20260904123709-7bfbeb22b99f/go.mod h1:Il19e8y9rohviw75Vr5Wst0zBy6nNhBnCQ8R9jaKayc=
-github.com/phuslu/quic-go v0.0.0-20261001191727-68e4bc0f4eb3 h1:uKZtL3svEy91m0JpIMFkJDi9v2Db3m7E3fWSxKqsoLA=
-github.com/phuslu/quic-go v0.0.0-20261001191727-68e4bc0f4eb3/go.mod h1:RAro2j2yN9a9EiPACLHT9IB2NXCvGQmmo/alT0yYI0w=
+github.com/phuslu/quic-go v0.0.0-20261007133036-5766a7d20da0 h1:6liaND1YJYQbcwy/s2mF0BXEPJYUeHB5cyhfgXvFwTs=
+github.com/phuslu/quic-go v0.0.0-20261007133036-5766a7d20da0/go.mod h1:RAro2j2yN9a9EiPACLHT9IB2NXCvGQmmo/alT0yYI0w=
 github.com/phuslu/tcp-brutal v1.0.1 h1:esYc4BB2ojNG4A3lDrNrAtS1BykTsu3/d/YHJTJO4jA=
 github.com/phuslu/tcp-brutal v1.0.1/go.mod h1:KIy0oH2sKrMGLM89+3SHBujPLLui0V/jwg13QAfiQL0=
 github.com/pkg/sftp v1.13.11 h1:0N92SLTB8JqASJB14ZLHHzFnBV8mG9zw4K7jghEFWuE=
@@ -82,8 +82,8 @@ go4.org/netipx v0.0.0-20260823151212-3075585bcbeb h1:XBM4hvfwGAttkkiTIFfeigdfcL1
 go4.org/netipx v0.0.0-20260823151212-3075585bcbeb/go.mod h1:PLyyIXexvUFg3Owu6p/WfdlivPbZJsZdgWZlrGope/Y=
 golang.org/x/crypto v0.57.0 h1:3ZVCjf8Ggz7zneR/EHRVx68Ctf+2pmIMP2UFhh9cC6M=
 golang.org/x/crypto v0.57.0/go.mod h1:Fdz0i5U6CoizGwLda9DttjSk6qlZo25zYNtR+ycvuZA=
-golang.org/x/exp v0.0.0-20260908205506-85c1c2202aba h1:Ck8QetSgk912qxWLMCKxd0in+aiyBQyDSMae6e/xmpU=
-golang.org/x/exp v0.0.0-20260908205506-85c1c2202aba/go.mod h1:50RgIsmK7OwqzTTeqcSXQW8SswW0o8fRcDxmqGluJ8E=
+golang.org/x/exp v0.0.0-20261005173118-76772065c9b0 h1:qUp3i6M39kccSm3OMMIE3tvs7YQWO9rFeCKdk1sSaFk=
+golang.org/x/exp v0.0.0-20261005173118-76772065c9b0/go.mod h1:SRjTzy5WcYqRRqquLUvHeeovSwLO0CZ3xcltZNO4Fck=
 golang.org/x/net v0.59.0 h1:5zfYln+w5XCxwrnMMJPufRgNoXEaGxl0wo5GqPXyues=
 golang.org/x/net v0.59.0/go.mod h1:2DA/G1UfVbCpQPeWTmMPGY7Cs2PkBkwu743bVX5PIVg=
 golang.org/x/sys v0.48.0 h1:bbX/i/6MgT9BVLM9RT1thmxL04yeTAhbEz4SyadbXoo=
@@ -98,7 +98,7 @@ golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 h1:B82qJJgjvYKsXS9jeu
 golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2/go.mod h1:deeaetjYA+DHMHg+sMSMI58GrEteJUUzzw7en6TJQcI=
 golang.zx2c4.com/wireguard v0.0.0-20260522210424-ecfc5a8d5446 h1:cqHQ3AycTHvM2R7ikgyX57D+XvtcSnGylsLkOVhta/w=
 golang.zx2c4.com/wireguard v0.0.0-20260522210424-ecfc5a8d5446/go.mod h1:rpwXGsirqLqN2L0JDJQlwOboGHmptD5ZD6T2VmcqhTw=
-gvisor.dev/gvisor v0.0.0-20261002100546-241dc5aff927 h1:EmdLKPbHwMBU+Z2bHfd94hix8QnSv/LUf7446aoZsgU=
-gvisor.dev/gvisor v0.0.0-20261002100546-241dc5aff927/go.mod h1:We1Jh3kDvpcx13qPcI0LTjx3U6pHpis/KFoU/UtJTkM=
+gvisor.dev/gvisor v0.0.0-20261006105650-4dc49d6b02bf h1:BCsveuDVXXluhK0JHyhh2cLQ32+ZfNt/uuUaTBNnymE=
+gvisor.dev/gvisor v0.0.0-20261006105650-4dc49d6b02bf/go.mod h1:8EvmWpn201Ba5N80rb+0662hAULFFrp9ZZFGcgBJ+oY=
 mvdan.cc/sh/v3 v3.14.1 h1:bXkhQWNHCs0KZEChF8hYS6FC+T2N9mUZLbQv9blditI=
 mvdan.cc/sh/v3 v3.14.1/go.mod h1:syYCoFET8w9tvevxiXUtY8/ICrU+l26jHmhJDra3Vwo=
