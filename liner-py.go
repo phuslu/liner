@@ -49,7 +49,19 @@ func liner() *C.PyObject {
 
 //export linex
 func linex() *C.PyObject {
-	args := strings.Split(strings.Join(os.Args, "\x00"), "\x00")
+	// The pip console script runs as "python3 .../bin/linex [args...]", so
+	// the host os.Args is [interpreter, wrapper, args...]. gosh parses Args
+	// like a shell command line and would treat the wrapper path as a script
+	// to execute, so hand it only the shell argv: "linex" plus user args.
+	//
+	// The user args are cloned because SetProcessName overwrites the argv
+	// memory that os.Args strings alias.
+	args := []string{"linex"}
+	if len(os.Args) > 2 {
+		for _, arg := range os.Args[2:] {
+			args = append(args, strings.Clone(arg))
+		}
+	}
 	SetProcessName(os.Args[0])
 	gosh.Run(gosh.Config{
 		Version:       version,
