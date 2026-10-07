@@ -185,8 +185,11 @@ func (h *TunnelHandler) h1tunnel(ctx context.Context, dialerName, dialerURL stri
 
 	b = bytes.TrimRight(b, "\x00")
 	resp, err := http.ReadResponse(bufio.NewReader(bytes.NewReader(b)), nil)
-	if err != nil || resp.StatusCode >= http.StatusBadRequest {
-		return nil, fmt.Errorf("tunnel: failed to tunnel remote %s via %s: %s: %w", h.Config.RemoteListen[0], conn.RemoteAddr().String(), b, err)
+	if err != nil {
+		return nil, fmt.Errorf("tunnel: failed to read remote %s via %s response: %w", h.Config.RemoteListen[0], conn.RemoteAddr().String(), err)
+	}
+	if resp.StatusCode >= http.StatusBadRequest {
+		return nil, fmt.Errorf("tunnel: failed to tunnel remote %s via %s: %s", h.Config.RemoteListen[0], conn.RemoteAddr().String(), b)
 	}
 
 	if !h.Config.DisableKeepalive {
