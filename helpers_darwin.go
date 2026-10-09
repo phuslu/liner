@@ -351,7 +351,11 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 			return prefix.Masked(), true
 		}
 		if destination == "default" {
-			return netip.PrefixFrom(netip.AddrFrom4([4]byte{}), 0), true
+			// route get prints 0.0.0.0/1 as "destination: default" with "mask: 128.0.0.0".
+			if mask == "" || mask == "default" {
+				return netip.PrefixFrom(netip.AddrFrom4([4]byte{}), 0), true
+			}
+			destination = "0.0.0.0"
 		}
 		addr, err := netip.ParseAddr(destination)
 		if err != nil {
