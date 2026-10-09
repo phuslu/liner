@@ -82,6 +82,8 @@ type TunHandler struct {
 	}
 }
 
+var tunEnvRegexp = regexp.MustCompile(`\$\{env:([^}]+)\}`)
+
 type tunProcessDialer struct {
 	path        *regexp.Regexp
 	name        *regexp.Regexp
@@ -118,12 +120,26 @@ func (h *TunHandler) Load(ctx context.Context) error {
 		}
 		switch {
 		case config.Path != "":
-			pd.path, err = regexp.Compile(config.Path)
+			// expand vscode-style ${env:NAME}, values are quoted as regex literals
+			var missing string
+			path := tunEnvRegexp.ReplaceAllStringFunc(config.Path, func(s string) string {
+				name := s[len("${env:") : len(s)-1]
+				value, ok := os.LookupEnv(name)
+				if !ok {
+					missing = cmp.Or(missing, name)
+				}
+				return regexp.QuoteMeta(value)
+			})
+			if missing != "" {
+				return fmt.Errorf("parse tun process_dialer[%d].path: env %q not set", i, missing)
+			}
+			if pd.path, err = regexp.Compile(path); err != nil {
+				return fmt.Errorf("parse tun process_dialer[%d].path: %w", i, err)
+			}
 		case config.Name != "":
-			pd.name, err = regexp.Compile(config.Name)
-		}
-		if err != nil {
-			return fmt.Errorf("parse tun process_dialer[%d].dialer: %w", i, err)
+			if pd.name, err = regexp.Compile(config.Name); err != nil {
+				return fmt.Errorf("parse tun process_dialer[%d].name: %w", i, err)
+			}
 		}
 		if pd.path != nil || pd.name != nil {
 			h.processDialers = append(h.processDialers, pd)

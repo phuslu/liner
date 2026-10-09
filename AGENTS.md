@@ -312,7 +312,9 @@ touching TUN behavior.
 - `tun[].forward.process_dialer` matches `.ProcessInfo.Path` regexes in order
   before the normal `forward.dialer` template/static selection. Compile regexes
   and validate dialers in `Load(ctx)`. When no process rule or dialer selects
-  an upstream, TUN forwarding falls back to local.
+  an upstream, TUN forwarding falls back to local. `path` expands vscode-style
+  `${env:NAME}` in `Load(ctx)`; values are quoted as regex literals and an
+  unset variable fails `Load`.
 - TUN forwarding rejects unspecified, multicast, limited broadcast, and
   destinations inside the configured TUN address prefix.
 - Dial timeouts in TUN are setup-only; do not bind stream lifetime to setup
