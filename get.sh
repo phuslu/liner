@@ -2,17 +2,19 @@
 
 set -x
 
-case $(uname -m) in
-  aarch64 )
-    arch=arm64
-    ;;
-  arm* )
-    arch=arm
-    ;;
-  * )
-    arch=amd64
-    ;;
-esac
+if test -z "$GOARCH"; then
+  case $(uname -m) in
+    aarch64 )
+      GOARCH=arm64
+      ;;
+    arm* )
+      GOARCH=arm
+      ;;
+    * )
+      GOARCH=amd64
+      ;;
+  esac
+fi
 
 geturl=$(type -p curl &>/dev/null && echo "curl -ksSLf" || echo "wget --no-check-certificate -O-")
 
@@ -29,7 +31,7 @@ checksum=$($geturl https://github.com/phuslu/liner/releases/expanded_assets/v0.0
     if (!seen[file]++)
         print sha, file
     file=""
-}' | grep -E "liner_linux_${arch}-[0-9]+.tar.gz")
+}' | grep -E "liner_linux_${GOARCH}-[0-9]+.tar.gz")
 
 filename=$(echo $checksum | awk '{print $2}')
 pacfile=$(awk 'BEGIN{srand(); r=int(rand()*10000000000); printf "%06d.pac", r % 1000000}')
