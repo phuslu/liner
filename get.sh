@@ -58,7 +58,7 @@ if test "$(cat $filename | $sha256sum | awk '{ print $1 }')" != "$(echo $checksu
   exit 1
 fi
 
-if test -f liner; then
+if test -f liner || test "${PWD##*/}" = liner; then
   echo liner | tar xvzf $filename -T -
   # test -f liner@.service || echo liner@.service | tar xvzf $filename -T -
   rm -rf $filename
