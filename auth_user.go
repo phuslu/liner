@@ -119,6 +119,8 @@ func (c *AuthUserLoadChecker) CheckAuthUser(ctx context.Context, user *AuthUserI
 		if subtle.ConstantTimeEq(int32(len(key)), int32(len(idkey))) == 0 ||
 			subtle.ConstantTimeCompare(key, idkey) != 1 {
 			err = fmt.Errorf("wrong password: %v", user.Username)
+		} else {
+			*user = record
 		}
 	default:
 		err = fmt.Errorf("wrong password: %v", user.Username)
