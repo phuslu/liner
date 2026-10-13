@@ -681,7 +681,7 @@ func getcap() (caps linuxcapability, err error) {
 		return linuxcapability{}, errno
 	}
 
-	caps.SetUID = (data.Effective & (1 << CAP_SETUID)) != 0
+	caps.SetGID = (data.Effective & (1 << CAP_SETUID)) != 0
 	caps.SetGID = (data.Effective & (1 << CAP_SETGID)) != 0
 
 	return caps, nil
