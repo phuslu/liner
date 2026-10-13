@@ -68,7 +68,7 @@ func (c *AuthUserLoadChecker) CheckAuthUser(ctx context.Context, user *AuthUserI
 		var b []byte
 		b, err = hex.AppendDecode(make([]byte, 0, 64), s2b(record.Password[2:]))
 		if err != nil {
-			err = fmt.Errorf("invalid sha1/sha256 password: %v", record.Password)
+			err = fmt.Errorf("invalid sha1/sha256 password: %v", user.Username)
 			return
 		}
 		switch len(b) {
@@ -88,7 +88,7 @@ func (c *AuthUserLoadChecker) CheckAuthUser(ctx context.Context, user *AuthUserI
 				return
 			}
 		}
-		err = fmt.Errorf("invalid md5/sha1/sha256 password: %v", record.Password)
+		err = fmt.Errorf("invalid md5/sha1/sha256 password: %v", user.Username)
 		return
 	case strings.HasPrefix(record.Password, "$2y$"):
 		err = bcrypt.CompareHashAndPassword([]byte(record.Password), []byte(user.Password))
@@ -100,19 +100,19 @@ func (c *AuthUserLoadChecker) CheckAuthUser(ctx context.Context, user *AuthUserI
 	case strings.HasPrefix(record.Password, "$argon2id$"):
 		ms := argon2idRegex.FindStringSubmatch(record.Password)
 		if ms == nil {
-			err = fmt.Errorf("invalid argon2id password: %v", record.Password)
+			err = fmt.Errorf("invalid argon2id password: %v", user.Username)
 			return
 		}
 		m, t, p := first(strconv.Atoi(ms[2])), first(strconv.Atoi(ms[3])), first(strconv.Atoi(ms[4]))
 		var salt, key []byte
 		salt, err = base64.RawStdEncoding.Strict().DecodeString(ms[5])
 		if err != nil {
-			err = fmt.Errorf("invalid argon2id password: %v : %w", record.Password, err)
+			err = fmt.Errorf("invalid argon2id password: %v : %w", user.Username, err)
 			return
 		}
 		key, err = base64.RawStdEncoding.Strict().DecodeString(ms[6])
 		if err != nil {
-			err = fmt.Errorf("invalid argon2id password: %v : %w", record.Password, err)
+			err = fmt.Errorf("invalid argon2id password: %v : %w", user.Username, err)
 			return
 		}
 		idkey := argon2.IDKey([]byte(user.Password), salt, uint32(t), uint32(m), uint8(p), uint32(len(key)))
