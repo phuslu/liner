@@ -14,9 +14,8 @@ listener accepts -> handler authenticates, classifies, routes, logs, copies -> d
 ```
 
 - The essential complexity is external protocol complexity (HTTP/1-3, QUIC,
-  MASQUE, SOCKS, SSH, DNS, WireGuard, TUN, platform sockets, auth tables,
-  operator YAML). Do not add a second layer of internal framework complexity on
-  top of it.
+  MASQUE, SOCKS, SSH, DNS, TUN, platform sockets, auth tables, operator YAML).
+  Do not add a second layer of internal framework complexity on top of it.
 - The repeated Listen -> Handle -> Dial shape is a cognitive compression
   device. After reading one handler or dialer, the next should look familiar;
   differences should be real protocol differences, not different local
@@ -38,8 +37,12 @@ listener accepts -> handler authenticates, classifies, routes, logs, copies -> d
 - Prefer a small closure, short helper, or straightforward switch over a new
   abstraction. No service objects, registries, builders, option structs, or
   interfaces unless polymorphism is already needed at that point.
-- Interfaces stay tiny and standard-library shaped (`Dialer` is one method;
-  handlers are `http.Handler` plus `Load(ctx)`).
+- Duplication is deliberate. Per-handler dialer selection blocks, per-OS copies
+  of shared types and functions, the stream `net.Conn` wrappers, yamux/QUIC
+  tuning literals (with different knobs per site), and full log chains at each
+  reject site are copied on purpose. Do not "clean up" by merging them into a
+  shared helper; copy the closest one when adding a new site.
+- Interfaces stay tiny and standard-library shaped (`Dialer` is one method).
 - Keep feature state on the handler/dialer struct; avoid new package globals
   and new exported names without a practical reason.
 - Short names in tight scopes (`h`, `d`, `req`, `ri`, `u`, `ln`, `conn`,
@@ -48,11 +51,12 @@ listener accepts -> handler authenticates, classifies, routes, logs, copies -> d
   platform behavior, performance constraints, non-obvious security decisions.
   Do not narrate ordinary Go.
 - Early returns over nested branches.
-- Match existing spelling and naming even when imperfect; grepability and
-  deployment continuity beat opportunistic cleanup.
+- Match existing spelling and naming even when imperfect (for example the
+  `invaild` in `Load` errors); grepability and deployment continuity beat
+  opportunistic cleanup.
 - Use existing helpers (`cmp.Or`, `first`, `must`, `lru`, `xsync.Map`,
   `FileLoader`, `NewCachingMap`) instead of introducing competing ones. Prefer
-  Go 1.26 idioms where they fit naturally, but do not churn old code to
+  Go 1.26+ idioms where they fit naturally, but do not churn old code to
   modernize it.
 - Do not add dependencies without a clear reason.
 
@@ -62,20 +66,72 @@ listener accepts -> handler authenticates, classifies, routes, logs, copies -> d
   templates, URL query parameters, or auth attributes before hard-coded policy.
 - URL schemes are the extension mechanism for dialers and DNS resolvers; prefer
   a scheme switch over a generic framework.
-- `Load(ctx)` does fail-fast work (validation, template parsing, regex
-  compilation, auth loaders, caches). Request paths must not re-parse stable
-  config.
+- Handlers do fail-fast work in `Load` (validation, template parsing, regex
+  compilation, auth loaders, caches). HTTP-family, SOCKS, SSH, and TUN take
+  `Load(ctx)`; DNS, SNI, stream, redsocks, tproxy, and tunnel take `Load()`.
+  Follow the neighbor. Request paths must not re-parse stable config.
 - Runtime wiring belongs in `main.go` unless a more local construction point
   already exists.
+- Defaults live at the point of use, never in a defaults table: zero means
+  default, written as `cmp.Or(query, config, literal)`. Durations are integer
+  seconds; a negative value usually disables the feature.
 - Parse with structured parsers (`netip`, `net`, `url`, `strconv`,
   `net.SplitHostPort`); ad hoc slicing only for fixed wire formats or measured
   hot paths. Dialer-template options go through `url.ParseQuery` /
   `json.Unmarshal`, not custom splitting.
-- Keep setup contexts and stream lifetimes separate. Never bind a returned
-  stream to a context that is only meant to bound setup.
-- Treat the split tunnel client files, raw HTTP/3 reverse tunnel path,
-  WireGuard dialer, and TUN forwarding hot path as intentional architecture,
-  not cleanup targets.
+- Treat the split tunnel client files, raw HTTP/3 reverse tunnel path, and TUN
+  forwarding hot path as intentional architecture, not cleanup targets.
+
+## Templates
+
+- Every template execution builds its data twice:
+  `if obfuscated { map[string]any{...} } else { struct{...} }`. Garble builds
+  rename struct fields, which breaks template field lookup, so the map branch
+  is required. A new template field must be added to both branches with the
+  same name.
+- Template data field names are a fixed vocabulary taken from the request
+  info: `Request`, `RealIP`, `ClientHelloInfo`, `JA4`, `UserAgent`,
+  `ServerAddr`, `User`. Reuse these names; do not invent synonyms.
+- Each handler carries its own copy of the dialer selection block: JSON when
+  output starts with `{"`, `url.ParseQuery` when it contains `=`, otherwise a
+  plain dialer name; empty name falls back to `LocalDialer`; IPv6 flags go into
+  ctx (disable before prefer), then forwarded headers. Copy it, do not abstract
+  it.
+- Dialer template output forms are compatibility surface:
+
+  ```text
+  proxy1
+  dialer=proxy1&disable_ipv6=true
+  {"dialer":"proxy1","prefer_ipv6":true}
+  ```
+
+  Transparent handlers (redsocks, tproxy) also accept `dialer-addrport-context`
+  to override the dial target.
+
+## Dialers
+
+- Dialers have no `Load`. Expensive state is built lazily on the first
+  `DialContext`: static state behind a mutex, live sessions in an
+  `atomic.Pointer` with a double-checked mutex. Clear a cached session with
+  CompareAndSwap only if it is still the same session.
+- Proxy dialers check `MemoryDialerOf(ctx, ...)` first and dial memory
+  addresses directly, before any underlay or proxy handshake.
+- Separate setup from stream lifetime with this idiom:
+  `streamCtx, streamCancel := context.WithCancel(context.WithoutCancel(ctx))`
+  plus `stop := context.AfterFunc(ctx, streamCancel)`; after setup, `!stop()`
+  means setup was cancelled, so tear down and return. Never bind a returned
+  stream to a context that only bounds setup.
+- TUN discovers bypass routes by reflecting over dialer fields named `Host`,
+  `Resolve`, and `Dialer` (the underlay chain). Keep those field names in every
+  dialer; renaming them silently loses the bypass route and can create a
+  routing loop.
+- Only `LocalDialer` enforces `global.forbid_local_addr` and the configured
+  DNS resolver. New outbound paths must go through `LocalDialer`. Known gaps
+  today: the HTTP/3 dialer, the tunnel HTTP/3 dial, and DoH/DoH3 transports
+  dial directly.
+- Carry context values (extra headers, IPv6 flags, memory dialers/listeners)
+  consistently through new dialers. Not every dialer composes the same way
+  (HTTP/3 dials QUIC directly).
 
 ## Compatibility
 
@@ -86,14 +142,9 @@ listener accepts -> handler authenticates, classifies, routes, logs, copies -> d
   the migration and keep the old path where practical.
 - `NewConfig` merges overlays manually: a new top-level field is not merged
   unless you add it. `@file` expansion is a whitelist, not a generic feature.
-- Preserve `global.forbid_local_addr` in every new outbound path.
-- Dialer template output accepts all three forms; keep them working:
-
-  ```text
-  proxy1
-  dialer=proxy1&disable_ipv6=true
-  {"dialer":"proxy1","prefer_ipv6":true}
-  ```
+- HTTP forward policy strings beyond the explicit cases (for example
+  `verify_auth` used in `example.yaml` and `get.sh`) rely on "anything other
+  than `bypass_auth` requires auth". Keep that fallthrough.
 
 ## Trust Boundaries
 
@@ -101,9 +152,20 @@ listener accepts -> handler authenticates, classifies, routes, logs, copies -> d
   auth command loaders/checkers, template `fetch`/`readfile`/`savefile`, web
   shell, SSH shell/exec/env, and deployment scripts must not expand trust
   boundaries casually.
-- Never log secrets: auth headers, PSKs, private keys, passwords, cookies, and
-  user command output need deliberate redaction or omission. Some existing
-  debug logging is broad; do not copy it into new protocols.
+- Never log secrets: auth headers, PSKs, private keys, passwords, password
+  hashes, cookies, and user command output need deliberate redaction or
+  omission. Some existing debug logging is broad; do not copy it into new
+  protocols.
+- Auth attributes are strings: `"1"` allows, `"0"` denies, `"-1"` means
+  privileged (no limit, skips listen checks). Gate attributes are named
+  `allow_<feature>`.
+- `Attrs` exist only after `CheckAuthUser` succeeds, because it overwrites the
+  user with the stored record. Check first, then read attributes; never compare
+  `user.Password` after the check.
+- Client-facing failures stay terse and unfingerprintable: failed proxy auth
+  goes through `RejectRequest` (random 1-3s delay, then 400, not 403); policy
+  rejection or unknown dialer returns 404; upstream or dial failure returns
+  502.
 - `X-Forwarded-For` is trusted only for authenticated proxy users or loopback
   clients.
 - HTTPS handlers intentionally reject `psk`; PSK wrapping belongs to plain HTTP
@@ -113,19 +175,25 @@ listener accepts -> handler authenticates, classifies, routes, logs, copies -> d
 - SSH client environment is allow-listed; other variables must never reach the
   session.
 
+## Request Lifetime
+
+- `HTTPRequestInfo` (`ri`) is pooled. Never retain it after `ServeHTTP`
+  returns or capture it in a goroutine that outlives the request. A new `ri`
+  field must be reset explicitly in the per-request reset code.
+- Look up process info at most once per connection (`sync.Once`) and return
+  nil when it is unavailable. Do not retry or sleep in the handler; that
+  approach was tried and reverted.
+
 ## Protocol Invariants Easy to Break
 
 - HTTP/1.1 and HTTP/2 reverse tunnels use yamux; HTTP/3 uses raw QUIC streams.
   Do not merge those paths.
 - HTTP/3 `CONNECT-UDP` relies on datagrams; keep client and server
   `EnableDatagrams` in sync.
-- Not every dialer composes the same way (HTTP/3 dials QUIC directly). Carry
-  context values (extra headers, IPv6 flags, memory dialers/listeners)
-  consistently through new dialers.
 - SNI routing must not terminate TLS; keep `ErrTLSServerNameHijacked` intact.
-- TUN throughput choices (gVisor stack, high default MTU, batched I/O, buffer
-  and headroom reuse, no GSO) are deliberate. Do not reduce defaults as
-  cleanup. TUN dial timeouts are setup-only.
+- TUN throughput choices (gVisor stack with gVisor GSO, high default MTU,
+  batched I/O, buffer and headroom reuse) are deliberate. Do not reduce
+  defaults as cleanup. TUN dial timeouts are setup-only.
 
 ## Hot Paths
 
@@ -133,18 +201,29 @@ listener accepts -> handler authenticates, classifies, routes, logs, copies -> d
   sensitive. Preserve `AppendableBytes`, `AppendReadFrom`, `b2s`/`s2b`,
   `bytebufferpool`, `sync.Pool`, DNS request reuse, and TUN buffer pools unless
   you measure and justify a replacement.
+- Idle timers on hot paths use an atomic last-activity `touch` with a lazily
+  re-armed timer. Never call `SetDeadline` or `Timer.Reset` per packet.
 - A cleaner abstraction that hides who owns buffers, deadlines, goroutines, or
   connections is a regression.
-- Keep connection reuse (HTTP/2, HTTP/3, QUIC, SSH, DNS, yamux, WireGuard).
+- Keep connection reuse (HTTP/2, HTTP/3, QUIC, SSH, DNS, yamux).
 - No global locks in forwarding paths unless isolated or measured.
 - `reflect` and `unsafe` stay in narrow places; do not spread them.
 
 ## Logging and Errors
 
-- Use `github.com/phuslu/log` with the stable field names already used nearby.
-- Log routing decisions with enough context to debug: policy, dialer, user,
+- Logger by layer: handlers use the global `github.com/phuslu/log`; resolvers
+  hold a phuslu `*log.Logger`; dialers hold an optional `*slog.Logger` and
+  nil-check it; SSH uses its injected `h.Logger`. Follow the layer you are in.
+- Two channels: operational logs use the global logger (`remote_ip` is the
+  address only, no port); per-connection records go to `h.DataLogger` starting
+  with `Str("logger", "<proto>")`, ending with `.Msg("")`, gated by the
+  handler's `Log` config, and written when the connection finishes.
+- Reuse the stable field names already used nearby (`trace_id`,
+  `server_addr`, `remote_ip`, `forward_dialer_name`, `tun_name`, ...). Log
+  routing decisions with enough context to debug: policy, dialer, user,
   host/port, network, config name.
-- Wrap errors across boundaries with `fmt.Errorf("...: %w", err)`.
+- Handlers wrap errors with `fmt.Errorf("...: %w", err)`. Dialers use a fixed
+  lowercase prefix (`httpdialer:`, `socksdialer:`, ...); follow the local file.
 - Unsupported behavior fails explicitly (commonly `errors.ErrUnsupported`),
   never silently emulates another platform.
 
@@ -152,6 +231,11 @@ listener accepts -> handler authenticates, classifies, routes, logs, copies -> d
 
 - OS behavior lives in build-tagged platform helpers unless a runtime guard
   already exists.
+- `_zzz.go` with `//go:build !darwin && !linux && !windows` is the
+  unsupported-OS fallback returning `errors.ErrUnsupported`. `_others.go` with
+  `//go:build !<os>` is used when only one OS is special and the rest share a
+  pass-through. Private platform helpers carry an OS prefix
+  (`linuxGetOriginalDST`).
 - When route, TUN, socket option, process lookup, or TCP pacing behavior
   changes on one OS, inspect the others and update them or leave an explicit
   unsupported path.
@@ -163,27 +247,48 @@ listener accepts -> handler authenticates, classifies, routes, logs, copies -> d
 ## Checklists
 
 Config key: field in `config.go` -> overlay merge in `NewConfig` -> decide
-`@file` -> wire in `main.go` or `Load(ctx)` -> update examples.
+`@file` -> wire in `main.go` or `Load` -> update examples.
 
-Dialer: follow the closest dialer -> options via `url.Query()` -> respect
-cancellation, memory dialers, resolver, TLS cache, IPv6 flags, underlay ->
-register scheme in `main.go` -> `errors.ErrUnsupported` for unsupported
-networks.
+Dialer: follow the closest dialer -> options via `url.Query()` -> memory dialer
+check, lazy init, cancellation, resolver, TLS cache, IPv6 flags, underlay, keep
+`Host`/`Resolve`/`Dialer` names -> register scheme in `main.go` ->
+`errors.ErrUnsupported` for unsupported networks.
 
 Template helper: implement in `functions.go` -> register in `Functions.Load`
 -> use existing caches -> document trust-boundary behavior if it touches files,
 URLs, or request/process data.
 
-## Validation
+## Tests
 
-```bash
-gofmt -w <changed-go-files>
-go test ./...
-go build -v
-```
+- Standard library only (`testing`, `testing/synctest`). Hand-written fakes
+  live in the same test file; no mock libraries, no table frameworks.
+- Prefer real loopback listeners or `net.Pipe`. Build the handler struct
+  literal directly instead of calling `Load`.
+- Every blocking step has a deadline or `time.After` failure. Assert lifetime
+  and ownership invariants (handler exits, conns closed), not just output.
+- Resolver tests hit the live network.
 
-If the build cache is not writable, use `GOCACHE=/tmp/liner-go-build`.
-Documentation-only edits need no Go tests.
+## Build, Release, and Commits
+
+- Release builds differ from a local `go build`: `build.bash` uses a forked Go
+  1.27 toolchain, patches the http2 writer buffer size, injects
+  `main.version=1.0.<commit count>` (the `1984` placeholder is load-bearing),
+  and rejects `.go` files with CRLF line endings.
+- CI only builds; it runs no tests and no gofmt gate. Run them yourself:
+
+  ```bash
+  gofmt -w <changed-go-files>
+  go test ./...
+  go build -v
+  ```
+
+  If the build cache is not writable, use `GOCACHE=/tmp/liner-go-build`.
+  Documentation-only edits need no Go tests.
+- Commit messages are lowercase imperative with no trailing period:
+  `fix/add/update/tweak X`, or scoped `fix(tun): ...`. Dependency bumps are
+  committed as `go get -u`. A trailing ` +pypi` triggers wheel upload and
+  ` +garble` installs garble; do not add them casually. Every push to master
+  replaces the rolling `v0.0.0` release assets.
 
 ## Leave Alone Unless Asked
 
