@@ -168,8 +168,12 @@ func (f *Functions) geosite(domain string) string {
 func (f *Functions) geoip(ip any) (info GeoIPInfo) {
 	var ipStr string
 	switch addr := ip.(type) {
+	case netip.AddrPort:
+		ipStr = addr.Addr().String()
 	case *netip.AddrPort:
 		ipStr = addr.Addr().String()
+	case netip.Addr:
+		ipStr = addr.String()
 	case *netip.Addr:
 		ipStr = addr.String()
 	case string:
