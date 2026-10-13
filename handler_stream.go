@@ -152,7 +152,7 @@ func (h *StreamHandler) ServeConn(conn net.Conn) {
 			Xid("trace_id", req.TraceID).
 			NetIPAddrPort("server_addr", req.ServerAddr).
 			NetIPAddr("remote_ip", req.RemoteAddr.Addr()).
-			Str("remote_country", info.City).
+			Str("remote_country", info.Country).
 			Str("remote_city", info.City).
 			Str("remote_isp", info.ISP).
 			Str("remote_connection_type", info.ConnectionType).
