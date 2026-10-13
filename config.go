@@ -410,7 +410,7 @@ func NewConfig(filename string) (*Config, error) {
 
 	for _, server := range config.Https {
 		if server.PSK != "" {
-			return nil, fmt.Errorf("invalid psk option in https handler: server_name=%#v, psk=%#v", server.ServerName, server.PSK)
+			return nil, fmt.Errorf("invalid psk option in https handler: server_name=%#v", server.ServerName)
 		}
 	}
 
