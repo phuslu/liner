@@ -93,11 +93,11 @@ func (h *SniHandler) ServeConn(ctx context.Context, servername string, header []
 		var sb strings.Builder
 		var err error
 		if obfuscated {
-			err = h.policy.Execute(&sb, map[string]any{
+			err = h.dialer.Execute(&sb, map[string]any{
 				"Request": req,
 			})
 		} else {
-			err = h.policy.Execute(&sb, struct {
+			err = h.dialer.Execute(&sb, struct {
 				Request SniRequest
 			}{
 				Request: req,
