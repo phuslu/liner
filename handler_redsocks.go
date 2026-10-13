@@ -186,7 +186,6 @@ func (h *RedsocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 			NetIPAddr("remote_ip", req.RemoteAddr.Addr()).
 			Str("redsocks_host", req.Host).
 			Uint16("redsocks_port", req.Port).
-			Str("forward_dialer_name", h.Config.Forward.Dialer).
 			Str("forward_dialer_name", dialerName).
 			Msg("")
 	}

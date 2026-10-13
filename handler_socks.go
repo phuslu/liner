@@ -407,7 +407,7 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 	})
 	rconn, err := dialer.DialContext(ctx, network, net.JoinHostPort(req.Host, strconv.Itoa(req.Port)))
 	if err != nil {
-		log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("forward_dialer_name", h.Config.Forward.Dialer).Str("socks_host", req.Host).Int("socks_port", req.Port).Int("socks_version", int(req.Version)).Str("forward_policy_name", policyName).Str("forward_dialer_name", dialerName).Msg("connect remote host failed")
+		log.Error().Err(err).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Str("socks_host", req.Host).Int("socks_port", req.Port).Int("socks_version", int(req.Version)).Str("forward_policy_name", policyName).Str("forward_dialer_name", dialerName).Msg("connect remote host failed")
 		socksWriteStatus(conn, Socks5StatusNetworkUnreachable)
 		if rconn != nil {
 			rconn.Close()
@@ -450,7 +450,6 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 			Str("remote_city", info.City).
 			Str("remote_isp", info.ISP).
 			Str("remote_connection_type", info.ConnectionType).
-			Str("forward_dialer_name", h.Config.Forward.Dialer).
 			Str("socks_host", req.Host).
 			Int("socks_port", req.Port).
 			Int("socks_version", int(req.Version)).
