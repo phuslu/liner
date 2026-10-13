@@ -3,7 +3,6 @@ global:
   log_backups: 2
   log_maxsize: 1073741824
   log_localtime: true
-  log_template_caller: 13
   max_idle_conns: 100
   dial_timeout: 30
   dns_cache_duration: 15m
@@ -55,11 +54,12 @@ https:
         keyfile: example_org.pem
     web:
       - location: /
-        index: /var/www/example.org
+        index:
+          root: /var/www/example.org
   - listen: [':443']
     server_name: ['ip.example.org']
     server_config:
-      example_org.pem:
+      ip.example.org:
         keyfile: example_org.pem
     web:
       - location: /
@@ -159,7 +159,9 @@ https:
           pass: 'http://127.0.0.1:80'
   - listen: [':443']
     server_name: ['fly.example.org']
-    prefer_chacha20: true
+    server_config:
+      fly.example.org:
+        prefer_chacha20: true
     forward:
       policy: |
         {{if regexMatch `^(git|curl|node|yarn|Go-http-client|Docker-Client|Homebrew)/` .Request.UserAgent}}
@@ -178,7 +180,7 @@ http:
           bypass_auth
         {{else if contains " YaBrowser/" .Request.UserAgent}}
           bypass_auth
-        {{else if infile (domain .Request.Host) "domainblacklist.txt"}}
+        {{else if inFileLine "domainblacklist.txt" (domain .Request.Host)}}
           reject
         {{else if .Request.Header.Get "proxy-authorization"}}
           verify_auth
@@ -193,7 +195,7 @@ http:
           proxy1
         {{else if eq "openai" (geosite .Request.Host)}}
           proxy1
-        {{else if ne "CN" (geoip .Request.Host).Country}}
+        {{else if ne "CN" (geoip (dnsResolve .Request.Host)).Country}}
           proxy2
         {{end}}
     web:
@@ -266,7 +268,7 @@ tunnel:
   - remote_listen: ['127.0.0.1:10022']
     proxy_pass: '192.168.50.1:22'
     resolver: https://8.8.8.8/dns-query
-    dialer: cloud
+    dialer: proxy2
     dial_timeout: 5
     idle_timeout: 3600
 sni:
