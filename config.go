@@ -347,6 +347,7 @@ func NewConfig(filename string) (*Config, error) {
 		config.Https = append(config.Https, c.Https...)
 		config.Http = append(config.Http, c.Http...)
 		config.Socks = append(config.Socks, c.Socks...)
+		config.Redsocks = append(config.Redsocks, c.Redsocks...)
 		config.Tproxy = append(config.Tproxy, c.Tproxy...)
 		config.Tunnel = append(config.Tunnel, c.Tunnel...)
 		config.Stream = append(config.Stream, c.Stream...)
