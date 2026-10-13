@@ -587,7 +587,7 @@ func (m *HTTPWebMiddlewareForwardAuth) ServeHTTP(rw http.ResponseWriter, req *ht
 		req2.Header.Set("X-Forwarded-Host", req.Host)
 		req2.Header.Set("X-Forwarded-URI", cmp.Or(req.URL.RequestURI(), "/"))
 		req2.Header.Set("X-Forwarded-Proto", cmp.Or(req2.Header.Get("X-Forwarded-Proto"), "https"))
-		if xff := req2.Header.Get("X-Forwarded-For"); xff == "" {
+		if xff := req2.Header.Get("X-Forwarded-For"); xff != "" {
 			req2.Header.Set("X-Forwarded-For", xff+", "+ri.RealIP.String())
 		} else {
 			req2.Header.Set("X-Forwarded-For", ri.RealIP.String())
