@@ -317,7 +317,7 @@ func (f *Functions) fetch(ua string, timeout, ttl int, uri string) (response Fet
 
 		log.Info().Str("fetch_url", uri).Int("fetch_response_status", result.Status).Any("fetch_response_headers", result.Headers).Int("fetch_response_length", len(result.Body)).Msg("fetch ok")
 
-		return result, time.Duration(ttl), nil
+		return result, time.Duration(ttl) * time.Second, nil
 	}
 
 	resp, _, _ := f.FetchCache.GetOrLoad(f.ctx, uri, loader)
