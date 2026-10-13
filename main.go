@@ -1319,6 +1319,7 @@ func main() {
 	for _, job := range config.Cron {
 		spec, command := job.Spec, job.Command
 		runner.AddFunc(spec, func() {
+			command := command
 			if strings.Contains(command, "{{") {
 				tmpl, err := functions.ParseTemplate(command, command)
 				if err != nil {
