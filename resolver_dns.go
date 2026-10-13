@@ -66,7 +66,8 @@ func (pool *DnsResolverPool) Get(addr string, ttl time.Duration) (*DnsResolver, 
 
 		u, err := url.Parse(addr)
 		if err != nil {
-			r.Err = fmt.Errorf("invalid dns_server addr: %s", addr)
+			r.Err = fmt.Errorf("invalid dns_server addr: %s: %w", addr, err)
+			return
 		}
 
 		switch u.Scheme {
