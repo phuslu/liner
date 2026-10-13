@@ -93,7 +93,7 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 					AllowAttr: "allow_index",
 				}
 			}
-			if tcpCongestion := web.Proxy.TcpCongestion; tcpCongestion != "" {
+			if tcpCongestion := web.Index.TcpCongestion; tcpCongestion != "" {
 				router.handler = &HTTPWebMiddlewareTcpCongestion{
 					Handler:       router.handler,
 					Location:      router.location,
