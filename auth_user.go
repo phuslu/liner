@@ -264,7 +264,7 @@ type AuthUserCommandLoader struct {
 
 func (loader *AuthUserCommandLoader) LoadAuthUsers(ctx context.Context) (map[string]AuthUserInfo, error) {
 	if loader.CacheTTL > 0 {
-		if ts := loader.mtime.Load(); 0 < ts && ts+int64(loader.CacheTTL) < time.Now().UnixNano() {
+		if ts := loader.mtime.Load(); 0 < ts && time.Now().UnixNano() < ts+int64(loader.CacheTTL) {
 			return loader.users.Load().(map[string]AuthUserInfo), nil
 		}
 	}
