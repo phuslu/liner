@@ -205,11 +205,15 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 		HasChaCha20:    hasChaCha20,
 	}
 
-	if v, _ := m.TLSConfigCache.Load(cacheKey); v.TLSConfig != nil && time.Now().Before(v.ExpiredAt) {
-		if info != nil {
-			info.Certificate = &v.TLSConfig.Certificates[0]
+	// ACME challenge certificates must bypass the regular certificate cache.
+	acme := len(hello.SupportedProtos) == 1 && hello.SupportedProtos[0] == "acme-tls/1"
+	if !acme {
+		if v, _ := m.TLSConfigCache.Load(cacheKey); v.TLSConfig != nil && time.Now().Before(v.ExpiredAt) {
+			if info != nil {
+				info.Certificate = &v.TLSConfig.Certificates[0]
+			}
+			return v.TLSConfig, nil
 		}
-		return v.TLSConfig, nil
 	}
 
 	cert, err := m.GetCertificate(hello)
@@ -250,6 +254,10 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 
 	if hasChaCha20 {
 		config.PreferServerCipherSuites = false
+	}
+
+	if acme {
+		return config, nil
 	}
 
 	var expiredAt time.Time
