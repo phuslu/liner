@@ -21,7 +21,7 @@ type icnsIcon struct {
 func main() {
 	output := "Liner.icns"
 	if len(os.Args) > 2 {
-		fmt.Fprintln(os.Stderr, "usage: go run liner-ico.go [output.icns]")
+		fmt.Fprintln(os.Stderr, "usage: go run liner-icns.go [output.icns]")
 		os.Exit(2)
 	}
 	if len(os.Args) == 2 {
