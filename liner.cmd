@@ -1,10 +1,11 @@
 rem =======================================================
 rem Liner Windows system tray app
+rem Usage: liner.cmd [profile.yaml] [-HideConsole]
 rem =======================================================
 @echo off
 setlocal
 set "LINER_CMD_SELF=%~f0"
-set "LINER_CMD_ARG=%~1"
+set "LINER_CMD_ARG=%*"
 start "" powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -WindowStyle Hidden -Command "$p=$env:LINER_CMD_SELF; $s=[IO.File]::ReadAllText($p); $m=([char]35)+' POWERSHELL_BEGIN'; $i=$s.IndexOf($m); if($i -lt 0){throw 'PowerShell marker not found'}; iex $s.Substring($i + $m.Length)"
 exit /b
 # POWERSHELL_BEGIN
@@ -184,6 +185,8 @@ $script:WorkDir = Split-Path -Parent $script:ScriptPath
 $script:Profiles = @()
 $script:ProfilesSignature = ''
 $script:SelectedProfile = $null
+$script:AutoStartProfile = $null
+$script:StartHidden = $false
 $script:ChildProcess = $null
 $script:ChildConsoleHandle = [IntPtr]::Zero
 $script:ExpectedStopPids = @{}
@@ -234,6 +237,22 @@ function Show-Notice {
     $script:TrayIcon.BalloonTipTitle = $Title
     $script:TrayIcon.BalloonTipText = $Message
     $script:TrayIcon.ShowBalloonTip(3000)
+}
+
+function Get-CommandLineTokens {
+    param([string]$CommandLine)
+    if (-not $CommandLine) {
+        return @()
+    }
+    $tokens = @()
+    foreach ($match in [regex]::Matches($CommandLine, '"([^"]*)"|(\S+)')) {
+        if ($match.Groups[1].Success) {
+            $tokens += $match.Groups[1].Value
+        } else {
+            $tokens += $match.Groups[2].Value
+        }
+    }
+    return $tokens
 }
 
 function Invoke-UiAction {
@@ -1104,7 +1123,11 @@ function Start-Child {
     $psi.FileName = $binPath
     $psi.WorkingDirectory = $script:WorkDir
     $psi.UseShellExecute = $true
-    $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Normal
+    if ($script:StartHidden) {
+        $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+    } else {
+        $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Normal
+    }
     $psi.Arguments = '"' + $configFile + '"'
 
     $process = [System.Diagnostics.Process]::Start($psi)
@@ -1439,21 +1462,39 @@ if ($linerVersion) {
 $script:AppContext = New-Object System.Windows.Forms.ApplicationContext
 Setup-Tray
 
-$script:AutoStartArg = $env:LINER_CMD_ARG
-if ($script:AutoStartArg) {
-    $argFileName = [System.IO.Path]::GetFileName($script:AutoStartArg)
+foreach ($token in (Get-CommandLineTokens $env:LINER_CMD_ARG)) {
+    if ($token -eq '-HideConsole') {
+        $script:StartHidden = $true
+    } elseif ($token.StartsWith('-')) {
+        Show-ErrorMessage "Unknown option: $token"
+        exit 1
+    } else {
+        $script:AutoStartProfile = $token
+    }
+}
+
+$autoStart = $false
+if ($script:AutoStartProfile) {
+    $argFileName = [System.IO.Path]::GetFileName($script:AutoStartProfile)
     if ($argFileName -and ($script:Profiles -contains $argFileName)) {
         $script:SelectedProfile = $argFileName
-        Update-ProfileMenuState
-        Update-ProxyMenuState
-        try {
-            Start-Child | Out-Null
-            Show-ChildConsole
-        } catch {
-            Show-ErrorMessage $_.Exception.Message
-        }
+        $autoStart = $true
     } elseif ($argFileName) {
         Show-ErrorMessage "Profile not found: $argFileName"
+    }
+} elseif ($script:StartHidden -and $script:SelectedProfile) {
+    $autoStart = $true
+}
+if ($autoStart) {
+    Update-ProfileMenuState
+    Update-ProxyMenuState
+    try {
+        Start-Child | Out-Null
+        if (-not $script:StartHidden) {
+            Show-ChildConsole
+        }
+    } catch {
+        Show-ErrorMessage $_.Exception.Message
     }
 }
 
