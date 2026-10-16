@@ -1163,6 +1163,19 @@ function Stop-Child {
             } catch {
                 $closed = $false
             }
+            if (-not $closed) {
+                # CloseMainWindow skips hidden windows, so post WM_CLOSE (0x0010) to the console window directly.
+                $consoleHandle = Get-ChildConsoleHandle
+                if ($consoleHandle -ne [IntPtr]::Zero) {
+                    $result = [UIntPtr]::Zero
+                    try {
+                        [LinerNativeMethods]::SendMessageTimeout($consoleHandle, 0x0010, [UIntPtr]::Zero, [NullString]::Value, 0x0002, $script:ChildStopTimeoutMs, [ref]$result) | Out-Null
+                        $closed = $true
+                    } catch {
+                        $closed = $false
+                    }
+                }
+            }
             if ($closed) {
                 $process.WaitForExit($script:ChildStopTimeoutMs) | Out-Null
             }
