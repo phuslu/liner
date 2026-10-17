@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title></title>
     <meta name="description" content="Liner WebShell" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@wterm/dom@0.5.4/src/terminal.css" />
     <style>
         body {
             margin: 0;
@@ -19,10 +20,20 @@
         }
         .webshell-terminal {
             flex: 1;
+            min-height: 0;
         }
         #terminal {
             width: 100%;
             height: 100%;
+        }
+        #terminal.wterm {
+            --term-bg: #101010;
+            --term-fg: #d4d4d4;
+            --term-cursor: #ffffff;
+            --term-font-family: Menlo, Monaco, "Courier New", monospace;
+            padding: 0;
+            border-radius: 0;
+            box-shadow: none;
         }
         #reconnect-overlay {
             display: none;
@@ -45,128 +56,166 @@
 </head>
 <body>
     <div class="webshell">
-        <div id="terminal" class="webshell-terminal"></div>
+        <div id="terminal" class="webshell-terminal" aria-label="Terminal"></div>
         <div id="reconnect-overlay"><div id="reconnect-box">Press ⏎ to Reconnect</div></div>
     </div>
 
-    <script type="module">
-        import { init, Terminal, FitAddon } from 'https://cdn.jsdelivr.net/npm/ghostty-web@0.4.0/dist/ghostty-web.js';
+    <!-- @wterm/dom + @wterm/ghostty 0.5.4; assets live in cdnjs.zip. -->
+    <script src="https://cdn.jsdelivr.net/npm/@wterm/dom@0.5.4/dist/wterm.bundle.js"></script>
+    <script>
+        (function () {
+            'use strict';
 
-        document.title = "{{ index .Values `title` }}" || "liner webshell";
+            var api = window.WTermBundle;
+            var terminalElement = document.getElementById('terminal');
+            var overlay = document.getElementById('reconnect-overlay');
+            var encoder = window.TextEncoder ? new TextEncoder() : null;
+            var baseTitle = {{ index .Values `title` | toJson }} || 'liner webshell';
+            var windowsMode = {{ .Request.URL.Query.Get `windows_mode` | default (index .Values `windows_mode`) | toJson }} === 'true';
+            var fontSize = parseInt({{ .Request.URL.Query.Get `font_size` | default (index .Values `font_size`) | toJson }}) || 14;
 
-        const terminal = document.getElementById('terminal');
-        const overlay = document.getElementById('reconnect-overlay');
-        let reconnectMode = false;
-        let term;
-        let fitAddon;
-        let ws;
+            document.title = baseTitle;
+            terminalElement.style.setProperty('--term-font-size', fontSize + 'px');
 
-        const encoder = new TextEncoder();
-        let framePending = false;
-        let queue = [];
+            var reconnectMode = false;
+            var term = null;
+            var ws = null;
+            var lastWasCR = false;
 
-        function flushQueue() {
-            framePending = false;
-            for (let i = 0; i < queue.length; i++) {
-                term.write(queue[i]);
+            if (!api || !api.WTerm || !api.GhosttyCore || !encoder || !window.WebSocket || !window.WebAssembly) {
+                terminalElement.textContent = 'Failed to initialize terminal: wterm requires a modern browser';
+                return;
             }
-            queue.length = 0;
-        }
 
-        function showReconnectOverlay() {
-            reconnectMode = true;
-            overlay.style.display = 'flex';
-            term.blur();
-            term.write('\r\n\x1b[31mSession Ended\x1b[0m\r\n');
-        }
-
-        function hideReconnectOverlay() {
-            reconnectMode = false;
-            overlay.style.display = 'none';
-            term.focus();
-        }
-
-        function sendResize() {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({
-                    type: 'resize',
-                    cols: term.cols,
-                    rows: term.rows
-                }));
+            function convertEol(data) {
+                var input = typeof data === 'string' ? encoder.encode(data) : data;
+                var hasLF = false;
+                var i;
+                for (i = 0; i < input.length; i++) {
+                    if (input[i] === 0x0a) {
+                        hasLF = true;
+                        break;
+                    }
+                }
+                if (!hasLF) {
+                    if (input.length) lastWasCR = input[input.length - 1] === 0x0d;
+                    return input;
+                }
+                var output = new Uint8Array(input.length * 2);
+                var length = 0;
+                for (i = 0; i < input.length; i++) {
+                    var byte = input[i];
+                    if (byte === 0x0a && !lastWasCR) output[length++] = 0x0d;
+                    output[length++] = byte;
+                    lastWasCR = byte === 0x0d;
+                }
+                return output.subarray(0, length);
             }
-        }
 
-        async function initTerminal() {
-            await init();
+            function writeOutput(data) {
+                term.write(windowsMode ? convertEol(data) : data);
+            }
 
-            const windowsMode = "{{ .Request.URL.Query.Get `windows_mode` | default (index .Values `windows_mode`) }}" == "true";
+            function showReconnectOverlay() {
+                reconnectMode = true;
+                overlay.style.display = 'flex';
+                if (document.activeElement && document.activeElement.blur) {
+                    document.activeElement.blur();
+                }
+                if (term) {
+                    term.write('\r\n\x1b[31mSession Ended\x1b[0m\r\n');
+                }
+            }
 
-            term = new Terminal({
-                cursorBlink: true,
-                disableStdin: false,
-                fontSize: parseInt("{{ .Request.URL.Query.Get `font_size` | default (index .Values `font_size`) }}") || 14,
-                fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-                theme: { background: '#101010' },
-                scrollback: 5000,
-                convertEol: windowsMode,
-            });
+            function hideReconnectOverlay() {
+                reconnectMode = false;
+                overlay.style.display = 'none';
+                if (term) term.focus();
+            }
 
-            fitAddon = new FitAddon();
-            term.loadAddon(fitAddon);
-
-            term.open(terminal);
-            fitAddon.fit();
-            fitAddon.observeResize();
-            window.addEventListener('resize', () => fitAddon.fit());
-
-            term.onResize(() => sendResize());
-
-            term.onData((data) => {
-                if (reconnectMode) return;
+            function sendResize() {
                 if (ws && ws.readyState === WebSocket.OPEN) {
-                    ws.send(encoder.encode(data));
+                    ws.send(JSON.stringify({
+                        type: 'resize',
+                        cols: term.cols,
+                        rows: term.rows
+                    }));
+                }
+            }
+
+            function initTerminal() {
+                return api.GhosttyCore.load({
+                    wasmPath: 'https://cdn.jsdelivr.net/npm/@wterm/ghostty@0.5.4/wasm/ghostty-vt.wasm',
+                    foregroundColor: '#d4d4d4',
+                    backgroundColor: '#101010',
+                    scrollbackLimit: 100000
+                }).then(function (core) {
+                    term = new api.WTerm(terminalElement, {
+                        core: core,
+                        autoResize: true,
+                        cursorBlink: true,
+                        onData: function (data) {
+                            if (!reconnectMode && ws && ws.readyState === WebSocket.OPEN) {
+                                ws.send(encoder.encode(data));
+                            }
+                        },
+                        onBinary: function (data) {
+                            if (!reconnectMode && ws && ws.readyState === WebSocket.OPEN) {
+                                ws.send(data);
+                            }
+                        },
+                        onResize: function () {
+                            sendResize();
+                        },
+                        onTitle: function (title) {
+                            document.title = title || baseTitle;
+                        }
+                    });
+                    return term.init();
+                }).then(function () {
+                    var websocketURL =
+                        location.protocol.replace('http', 'ws') + '//' +
+                        location.host +
+                        location.pathname.replace(/\/[^/]*$/, '') + '/ws';
+
+                    ws = new WebSocket(websocketURL);
+                    ws.binaryType = 'arraybuffer';
+
+                    ws.onmessage = function (event) {
+                        writeOutput(event.data instanceof ArrayBuffer ? new Uint8Array(event.data) : event.data);
+                    };
+
+                    ws.onopen = function () {
+                        hideReconnectOverlay();
+                        sendResize();
+                    };
+
+                    ws.onclose = function () {
+                        showReconnectOverlay();
+                    };
+
+                    ws.onerror = function (event) {
+                        console.error('websocket error:', event);
+                    };
+                });
+            }
+
+            initTerminal().then(null, function (error) {
+                console.error('Failed to initialize wterm/ghostty:', error);
+                terminalElement.textContent = 'Failed to initialize terminal: ' + (error && error.message ? error.message : error);
+            });
+
+            window.addEventListener('keydown', function (event) {
+                if (reconnectMode && event.key === 'Enter') {
+                    location.reload();
                 }
             });
 
-            ws = new WebSocket(
-                location.protocol.replace('http', 'ws') + '//' +
-                location.host +
-                location.pathname.replace(/\/[^/]*$/, '') + '/ws'
-            );
-            ws.binaryType = 'arraybuffer';
-
-            ws.onmessage = (event) => {
-                if (event.data instanceof ArrayBuffer) {
-                    queue.push(new Uint8Array(event.data));
-                } else {
-                    queue.push(event.data);
-                }
-                if (!framePending) {
-                    framePending = true;
-                    requestAnimationFrame(flushQueue);
-                }
-            };
-
-            ws.onopen = () => {
-                hideReconnectOverlay();
-                sendResize();
-            };
-
-            ws.onclose = () => {
-                showReconnectOverlay();
-            };
-        }
-
-        initTerminal().catch((error) => {
-            console.error('Failed to initialize ghostty-web:', error);
-            terminal.textContent = 'Failed to initialize terminal: ' + (error && error.message ? error.message : error);
-        });
-
-        window.addEventListener('keydown', (e) => {
-            if (reconnectMode && e.key === 'Enter') {
-                location.reload();
-            }
-        });
+            window.addEventListener('beforeunload', function () {
+                if (ws) ws.close();
+                if (term) term.destroy();
+            });
+        })();
     </script>
 </body>
 </html>
