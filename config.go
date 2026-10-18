@@ -430,3 +430,14 @@ func NewConfig(filename string) (*Config, error) {
 
 	return config, nil
 }
+
+func inspectConfig(config *Config) map[string]any {
+	tun := make([]map[string]any, 0, len(config.Tun))
+	for _, c := range config.Tun {
+		tun = append(tun, map[string]any{
+			"name":    c.Name,
+			"enabled": c.Enabled == nil || *c.Enabled,
+		})
+	}
+	return map[string]any{"tun": tun}
+}

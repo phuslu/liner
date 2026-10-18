@@ -678,30 +678,37 @@ static NSString *TrimSpaces(NSString *value) {
     return settings ? @{@"hasHTTP": @(hasHTTP), @"settings": settings} : @{@"hasHTTP": @(hasHTTP)};
 }
 
-- (BOOL)profileHasTunSection:(NSString *)configFile {
-    for (NSString *content in [self configContents:configFile]) {
-        if ([self yamlText:content hasTopLevelKey:@"tun"]) {
-            return YES;
-        }
-    }
-    return NO;
-}
+- (NSDictionary *)inspectConfig:(NSString *)configFile command:(ChildCommand *)command environment:(NSDictionary<NSString *, NSString *> *)environment {
+    NSTask *task = [NSTask new];
+    NSPipe *stdoutPipe = [NSPipe pipe];
+    NSPipe *stderrPipe = [NSPipe pipe];
+    task.launchPath = command.executable;
+    task.arguments = [command.arguments arrayByAddingObjectsFromArray:@[@"--inspect-config", configFile]];
+    task.currentDirectoryPath = self.workDir;
+    task.environment = environment;
+    task.standardInput = NSFileHandle.fileHandleWithNullDevice;
+    task.standardOutput = stdoutPipe;
+    task.standardError = stderrPipe;
 
-- (BOOL)yamlText:(NSString *)yamlText hasTopLevelKey:(NSString *)key {
-    NSString *keyPrefix = [key stringByAppendingString:@":"];
-    for (NSString *rawLine in [yamlText componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]]) {
-        if (Trim(rawLine).length == 0 || [TrimSpaces(rawLine) hasPrefix:@"#"]) {
-            continue;
-        }
-        if ([self lineIndent:rawLine] != 0) {
-            continue;
-        }
-        NSString *trimmed = Trim([self stripYAMLComment:rawLine]);
-        if ([trimmed isEqualToString:keyPrefix] || [trimmed hasPrefix:[keyPrefix stringByAppendingString:@" "]]) {
-            return YES;
-        }
+    NSError *error = nil;
+    if (![task launchAndReturnError:&error]) {
+        [self appendToConsole:[NSString stringWithFormat:@"Failed to inspect configuration: %@\n", error.localizedDescription] color:self.ansiColors[1]];
+        return nil;
     }
-    return NO;
+    [self startReading:stderrPipe];
+    NSData *data = [stdoutPipe.fileHandleForReading readDataToEndOfFile];
+    [task waitUntilExit];
+    if (task.terminationReason != NSTaskTerminationReasonExit || task.terminationStatus != 0) {
+        [self appendToConsole:@"Failed to inspect configuration.\n" color:self.ansiColors[1]];
+        return nil;
+    }
+
+    id inspection = [NSJSONSerialization JSONObjectWithData:data options:0 error:&error];
+    if (![inspection isKindOfClass:NSDictionary.class] || ![inspection[@"tun"] isKindOfClass:NSArray.class]) {
+        [self appendToConsole:@"Invalid config inspection result.\n" color:self.ansiColors[1]];
+        return nil;
+    }
+    return inspection;
 }
 
 - (NSString *)proxySettingsUnavailableTooltip {
@@ -1057,7 +1064,19 @@ static NSString *TrimSpaces(NSString *value) {
     NSMutableDictionary *environment = [NSMutableDictionary dictionaryWithDictionary:NSProcessInfo.processInfo.environment];
     environment[@"LINER_LOG_TO_STDERR"] = @"1";
 
-    BOOL requiresAdmin = [self profileHasTunSection:configFile];
+    NSDictionary *inspection = [self inspectConfig:configFile command:command environment:environment];
+    if (!inspection) {
+        [self updateProcessMenuState];
+        return NO;
+    }
+
+    BOOL requiresAdmin = NO;
+    for (NSDictionary *tun in inspection[@"tun"]) {
+        if ([tun[@"enabled"] boolValue]) {
+            requiresAdmin = YES;
+            break;
+        }
+    }
     if (requiresAdmin && ![self sudoCredentialsAvailable:environment]) {
         if (![self confirmTunAdmin]) {
             [self appendToConsole:@"Start canceled.\n" color:self.ansiColors[3]];
@@ -1164,7 +1183,7 @@ static NSString *TrimSpaces(NSString *value) {
 - (BOOL)confirmTunAdmin {
     NSAlert *alert = [NSAlert new];
     alert.messageText = @"TUN Requires Administrator Privileges";
-    alert.informativeText = @"The selected profile contains a tun: section. Liner needs administrator privileges to create and configure the TUN interface.";
+    alert.informativeText = @"The selected profile enables TUN. Liner needs administrator privileges to create and configure the TUN interface.";
     [alert addButtonWithTitle:@"Continue"];
     [alert addButtonWithTitle:@"Cancel"];
     [NSApp activateIgnoringOtherApps:YES];
