@@ -116,6 +116,13 @@ func main() {
 
 	// exit handlers
 	atexit := map[string]func() error{}
+	exit := func() {
+		log.Info().Msg("liner start exiting...")
+		for _, name := range slices.Backward(slices.Sorted(maps.Keys(atexit))) {
+			log.Info().Str("exit_name", name).Err(atexit[name]()).Msg("liner exit")
+		}
+		log.Info().Msg("liner exited.")
+	}
 
 	// log broadcaster
 	memoryLogWriter := ringbuffer.New(8192)
@@ -1251,14 +1258,6 @@ func main() {
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
 	defer cancel()
-
-	exit := func() {
-		log.Info().Msg("liner start exiting...")
-		for _, name := range slices.Backward(slices.Sorted(maps.Keys(atexit))) {
-			log.Info().Str("exit_name", name).Err(atexit[name]()).Msg("liner exit")
-		}
-		log.Info().Msg("liner exited.")
-	}
 
 	// tun handler
 	for _, tunConfig := range config.Tun {
