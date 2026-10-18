@@ -6,7 +6,6 @@ import (
 	"crypto/sha1"
 	"crypto/tls"
 	"encoding/binary"
-	"encoding/json"
 	"errors"
 	"io"
 	stdLog "log"
@@ -113,12 +112,6 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).Str("filename", filename).Msg("NewConfig() error")
 		os.Exit(1)
-	}
-	if slices.Contains(os.Args[1:], "--inspect-config") {
-		if err := json.NewEncoder(os.Stdout).Encode(inspectConfig(config)); err != nil {
-			log.Fatal().Err(err).Msg("inspect config error")
-		}
-		return
 	}
 
 	// exit handlers

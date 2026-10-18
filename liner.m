@@ -678,37 +678,127 @@ static NSString *TrimSpaces(NSString *value) {
     return settings ? @{@"hasHTTP": @(hasHTTP), @"settings": settings} : @{@"hasHTTP": @(hasHTTP)};
 }
 
-- (NSDictionary *)inspectConfig:(NSString *)configFile command:(ChildCommand *)command environment:(NSDictionary<NSString *, NSString *> *)environment {
-    NSTask *task = [NSTask new];
-    NSPipe *stdoutPipe = [NSPipe pipe];
-    NSPipe *stderrPipe = [NSPipe pipe];
-    task.launchPath = command.executable;
-    task.arguments = [command.arguments arrayByAddingObjectsFromArray:@[@"--inspect-config", configFile]];
-    task.currentDirectoryPath = self.workDir;
-    task.environment = environment;
-    task.standardInput = NSFileHandle.fileHandleWithNullDevice;
-    task.standardOutput = stdoutPipe;
-    task.standardError = stderrPipe;
+- (BOOL)profileRequiresTunAdmin:(NSString *)configFile {
+    // UI preflight only: ambiguous TUN shapes require elevation instead of being skipped.
+    for (NSString *content in [self configContents:configFile]) {
+        BOOL inTun = NO;
+        BOOL hasItem = NO;
+        BOOL itemEnabled = YES;
+        NSUInteger itemIndent = NSNotFound;
+        NSUInteger fieldIndent = NSNotFound;
 
-    NSError *error = nil;
-    if (![task launchAndReturnError:&error]) {
-        [self appendToConsole:[NSString stringWithFormat:@"Failed to inspect configuration: %@\n", error.localizedDescription] color:self.ansiColors[1]];
-        return nil;
-    }
-    [self startReading:stderrPipe];
-    NSData *data = [stdoutPipe.fileHandleForReading readDataToEndOfFile];
-    [task waitUntilExit];
-    if (task.terminationReason != NSTaskTerminationReasonExit || task.terminationStatus != 0) {
-        [self appendToConsole:@"Failed to inspect configuration.\n" color:self.ansiColors[1]];
-        return nil;
-    }
+        for (NSString *rawLine in [content componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]]) {
+            NSString *trimmed = Trim(rawLine);
+            if (trimmed.length == 0 || [trimmed hasPrefix:@"#"]) {
+                continue;
+            }
 
-    id inspection = [NSJSONSerialization JSONObjectWithData:data options:0 error:&error];
-    if (![inspection isKindOfClass:NSDictionary.class] || ![inspection[@"tun"] isKindOfClass:NSArray.class]) {
-        [self appendToConsole:@"Invalid config inspection result.\n" color:self.ansiColors[1]];
-        return nil;
+            NSUInteger indent = [self lineIndent:rawLine];
+            BOOL isItem = [trimmed isEqualToString:@"-"] || [trimmed hasPrefix:@"- "] || [trimmed hasPrefix:@"-\t"];
+
+            if (!inTun) {
+                if (indent != 0 || isItem) {
+                    continue;
+                }
+                NSString *line = Trim([self stripYAMLComment:rawLine]);
+                if ([line hasPrefix:@"\ufeff"]) {
+                    line = [line substringFromIndex:1];
+                }
+                if (![line isEqualToString:@"tun:"] && ![line hasPrefix:@"tun: "] && ![line hasPrefix:@"tun:\t"]) {
+                    continue;
+                }
+
+                inTun = YES;
+                itemIndent = NSNotFound;
+                fieldIndent = NSNotFound;
+                hasItem = NO;
+                itemEnabled = YES;
+
+                NSString *value = [self cleanYAMLScalar:TrimSpaces([line substringFromIndex:@"tun:".length])];
+                if (value.length == 0) {
+                    continue;
+                }
+                if ([value isEqualToString:@"[]"] || [value isEqualToString:@"~"] || [value caseInsensitiveCompare:@"null"] == NSOrderedSame) {
+                    inTun = NO;
+                    continue;
+                }
+                return YES;
+            }
+
+            if (isItem) {
+                if (itemIndent == NSNotFound) {
+                    itemIndent = indent;
+                }
+                if (indent < itemIndent) {
+                    return YES;
+                }
+                if (indent > itemIndent) {
+                    continue;
+                }
+                if (hasItem && itemEnabled) {
+                    return YES;
+                }
+
+                hasItem = YES;
+                itemEnabled = YES;
+                fieldIndent = NSNotFound;
+
+                NSString *candidate = trimmed.length > 1 ? TrimSpaces([trimmed substringFromIndex:1]) : @"";
+                if (candidate.length == 0 || [candidate hasPrefix:@"#"]) {
+                    continue;
+                }
+                if ([candidate hasPrefix:@"enabled:"]) {
+                    NSString *value = [self cleanYAMLScalar:TrimSpaces([candidate substringFromIndex:@"enabled:".length])];
+                    if (value.length == 0 || [value isEqualToString:@"~"] ||
+                        [value caseInsensitiveCompare:@"true"] == NSOrderedSame || [value caseInsensitiveCompare:@"null"] == NSOrderedSame) {
+                        itemEnabled = YES;
+                    } else if ([value caseInsensitiveCompare:@"false"] == NSOrderedSame) {
+                        itemEnabled = NO;
+                    } else {
+                        return YES;
+                    }
+                } else if (![candidate containsString:@":"]) {
+                    return YES;
+                }
+                continue;
+            }
+
+            if (indent == 0) {
+                if (hasItem && itemEnabled) {
+                    return YES;
+                }
+                inTun = NO;
+                continue;
+            }
+            if (!hasItem || indent < itemIndent) {
+                return YES;
+            }
+            if (indent == itemIndent) {
+                return YES;
+            }
+            if (fieldIndent == NSNotFound) {
+                fieldIndent = indent;
+            }
+            if (indent != fieldIndent || ![trimmed hasPrefix:@"enabled:"]) {
+                continue;
+            }
+
+            NSString *value = [self cleanYAMLScalar:TrimSpaces([trimmed substringFromIndex:@"enabled:".length])];
+            if (value.length == 0 || [value isEqualToString:@"~"] ||
+                [value caseInsensitiveCompare:@"true"] == NSOrderedSame || [value caseInsensitiveCompare:@"null"] == NSOrderedSame) {
+                itemEnabled = YES;
+            } else if ([value caseInsensitiveCompare:@"false"] == NSOrderedSame) {
+                itemEnabled = NO;
+            } else {
+                return YES;
+            }
+        }
+
+        if (inTun && hasItem && itemEnabled) {
+            return YES;
+        }
     }
-    return inspection;
+    return NO;
 }
 
 - (NSString *)proxySettingsUnavailableTooltip {
@@ -1064,19 +1154,7 @@ static NSString *TrimSpaces(NSString *value) {
     NSMutableDictionary *environment = [NSMutableDictionary dictionaryWithDictionary:NSProcessInfo.processInfo.environment];
     environment[@"LINER_LOG_TO_STDERR"] = @"1";
 
-    NSDictionary *inspection = [self inspectConfig:configFile command:command environment:environment];
-    if (!inspection) {
-        [self updateProcessMenuState];
-        return NO;
-    }
-
-    BOOL requiresAdmin = NO;
-    for (NSDictionary *tun in inspection[@"tun"]) {
-        if ([tun[@"enabled"] boolValue]) {
-            requiresAdmin = YES;
-            break;
-        }
-    }
+    BOOL requiresAdmin = [self profileRequiresTunAdmin:configFile];
     if (requiresAdmin && ![self sudoCredentialsAvailable:environment]) {
         if (![self confirmTunAdmin]) {
             [self appendToConsole:@"Start canceled.\n" color:self.ansiColors[3]];
