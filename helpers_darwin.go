@@ -327,7 +327,7 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 		prefix netip.Prefix
 		iface  string
 	}
-	var addedBypass []netip.Prefix
+	var addedBypass [][]string
 	var addedRoutes []tunRoute
 	var addedScopedRoutes []scopedRoute
 	parseRouteGetPrefix := func(msg string) (netip.Prefix, bool) {
@@ -433,6 +433,11 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 		}
 	}
 	cleanup := func() {
+		remove := func(args ...string) {
+			if msg, err := exec.Command("route", args...).CombinedOutput(); err != nil {
+				log.Warn().Err(err).Str("tun_name", name).Strs("cmd_args", args).Str("output", strings.TrimSpace(string(msg))).Msg("delete tun route failed")
+			}
+		}
 		for i := len(addedScopedRoutes) - 1; i >= 0; i-- {
 			route := addedScopedRoutes[i]
 			if err := deleteScopedRoute(route.prefix, route.iface); err != nil {
@@ -450,14 +455,10 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 			if route.scoped {
 				args = append(args, "-ifscope", name)
 			}
-			exec.Command("route", append(args, dst, "-interface", name)...).Run()
+			remove(append(args, dst, "-interface", name)...)
 		}
-		for _, prefix := range addedBypass {
-			args := []string{"-n", "delete", "-host", prefix.Addr().String()}
-			if prefix.Bits() != 32 {
-				args = []string{"-n", "delete", "-net", prefix.Masked().String()}
-			}
-			exec.Command("route", args...).Run()
+		for _, args := range addedBypass {
+			remove(args...)
 		}
 	}
 	ok := false
@@ -541,7 +542,8 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 			}
 			return nil, fmt.Errorf("set tun bypass route: route %s: %w: %s", strings.Join(args, " "), err, msg)
 		}
-		addedBypass = append(addedBypass, prefix)
+		args[1] = "delete"
+		addedBypass = append(addedBypass, args)
 	}
 
 	routes := make([]netip.Prefix, 0, len(routePrefixes))

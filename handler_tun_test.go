@@ -297,3 +297,46 @@ func TestTunUDPUnload(t *testing.T) {
 		})
 	}
 }
+
+func TestTunUnloadCleanupBeforeDeviceClose(t *testing.T) {
+	d := &tunTestDevice{closed: make(chan struct{})}
+	h := &TunHandler{device: d}
+	h.ctx, h.cancel = context.WithCancel(context.Background())
+	var calls atomic.Int32
+	h.cleanup = func() {
+		calls.Add(1)
+		if h.ctx.Err() != context.Canceled {
+			t.Error("cleanup ran before forwarding was canceled")
+		}
+		select {
+		case <-d.closed:
+			t.Error("device closed before route cleanup")
+		default:
+		}
+	}
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Go(func() { h.Unload() })
+	}
+	wg.Wait()
+	if calls.Load() != 1 {
+		t.Fatalf("cleanup calls = %d, want 1", calls.Load())
+	}
+	select {
+	case <-d.closed:
+	default:
+		t.Fatal("device was not closed")
+	}
+}
+
+func TestTunLoadCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	h := new(TunHandler)
+	if err := h.Load(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Load with canceled context: %v", err)
+	}
+	if h.device != nil || h.cleanup != nil {
+		t.Fatal("canceled setup created TUN resources")
+	}
+}

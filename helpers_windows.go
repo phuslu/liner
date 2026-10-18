@@ -18,6 +18,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/phuslu/log"
 	"golang.org/x/sys/windows"
 )
 
@@ -295,19 +296,24 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 		data, err := exec.Command("netsh", args...).CombinedOutput()
 		return strings.TrimSpace(string(data)), err
 	}
-	var addedBypass []netip.Prefix
+	var addedBypass [][]string
 	var addedRoutes []netip.Prefix
 	cleanup := func() {
+		remove := func(args ...string) {
+			if msg, err := exec.Command("netsh", args...).CombinedOutput(); err != nil {
+				log.Warn().Err(err).Str("tun_name", name).Strs("cmd_args", args).Str("output", strings.TrimSpace(string(msg))).Msg("delete tun route failed")
+			}
+		}
 		for _, route := range slices.Backward(addedRoutes) {
 
 			if route.Addr().Is4() {
-				exec.Command("netsh", "interface", "ipv4", "delete", "route", "prefix="+route.String(), "interface="+name).Run()
+				remove("interface", "ipv4", "delete", "route", "prefix="+route.String(), "interface="+name)
 			} else {
-				exec.Command("netsh", "interface", "ipv6", "delete", "route", "prefix="+route.String(), "interface="+name).Run()
+				remove("interface", "ipv6", "delete", "route", "prefix="+route.String(), "interface="+name)
 			}
 		}
-		for _, prefix := range addedBypass {
-			exec.Command("netsh", "interface", "ipv4", "delete", "route", "prefix="+prefix.Masked().String()).Run()
+		for _, args := range addedBypass {
+			remove(args...)
 		}
 	}
 	ok := false
@@ -418,7 +424,9 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 				}
 				return nil, fmt.Errorf("set tun bypass route: netsh %s: %w: %s", strings.Join(args, " "), err, msg)
 			}
-			addedBypass = append(addedBypass, prefix)
+			args[2] = "delete"
+			args = slices.Delete(args, 6, 7) // delete route does not accept metric
+			addedBypass = append(addedBypass, args)
 		}
 	}
 

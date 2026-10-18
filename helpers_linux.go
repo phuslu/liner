@@ -18,6 +18,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/phuslu/log"
 	"golang.org/x/sys/unix"
 )
 
@@ -384,18 +385,23 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 	if err != nil {
 		return nil, err
 	}
-	var addedBypass []netip.Prefix
+	var addedBypass [][]string
 	var addedRoutes []netip.Prefix
 	cleanup := func() {
+		remove := func(args ...string) {
+			if msg, err := exec.Command("ip", args...).CombinedOutput(); err != nil {
+				log.Warn().Err(err).Str("tun_name", name).Strs("cmd_args", args).Str("output", strings.TrimSpace(string(msg))).Msg("delete tun route failed")
+			}
+		}
 		for i := len(addedRoutes) - 1; i >= 0; i-- {
 			family := "-4"
 			if addedRoutes[i].Addr().Is6() {
 				family = "-6"
 			}
-			exec.Command("ip", family, "route", "delete", addedRoutes[i].String(), "dev", name).Run()
+			remove(family, "route", "delete", addedRoutes[i].String(), "dev", name)
 		}
-		for _, prefix := range addedBypass {
-			exec.Command("ip", "-4", "route", "delete", prefix.Masked().String()).Run()
+		for _, args := range addedBypass {
+			remove(args...)
 		}
 	}
 	ok := false
@@ -551,7 +557,8 @@ func ConfigureTunInterface(name string, addressPrefix netip.Prefix, routePrefixe
 				}
 				return nil, fmt.Errorf("set tun bypass route: ip %s: %w: %s", strings.Join(args, " "), err, msg)
 			}
-			addedBypass = append(addedBypass, prefix)
+			args[2] = "delete"
+			addedBypass = append(addedBypass, args)
 		}
 	}
 

@@ -234,7 +234,8 @@ tproxy:
       udp_timeout: 120
       dialer: proxy1
 tun:
-  - name: utun53
+  - enabled: true # omitted also enables TUN; false skips device and route setup
+    name: utun53
     address: 198.18.0.1/15
     disable_udp: false
     routes: []

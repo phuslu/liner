@@ -556,52 +556,6 @@ func main() {
 		tlsConfigurator.TLSServerNameHandle = handler.ServeConn
 	}
 
-	// tun handler
-	for _, tunConfig := range config.Tun {
-		tunResolver := dnsResolver
-		if server := strings.TrimSpace(tunConfig.DnsServer); server != "" {
-			tunResolver, err = dnsResolverPool.Get(server, 600*time.Second)
-			if err != nil {
-				log.Fatal().Err(err).Str("tun_name", tunConfig.Name).Str("dns_server", tunConfig.DnsServer).Msg("tun dns_server load error")
-			}
-		}
-		localdialer := *dialer
-		ip, err := GetPreferedLocalIP("1.1.1.1")
-		if err != nil {
-			log.Fatal().Err(err).Str("tun_name", tunConfig.Name).Msg("tun get prefered ip error")
-		}
-		log.Info().Str("tun_name", tunConfig.Name).NetIPAddr("tun_local_ip", ip).Msg("tun set local dialer interface ip")
-		localdialer.Interface = ip.String()
-		switch runtime.GOOS {
-		case "darwin":
-			name, err := GetNetInterfaceByLocalIP(ip)
-			if err != nil {
-				log.Fatal().Err(err).Str("tun_name", tunConfig.Name).NetIPAddr("tun_local_ip", ip).Msg("tun get prefered inerface error")
-			}
-			log.Info().Str("tun_name", tunConfig.Name).NetIPAddr("tun_local_ip", ip).Str("tun_local_interface", name).Msg("tun set local dialer interface ip")
-			localdialer.Interface = name
-		}
-		h := &TunHandler{
-			Config:      tunConfig,
-			DataLogger:  dataLogger,
-			GeoResolver: geoResolver,
-			DnsResolver: tunResolver,
-			LocalDialer: &localdialer,
-			Dialers:     dialers,
-			Functions:   functions,
-		}
-
-		if err = h.Load(context.Background()); err != nil {
-			log.Fatal().Err(err).Str("tun_name", tunConfig.Name).Msg("tun handler load error")
-		}
-
-		log.Info().Str("version", version).Str("tun_name", h.name).Int("tun_mtu", int(h.mtu.Load())).Msg("liner create and serve tun")
-
-		go h.Serve(context.Background())
-		// at exit
-		atexit["90-unload-tun-device-"+tunConfig.Name] = h.Unload
-	}
-
 	// listen and serve https
 	h2h3handlers := map[string]*struct {
 		Http2 bool
@@ -1295,6 +1249,90 @@ func main() {
 		}
 	}
 
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
+	defer cancel()
+
+	exit := func() {
+		log.Info().Msg("liner start exiting...")
+		for _, name := range slices.Backward(slices.Sorted(maps.Keys(atexit))) {
+			log.Info().Str("exit_name", name).Err(atexit[name]()).Msg("liner exit")
+		}
+		log.Info().Msg("liner exited.")
+	}
+
+	// tun handler
+	for _, tunConfig := range config.Tun {
+		if tunConfig.Enabled != nil && !*tunConfig.Enabled {
+			continue
+		}
+		if ctx.Err() != nil {
+			exit()
+			return
+		}
+		tunResolver := dnsResolver
+		if server := strings.TrimSpace(tunConfig.DnsServer); server != "" {
+			tunResolver, err = dnsResolverPool.Get(server, 600*time.Second)
+			if err != nil {
+				log.Error().Err(err).Str("tun_name", tunConfig.Name).Str("dns_server", tunConfig.DnsServer).Msg("tun dns_server load error")
+				exit()
+				os.Exit(255)
+			}
+		}
+		localdialer := *dialer
+		ip, err := GetPreferedLocalIP("1.1.1.1")
+		if err != nil {
+			log.Error().Err(err).Str("tun_name", tunConfig.Name).Msg("tun get prefered ip error")
+			exit()
+			os.Exit(255)
+		}
+		log.Info().Str("tun_name", tunConfig.Name).NetIPAddr("tun_local_ip", ip).Msg("tun set local dialer interface ip")
+		localdialer.Interface = ip.String()
+		switch runtime.GOOS {
+		case "darwin":
+			name, err := GetNetInterfaceByLocalIP(ip)
+			if err != nil {
+				log.Error().Err(err).Str("tun_name", tunConfig.Name).NetIPAddr("tun_local_ip", ip).Msg("tun get prefered inerface error")
+				exit()
+				os.Exit(255)
+			}
+			log.Info().Str("tun_name", tunConfig.Name).NetIPAddr("tun_local_ip", ip).Str("tun_local_interface", name).Msg("tun set local dialer interface ip")
+			localdialer.Interface = name
+		}
+		h := &TunHandler{
+			Config:      tunConfig,
+			DataLogger:  dataLogger,
+			GeoResolver: geoResolver,
+			DnsResolver: tunResolver,
+			LocalDialer: &localdialer,
+			Dialers:     dialers,
+			Functions:   functions,
+		}
+
+		if err = h.Load(ctx); err != nil {
+			if ctx.Err() != nil {
+				exit()
+				return
+			}
+			log.Error().Err(err).Str("tun_name", tunConfig.Name).Msg("tun handler load error")
+			exit()
+			os.Exit(255)
+		}
+
+		log.Info().Str("version", version).Str("tun_name", h.name).Int("tun_mtu", int(h.mtu.Load())).Msg("liner create and serve tun")
+
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			h.Serve(ctx)
+		}()
+		// at exit
+		atexit["90-unload-tun-device-"+h.name] = func() error {
+			err := h.Unload()
+			<-done
+			return err
+		}
+	}
+
 	var cronOptions = []cron.Option{
 		cron.WithSeconds(),
 		cron.WithLogger(cron.PrintfLogger(&log.DefaultLogger)),
@@ -1311,7 +1349,7 @@ func main() {
 		})
 		if slices.ContainsFunc(config.Http, func(c HTTPConfig) bool { return c.Forward.Log }) ||
 			slices.ContainsFunc(config.Https, func(c HTTPConfig) bool { return c.Forward.Log }) ||
-			slices.ContainsFunc(config.Tun, func(c TunConfig) bool { return c.Forward.Log }) ||
+			slices.ContainsFunc(config.Tun, func(c TunConfig) bool { return (c.Enabled == nil || *c.Enabled) && c.Forward.Log }) ||
 			len(config.Dns) > 0 {
 			runner.AddFunc("0 0 0 * * *", func() { dataLogger.Writer.(*log.AsyncWriter).Writer.(*log.FileWriter).Rotate() })
 		}
@@ -1354,14 +1392,7 @@ func main() {
 		SetProcessName(name)
 	}
 
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
-	defer cancel()
-
 	<-ctx.Done()
 
-	log.Info().Msg("liner start exiting...")
-	for _, name := range slices.Backward(slices.Sorted(maps.Keys(atexit))) {
-		log.Info().Str("exit_name", name).Err(atexit[name]()).Msg("liner exit")
-	}
-	log.Info().Msg("liner exited.")
+	exit()
 }

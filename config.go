@@ -162,6 +162,7 @@ type StreamConfig struct {
 }
 
 type TunConfig struct {
+	Enabled        *bool    `json:"enabled" yaml:"enabled"`
 	Name           string   `json:"name" yaml:"name"`
 	Address        string   `json:"address" yaml:"address"`
 	DisableIpv6    bool     `json:"disable_ipv6" yaml:"disable_ipv6"`

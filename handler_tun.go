@@ -94,6 +94,10 @@ type tunProcessDialer struct {
 }
 
 func (h *TunHandler) Load(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	var loaded bool
 	var err error
 
@@ -481,6 +485,9 @@ func (h *TunHandler) Unload() error {
 		if h.cancel != nil {
 			h.cancel()
 		}
+		if h.cleanup != nil {
+			h.cleanup()
+		}
 		if h.device != nil {
 			h.device.Close()
 		}
@@ -489,9 +496,6 @@ func (h *TunHandler) Unload() error {
 		}
 		if h.stack != nil {
 			h.stack.Close()
-		}
-		if h.cleanup != nil {
-			h.cleanup()
 		}
 	})
 	return nil
