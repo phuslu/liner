@@ -139,6 +139,7 @@ https:
           values:
             title: "webshell"
             font_size: "14"
+            foreground: "#d4d4d4"
             windows_mode: "true"
       - location: /cgi-bin/
         cgi:
