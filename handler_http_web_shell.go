@@ -103,7 +103,7 @@ func (h *HTTPWebShellHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	ctx := req.Context()
 
 	cmd := exec.CommandContext(ctx, cmp.Or(h.Command, "/bin/sh"))
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor")
 	cmd.Dir = cmp.Or(h.Home, os.Getenv("HOME"))
 
 	ptyfile, err := pty.Start(req.Context(), cmd)
