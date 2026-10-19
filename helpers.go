@@ -821,87 +821,161 @@ type MemoryListener struct {
 	Address  string
 	Listener net.Listener
 
-	once  sync.Once
-	queue chan struct {
-		conn net.Conn
-		err  error
-	}
+	once      sync.Once
+	closeOnce sync.Once
+	mu        sync.Mutex
+	closed    bool
+	closeErr  error
+	done      chan struct{}
+	queue     chan net.Conn
+	accepts   sync.WaitGroup
+	senders   sync.WaitGroup
 }
 
 func (ln *MemoryListener) init() {
-	ln.queue = make(chan struct {
-		conn net.Conn
-		err  error
-	}, 2048)
-	go func() {
-		if ln.Listener == nil {
-			return
-		}
-		for {
-			c, err := ln.Listener.Accept()
-			if err != nil {
-				if errors.Is(err, net.ErrClosed) {
-					break
-				}
-				time.Sleep(10 * time.Millisecond)
-				continue
-			}
-			ln.queue <- struct {
-				conn net.Conn
-				err  error
-			}{c, err}
-		}
-	}()
+	ln.done = make(chan struct{})
+	ln.queue = make(chan net.Conn, 2048)
+	if ln.Listener == nil {
+		return
+	}
+	ln.accepts.Add(1)
+	go ln.acceptLoop()
 }
 
-func (ln *MemoryListener) Accept() (c net.Conn, err error) {
+func (ln *MemoryListener) acceptLoop() {
+	defer ln.accepts.Done()
+	for {
+		c, err := ln.Listener.Accept()
+		if err != nil {
+			if c != nil {
+				_ = c.Close()
+			}
+			select {
+			case <-ln.done:
+				return
+			default:
+			}
+			if errors.Is(err, net.ErrClosed) {
+				return
+			}
+			select {
+			case <-ln.done:
+				return
+			case <-time.After(10 * time.Millisecond):
+			}
+			continue
+		}
+		select {
+		case ln.queue <- c:
+		case <-ln.done:
+			_ = c.Close()
+			return
+		}
+	}
+}
+
+func (ln *MemoryListener) Accept() (net.Conn, error) {
 	ln.once.Do(ln.init)
-	item := <-ln.queue
-	c, err = item.conn, item.err
-	return
+	select {
+	case <-ln.done:
+		return nil, net.ErrClosed
+	case c := <-ln.queue:
+		select {
+		case <-ln.done:
+			_ = c.Close()
+			return nil, net.ErrClosed
+		default:
+			return c, nil
+		}
+	}
 }
 
 func (ln *MemoryListener) Addr() net.Addr {
-	if ln.Listener == nil {
+	if ln.Listener != nil {
+		return ln.Listener.Addr()
+	}
+	addrport, err := netip.ParseAddrPort(ln.Address)
+	if err != nil {
 		return &net.TCPAddr{}
 	}
-	return ln.Listener.Addr()
+	return net.TCPAddrFromAddrPort(addrport)
 }
 
-func (ln *MemoryListener) Close() (err error) {
-	if ln.Listener != nil {
-		err = ln.Listener.Close()
-	}
-	for item := range ln.queue {
-		if item.conn != nil {
-			_ = item.conn.Close()
-			break
-		}
-	}
-	return
-}
-
-func (ln *MemoryListener) SendConn(c net.Conn) {
+func (ln *MemoryListener) Close() error {
 	ln.once.Do(ln.init)
-	ln.queue <- struct {
-		conn net.Conn
-		err  error
-	}{c, nil}
+	ln.closeOnce.Do(func() {
+		ln.mu.Lock()
+		ln.closed = true
+		close(ln.done)
+		ln.mu.Unlock()
+
+		if ln.Listener != nil {
+			ln.closeErr = ln.Listener.Close()
+		}
+
+		ln.senders.Wait()
+		ln.accepts.Wait()
+
+		for {
+			select {
+			case c := <-ln.queue:
+				_ = c.Close()
+			default:
+				return
+			}
+		}
+	})
+	return ln.closeErr
 }
 
-func (ln *MemoryListener) OpenConn() net.Conn {
+func (ln *MemoryListener) SendConn(c net.Conn) error {
+	if c == nil {
+		return errors.New("memory listener: nil conn")
+	}
+
+	ln.once.Do(ln.init)
+
+	ln.mu.Lock()
+	if ln.closed {
+		ln.mu.Unlock()
+		return net.ErrClosed
+	}
+	ln.senders.Add(1)
+	ln.mu.Unlock()
+	defer ln.senders.Done()
+
+	select {
+	case ln.queue <- c:
+		return nil
+	case <-ln.done:
+		return net.ErrClosed
+	}
+}
+
+func (ln *MemoryListener) OpenConn() (net.Conn, error) {
 	pr1, pw1 := ringbuffer.New(8192).Pipe()
 	pr2, pw2 := ringbuffer.New(8192).Pipe()
 
-	addrport, _ := netip.ParseAddrPort(ln.Address)
+	addrport, err := netip.ParseAddrPort(ln.Address)
+	if err != nil {
+		_ = pr1.Close()
+		_ = pw1.Close()
+		_ = pr2.Close()
+		_ = pw2.Close()
+		return nil, fmt.Errorf("memory listener: invalid address %q: %w", ln.Address, err)
+	}
 	addr := net.TCPAddrFromAddrPort(addrport)
 
 	conn1 := &memoryConn{pr1, pw2, addr, addr}
 	conn2 := &memoryConn{pr2, pw1, addr, addr}
 
-	ln.SendConn(conn1)
+	if err := ln.SendConn(conn1); err != nil {
+		_ = conn1.Close()
+		_ = conn2.Close()
+		return nil, err
+	}
 
-	return conn2
+	return conn2, nil
 }
 
 var _ net.Conn = (*memoryConn)(nil)
@@ -922,7 +996,15 @@ func (mc *memoryConn) Write(p []byte) (n int, err error) {
 }
 
 func (mc *memoryConn) Close() error {
-	return cmp.Or(mc.reader.Close(), mc.writer.Close())
+	return cmp.Or(mc.writer.Close(), mc.reader.Close())
+}
+
+func (mc *memoryConn) CloseRead() error {
+	return mc.reader.Close()
+}
+
+func (mc *memoryConn) CloseWrite() error {
+	return mc.writer.Close()
 }
 
 func (mc *memoryConn) LocalAddr() net.Addr {
@@ -933,6 +1015,8 @@ func (mc *memoryConn) RemoteAddr() net.Addr {
 	return mc.raddr
 }
 
+// ringbuffer cannot interrupt an in-flight read or write, so memory
+// connections are bounded by their owners closing them.
 func (mc *memoryConn) SetDeadline(t time.Time) error {
 	return nil
 }

@@ -73,7 +73,7 @@ func (d *LocalDialer) dialContext(ctx context.Context, network, address string, 
 			if d.Logger != nil {
 				d.Logger.Info("local dialer dialing memory listener", "memory_listener_address", ml.Address)
 			}
-			return ml.OpenConn(), nil
+			return ml.OpenConn()
 		}
 	}
 

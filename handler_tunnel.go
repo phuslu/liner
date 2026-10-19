@@ -112,7 +112,10 @@ func (h *TunnelHandler) handle(ctx context.Context, rconn net.Conn, laddr string
 	if h.MemoryListeners != nil {
 		if ml, ok := h.MemoryListeners.Load(h.Config.ProxyPass); ok && ml != nil {
 			log.Info().NetAddr("remote_host", rconn.RemoteAddr()).NetAddr("local_addr", ml.Addr()).Msg("tunnel handler memory listener local addr")
-			ml.SendConn(rconn)
+			if err := ml.SendConn(rconn); err != nil {
+				log.Warn().Err(err).NetAddr("remote_host", rconn.RemoteAddr()).Msg("tunnel handler memory listener send conn error")
+				_ = rconn.Close()
+			}
 			return
 		}
 	}
