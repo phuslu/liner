@@ -221,10 +221,9 @@ func (h *TunHandler) Load(ctx context.Context) error {
 			if resolver == nil || resolver.Client == nil {
 				return errors.New("dns resolver unavailable")
 			}
-			// DoH ignores Client.Timeout (conn deadlines are unsupported) and a
-			// captive portal black-holes it, so a single lookup can hang; retry
-			// until the portal is authorized. No tun route is installed yet, so
-			// the page stays reachable, and the deadline keeps Load fail-fast.
+			// A captive portal can black-hole DoH until authorized. No tun route
+			// is installed yet, so retry while its page remains reachable; the
+			// overall deadline bounds Load.
 			var ips []netip.Addr
 			deadline := time.Now().Add(5 * time.Minute)
 			for attempt := 1; ; attempt++ {

@@ -10,7 +10,7 @@ require (
 	github.com/libp2p/go-yamux/v5 v5.1.0
 	github.com/mileusna/useragent v1.3.5
 	github.com/oschwald/maxminddb-golang/v2 v2.8.0
-	github.com/phuslu/fastdns v0.17.1
+	github.com/phuslu/fastdns v0.17.2
 	github.com/phuslu/geosite v1.0.20250901
 	github.com/phuslu/gosh v0.0.0-20260927162804-bf75f9ea0d01
 	github.com/phuslu/log v1.0.138
