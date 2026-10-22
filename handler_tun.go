@@ -221,9 +221,35 @@ func (h *TunHandler) Load(ctx context.Context) error {
 			if resolver == nil || resolver.Client == nil {
 				return errors.New("dns resolver unavailable")
 			}
-			ips, err := resolver.LookupNetIP(ctx, "ip4", value)
-			if err != nil {
-				return err
+			// DoH ignores Client.Timeout (conn deadlines are unsupported) and a
+			// captive portal black-holes it, so a single lookup can hang; retry
+			// until the portal is authorized. No tun route is installed yet, so
+			// the page stays reachable, and the deadline keeps Load fail-fast.
+			var ips []netip.Addr
+			deadline := time.Now().Add(5 * time.Minute)
+			for attempt := 1; ; attempt++ {
+				lookupCtx, cancel := context.WithTimeout(ctx, cmp.Or(resolver.Client.Timeout, 5*time.Second))
+				ips, err = resolver.LookupNetIP(lookupCtx, "ip4", value)
+				cancel()
+				if err == nil {
+					break
+				}
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				if time.Now().After(deadline) {
+					return err
+				}
+				e := log.Warn()
+				if attempt > 1 {
+					e = log.Debug()
+				}
+				e.Err(err).Str("tun_name", h.name).Str("tun_host", value).Str("dns_server", resolver.Client.Addr).Msg("tun bypass host lookup failed")
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(5 * time.Second):
+				}
 			}
 			for _, ip := range ips {
 				prefixes = append(prefixes, netip.PrefixFrom(ip, 32))
