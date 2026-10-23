@@ -178,6 +178,10 @@ type TunConfig struct {
 			Name   string `json:"name" yaml:"name"`
 			Dialer string `json:"dialer" yaml:"dialer"`
 		} `json:"process_dialer" yaml:"process_dialer"`
+		DomainDialer []struct {
+			Domain string `json:"domain" yaml:"domain"`
+			Dialer string `json:"dialer" yaml:"dialer"`
+		} `json:"domain_dialer" yaml:"domain_dialer"`
 		Dialer         string `json:"dialer" yaml:"dialer"`
 		DialTimeout    int    `json:"dial_timeout" yaml:"dial_timeout"`
 		TcpTimeout     int    `json:"tcp_timeout" yaml:"tcp_timeout"`

@@ -3,17 +3,21 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"errors"
 	"io"
 	"net"
 	"net/netip"
 	"os"
+	"regexp"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
 
+	"github.com/quic-go/quic-go"
 	"golang.zx2c4.com/wireguard/tun"
 	"gvisor.dev/gvisor/pkg/tcpip/link/channel"
 )
@@ -234,7 +238,7 @@ func TestTunDialContextLifetime(t *testing.T) {
 	h := new(TunHandler)
 	h.ctx, h.cancel = context.WithCancel(context.Background())
 	h.Config.Forward.DialTimeout = 1
-	ctx, _, _, ok := h.prepareDial(TunRequest{ServerAddr: netip.MustParseAddrPort("1.1.1.1:443")})
+	ctx, _, _, ok := h.prepareDial(&TunRequest{ServerAddr: netip.MustParseAddrPort("1.1.1.1:443")})
 	if !ok {
 		t.Fatal("prepareDial failed")
 	}
@@ -338,5 +342,118 @@ func TestTunLoadCanceled(t *testing.T) {
 	}
 	if h.device != nil || h.cleanup != nil {
 		t.Fatal("canceled setup created TUN resources")
+	}
+}
+
+func tunTestQUICInitials(t *testing.T, serverName string) [][]byte {
+	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pc.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	go quic.DialAddr(ctx, pc.LocalAddr().String(), &tls.Config{ServerName: serverName, NextProtos: []string{"h3"}}, nil)
+	var datagrams [][]byte
+	for {
+		buf := make([]byte, 2048)
+		_ = pc.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
+		n, _, err := pc.ReadFrom(buf)
+		if err != nil {
+			break
+		}
+		datagrams = append(datagrams, buf[:n])
+	}
+	if len(datagrams) == 0 {
+		t.Fatal("no quic initial captured")
+	}
+	return datagrams
+}
+
+func TestTunSniffQUICClientHello(t *testing.T) {
+	initials := tunTestQUICInitials(t, "www.Example.com")
+	t.Logf("captured %d initial datagrams, first %d bytes", len(initials), len(initials[0]))
+	for _, reverse := range []bool{false, true} {
+		datagrams := slices.Clone(initials)
+		if reverse {
+			slices.Reverse(datagrams)
+		}
+		// trailing datagram padding outside the packet length
+		datagrams[0] = append(slices.Clone(datagrams[0]), 0, 0, 0, 0)
+		lconn, rconn := net.Pipe()
+		go func() {
+			for _, b := range datagrams {
+				if _, err := rconn.Write(b); err != nil {
+					return
+				}
+			}
+		}()
+		h := new(TunHandler)
+		hello, sniffed := h.sniffQUICClientHello(lconn, make([]byte, tunCopyBufferSize))
+		lconn.Close()
+		rconn.Close()
+		if hello == nil || hello.ServerName != "www.Example.com" {
+			t.Fatalf("reverse=%v datagrams=%d: unexpected hello %+v", reverse, len(datagrams), hello)
+		}
+		for i, b := range sniffed {
+			if !bytes.Equal(b, datagrams[i]) {
+				t.Fatalf("reverse=%v: sniffed datagram %d was modified", reverse, i)
+			}
+		}
+	}
+}
+
+func TestTunSniffQUICClientHelloNotQUIC(t *testing.T) {
+	lconn, rconn := net.Pipe()
+	defer lconn.Close()
+	defer rconn.Close()
+	go rconn.Write([]byte("not a quic packet"))
+	hello, sniffed := new(TunHandler).sniffQUICClientHello(lconn, make([]byte, tunCopyBufferSize))
+	if hello != nil || len(sniffed) != 1 || string(sniffed[0]) != "not a quic packet" {
+		t.Fatalf("unexpected sniff result %+v %q", hello, sniffed)
+	}
+}
+
+func TestTunDomainDialer(t *testing.T) {
+	proxy := tunTestDialer(func(context.Context, string, string) (net.Conn, error) { return nil, errors.ErrUnsupported })
+	h := &TunHandler{Dialers: map[string]Dialer{"proxy1": proxy}}
+	h.Config.Forward.DomainDialer = append(h.Config.Forward.DomainDialer, struct {
+		Domain string `json:"domain" yaml:"domain"`
+		Dialer string `json:"dialer" yaml:"dialer"`
+	}{Domain: `(^|\.)example\.com$`, Dialer: "dialer=proxy1&prefer_ipv6=true"})
+	h.dialer = nil
+	for i, config := range h.Config.Forward.DomainDialer {
+		var dd tunDomainDialer
+		var err error
+		if dd.dialer, dd.dialerName, dd.disableIPv6, dd.preferIPv6, err = h.parseForwardDialer(config.Dialer); err != nil {
+			t.Fatal(i, err)
+		}
+		dd.domain = regexp.MustCompile(config.Domain)
+		h.domainDialers = append(h.domainDialers, dd)
+	}
+	for _, c := range []struct {
+		serverName string
+		dialerName string
+	}{
+		{"www.EXAMPLE.com", "proxy1"},
+		{"example.com", "proxy1"},
+		{"notexample.com", ""},
+		{"", ""},
+	} {
+		calls := 0
+		req := &TunRequest{
+			ServerAddr: netip.MustParseAddrPort("1.1.1.1:443"),
+			TLSClientHello: func() (*tls.ClientHelloInfo, error) {
+				calls++
+				return &tls.ClientHelloInfo{ServerName: c.serverName}, nil
+			},
+		}
+		ctx, _, dialerName, ok := h.prepareDial(req)
+		if !ok || dialerName != c.dialerName || calls != 1 || req.ServerName != c.serverName {
+			t.Fatalf("%q: ok=%v dialer=%q calls=%d server_name=%q", c.serverName, ok, dialerName, calls, req.ServerName)
+		}
+		if (ctx.Value(DialerPreferIPv6ContextKey) != nil) != (c.dialerName == "proxy1") {
+			t.Fatalf("%q: prefer_ipv6 not applied", c.serverName)
+		}
 	}
 }

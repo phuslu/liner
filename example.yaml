@@ -251,6 +251,12 @@ tun:
       process_dialer:
         - path: chrome\.exe$
           dialer: proxy1
+      # matched against TLS SNI or QUIC v1 Initial SNI (lowercased), after process_dialer.
+      # ECH exposes only the outer public name; non-TLS traffic falls through to dialer,
+      # and server-first protocols (smtp, ftp) wait up to 1s for a client hello.
+      domain_dialer:
+        - domain: (^|\.)(openai\.com|chatgpt\.com)$
+          dialer: proxy1
       dialer: proxy1
       disable_ipv6: true
       dial_timeout: 10
