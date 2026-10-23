@@ -1138,6 +1138,10 @@ static NSString *TrimSpaces(NSString *value) {
     }
 
     NSString *configFile = self.selectedProfile;
+    if (!configFile && self.profiles.count > 1) {
+        [self promptForProfile];
+        configFile = self.selectedProfile;
+    }
     if (!configFile) {
         [self appendToConsole:@"No profile selected. Choose one from Profiles in the status menu.\n" color:self.ansiColors[1]];
         [self updateProcessMenuState];
@@ -1266,6 +1270,22 @@ static NSString *TrimSpaces(NSString *value) {
     [alert addButtonWithTitle:@"Cancel"];
     [NSApp activateIgnoringOtherApps:YES];
     return [alert runModal] == NSAlertFirstButtonReturn;
+}
+
+- (void)promptForProfile {
+    NSPopUpButton *popup = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(0, 0, 260, 26) pullsDown:NO];
+    [popup addItemsWithTitles:self.profiles];
+    NSAlert *alert = [NSAlert new];
+    alert.messageText = @"Select a Liner Profile";
+    alert.informativeText = @"Multiple profiles were found. Choose one to start liner; you can change it later from Profiles in the status menu.";
+    alert.accessoryView = popup;
+    [alert addButtonWithTitle:@"Start"];
+    [alert addButtonWithTitle:@"Cancel"];
+    [NSApp activateIgnoringOtherApps:YES];
+    if ([alert runModal] != NSAlertFirstButtonReturn) {
+        return;
+    }
+    [self applyProfile:popup.titleOfSelectedItem];
 }
 
 - (NSDictionary *)authorizeSudo:(NSDictionary<NSString *, NSString *> *)environment {
@@ -1631,6 +1651,10 @@ static NSString *TrimSpaces(NSString *value) {
         [self rebuildProfileMenu];
         return;
     }
+    [self applyProfile:profile];
+}
+
+- (void)applyProfile:(NSString *)profile {
     self.selectedProfile = profile;
     [self updateProfileMenuState];
     [self updateProxyMenuState];
