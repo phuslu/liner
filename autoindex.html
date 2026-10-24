@@ -1,5 +1,5 @@
 
-<!-- autoindex.html 2026-10-23 for nginx, see https://phus.lu -->
+<!-- autoindex.html 2026-10-24 for nginx, see https://phus.lu -->
 <script>
 !function(){
 	website_title = ''
@@ -32,6 +32,11 @@
 			this.element.setAttribute(k, v)
 			return this
 		}
+	}
+
+	var specialchars = {'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}
+	var escape = function (s) {
+		return String(s).replace(/[&<>"']/g, function (c) { return specialchars[c] })
 	}
 
 	head = dom.get(document.head)
@@ -72,9 +77,10 @@
 	table = div.add('table').attr('class', 'table-hover').add('tbody')
 
 	columns = ['Name', 'Date', 'Size']
-	thead = table.add('tr')
+	rows = ['<tr>']
 	for (i = 0; i < columns.length; i++)
-		thead.add('td').add('a').attr('href', 'javascript:sortby('+i+')').attr('class', 'octicon arrow-up').text(columns[i]);
+		rows.push('<td><a href="javascript:sortby('+i+')" class="octicon arrow-up">'+columns[i]+'</a></td>')
+	rows.push('</tr>')
 
 	var named_icons = {
 		'license': 'law', 'licence': 'law', 'copying': 'law', 'notice': 'law', 'patents': 'law',
@@ -201,10 +207,7 @@
 					.replace('%b', mon(d.getMonth()))
 		}
 
-		tr = table.add('tr')
-		tr.add('td').add('a').attr('class', css).attr('href', filename).text(displayname)
-		tr.add('td').text(datetime)
-		tr.add('td').text(size == '-' ? '' : size)
+		rows.push('<tr><td><a class="'+css+'" href="'+escape(filename)+'">'+escape(displayname)+'</a></td><td>'+escape(datetime)+'</td><td>'+escape(size == '-' ? '' : size)+'</td></tr>')
 	}
 
 	var readme_md = ''
@@ -217,6 +220,8 @@
 			size = m[5]
 			switch (filename.toLowerCase()) {
 			  case 'readme.md':
+			    if (!readme_md)
+			      head.add('link').attr('rel', 'preconnect').attr('href', 'https://cdnjs.cloudflare.com').attr('crossorigin', '')
 			    readme_md = filename
 			    break;
 			  case 'readme.js':
@@ -227,51 +232,57 @@
 			insert(filename, datetime, size)
 		}
 	}
+	table.html(rows.join(''))
 
 	document.documentElement.lang = navigator.language
 	document.body.appendChild(div.element)
 
 	if (enable_readme && readme_md !== '') {
-		xhr = new XMLHttpRequest()
-		xhr.open('GET', location.pathname.replace(/[^/]+$/, '')+readme_md, true)
-		xhr.onload = function() {
-			if (xhr.status < 200 || xhr.status >= 300)
+		var readme_text = null
+		var readme_style_ready = false
+		var render_readme = function() {
+			if (readme_text === null || !window.marked || !readme_style_ready)
 				return
-			wait('marked', function() {
-				text = xhr.responseText
-				begin = text.indexOf('<!--<script>')
-				end = text.indexOf("\n</" + "script>-->")
-				if (begin != 0) {
-					readme = div.add('table').add('tbody');
-					readme.add('tr').add('th').attr('colspan', '3').add('span').attr('class', 'octicon book').text(readme_md)
-					readme.add('tr').add('td').attr('colspan', '3').add('div').attr('id', 'readme').attr('class', 'markdown-body').html(marked.parse(text))
-				}
-				if (begin < end)
-					div.add('script').html(text.substr(begin+4+8, end+1-begin-4-8))
-			})
+			text = readme_text
+			begin = text.indexOf('<!--<script>')
+			end = text.indexOf("\n</" + "script>-->")
+			if (begin != 0) {
+				readme = div.add('table').add('tbody');
+				readme.add('tr').add('th').attr('colspan', '3').add('span').attr('class', 'octicon book').text(readme_md)
+				readme.add('tr').add('td').attr('colspan', '3').add('div').attr('id', 'readme').attr('class', 'markdown-body').html(marked.parse(text))
+			}
+			if (begin < end)
+				div.add('script').html(text.substr(begin+4+8, end+1-begin-4-8))
 		}
-		xhr.send()
+		var load_readme = function() {
+			xhr = new XMLHttpRequest()
+			xhr.open('GET', location.pathname.replace(/[^/]+$/, '')+readme_md, true)
+			xhr.onload = function() {
+				if (xhr.status < 200 || xhr.status >= 300)
+					return
+				readme_text = xhr.responseText
+				render_readme()
+			}
+			xhr.send()
 
-		div.add('script').attr('src', 'https://cdnjs.cloudflare.com/ajax/libs/marked/0.5.2/marked.min.js').attr('integrity', 'sha256-zFUosuESzULu5P+SZdjRRtBZR8+1u5RZDlbt3Q5KL8U=').attr('crossorigin', 'anonymous')
-		div.add('link').attr('rel', 'stylesheet').attr('href', 'https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.1.0/github-markdown-light.min.css').attr('integrity', 'sha256-WQx0Y6LLZeGv3V3NVVge+YIL5MIOt45RPuFdkyNodls=').attr('crossorigin', 'anonymous')
+			marked_script = div.add('script').attr('src', 'https://cdnjs.cloudflare.com/ajax/libs/marked/0.5.2/marked.min.js').attr('integrity', 'sha256-zFUosuESzULu5P+SZdjRRtBZR8+1u5RZDlbt3Q5KL8U=').attr('crossorigin', 'anonymous')
+			marked_script.element.onload = render_readme
+			marked_style = div.add('link').attr('rel', 'stylesheet').attr('href', 'https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.1.0/github-markdown-light.min.css').attr('integrity', 'sha256-WQx0Y6LLZeGv3V3NVVge+YIL5MIOt45RPuFdkyNodls=').attr('crossorigin', 'anonymous')
+			marked_style.element.onload = marked_style.element.onerror = function() {
+				readme_style_ready = true
+				render_readme()
+			}
+		}
+		// README is below the listing, so keep its remote dependencies off the critical path.
+		if (window.requestIdleCallback)
+			requestIdleCallback(load_readme, {timeout: 500})
+		else
+			setTimeout(load_readme, 0)
 	}
 	if (enable_readme && readme_js !== '') {
 		div.add('script').attr('src', readme_js)
 	}
 }()
-
-function wait(name, callback) {
-	var interval = 10; // ms
-	window.setTimeout(function() {
-		if (window[name] && !(window[name] instanceof HTMLElement)) {
-			callback(window[name])
-		} else if (window[name] instanceof HTMLElement && window[name].innerHTML) {
-			callback(window[name])
-		} else {
-			window.setTimeout(arguments.callee, interval)
-		}
-	}, interval)
-}
 
 function sortby(index) {
 	rows = document.getElementsByClassName('table-hover')[0].rows
@@ -310,6 +321,9 @@ function sortby(index) {
 	--bgColor-default: #ffffff;
 	--bgColor-muted: #f6f8fa;
 	--fgColor-accent: #0969da;
+}
+html {
+	scrollbar-gutter: stable;
 }
 body {
 	margin: 0;
@@ -425,6 +439,27 @@ table.table-hover > tbody > tr > td:nth-child(3) {
 	}
 	table th, table td {
 		padding: 7px 10px;
+	}
+	table.table-hover {
+		table-layout: fixed;
+	}
+	table.table-hover > tbody > tr > td:first-child {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	table.table-hover > tbody > tr > td:nth-child(2) {
+		width: 10.5em;
+		font-size: 12px;
+	}
+	table.table-hover > tbody > tr > td:nth-child(3) {
+		width: 4.5em;
+		font-size: 12px;
+	}
+}
+@media (max-width: 360px) {
+	table.table-hover > tbody > tr > td:nth-child(3) {
+		display: none;
 	}
 }
 .octicon.file-audio {
