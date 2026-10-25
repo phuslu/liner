@@ -34,10 +34,8 @@
 		}
 	}
 
-	var specialchars = {'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}
-	var escape = function (s) {
-		return String(s).replace(/[&<>"']/g, function (c) { return specialchars[c] })
-	}
+	var htmlchars = {'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}
+	var htmlescape = function (s) { return String(s).replace(/[&<>"']/g, function (c) { return htmlchars[c] }) }
 
 	head = dom.get(document.head)
 	// head.add('link').attr('rel', 'manifest').attr('href', '/manifest.json')
@@ -207,7 +205,7 @@
 					.replace('%b', mon(d.getMonth()))
 		}
 
-		rows.push('<tr><td><a class="'+css+'" href="'+escape(filename)+'">'+escape(displayname)+'</a></td><td>'+escape(datetime)+'</td><td>'+escape(size == '-' ? '' : size)+'</td></tr>')
+		rows.push('<tr><td><a class="'+css+'" href="'+htmlescape(filename)+'">'+htmlescape(displayname)+'</a></td><td>'+htmlescape(datetime)+'</td><td>'+htmlescape(size == '-' ? '' : size)+'</td></tr>')
 	}
 
 	var readme_md = ''
@@ -257,10 +255,13 @@
 		var load_readme = function() {
 			xhr = new XMLHttpRequest()
 			xhr.open('GET', location.pathname.replace(/[^/]+$/, '')+readme_md, true)
+			xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest')
 			xhr.onload = function() {
 				if (xhr.status < 200 || xhr.status >= 300)
 					return
-				readme_text = xhr.responseText
+				response_text = xhr.responseText
+				appendix_index = response_text.indexOf('<!-- markdown for nginx')
+				readme_text = appendix_index < 0 ? response_text : response_text.slice(0, appendix_index).replace(/\r?\n$/, '')
 				render_readme()
 			}
 			xhr.send()
