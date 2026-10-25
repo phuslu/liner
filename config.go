@@ -72,6 +72,7 @@ type HTTPConfig struct {
 			Charset       string `json:"charset" yaml:"charset"`
 			Body          string `json:"body" yaml:"body"`
 			File          string `json:"file" yaml:"file"`
+			MarkdownHtml  bool   `json:"markdown_html" yaml:"markdown_html"`
 		} `json:"index" yaml:"index"`
 		Cgi struct {
 			Root           string `json:"root" yaml:"root"`

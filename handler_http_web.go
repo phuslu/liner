@@ -77,13 +77,14 @@ func (h *HTTPWebHandler) Load(ctx context.Context) error {
 			}
 		case web.Index.Root != "" || web.Index.Body != "" || web.Index.File != "":
 			router.handler = &HTTPWebIndexHandler{
-				Location:  web.Location,
-				Root:      web.Index.Root,
-				Headers:   web.Index.Headers,
-				Charset:   web.Index.Charset,
-				Body:      web.Index.Body,
-				File:      web.Index.File,
-				Functions: h.Functions,
+				Location:     web.Location,
+				Root:         web.Index.Root,
+				Headers:      web.Index.Headers,
+				Charset:      web.Index.Charset,
+				Body:         web.Index.Body,
+				File:         web.Index.File,
+				MarkdownHTML: web.Index.MarkdownHtml,
+				Functions:    h.Functions,
 			}
 			if table := web.Index.AuthTable; table != "" {
 				router.handler = &HTTPWebMiddlewareAuthTable{

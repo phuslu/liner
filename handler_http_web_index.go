@@ -24,17 +24,19 @@ import (
 )
 
 type HTTPWebIndexHandler struct {
-	Location  string
-	Root      string
-	Headers   string
-	Charset   string
-	Body      string
-	File      string
+	Location     string
+	Root         string
+	Headers      string
+	Charset      string
+	Body         string
+	File         string
+	MarkdownHTML bool
+
 	Functions *Functions
 
-	headers  *template.Template
-	body     *template.Template
-	markdown string
+	headers      *template.Template
+	body         *template.Template
+	markdownHTML string
 }
 
 func (h *HTTPWebIndexHandler) Load(ctx context.Context) (err error) {
@@ -57,9 +59,11 @@ func (h *HTTPWebIndexHandler) Load(ctx context.Context) (err error) {
 		return
 	}
 
-	h.markdown = markdownHTML
-	if replacer != nil {
-		h.markdown = replacer.Replace(h.markdown)
+	if h.MarkdownHTML {
+		h.markdownHTML = markdownHTML
+		if replacer != nil {
+			h.markdownHTML = replacer.Replace(h.markdownHTML)
+		}
 	}
 
 	return
@@ -207,21 +211,6 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	}
 
 	if !fi.IsDir() {
-		if strings.EqualFold(filepath.Ext(fullname), ".md") && req.URL.Query().Get("html") == "1" {
-			text, err := os.ReadFile(fullname)
-			if err != nil {
-				log.Error().Context(ri.LogContext).Err(err).Str("file", fullname).Msg("read markdown file error")
-				http.Error(rw, err.Error(), http.StatusInternalServerError)
-				return
-			}
-
-			h.addHeaders(rw, req, ri)
-			rw.Header().Set("content-type", "text/html; charset=UTF-8")
-			rw.Write(text)
-			io.WriteString(rw, h.markdown)
-			return
-		}
-
 		file, err := os.Open(fullname)
 		if err != nil {
 			http.Error(rw, "500 internal server error", http.StatusInternalServerError)
@@ -230,6 +219,15 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		defer file.Close()
 
 		h.addHeaders(rw, req, ri)
+		if h.MarkdownHTML && strings.EqualFold(filepath.Ext(fullname), ".md") &&
+			strings.HasPrefix(req.UserAgent(), "Mozilla/") && req.Header.Get("x-requested-with") != "XMLHttpRequest" {
+			rw.Header().Set("content-type", "text/html; charset=UTF-8")
+			if _, err := io.Copy(rw, file); err == nil {
+				io.WriteString(rw, h.markdownHTML)
+			}
+			return
+		}
+
 		if rw.Header().Get("content-type") == "" {
 			if s := GetMimeTypeByExtension(filepath.Ext(fullname)); s != "" {
 				if strings.HasPrefix(s, "text/") {

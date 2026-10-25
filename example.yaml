@@ -57,6 +57,7 @@ https:
       - location: /
         index:
           root: /var/www/example.org
+          markdown_html: true
   - listen: [':443']
     server_name: ['ip.example.org']
     server_config:
@@ -204,6 +205,7 @@ http:
       - location: /
         index:
           root: 'C:/Users/phuslu/Desktop'
+          markdown_html: true
 socks:
   - listen: [':1081']
     forward:
