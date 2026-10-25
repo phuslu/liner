@@ -44,11 +44,23 @@
     }
 
     var bodytext = ''
-    for (node = document.body.firstChild; node; node = node.nextSibling) {
-        if (node.nodeType == 8 && /markdown for nginx/.test(node.textContent)) break
-        bodytext += node.nodeType == 8 ? '<!--' + node.textContent + '-->' : (node.nodeType == 1 ? node.outerHTML : node.textContent)
+    var serializedBody = document.body.innerHTML
+    var markerIndex = serializedBody.indexOf('<!-- markdown for nginx')
+    if (markerIndex >= 0) {
+        var textareaEnd = '__MARKDOWN_TEXTAREA_END__'
+        var textarea = document.createElement('textarea')
+        textarea.innerHTML = serializedBody.slice(0, markerIndex).replace(/<\/textarea/gi, textareaEnd)
+        bodytext = textarea.value.split(textareaEnd).join('</textarea>')
+    } else {
+        for (node = document.body.firstChild; node; node = node.nextSibling) {
+            if (node.nodeType == 8 && /markdown for nginx/.test(node.textContent)) break
+            bodytext += node.nodeType == 8 ? '<!--' + node.textContent + '-->' : (node.nodeType == 1 ? node.outerHTML : node.textContent)
+        }
     }
-    document.body.innerHTML = ''
+    document.documentElement.style.visibility = 'hidden'
+    var domReady = document.readyState == 'loading' ? new Promise(function(resolve) {
+        document.addEventListener('DOMContentLoaded', resolve, {once: true})
+    }) : Promise.resolve()
 
     var language = navigator.languages && navigator.languages[0] || navigator.language || ''
     var chinese = /^zh(?:-|$)/i.test(language)
@@ -83,7 +95,6 @@
     actions = pane.add('div').attr('class', 'document-actions')
     download = actions.add('button').attr('type', 'button').attr('class', 'document-action download-markdown').attr('aria-label', labels.download).attr('data-tip', labels.download)
     copy = actions.add('button').attr('type', 'button').attr('class', 'document-action copy-markdown').attr('aria-label', labels.copy).attr('data-tip', labels.copy)
-    document.body.appendChild(div.element)
 
     var copied = function(ok) {
         copy.element.classList.toggle('is-copied', ok)
@@ -251,17 +262,27 @@
     }
 
     div.add('link').attr('rel', 'stylesheet').attr('href', 'https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.9.0/github-markdown.min.css').attr('integrity', 'sha512-Ouq1+UcR9ENXndFyd/YA9i+ETLJmX3WoaMBF/nDzdqJbipKGL/SAbkO+qjDoxfD/dhZs4ZqgR9vXkolrK77xmQ==').attr('crossorigin', 'anonymous')
-    loadScript('marked', 'https://cdnjs.cloudflare.com/ajax/libs/marked/18.1.1/lib/marked.umd.min.js', 'sha512-TR+1uszv8n9bFfC+4wouvHv2Na21prfppUEcxR62hf7+e4AZpz1l726rHEk5Zhpg6uJWUJ+LhN+hVqL99YCZqQ==').then(function() {
+    var markedReady = loadScript('marked', 'https://cdnjs.cloudflare.com/ajax/libs/marked/18.1.1/lib/marked.umd.min.js', 'sha512-TR+1uszv8n9bFfC+4wouvHv2Na21prfppUEcxR62hf7+e4AZpz1l726rHEk5Zhpg6uJWUJ+LhN+hVqL99YCZqQ==')
+    var mount = function() {
+        var pageStyle = document.getElementById('markdown-theme')
+        if (pageStyle) document.head.appendChild(pageStyle)
+        document.body.innerHTML = ''
+        document.body.appendChild(div.element)
+        document.documentElement.style.visibility = ''
+    }
+    Promise.all([markedReady, domReady]).then(function() {
+        mount()
         article.element.innerHTML = marked.parse(bodytext)
         enhanceMarkdown()
     }).catch(function() {
+        mount()
         article.element.textContent = bodytext
         article.element.className += ' markdown-source'
     })
 }()
 </script>
 
-<style>
+<style id="markdown-theme">
 :root {
     color-scheme: light dark;
     --page-bg: #f6f8fa;
