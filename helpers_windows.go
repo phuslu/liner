@@ -12,6 +12,7 @@ import (
 	"net/netip"
 	"os"
 	"os/exec"
+	"os/user"
 	"slices"
 	"strings"
 	"syscall"
@@ -502,6 +503,10 @@ func AppendSetSidToSysProcAttr(old *syscall.SysProcAttr, uid, gid int) *syscall.
 	spa.CreationFlags |= syscall.CREATE_NEW_PROCESS_GROUP
 
 	return &spa
+}
+
+func AppendCredentialToSysProcAttr(old *syscall.SysProcAttr, u *user.User) (*syscall.SysProcAttr, error) {
+	return nil, errors.ErrUnsupported
 }
 
 func sshSignalByName(name string) (os.Signal, bool) {

@@ -12,6 +12,7 @@ import (
 	"net/netip"
 	"os"
 	"os/exec"
+	"os/user"
 	"strconv"
 	"strings"
 	"syscall"
@@ -622,6 +623,38 @@ func AppendSetSidToSysProcAttr(old *syscall.SysProcAttr, uid, gid int) *syscall.
 	}
 
 	return &spa
+}
+
+func AppendCredentialToSysProcAttr(old *syscall.SysProcAttr, u *user.User) (*syscall.SysProcAttr, error) {
+	uid, err := strconv.ParseUint(u.Uid, 10, 32)
+	if err != nil {
+		return nil, err
+	}
+	gid, err := strconv.ParseUint(u.Gid, 10, 32)
+	if err != nil {
+		return nil, err
+	}
+	// supplementary groups must be replaced, otherwise the child keeps root's groups.
+	groups := []uint32{}
+	if ids, err := u.GroupIds(); err == nil {
+		for _, id := range ids {
+			if n, err := strconv.ParseUint(id, 10, 32); err == nil {
+				groups = append(groups, uint32(n))
+			}
+		}
+	}
+
+	var spa syscall.SysProcAttr
+	if old != nil {
+		spa = *old
+	}
+	spa.Credential = &syscall.Credential{
+		Uid:    uint32(uid),
+		Gid:    uint32(gid),
+		Groups: groups,
+	}
+
+	return &spa, nil
 }
 
 func sshSignalByName(name string) (os.Signal, bool) {

@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"os/user"
 	"syscall"
 	"time"
 )
@@ -94,4 +95,8 @@ func RedirectOutputToFile(filename string) error {
 
 func AppendSetSidToSysProcAttr(old *syscall.SysProcAttr, uid, gid int) *syscall.SysProcAttr {
 	return old
+}
+
+func AppendCredentialToSysProcAttr(old *syscall.SysProcAttr, u *user.User) (*syscall.SysProcAttr, error) {
+	return nil, errors.ErrUnsupported
 }

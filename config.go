@@ -233,6 +233,7 @@ type SshConfig struct {
 	EnvFile          string   `json:"env_file" yaml:"env_file"`
 	Home             string   `json:"home" yaml:"home"`
 	Shell            string   `json:"shell" yaml:"shell"`
+	RunAs            string   `json:"run_as" yaml:"run_as"`
 	Log              bool     `json:"log" yaml:"log"`
 }
 

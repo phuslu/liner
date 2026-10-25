@@ -23,6 +23,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"text/template"
 	"time"
 
@@ -53,6 +54,9 @@ type SshHandler struct {
 	envFileText string
 	envFileTmpl *template.Template
 	acceptEnv   []string
+	runAsUser   *user.User
+	runAsAttr   *syscall.SysProcAttr
+	sftpServer  string
 	closed      atomic.Bool
 
 	listenerMu sync.Mutex
@@ -405,6 +409,45 @@ func (h *SshHandler) Load(ctx context.Context) error {
 		return err
 	}
 	h.acceptEnv = acceptEnv
+	if h.Config.RunAs != "" {
+		// run_as is opt-in and root only; any failure keeps the process user
+		// so that a misconfigured run_as never takes the ssh listener down.
+		err := func() error {
+			if euid := os.Geteuid(); euid != 0 {
+				return fmt.Errorf("run_as requires root, current euid is %d", euid)
+			}
+			u, err := user.Lookup(h.Config.RunAs)
+			if err != nil {
+				return err
+			}
+			spa, err := AppendCredentialToSysProcAttr(nil, u)
+			if err != nil {
+				return err
+			}
+			h.runAsUser, h.runAsAttr = u, spa
+			return nil
+		}()
+		if err != nil {
+			h.Logger.Error().Err(err).Strs("ssh_listens", h.Config.Listen).Str("run_as", h.Config.RunAs).Msg("ssh run_as unavailable, fallback to process user")
+		} else {
+			// in-process sftp would bypass run_as, so serve sftp with the system sftp-server.
+			for _, name := range []string{
+				"/usr/libexec/sftp-server",         // macOS
+				"/usr/lib/openssh/sftp-server",     // Debian/Ubuntu
+				"/usr/libexec/openssh/sftp-server", // RHEL/Fedora
+				"/usr/lib/ssh/sftp-server",         // Arch/Alpine
+			} {
+				if _, err := os.Stat(name); err == nil {
+					h.sftpServer = name
+					break
+				}
+			}
+			h.Logger.Info().Strs("ssh_listens", h.Config.Listen).Str("run_as", h.runAsUser.Username).Str("run_as_uid", h.runAsUser.Uid).Str("sftp_server", h.sftpServer).Msg("ssh run_as enabled")
+			if h.Config.Shell == "$" {
+				h.Logger.Warn().Strs("ssh_listens", h.Config.Listen).Str("run_as", h.Config.RunAs).Msg("ssh run_as is ignored by builtin shell")
+			}
+		}
+	}
 	if options := strings.Fields(h.Config.TcpCongestion); len(options) > 0 {
 		switch options[0] {
 		case "brutal":
@@ -794,6 +837,38 @@ func (h *SshHandler) handleSession(ctx context.Context, channel ssh.Channel, req
 			}
 			switch payload.SubSystem {
 			case "sftp", "internal-sftp":
+				if h.runAsUser != nil {
+					if h.sftpServer == "" {
+						h.Logger.Error().NetAddr("remote_addr", conn.RemoteAddr()).Str("run_as", h.runAsUser.Username).Msg("ssh sftp rejected, no sftp-server found for run_as")
+						req.Reply(false, nil)
+						continue
+					}
+					cmd := exec.CommandContext(ctx, h.sftpServer, "-d", h.runAsUser.HomeDir)
+					cmd.Dir = "/"
+					cmd.Stdin = channel
+					cmd.Stdout = channel
+					cmd.Stderr = channel.Stderr()
+					// stdin copy blocks on channel reads, don't let it hold Wait after sftp-server exits.
+					cmd.WaitDelay = time.Second
+					spa := *h.runAsAttr
+					cmd.SysProcAttr = &spa
+					if err := cmd.Start(); err != nil {
+						h.Logger.Error().Err(err).NetAddr("remote_addr", conn.RemoteAddr()).Str("run_as", h.runAsUser.Username).Str("sftp_server", h.sftpServer).Msg("ssh sftp-server start error")
+						req.Reply(false, nil)
+						continue
+					}
+					sessionProc.Store(cmd.Process)
+					sessionBusy = true
+					req.Reply(true, nil)
+					h.Logger.Info().NetAddr("remote_addr", conn.RemoteAddr()).Str("run_as", h.runAsUser.Username).Str("sftp_server", h.sftpServer).Msg("ssh sftp-server serving")
+					go func() {
+						defer channel.Close()
+						if err := cmd.Wait(); err != nil && !errors.Is(err, exec.ErrWaitDelay) {
+							h.Logger.Error().Err(err).Str("run_as", h.runAsUser.Username).Msg("ssh sftp-server exited with error")
+						}
+					}()
+					continue
+				}
 				h.Logger.Printf("sftp server serving: %s", req.Payload)
 				opts := []sftp.ServerOption{
 					sftp.WithServerWorkingDirectory(os.ExpandEnv(cmp.Or(h.Config.Home, os.Getenv("HOME"), "/"))),
@@ -975,6 +1050,10 @@ func (h *SshHandler) startExec(ctx context.Context, channel ssh.Channel, command
 		fmt.Fprintln(channel.Stderr(), err)
 		return
 	}
+	runAs := h.runAsAttr != nil && shellPath != "$"
+	if runAs {
+		currentUser = h.runAsUser
+	}
 
 	home := os.ExpandEnv(cmp.Or(h.Config.Home, currentUser.HomeDir))
 	script := "cd; " + command
@@ -1046,6 +1125,10 @@ func (h *SshHandler) startExec(ctx context.Context, channel ssh.Channel, command
 	shellcmd := exec.CommandContext(ctx, shell, append(shellArgs[1:], "-c", script)...)
 	shellcmd.Dir = home
 	shellcmd.Env = env
+	if runAs {
+		spa := *h.runAsAttr
+		shellcmd.SysProcAttr = &spa
+	}
 
 	pr, pw, err := os.Pipe()
 	if err != nil {
@@ -1119,6 +1202,10 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, winsize p
 	if err != nil {
 		return nil, err
 	}
+	runAs := h.runAsAttr != nil && shellPath != "$"
+	if runAs {
+		currentUser = h.runAsUser
+	}
 
 	var shell *exec.Cmd
 	var isgosh bool
@@ -1165,6 +1252,10 @@ func (h *SshHandler) startShell(ctx context.Context, shellPath string, winsize p
 	}
 	if spa := AppendSetSidToSysProcAttr(shell.SysProcAttr, os.Geteuid(), os.Getuid()); spa != nil {
 		shell.SysProcAttr = spa
+	}
+	if runAs {
+		spa := *h.runAsAttr
+		shell.SysProcAttr = &spa
 	}
 
 	var file pty.Pty

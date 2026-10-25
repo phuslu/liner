@@ -44,6 +44,7 @@ ssh:
     auth_table: authuser.csv
     accept_env: 'LANG LC_* TERM'
     shell: /bin/bash
+    # run_as: nobody
     home: $HOME
     log: true
 https:
