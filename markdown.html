@@ -1,462 +1,525 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{.Title}}</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.0/github-markdown.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
-    <style>
-        body {
-            background-color: #fff;
-            margin: 0;
-            font-family: -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif,"Apple Color Emoji","Segoe UI Emoji";
+
+<!-- markdown for nginx, see https://phus.lu -->
+<script>
+!function(){
+    var dom = {
+        element: null,
+        get: function (o) {
+            var obj = Object.create(this)
+            obj.element = (typeof o == "object") ? o : document.createElement(o)
+            return obj
+        },
+        add: function (o) {
+            var obj = dom.get(o)
+            this.element.appendChild(obj.element)
+            return obj
+        },
+        text: function (t) {
+            this.element.appendChild(document.createTextNode(t))
+            return this
+        },
+        attr: function (k, v) {
+            this.element.setAttribute(k, v)
+            return this
         }
-        .container {
-            padding-right: 15px;
-            padding-left: 15px;
-            margin-right: auto;
-            margin-left: auto;
-            padding-bottom: 50px;
+    }
+
+    if (!document.head) return
+    head = dom.get(document.head)
+    head.add('meta').attr('charset', 'utf-8')
+    head.add('meta').attr('name', 'viewport').attr('content', 'width=device-width,initial-scale=1')
+
+    if (!document.body) {
+        document.write(["<div class=\"container\">",
+        "<h3>nginx.conf</h3>",
+        "<textarea rows=6 cols=50>",
+        "# download markdown.html to /wwwroot",
+        "location ~ \\.md$ {",
+        "    default_type text/html;",
+        "    add_after_body /markdown.html;",
+        "}",
+        "</textarea>",
+        "</div>"].join("\n"))
+        return
+    }
+
+    var bodytext = ''
+    for (node = document.body.firstChild; node; node = node.nextSibling) {
+        if (node.nodeType == 8 && /markdown for nginx/.test(node.textContent)) break
+        bodytext += node.nodeType == 8 ? '<!--' + node.textContent + '-->' : (node.nodeType == 1 ? node.outerHTML : node.textContent)
+    }
+    document.body.innerHTML = ''
+
+    var language = navigator.languages && navigator.languages[0] || navigator.language || ''
+    var chinese = /^zh(?:-|$)/i.test(language)
+    var labels = chinese ? {
+        index: '返回目录',
+        copy: '复制 Markdown 原文',
+        copied: 'Markdown 原文已复制',
+        copiedTip: '已复制',
+        failed: '复制失败，请重试',
+        failedTip: '复制失败',
+        download: '下载 Markdown 原文'
+    } : {
+        index: 'Index',
+        copy: 'Copy Markdown',
+        copied: 'Markdown source copied',
+        copiedTip: 'Copied',
+        failed: 'Copy failed. Try again.',
+        failedTip: 'Copy failed',
+        download: 'Download Markdown'
+    }
+    document.documentElement.lang = language
+
+    title = decodeURIComponent(document.location.pathname.replace(/.*\//, '').replace(/\.html$/, ''))
+    document.title = '《' + title.replace(/\.md$/i, '') + '》'
+
+    div = dom.get('div').attr('class', 'container')
+    header = div.add('header').attr('class', 'page-header')
+    header.add('h1').attr('class', 'page-title octicon-book').text(title.replace(/\.md$/i, ''))
+    header.add('a').attr('class', 'page-index').attr('href', './').text(labels.index)
+    pane = div.add('div').attr('class', 'document-pane')
+    article = pane.add('main').attr('id', 'readme').attr('class', 'markdown-body')
+    actions = pane.add('div').attr('class', 'document-actions')
+    download = actions.add('button').attr('type', 'button').attr('class', 'document-action download-markdown').attr('aria-label', labels.download).attr('data-tip', labels.download)
+    copy = actions.add('button').attr('type', 'button').attr('class', 'document-action copy-markdown').attr('aria-label', labels.copy).attr('data-tip', labels.copy)
+    document.body.appendChild(div.element)
+
+    var copied = function(ok) {
+        copy.element.classList.toggle('is-copied', ok)
+        copy.element.classList.toggle('is-error', !ok)
+        copy.element.setAttribute('aria-label', ok ? labels.copied : labels.failed)
+        copy.element.setAttribute('data-tip', ok ? labels.copiedTip : labels.failedTip)
+        window.setTimeout(function() {
+            copy.element.classList.remove('is-copied', 'is-error')
+            copy.element.setAttribute('aria-label', labels.copy)
+            copy.element.setAttribute('data-tip', labels.copy)
+        }, 1600)
+    }
+    var fallbackCopy = function() {
+        var textarea = document.createElement('textarea')
+        textarea.value = bodytext
+        textarea.style.cssText = 'position:fixed;opacity:0'
+        document.body.appendChild(textarea)
+        textarea.select()
+        var ok = document.execCommand('copy')
+        textarea.remove()
+        copied(ok)
+    }
+    copy.element.onclick = function() {
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(bodytext).then(function() {
+                copied(true)
+            }, fallbackCopy)
+        } else {
+            fallbackCopy()
         }
-        @media (min-width: 768px) { .container { max-width: 750px; } }
-        @media (min-width: 992px) { .container { max-width: 970px; } }
-        @media (min-width: 1200px) { .container { max-width: 1170px; } }
+    }
+    download.element.onclick = function() {
+        var url = URL.createObjectURL(new Blob([bodytext], {type: 'text/markdown;charset=utf-8'}))
+        var link = document.createElement('a')
+        link.href = url
+        link.download = title.replace(/\.md$/i, '') + '.md'
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        window.setTimeout(function() {
+            URL.revokeObjectURL(url)
+        }, 1000)
+    }
 
-        .markdown-body {
-            box-sizing: border-box;
-            min-width: 200px;
-            max-width: 980px;
-            margin: 0 auto;
-            padding: 45px;
-        }
-
-        #loading {
-            position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(255,255,255,0.9);
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            font-size: 24px;
-            color: #555;
-            z-index: 1000;
-        }
-        .spinner {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #3498db;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin-bottom: 15px;
-        }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-
-        #error-msg {
-            color: red;
-            display: none;
-            text-align: center;
-            margin-top: 20px;
-        }
-
-        .toolbar {
-            padding: 10px;
-            border-bottom: 1px solid #eaecef;
-            margin-bottom: 20px;
-            text-align: right;
-            background-color: #f6f8fa;
-        }
-        .toolbar a {
-            color: #0366d6;
-            text-decoration: none;
-            font-size: 14px;
-            margin-left: 15px;
-        }
-        .toolbar a:hover {
-            text-decoration: underline;
-        }
-
-        /* TOC 悬浮面板样式 */
-        .toc-panel {
-            position: fixed;
-            top: 80px;
-            right: 20px;
-            background: white;
-            border: 1px solid #e1e4e8;
-            border-radius: 6px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-            min-width: 60px;
-            max-width: 300px;
-            z-index: 2000;
-            transition: all 0.3s ease;
-        }
-
-        .toc-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 10px 14px;
-            cursor: pointer;
-            user-select: none;
-            border-bottom: 1px solid transparent;
-        }
-
-        .toc-header:hover {
-            background-color: #f6f8fa;
-        }
-
-        .toc-panel.expanded .toc-header {
-            border-bottom-color: #e1e4e8;
-        }
-
-        .toc-title {
-            font-weight: bold;
-            color: #24292e;
-            font-size: 14px;
-        }
-
-        .toc-toggle {
-            font-size: 12px;
-            color: #6a737d;
-            transition: transform 0.3s ease;
-        }
-
-        .toc-panel.expanded .toc-toggle {
-            transform: rotate(180deg);
-        }
-
-        .toc-content {
-            max-height: 0;
-            overflow: hidden;
-            transition: max-height 0.3s ease;
-        }
-
-        .toc-panel.expanded .toc-content {
-            max-height: 60vh;
-            overflow-y: auto;
-        }
-
-        .toc-items {
-            padding: 8px 0;
-        }
-
-        .toc-item {
-            display: block;
-            padding: 6px 14px;
-            color: #24292e;
-            text-decoration: none;
-            font-size: 13px;
-            cursor: pointer;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .toc-item:hover {
-            background-color: #f6f8fa;
-            color: #0366d6;
-        }
-
-        .toc-item[data-level="2"] { padding-left: 28px; }
-        .toc-item[data-level="3"] { padding-left: 42px; }
-        .toc-item[data-level="4"] { padding-left: 56px; }
-        .toc-item[data-level="5"] { padding-left: 70px; }
-        .toc-item[data-level="6"] { padding-left: 84px; }
-
-        .toc-empty {
-            padding: 16px 14px;
-            color: #6a737d;
-            text-align: center;
-            font-size: 13px;
-        }
-
-        /* 移动端：浮动按钮 + 抽屉式目录 */
-        @media (max-width: 768px) {
-            /* 遮罩层 */
-            .toc-overlay {
-                display: none;
-                position: fixed;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background: rgba(0,0,0,0.5);
-                z-index: 1999;
-            }
-
-            .toc-overlay.active {
-                display: block;
-            }
-
-            /* 右下角浮动按钮 */
-            .toc-panel {
-                top: auto;
-                bottom: 20px;
-                right: 20px;
-                width: 50px;
-                height: 50px;
-                min-width: 50px;
-                max-width: 50px;
-                border-radius: 50%;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-                overflow: hidden;
-            }
-
-            .toc-header {
-                width: 50px;
-                height: 50px;
-                padding: 0;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                border-radius: 50%;
-            }
-
-            .toc-title {
-                font-size: 20px;
-            }
-
-            .toc-toggle {
-                display: none;
-            }
-
-            .toc-content {
-                display: none;
-            }
-
-            /* 展开时变为右侧抽屉 */
-            .toc-panel.expanded {
-                top: 0;
-                bottom: 0;
-                right: 0;
-                width: 80%;
-                max-width: 320px;
-                height: 100%;
-                border-radius: 0;
-                border-left: 1px solid #e1e4e8;
-                box-shadow: -4px 0 24px rgba(0,0,0,0.15);
-            }
-
-            .toc-panel.expanded .toc-header {
-                width: 100%;
-                height: auto;
-                padding: 16px;
-                border-radius: 0;
-                border-bottom: 1px solid #e1e4e8;
-                justify-content: space-between;
-            }
-
-            .toc-panel.expanded .toc-title {
-                font-size: 16px;
-            }
-
-            .toc-panel.expanded .toc-toggle {
-                display: block;
-                font-size: 18px;
-                transform: none;
-            }
-
-            .toc-panel.expanded .toc-content {
-                display: block;
-                max-height: calc(100vh - 60px);
-                overflow-y: auto;
-            }
-
-            .toc-panel.expanded .toc-item {
-                padding: 12px 16px;
-                font-size: 15px;
-            }
-
-            .toc-panel.expanded .toc-item[data-level="2"] { padding-left: 32px; }
-            .toc-panel.expanded .toc-item[data-level="3"] { padding-left: 48px; }
-            .toc-panel.expanded .toc-item[data-level="4"] { padding-left: 64px; }
-        }
-    </style>
-</head>
-<body>
-
-<div id="loading">
-    <div class="spinner"></div>
-    <div id="loading-text">Rendering...</div>
-</div>
-
-<div class="toolbar">
-    <div class="container" style="padding-bottom: 0px; display: flex; justify-content: space-between; align-items: center;">
-        <span style="font-weight: bold; color: #24292e;">{{.Title}}</span>
-        <div>
-            <a href="../">Parent</a>
-            <a href="?html=0">Source</a>
-        </div>
-    </div>
-</div>
-
-<div class="container">
-    <div style="display: none"><textarea id="markdown-text">{{ .Text }}</textarea></div>
-    <div id="content" class="markdown-body"></div>
-    <div id="error-msg"></div>
-</div>
-
-<!-- TOC 遮罩层（移动端） -->
-<div id="toc-overlay" class="toc-overlay"></div>
-
-<!-- TOC 悬浮面板 -->
-<div id="toc-panel" class="toc-panel">
-    <div class="toc-header" id="toc-header">
-        <span class="toc-title">📑 TOC</span>
-        <span class="toc-toggle">✕</span>
-    </div>
-    <div class="toc-content">
-        <div class="toc-items" id="toc-items"></div>
-    </div>
-</div>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-<!-- Languages for highlight.js -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/go.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/javascript.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
-
-<script type="module">
-    import mermaid from 'https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.0/mermaid.esm.min.mjs';
-
-    mermaid.initialize({ startOnLoad: false, theme: 'default' });
-
-    (async () => {
-        const loadingEl = document.getElementById('loading');
-        const loadingText = document.getElementById('loading-text');
-        const contentEl = document.getElementById('content');
-        const errorEl = document.getElementById('error-msg');
-        const tocPanel = document.getElementById('toc-panel');
-        const tocHeader = document.getElementById('toc-header');
-        const tocItems = document.getElementById('toc-items');
-        const tocOverlay = document.getElementById('toc-overlay');
-
-        // 检测是否移动端
-        const isMobile = () => window.innerWidth <= 768;
-
-        // TOC 展开/折叠控制
-        const toggleToc = () => {
-            tocPanel.classList.toggle('expanded');
-            if (isMobile()) {
-                tocOverlay.classList.toggle('active', tocPanel.classList.contains('expanded'));
-            }
-        };
-
-        // 关闭 TOC（移动端）
-        const closeToc = () => {
-            tocPanel.classList.remove('expanded');
-            tocOverlay.classList.remove('active');
-        };
-
-        tocHeader.addEventListener('click', toggleToc);
-        tocOverlay.addEventListener('click', closeToc);
-
-        try {
-            const text = document.getElementById('markdown-text').innerText;;
-
-            loadingText.innerText = 'Rendering ...';
-
-            // Custom renderer
-            const renderer = new marked.Renderer();
-
-            // 1. Code blocks with syntax highlighting and Mermaid support
-            let mermaidCount = 0;
-            renderer.code = (code, language, isEscaped) => {
-                if (language === 'mermaid') {
-                    const id = `mermaid-${mermaidCount++}`;
-                    return `<div class="mermaid" id="${id}">${code}</div>`;
+    var resources = Object.create(null)
+    var loadScript = function(name, src, integrity) {
+        if (resources[name]) return resources[name]
+        resources[name] = new Promise(function(resolve, reject) {
+            var script = document.createElement('script')
+            script.src = src
+            script.integrity = integrity
+            script.crossOrigin = 'anonymous'
+            script.onload = resolve
+            script.onerror = reject
+            document.head.appendChild(script)
+        })
+        return resources[name]
+    }
+    var loadStyle = function(name, href, integrity, media) {
+        if (resources[name]) return resources[name]
+        resources[name] = new Promise(function(resolve, reject) {
+            var link = document.createElement('link')
+            link.rel = 'stylesheet'
+            link.href = href
+            link.integrity = integrity
+            link.crossOrigin = 'anonymous'
+            if (media) link.media = media
+            link.onload = resolve
+            link.onerror = reject
+            document.head.appendChild(link)
+        })
+        return resources[name]
+    }
+    var highlightCode = function(blocks) {
+        loadStyle('highlight-light-style', 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.12.0/styles/github.min.css', 'sha512-0aPQyyeZrWj9sCA46UlmWgKOP0mUipLQ6OZXu8l4IcAmD2u31EPEy9VcIMvl7SoAaKe8bLXZhYoMaE/in+gcgA==', '(prefers-color-scheme: light)').catch(function() {})
+        loadStyle('highlight-dark-style', 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.12.0/styles/github-dark.min.css', 'sha512-rO+olRTkcf304DQBxSWxln8JXCzTHlKnIdnMUwYvQa9/Jd4cQaNkItIUj6Z4nvW1dqK0SKXLbn9h4KwZTNtAyw==', '(prefers-color-scheme: dark)').catch(function() {})
+        loadScript('highlight', 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.12.0/highlight.min.js', 'sha512-gzqHAlI1hVdzJ4wiQj/MkppDr6zgEdCoBsrXKRidcaZsSPvNQ3Fy5p7PpMt/8mltxTxMHj1Ur5NWbJdqIfpxgA==').then(function() {
+            blocks.forEach(function(code) {
+                var language = (code.className.match(/(?:^|\s)language-([^\s]+)/) || [])[1]
+                if (language && window.hljs.getLanguage(language.toLowerCase())) {
+                    window.hljs.highlightElement(code)
                 }
-                // 代码高亮处理
-                let highlighted;
-                const lang = language || '';
-                if (lang && hljs.getLanguage(lang)) {
-                    highlighted = hljs.highlight(code, { language: lang }).value;
-                } else {
-                    highlighted = hljs.highlightAuto(code).value;
-                }
-                return `<pre><code class="hljs language-${lang}">${highlighted}</code></pre>`;
-            };
-
-            // 2. Headings with IDs (supporting Chinese) - 收集 TOC 数据
-            const tocData = [];
-            renderer.heading = (text, level, raw) => {
-                const id = raw.toLowerCase().trim()
-                    .replace(/[^\w\u4e00-\u9fa5\s-]/g, '')
-                    .replace(/\s+/g, '-');
-                tocData.push({ text, level, id });
-                return `<h${level} id="${id}">${text}</h${level}>\n`;
-            };
-
-            const html = marked.parse(text, { renderer: renderer });
-            contentEl.innerHTML = html;
-
-            // 3. 构建 TOC
-            if (tocData.length > 0) {
-                tocItems.innerHTML = tocData.map(item =>
-                    `<a class="toc-item" data-level="${item.level}" href="#${item.id}">${item.text}</a>`
-                ).join('');
-                // 仅桌面端默认展开
-                if (!isMobile()) {
-                    tocPanel.classList.add('expanded');
-                }
-            } else {
-                tocItems.innerHTML = '<div class="toc-empty">No headings</div>';
-            }
-
-            // 4. TOC 点击跳转
-            tocItems.addEventListener('click', (e) => {
-                if (e.target.classList.contains('toc-item')) {
-                    e.preventDefault();
-                    const targetId = e.target.getAttribute('href').substring(1);
-                    const targetEl = document.getElementById(targetId);
-                    if (targetEl) {
-                        targetEl.scrollIntoView({ behavior: 'smooth' });
-                        history.pushState(null, null, `#${targetId}`);
-                        // 移动端：点击后关闭抽屉
-                        if (isMobile()) {
-                            closeToc();
-                        }
-                    }
-                }
-            });
-
-            // Render mermaid diagrams
-            const mermaidDivs = document.querySelectorAll('.mermaid');
-            if (mermaidDivs.length > 0) {
-                loadingText.innerText = 'Rendering diagrams...';
-                await mermaid.run({
-                    nodes: mermaidDivs
-                });
-            }
-
-            // All done
-            loadingEl.style.display = 'none';
-
-            // Handle anchor scroll
-            if (window.location.hash) {
-                const hash = decodeURIComponent(window.location.hash.substring(1));
-                const el = document.getElementById(hash);
-                if (el) {
-                    el.scrollIntoView();
+            })
+        }).catch(function() {})
+    }
+    var mermaidNodes = []
+    var prefersDark = function() {
+        return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+    }
+    var markMermaidError = function(node) {
+        node.textContent = node.dataset.source
+        node.classList.add('mermaid-error')
+    }
+    var validateMermaid = function(nodes) {
+        var renderable = []
+        var queue = Promise.resolve()
+        nodes.forEach(function(node) {
+            queue = queue.then(function() {
+                return window.mermaid.parse(node.dataset.source, {suppressErrors: true})
+            }).then(function(valid) {
+                if (valid) renderable.push(node)
+                else markMermaidError(node)
+            }, function() {
+                markMermaidError(node)
+            })
+        })
+        return queue.then(function() {
+            return renderable
+        })
+    }
+    var runMermaid = function(nodes) {
+        nodes.forEach(function(node) {
+            node.classList.remove('mermaid-error')
+            node.removeAttribute('data-processed')
+            node.textContent = node.dataset.source
+        })
+        window.mermaid.initialize({
+            startOnLoad: false,
+            securityLevel: 'strict',
+            theme: prefersDark() ? 'dark' : 'default'
+        })
+        return validateMermaid(nodes).then(function(renderable) {
+            if (!renderable.length) return
+            return window.mermaid.run({nodes: renderable}).catch(function() {
+                renderable.forEach(function(node) {
+                    if (!node.querySelector('svg')) markMermaidError(node)
+                })
+            })
+        })
+    }
+    var renderMermaid = function(blocks) {
+        loadScript('mermaid', 'https://cdn.jsdelivr.net/npm/@mermaid-js/tiny@12.2.0/dist/mermaid.tiny.js', 'sha512-Z5xCRPlSOr6dAxUueJ1trNZh66IvMoMvN/dxy5cK2xCjkPbOhSgBoNbtQbtzBmd+Yq4c+85qOyBHG9qSe/PE/g==').then(function() {
+            mermaidNodes = blocks.map(function(code) {
+                var source = code.textContent
+                var node = document.createElement('div')
+                node.className = 'mermaid'
+                node.dataset.source = source
+                node.textContent = source
+                code.parentElement.replaceWith(node)
+                return node
+            })
+            return runMermaid(mermaidNodes)
+        }).catch(function() {})
+        if (window.matchMedia) {
+            var scheme = window.matchMedia('(prefers-color-scheme: dark)')
+            var updateTheme = function() {
+                if (window.mermaid && mermaidNodes.length) {
+                    runMermaid(mermaidNodes).catch(function() {})
                 }
             }
-
-        } catch (err) {
-            console.error(err);
-            loadingEl.style.display = 'none';
-            contentEl.style.display = 'none';
-            errorEl.innerText = 'Load failed: ' + err.message;
-            errorEl.style.display = 'block';
-            tocPanel.style.display = 'none';
+            if (scheme.addEventListener) scheme.addEventListener('change', updateTheme)
+            else if (scheme.addListener) scheme.addListener(updateTheme)
         }
-    })();
+    }
+    var enhanceMarkdown = function() {
+        var blocks = Array.prototype.slice.call(article.element.querySelectorAll('pre > code'))
+        var diagrams = blocks.filter(function(code) {
+            return code.classList.contains('language-mermaid')
+        })
+        var syntaxBlocks = blocks.filter(function(code) {
+            return !code.classList.contains('language-mermaid')
+        })
+        if (syntaxBlocks.length) highlightCode(syntaxBlocks)
+        if (diagrams.length) renderMermaid(diagrams)
+    }
+
+    div.add('link').attr('rel', 'stylesheet').attr('href', 'https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.9.0/github-markdown.min.css').attr('integrity', 'sha512-Ouq1+UcR9ENXndFyd/YA9i+ETLJmX3WoaMBF/nDzdqJbipKGL/SAbkO+qjDoxfD/dhZs4ZqgR9vXkolrK77xmQ==').attr('crossorigin', 'anonymous')
+    loadScript('marked', 'https://cdnjs.cloudflare.com/ajax/libs/marked/18.1.1/lib/marked.umd.min.js', 'sha512-TR+1uszv8n9bFfC+4wouvHv2Na21prfppUEcxR62hf7+e4AZpz1l726rHEk5Zhpg6uJWUJ+LhN+hVqL99YCZqQ==').then(function() {
+        article.element.innerHTML = marked.parse(bodytext)
+        enhanceMarkdown()
+    }).catch(function() {
+        article.element.textContent = bodytext
+        article.element.className += ' markdown-source'
+    })
+}()
 </script>
 
-</body>
-</html>
+<style>
+:root {
+    color-scheme: light dark;
+    --page-bg: #f6f8fa;
+    --page-fg: #1f2328;
+    --page-muted: #59636e;
+    --page-line: #d1d9e0;
+    --page-link: #0969da;
+    --page-control: #fff;
+    --page-control-hover: #f6f8fa;
+    --page-shadow: rgba(31, 35, 40, .08);
+}
+@media (prefers-color-scheme: dark) {
+    :root {
+        --page-bg: #010409;
+        --page-fg: #f0f6fc;
+        --page-muted: #9198a1;
+        --page-line: #3d444d;
+        --page-link: #4493f8;
+        --page-control: #151b23;
+        --page-control-hover: #1f2630;
+        --page-shadow: rgba(1, 4, 9, .4);
+    }
+}
+* {
+    box-sizing: border-box;
+}
+body {
+    min-height: 100vh;
+    margin: 0;
+    background: var(--page-bg);
+    color: var(--page-fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+.container {
+    width: min(100% - 32px, 900px);
+    margin: 0 auto 48px;
+}
+.page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 28px clamp(20px, 6vw, 56px) 16px;
+}
+.page-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    color: var(--page-fg);
+    font-size: 17px;
+    font-weight: 600;
+    line-height: 1.4;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.octicon-book::before {
+    width: 18px;
+    height: 18px;
+    flex: none;
+    background: currentColor;
+    content: "";
+    -webkit-mask: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 5h4v1H3V5Zm0 3h4V7H3v1Zm0 2h4V9H3v1Zm10-5H9v1h4V5Zm0 3H9v1h4V8Zm0 2H9v1h4v-1Zm2-7v9a1 1 0 0 1-1 1H9.5l-1 1-1-1H2a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h4.5l1 1 1-1H15a1 1 0 0 1 1 1ZM8 4.5 7.5 4H2v9h6V4.5Zm7 0L14.5 4H9l-.5.5V13h6V4.5Z'/%3E%3C/svg%3E") center / contain no-repeat;
+    mask: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 5h4v1H3V5Zm0 3h4V7H3v1Zm0 2h4V9H3v1Zm10-5H9v1h4V5Zm0 3H9v1h4V8Zm0 2H9v1h4v-1Zm2-7v9a1 1 0 0 1-1 1H9.5l-1 1-1-1H2a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h4.5l1 1 1-1H15a1 1 0 0 1 1 1ZM8 4.5 7.5 4H2v9h6V4.5Zm7 0L14.5 4H9l-.5.5V13h6V4.5Z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.page-index {
+    flex: none;
+    color: var(--page-muted);
+    font-size: 13px;
+    text-decoration: none;
+}
+.page-index:hover,
+.page-index:focus-visible {
+    color: var(--page-link);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+.document-pane {
+    position: relative;
+}
+.document-actions {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    display: flex;
+    gap: 6px;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-4px);
+    transition: opacity .16s ease, transform .16s ease;
+}
+.document-pane:hover .document-actions,
+.document-actions:focus-within {
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
+}
+.document-action {
+    position: relative;
+    display: grid;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    place-items: center;
+    color: var(--page-muted);
+    background: var(--page-control);
+    border: 1px solid var(--page-line);
+    border-radius: 8px;
+    box-shadow: 0 1px 3px var(--page-shadow);
+    cursor: pointer;
+    transition: transform .16s ease, color .16s ease, background-color .16s ease;
+}
+.document-action:hover {
+    color: var(--page-fg);
+    background: var(--page-control-hover);
+}
+.document-action:focus-visible {
+    outline: 2px solid var(--page-link);
+    outline-offset: 2px;
+}
+.document-action:active {
+    transform: scale(.96);
+}
+.document-action::before {
+    width: 16px;
+    height: 16px;
+    background: currentColor;
+    content: "";
+}
+.copy-markdown::before {
+    -webkit-mask: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Zm5-5C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z'/%3E%3C/svg%3E") center / contain no-repeat;
+    mask: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Zm5-5C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.download-markdown::before {
+    -webkit-mask: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Zm4.25-7.19V1.75a.75.75 0 0 1 1.5 0v5.06l1.72-1.72a.75.75 0 1 1 1.06 1.06l-3 3a.75.75 0 0 1-1.06 0l-3-3a.75.75 0 0 1 1.06-1.06Z'/%3E%3C/svg%3E") center / contain no-repeat;
+    mask: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Zm4.25-7.19V1.75a.75.75 0 0 1 1.5 0v5.06l1.72-1.72a.75.75 0 1 1 1.06 1.06l-3 3a.75.75 0 0 1-1.06 0l-3-3a.75.75 0 0 1 1.06-1.06Z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.document-action::after {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    padding: 5px 8px;
+    color: #fff;
+    background: #24292f;
+    border-radius: 6px;
+    box-shadow: 0 2px 8px var(--page-shadow);
+    content: attr(data-tip);
+    font-size: 12px;
+    line-height: 1.4;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-2px);
+    transition: opacity .12s ease, transform .12s ease;
+}
+.document-action:hover::after,
+.document-action:focus-visible::after {
+    opacity: 1;
+    transform: none;
+}
+.copy-markdown.is-copied {
+    color: #1a7f37;
+}
+.copy-markdown.is-copied::before {
+    -webkit-mask-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z'/%3E%3C/svg%3E");
+    mask-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z'/%3E%3C/svg%3E");
+}
+.copy-markdown.is-error {
+    color: #cf222e;
+}
+.markdown-body {
+    max-width: none;
+    margin: 0;
+    padding: 52px clamp(20px, 6vw, 56px) 64px;
+    border: 1px solid var(--page-line);
+    border-radius: 10px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-size: 16px;
+    line-height: 1.75;
+}
+.markdown-body img {
+    border-radius: 6px;
+}
+.markdown-body pre,
+.markdown-body code {
+    tab-size: 4;
+}
+.markdown-body pre code.hljs {
+    padding: 0;
+    background: transparent;
+}
+.markdown-body .mermaid {
+    margin: 1.5em 0;
+    overflow-x: auto;
+    text-align: center;
+}
+.markdown-body .mermaid svg {
+    max-width: 100%;
+    height: auto;
+}
+.markdown-body .mermaid-error {
+    color: var(--page-muted);
+    font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    font-size: 13px;
+    text-align: left;
+    white-space: pre;
+}
+.markdown-source {
+    white-space: pre-wrap;
+}
+@media (hover: none), (pointer: coarse) {
+    .document-actions {
+        opacity: .75;
+        pointer-events: auto;
+        transform: none;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .document-actions,
+    .document-action,
+    .document-action::after {
+        transition: none;
+    }
+}
+@media (max-width: 640px) {
+    .container {
+        width: 100%;
+        margin-bottom: 0;
+    }
+    .page-header {
+        padding: 20px 20px 12px;
+    }
+    .markdown-body {
+        padding: 52px 20px 48px;
+        border-right: 0;
+        border-left: 0;
+        border-radius: 0;
+    }
+}
+@media print {
+    body {
+        background: #fff;
+    }
+    .container {
+        width: auto;
+        margin: 0;
+    }
+    .page-header {
+        display: none;
+    }
+    .document-actions {
+        display: none;
+    }
+    .markdown-body {
+        padding: 0;
+        border: 0;
+    }
+}
+</style>
