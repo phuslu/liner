@@ -279,6 +279,10 @@ func (ops ConnOps) SetTcpCongestion(name string, values ...any) (err error) {
 	return
 }
 
+func (ops ConnOps) SetTcpNotsentLowat(n int) error {
+	return errors.ErrUnsupported
+}
+
 func (ops ConnOps) SetTcpMaxPacingRate(rate int) error {
 	return errors.ErrUnsupported
 }

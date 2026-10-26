@@ -357,6 +357,13 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 		}
 	}
 
+	// see https://blog.cloudflare.com/http-2-prioritization-with-nginx/
+	if ri.ClientConnOps.SupportTCP() && req.ProtoMajor == 2 {
+		tcpNotsentLowat := cmp.Or(h.Config.Forward.TcpNotsentLowat, 128*1024)
+		err := ri.ClientConnOps.SetTcpNotsentLowat(int(tcpNotsentLowat))
+		log.DefaultLogger.Err(err).Context(ri.LogContext).Int64("tcp_notsent_lowat", tcpNotsentLowat).Msg("set tcp_notsent_lowat")
+	}
+
 	if ri.ClientConnOps.SupportTCP() && speedLimit > 0 {
 		err := ri.ClientConnOps.SetTcpMaxPacingRate(int(speedLimit))
 		log.DefaultLogger.Err(err).Context(ri.LogContext).Int64("forward_speedlimit", speedLimit).Msg("set forward_speedlimit")

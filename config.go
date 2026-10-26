@@ -28,17 +28,18 @@ type HTTPConfig struct {
 		PreferChacha20 bool   `json:"prefer_chacha20" yaml:"prefer_chacha20"`
 	} `json:"server_config" yaml:"server_config"`
 	Forward struct {
-		Policy        string `json:"policy" yaml:"policy"`
-		AuthTable     string `json:"auth_table" yaml:"auth_table"`
-		Dialer        string `json:"dialer" yaml:"dialer"`
-		TcpCongestion string `json:"tcp_congestion" yaml:"tcp_congestion"`
-		SpeedLimit    int64  `json:"speed_limit" yaml:"speed_limit"`
-		DisableIpv6   bool   `json:"disable_ipv6" yaml:"disable_ipv6"`
-		PreferIpv6    bool   `json:"prefer_ipv6" yaml:"prefer_ipv6"`
-		Log           bool   `json:"log" yaml:"log"`
-		LogInterval   int64  `json:"log_interval" yaml:"log_interval"`
-		IoCopyBuffer  int    `json:"io_copy_buffer" yaml:"io_copy_buffer"`
-		IdleTimeout   int64  `json:"idle_timeout" yaml:"idle_timeout"`
+		Policy          string `json:"policy" yaml:"policy"`
+		AuthTable       string `json:"auth_table" yaml:"auth_table"`
+		Dialer          string `json:"dialer" yaml:"dialer"`
+		TcpCongestion   string `json:"tcp_congestion" yaml:"tcp_congestion"`
+		TcpNotsentLowat int64  `json:"tcp_notsent_lowat " yaml:"tcp_notsent_lowat "`
+		SpeedLimit      int64  `json:"speed_limit" yaml:"speed_limit"`
+		DisableIpv6     bool   `json:"disable_ipv6" yaml:"disable_ipv6"`
+		PreferIpv6      bool   `json:"prefer_ipv6" yaml:"prefer_ipv6"`
+		Log             bool   `json:"log" yaml:"log"`
+		LogInterval     int64  `json:"log_interval" yaml:"log_interval"`
+		IoCopyBuffer    int    `json:"io_copy_buffer" yaml:"io_copy_buffer"`
+		IdleTimeout     int64  `json:"idle_timeout" yaml:"idle_timeout"`
 	} `json:"forward" yaml:"forward"`
 	Tunnel struct {
 		Enabled          bool     `json:"enabled" yaml:"enabled"`

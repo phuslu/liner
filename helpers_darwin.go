@@ -293,6 +293,25 @@ func (ops ConnOps) SetTcpCongestion(name string, values ...any) (err error) {
 	return errors.ErrUnsupported
 }
 
+func (ops ConnOps) SetTcpNotsentLowat(n int) (err error) {
+	if ops.tc == nil {
+		err = errors.ErrUnsupported
+		return
+	}
+	var c syscall.RawConn
+	c, err = ops.tc.SyscallConn()
+	if err != nil {
+		return
+	}
+	c.Control(func(fd uintptr) {
+		err = syscall.SetsockoptInt(int(fd), syscall.IPPROTO_TCP, unix.TCP_NOTSENT_LOWAT, n)
+		if err != nil {
+			err = os.NewSyscallError("setsockopt IPPROTO_TCP TCP_NOTSENT_LOWAT "+strconv.Itoa(n), err)
+		}
+	})
+	return
+}
+
 func (ops ConnOps) SetTcpMaxPacingRate(rate int) error {
 	return errors.ErrUnsupported
 }
