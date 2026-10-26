@@ -356,12 +356,20 @@ func (h *SshHandler) Load(ctx context.Context) error {
 				time.Sleep(1 * time.Second)
 				return nil, fmt.Errorf("invalid login username: %q", c.User())
 			}
-			pam, err := pamtester.Start(currentUser.Username, nil)
+			pamOptions := &pamtester.Options{}
+			if raddr := AddrPortFromNetAddr(c.RemoteAddr()); raddr.IsValid() {
+				pamOptions.RHost = raddr.Addr().String()
+			}
+			pam, err := pamtester.Start(currentUser.Username, pamOptions)
 			if err != nil {
 				return nil, err
 			}
 			defer pam.Close()
 			err = pam.Authenticate(string(pass))
+			if err != nil {
+				return nil, err
+			}
+			err = pam.AcctMgmt()
 			if err != nil {
 				return nil, err
 			}

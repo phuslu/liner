@@ -15,7 +15,7 @@ require (
 	github.com/phuslu/gosh v0.0.0-20261025190730-85b053fefe19
 	github.com/phuslu/log v1.0.138
 	github.com/phuslu/lru v1.0.25
-	github.com/phuslu/pamtester v0.0.0-20260908135300-75f72d81971a
+	github.com/phuslu/pamtester v0.0.0-20261026153942-bf4ea0882c9c
 	github.com/phuslu/pty v0.0.0-20260904123709-7bfbeb22b99f
 	github.com/phuslu/tcp-brutal v1.0.1
 	github.com/pkg/sftp v1.13.12
