@@ -1157,9 +1157,23 @@ type ClientConn struct {
 	Conn     net.Conn
 	TCPConn  *net.TCPConn
 	QuicConn *quic.Conn
-	Once     struct {
-		TcpNotsentLowat sync.Once
+	Values   struct {
+		TcpNotsentLowat atomic.Int64
 	}
+}
+
+func (cc *ClientConn) SetTcpNotsentLowat(n int) error {
+	if cc == nil || cc.TCPConn == nil {
+		return errors.ErrUnsupported
+	}
+	if cc.Values.TcpNotsentLowat.Load() == int64(n) {
+		return nil
+	}
+	if err := cc.setTcpNotsentLowat(n); err != nil {
+		return err
+	}
+	cc.Values.TcpNotsentLowat.Store(int64(n))
+	return nil
 }
 
 func (cc *ClientConn) SupportTCP() bool {

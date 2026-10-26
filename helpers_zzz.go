@@ -73,7 +73,7 @@ func (cc *ClientConn) SetTcpCongestion(name string, values ...any) error {
 	return errors.ErrUnsupported
 }
 
-func (cc *ClientConn) SetTcpNotsentLowat(n int) error {
+func (cc *ClientConn) setTcpNotsentLowat(n int) error {
 	return errors.ErrUnsupported
 }
 

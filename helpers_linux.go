@@ -312,7 +312,7 @@ func (cc *ClientConn) SetTcpCongestion(name string, values ...any) (err error) {
 	return
 }
 
-func (cc *ClientConn) SetTcpNotsentLowat(n int) (err error) {
+func (cc *ClientConn) setTcpNotsentLowat(n int) (err error) {
 	if cc == nil || cc.TCPConn == nil {
 		err = errors.ErrUnsupported
 		return
