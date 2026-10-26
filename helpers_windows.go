@@ -201,15 +201,15 @@ func (tcpinfo *TCPInfo) RTT() time.Duration {
 	return time.Duration(tcpinfo.RttUs) * time.Microsecond
 }
 
-func (ops *ConnOps) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
-	if ops == nil || ops.tc == nil || ops.tc.RemoteAddr() == nil {
+func (cc *ClientConn) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
+	if cc == nil || cc.tc == nil || cc.tc.RemoteAddr() == nil {
 		return
 	}
 
 	const SIO_TCP_INFO uint32 = windows.IOC_INOUT | windows.IOC_VENDOR | 39
 
 	var c syscall.RawConn
-	c, err = ops.tc.SyscallConn()
+	c, err = cc.tc.SyscallConn()
 	if err != nil {
 		return
 	}
@@ -237,12 +237,12 @@ func (ops *ConnOps) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
 	return
 }
 
-func (ops *ConnOps) GetOriginalDST() (addrport netip.AddrPort, err error) {
+func (cc *ClientConn) GetOriginalDST() (addrport netip.AddrPort, err error) {
 	return netip.AddrPort{}, errors.ErrUnsupported
 }
 
-func (ops *ConnOps) SetTcpCongestion(name string, values ...any) (err error) {
-	if ops == nil || ops.tc == nil {
+func (cc *ClientConn) SetTcpCongestion(name string, values ...any) (err error) {
+	if cc == nil || cc.tc == nil {
 		return errors.ErrUnsupported
 	}
 	name = strings.TrimSpace(name)
@@ -254,7 +254,7 @@ func (ops *ConnOps) SetTcpCongestion(name string, values ...any) (err error) {
 		return err
 	}
 	var c syscall.RawConn
-	c, err = ops.tc.SyscallConn()
+	c, err = cc.tc.SyscallConn()
 	if err != nil {
 		return err
 	}
@@ -279,11 +279,11 @@ func (ops *ConnOps) SetTcpCongestion(name string, values ...any) (err error) {
 	return
 }
 
-func (ops *ConnOps) SetTcpNotsentLowat(n int) error {
+func (cc *ClientConn) SetTcpNotsentLowat(n int) error {
 	return errors.ErrUnsupported
 }
 
-func (ops *ConnOps) SetTcpMaxPacingRate(rate int) error {
+func (cc *ClientConn) SetTcpMaxPacingRate(rate int) error {
 	return errors.ErrUnsupported
 }
 

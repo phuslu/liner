@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestConnOpsSetTcpNotsentLowatOnce(t *testing.T) {
+func TestClientConnSetTcpNotsentLowatOnce(t *testing.T) {
 	ln, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -31,7 +31,7 @@ func TestConnOpsSetTcpNotsentLowatOnce(t *testing.T) {
 		t.Fatalf("accepted connection type = %T, want *net.TCPConn", conn)
 	}
 
-	ops := &ConnOps{tc: tc}
+	cc := &ClientConn{tc: tc}
 	var appliedCount atomic.Int32
 	start := make(chan struct{})
 	var wg sync.WaitGroup
@@ -40,7 +40,7 @@ func TestConnOpsSetTcpNotsentLowatOnce(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			if applied, _ := ops.SetTcpNotsentLowatOnce(128 * 1024); applied {
+			if applied, _ := cc.SetTcpNotsentLowatOnce(128 * 1024); applied {
 				appliedCount.Add(1)
 			}
 		}()

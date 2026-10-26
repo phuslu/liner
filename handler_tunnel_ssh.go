@@ -80,7 +80,7 @@ func (h *TunnelHandler) sshtunnel(ctx context.Context, dialerName, dialerURL str
 			log.DefaultLogger.Err(err).Str("tunnel_host", hostport).Any("keepalive_config", config).Msg("set tunnel host keepalive")
 		}
 		if h.Config.SpeedLimit > 0 {
-			err := (&ConnOps{tc: tc}).SetTcpMaxPacingRate(int(h.Config.SpeedLimit))
+			err := (&ClientConn{tc: tc}).SetTcpMaxPacingRate(int(h.Config.SpeedLimit))
 			log.DefaultLogger.Err(err).Str("tunnel_proxy_pass", h.Config.ProxyPass).Str("tunnel_dialer_name", h.Config.Dialer).Int64("tunnel_speedlimit", h.Config.SpeedLimit).Msg("set speedlimit")
 		}
 	}

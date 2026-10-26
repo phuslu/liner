@@ -85,7 +85,7 @@ func (h *TProxyHandler) ServeConn(ctx context.Context, conn net.Conn) {
 
 	if (!req.ServerAddr.IsValid() || req.ServerAddr.Addr().IsUnspecified()) && conn.RemoteAddr() != nil {
 		if tc, ok := conn.(*net.TCPConn); ok {
-			if addrport, err := (&ConnOps{tc: tc}).GetOriginalDST(); err == nil {
+			if addrport, err := (&ClientConn{tc: tc}).GetOriginalDST(); err == nil {
 				req.ServerAddr = addrport
 			}
 		}

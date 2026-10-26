@@ -419,7 +419,7 @@ func (h *SocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 	socksWriteStatus(conn, Socks5StatusRequestGranted)
 
 	if tc, _ := conn.(*net.TCPConn); tc != nil && speedLimit > 0 {
-		(&ConnOps{tc: tc}).SetTcpMaxPacingRate(int(speedLimit))
+		(&ClientConn{tc: tc}).SetTcpMaxPacingRate(int(speedLimit))
 	}
 
 	done := make(chan struct{}, 2)

@@ -62,7 +62,7 @@ func (h *RedsocksHandler) ServeConn(ctx context.Context, conn net.Conn) {
 		return
 	}
 
-	addrport, err := (&ConnOps{tc: tc}).GetOriginalDST()
+	addrport, err := (&ClientConn{tc: tc}).GetOriginalDST()
 	if err != nil {
 		log.Error().Err(err).Xid("trace_id", req.TraceID).NetIPAddrPort("server_addr", req.ServerAddr).NetIPAddr("remote_ip", req.RemoteAddr.Addr()).Msg("failed to get original dst from remote tcp connection")
 		return

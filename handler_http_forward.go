@@ -277,7 +277,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 	}
 
 	// eval tcp_congestion template
-	if ri.ClientConnOps.SupportTCP() && h.Config.Forward.TcpCongestion != "" {
+	if ri.ClientConn.SupportTCP() && h.Config.Forward.TcpCongestion != "" {
 		var tcpCongestion string
 		if h.tcpcongestion != nil {
 			bb := bytebufferpool.Get()
@@ -339,7 +339,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 								gain = n
 							}
 						}
-						if err := ri.ClientConnOps.SetTcpCongestion(name, uint64(rate), uint32(gain)); err != nil {
+						if err := ri.ClientConn.SetTcpCongestion(name, uint64(rate), uint32(gain)); err != nil {
 							log.Error().Context(ri.LogContext).Strs("forward_tcp_congestion_options", options).Msg("set forward_tcp_congestion error")
 							http.Error(rw, err.Error(), http.StatusBadGateway)
 							return
@@ -347,7 +347,7 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 						log.Debug().NetIPAddr("remote_ip", ri.RealIP).Strs("forward_tcp_congestion_options", options).Msg("set forward_tcp_congestion ok")
 					}
 				default:
-					if err := ri.ClientConnOps.SetTcpCongestion(name); err != nil {
+					if err := ri.ClientConn.SetTcpCongestion(name); err != nil {
 						log.Error().Context(ri.LogContext).Strs("forward_tcp_congestion_options", options).Msg("set forward_tcp_congestion error")
 						http.Error(rw, err.Error(), http.StatusBadGateway)
 						return
@@ -358,15 +358,15 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 	}
 
 	// see https://blog.cloudflare.com/http-2-prioritization-with-nginx/
-	if ri.ClientConnOps.SupportTCP() && req.ProtoMajor == 2 && h.Config.Forward.TcpNotsentLowat >= 0 {
+	if ri.ClientConn.SupportTCP() && req.ProtoMajor == 2 && h.Config.Forward.TcpNotsentLowat >= 0 {
 		tcpNotsentLowat := cmp.Or(h.Config.Forward.TcpNotsentLowat, 128*1024)
-		if applied, err := ri.ClientConnOps.SetTcpNotsentLowatOnce(int(tcpNotsentLowat)); applied {
+		if applied, err := ri.ClientConn.SetTcpNotsentLowatOnce(int(tcpNotsentLowat)); applied {
 			log.DefaultLogger.Err(err).Context(ri.LogContext).Int64("tcp_notsent_lowat", tcpNotsentLowat).Msg("set tcp_notsent_lowat")
 		}
 	}
 
-	if ri.ClientConnOps.SupportTCP() && speedLimit > 0 {
-		err := ri.ClientConnOps.SetTcpMaxPacingRate(int(speedLimit))
+	if ri.ClientConn.SupportTCP() && speedLimit > 0 {
+		err := ri.ClientConn.SetTcpMaxPacingRate(int(speedLimit))
 		log.DefaultLogger.Err(err).Context(ri.LogContext).Int64("forward_speedlimit", speedLimit).Msg("set forward_speedlimit")
 	}
 

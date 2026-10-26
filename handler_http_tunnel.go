@@ -111,8 +111,8 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	}
 
 	if speedLimit > 0 {
-		if ri.ClientConnOps.SupportTCP() {
-			err := ri.ClientConnOps.SetTcpMaxPacingRate(int(speedLimit))
+		if ri.ClientConn.SupportTCP() {
+			err := ri.ClientConn.SetTcpMaxPacingRate(int(speedLimit))
 			log.DefaultLogger.Err(err).Context(ri.LogContext).Int64("tunnel_speedlimit", speedLimit).Msg("set tunnel_speedlimit")
 		} else {
 			// TODO: speed limiter in user space
@@ -120,7 +120,7 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	}
 
 	// eval tcp_congestion template
-	if ri.ClientConnOps.SupportTCP() && h.Config.Tunnel.TcpCongestion != "" {
+	if ri.ClientConn.SupportTCP() && h.Config.Tunnel.TcpCongestion != "" {
 		var tcpCongestion string
 		if h.tcpcongestion != nil {
 			var sb strings.Builder
@@ -180,7 +180,7 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 								gain = n
 							}
 						}
-						if err := ri.ClientConnOps.SetTcpCongestion(name, uint64(rate), uint32(gain)); err != nil {
+						if err := ri.ClientConn.SetTcpCongestion(name, uint64(rate), uint32(gain)); err != nil {
 							log.Error().Context(ri.LogContext).Strs("tunnel_tcp_congestion_options", options).Msg("set tunnel_tcp_congestion error")
 							http.Error(rw, err.Error(), http.StatusBadGateway)
 							return
@@ -188,7 +188,7 @@ func (h *HTTPTunnelHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 						log.Debug().NetIPAddr("remote_ip", ri.RealIP).Strs("tunnel_tcp_congestion_options", options).Msg("set tunnel_tcp_congestion ok")
 					}
 				default:
-					if err := ri.ClientConnOps.SetTcpCongestion(name); err != nil {
+					if err := ri.ClientConn.SetTcpCongestion(name); err != nil {
 						log.Error().Context(ri.LogContext).Strs("tunnel_tcp_congestion_options", options).Msg("set tunnel_tcp_congestion error")
 						http.Error(rw, err.Error(), http.StatusBadGateway)
 						return
@@ -449,7 +449,7 @@ func (h *HTTPTunnelHandler) h2tunnel(rw http.ResponseWriter, req *http.Request, 
 const HTTP3TunnelOpenFrame = "LQ\x01\x00"
 
 func (h *HTTPTunnelHandler) h3tunnel(rw http.ResponseWriter, req *http.Request, ri *HTTPRequestInfo, addrport netip.AddrPort, ln net.Listener) {
-	qconn := ri.ClientConnOps.QuicConn()
+	qconn := ri.ClientConn.QuicConn()
 	if qconn == nil {
 		http.Error(rw, "http3 quic connection is unavailable", http.StatusBadRequest)
 		return

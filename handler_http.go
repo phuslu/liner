@@ -44,7 +44,7 @@ type HTTPRequestInfo struct {
 	Certificate     *tls.Certificate
 	ClientHelloInfo *tls.ClientHelloInfo
 	ClientHelloRaw  []byte
-	ClientConnOps   *ConnOps
+	ClientConn      *ClientConn
 	TraceID         log.XID
 	UserAgent       useragent.UserAgent
 	ProxyUserBytes  []byte
@@ -93,7 +93,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		ri.TLSVersion = 0
 	}
 
-	ri.Certificate, ri.ClientHelloInfo, ri.ClientHelloRaw, ri.JA4, ri.ClientConnOps = nil, nil, nil, "", nil
+	ri.Certificate, ri.ClientHelloInfo, ri.ClientHelloRaw, ri.JA4, ri.ClientConn = nil, nil, nil, "", nil
 	if v := TLSClientInfoFromContext(req.Context()); v != nil {
 		ri.Certificate = v.Certificate
 		ri.ClientHelloInfo = v.ClientHelloInfo
@@ -111,7 +111,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		if req.TLS != nil && v.JA4[0] != 0 {
 			ri.JA4 = b2s(v.JA4[:])
 		}
-		ri.ClientConnOps = v.ConnOps
+		ri.ClientConn = v.ClientConn
 	}
 
 	// fix empty sni for IP ceritifcate

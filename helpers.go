@@ -1153,48 +1153,48 @@ func (c *ConnWithBuffers) Read(b []byte) (int, error) {
 	return total, nil
 }
 
-type ConnOps struct {
+type ClientConn struct {
 	conn            net.Conn
 	tc              *net.TCPConn
 	qc              *quic.Conn
 	tcpNotsentLowat sync.Once
 }
 
-func (ops *ConnOps) NetConn() net.Conn {
-	if ops == nil {
+func (cc *ClientConn) NetConn() net.Conn {
+	if cc == nil {
 		return nil
 	}
-	return ops.conn
+	return cc.conn
 }
 
-func (ops *ConnOps) QuicConn() *quic.Conn {
-	if ops == nil {
+func (cc *ClientConn) QuicConn() *quic.Conn {
+	if cc == nil {
 		return nil
 	}
-	return ops.qc
+	return cc.qc
 }
 
-func (ops *ConnOps) SupportTCP() bool {
-	return ops != nil && ops.tc != nil
+func (cc *ClientConn) SupportTCP() bool {
+	return cc != nil && cc.tc != nil
 }
 
-func (ops *ConnOps) SupportQUIC() bool {
-	return ops != nil && ops.qc != nil
+func (cc *ClientConn) SupportQUIC() bool {
+	return cc != nil && cc.qc != nil
 }
 
-func (ops *ConnOps) GetQuicStats() (stats *quic.ConnectionStats, err error) {
-	if ops != nil && ops.qc != nil {
-		stats = new(ops.qc.ConnectionStats())
+func (cc *ClientConn) GetQuicStats() (stats *quic.ConnectionStats, err error) {
+	if cc != nil && cc.qc != nil {
+		stats = new(cc.qc.ConnectionStats())
 	}
 	return
 }
 
-func (ops *ConnOps) SetTcpNotsentLowatOnce(n int) (applied bool, err error) {
-	if ops == nil || ops.tc == nil {
+func (cc *ClientConn) SetTcpNotsentLowatOnce(n int) (applied bool, err error) {
+	if cc == nil || cc.tc == nil {
 		return false, errors.ErrUnsupported
 	}
-	ops.tcpNotsentLowat.Do(func() {
-		err = ops.SetTcpNotsentLowat(n)
+	cc.tcpNotsentLowat.Do(func() {
+		err = cc.SetTcpNotsentLowat(n)
 		applied = true
 	})
 	return
