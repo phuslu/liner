@@ -738,6 +738,7 @@ func main() {
 				}
 				h.ServeHTTP(w, r)
 			}),
+			DisableClientPriority: true, // tunnel streams are opaque, RFC 9218 non-incremental default would serve them one by one
 			HTTP2: &http.HTTP2Config{
 				MaxConcurrentStreams:          1024,              // browsers queue CONNECT streams beyond this limit per session
 				MaxReceiveBufferPerStream:     4 * 1024 * 1024,   // per-stream upload throughput is capped at window/RTT
