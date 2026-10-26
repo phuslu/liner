@@ -1154,10 +1154,12 @@ func (c *ConnWithBuffers) Read(b []byte) (int, error) {
 }
 
 type ClientConn struct {
-	Conn            net.Conn
-	TCPConn         *net.TCPConn
-	QuicConn        *quic.Conn
-	tcpNotsentLowat sync.Once
+	Conn     net.Conn
+	TCPConn  *net.TCPConn
+	QuicConn *quic.Conn
+	Once     struct {
+		TcpNotsentLowat sync.Once
+	}
 }
 
 func (cc *ClientConn) SupportTCP() bool {
@@ -1179,7 +1181,7 @@ func (cc *ClientConn) SetTcpNotsentLowatOnce(n int) (applied bool, err error) {
 	if cc == nil || cc.TCPConn == nil {
 		return false, errors.ErrUnsupported
 	}
-	cc.tcpNotsentLowat.Do(func() {
+	cc.Once.TcpNotsentLowat.Do(func() {
 		err = cc.SetTcpNotsentLowat(n)
 		applied = true
 	})
