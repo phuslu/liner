@@ -1,6 +1,6 @@
 module liner
 
-go 1.27.2
+go 1.27.3
 
 require (
 	github.com/coder/websocket v1.8.15
@@ -18,7 +18,7 @@ require (
 	github.com/phuslu/pamtester v0.0.0-20260908135300-75f72d81971a
 	github.com/phuslu/pty v0.0.0-20260904123709-7bfbeb22b99f
 	github.com/phuslu/tcp-brutal v1.0.1
-	github.com/pkg/sftp v1.13.11
+	github.com/pkg/sftp v1.13.12
 	github.com/puzpuzpuz/xsync/v4 v4.5.0
 	github.com/quic-go/quic-go v0.64.1
 	github.com/refraction-networking/utls v1.8.2
@@ -29,12 +29,12 @@ require (
 	golang.org/x/crypto v0.58.0
 	golang.org/x/net v0.61.0
 	golang.org/x/sys v0.49.0
-	golang.zx2c4.com/wireguard v0.0.0-20261006164505-2631ce99a06f
-	gvisor.dev/gvisor v0.0.0-20261020080152-0d2072ab2413
+	golang.zx2c4.com/wireguard v0.0.0-20261024220952-b3bc704ef0ee
+	gvisor.dev/gvisor v0.0.0-20261026101154-90a2f3f7b8d1
 )
 
 require (
-	github.com/andybalholm/brotli v1.2.6 // indirect
+	github.com/andybalholm/brotli v1.2.7 // indirect
 	github.com/ebitengine/purego v0.11.2 // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/klauspost/compress v1.20.3 // indirect
