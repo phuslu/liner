@@ -48,6 +48,7 @@ type TLSClientInfo struct {
 	Certificate     *tls.Certificate
 	NetConn         net.Conn
 	QuicConn        *quic.Conn
+	ConnOpsOnce     ConnOpsOnce
 	JA4             [36]byte
 }
 

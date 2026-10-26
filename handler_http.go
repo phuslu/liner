@@ -112,7 +112,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 			ri.JA4 = b2s(v.JA4[:])
 		}
 		if req.ProtoMajor == 3 {
-			ri.ClientConnOps = ConnOps{qc: v.QuicConn}
+			ri.ClientConnOps = ConnOps{qc: v.QuicConn, once: &v.ConnOpsOnce}
 		} else {
 			conn := v.NetConn
 			for conn != nil {
@@ -125,7 +125,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 				conn = c.NetConn()
 			}
 			if tc, ok := conn.(*net.TCPConn); ok && tc != nil {
-				ri.ClientConnOps = ConnOps{tc: tc}
+				ri.ClientConnOps = ConnOps{tc: tc, once: &v.ConnOpsOnce}
 			}
 		}
 	}

@@ -1153,9 +1153,16 @@ func (c *ConnWithBuffers) Read(b []byte) (int, error) {
 	return total, nil
 }
 
+type ConnOpsOnce struct {
+	TcpCongestion    sync.Once
+	TcpNotsentLowat  sync.Once
+	TcpMaxPacingRate sync.Once
+}
+
 type ConnOps struct {
-	tc *net.TCPConn
-	qc *quic.Conn
+	tc   *net.TCPConn
+	qc   *quic.Conn
+	once *ConnOpsOnce
 }
 
 func (ops ConnOps) QuicConn() *quic.Conn {
