@@ -46,17 +46,18 @@ type TLSInspectorCacheValue struct {
 type TLSClientInfo struct {
 	ClientHelloInfo *tls.ClientHelloInfo
 	Certificate     *tls.Certificate
-	NetConn         net.Conn
-	QuicConn        *quic.Conn
-	ConnOpsOnce     ConnOpsOnce
+	ConnOps         *ConnOps
 	JA4             [36]byte
 }
 
 func (info *TLSClientInfo) ConnectionState() (tls.ConnectionState, bool) {
-	if info.QuicConn != nil {
-		return info.QuicConn.ConnectionState().TLS, true
+	if info == nil || info.ConnOps == nil {
+		return tls.ConnectionState{}, false
 	}
-	if conn, ok := info.NetConn.(interface {
+	if qc := info.ConnOps.QuicConn(); qc != nil {
+		return qc.ConnectionState().TLS, true
+	}
+	if conn, ok := info.ConnOps.NetConn().(interface {
 		ConnectionState() tls.ConnectionState
 	}); ok {
 		return conn.ConnectionState(), true
@@ -286,18 +287,39 @@ func TLSClientInfoFromContext(ctx context.Context) *TLSClientInfo {
 }
 
 func (m *TLSInspector) HTTPConnContext(ctx context.Context, conn net.Conn) context.Context {
-	return context.WithValue(ctx, TLSClientHelloInfoContextKey, &TLSClientInfo{NetConn: conn})
+	return context.WithValue(ctx, TLSClientHelloInfoContextKey, &TLSClientInfo{
+		ConnOps: &ConnOps{
+			conn: conn,
+			tc:   tlsClientTCPConn(conn),
+		},
+	})
 }
 
 func (m *TLSInspector) HTTP3QUICConnContext(ctx context.Context, _ *quic.ClientInfo) (context.Context, error) {
-	return context.WithValue(ctx, TLSClientHelloInfoContextKey, &TLSClientInfo{}), nil
+	return context.WithValue(ctx, TLSClientHelloInfoContextKey, &TLSClientInfo{ConnOps: &ConnOps{}}), nil
 }
 
 func (m *TLSInspector) HTTP3ConnContext(ctx context.Context, conn *quic.Conn) context.Context {
-	if info := TLSClientInfoFromContext(ctx); info != nil {
-		info.QuicConn = conn
+	if info := TLSClientInfoFromContext(ctx); info != nil && info.ConnOps != nil {
+		info.ConnOps.qc = conn
 	}
 	return ctx
+}
+
+func tlsClientTCPConn(conn net.Conn) *net.TCPConn {
+	for conn != nil {
+		if tc, ok := conn.(*net.TCPConn); ok {
+			return tc
+		}
+		c, ok := conn.(interface {
+			NetConn() net.Conn
+		})
+		if !ok {
+			return nil
+		}
+		conn = c.NetConn()
+	}
+	return nil
 }
 
 var _ tls.ClientSessionCache = (*TLSClientSessionCache)(nil)

@@ -186,7 +186,7 @@ func (h *SshHandler) Load(ctx context.Context) error {
 								return qc.QuicConn().ConnectionStats().SmoothedRTT, nil
 							}
 							if tc, ok := conn.(*net.TCPConn); ok {
-								if tcpinfo, err := (ConnOps{tc: tc}).GetTcpInfo(); err == nil && tcpinfo != nil {
+								if tcpinfo, err := (&ConnOps{tc: tc}).GetTcpInfo(); err == nil && tcpinfo != nil {
 									return tcpinfo.RTT(), nil
 								}
 							}

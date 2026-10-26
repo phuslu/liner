@@ -44,7 +44,7 @@ type HTTPRequestInfo struct {
 	Certificate     *tls.Certificate
 	ClientHelloInfo *tls.ClientHelloInfo
 	ClientHelloRaw  []byte
-	ClientConnOps   ConnOps
+	ClientConnOps   *ConnOps
 	TraceID         log.XID
 	UserAgent       useragent.UserAgent
 	ProxyUserBytes  []byte
@@ -93,7 +93,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		ri.TLSVersion = 0
 	}
 
-	ri.Certificate, ri.ClientHelloInfo, ri.ClientHelloRaw, ri.JA4, ri.ClientConnOps = nil, nil, nil, "", ConnOps{}
+	ri.Certificate, ri.ClientHelloInfo, ri.ClientHelloRaw, ri.JA4, ri.ClientConnOps = nil, nil, nil, "", nil
 	if v := TLSClientInfoFromContext(req.Context()); v != nil {
 		ri.Certificate = v.Certificate
 		ri.ClientHelloInfo = v.ClientHelloInfo
@@ -111,23 +111,7 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		if req.TLS != nil && v.JA4[0] != 0 {
 			ri.JA4 = b2s(v.JA4[:])
 		}
-		if req.ProtoMajor == 3 {
-			ri.ClientConnOps = ConnOps{qc: v.QuicConn, once: &v.ConnOpsOnce}
-		} else {
-			conn := v.NetConn
-			for conn != nil {
-				c, ok := conn.(interface {
-					NetConn() net.Conn
-				})
-				if !ok {
-					break
-				}
-				conn = c.NetConn()
-			}
-			if tc, ok := conn.(*net.TCPConn); ok && tc != nil {
-				ri.ClientConnOps = ConnOps{tc: tc, once: &v.ConnOpsOnce}
-			}
-		}
+		ri.ClientConnOps = v.ConnOps
 	}
 
 	// fix empty sni for IP ceritifcate

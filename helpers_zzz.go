@@ -61,23 +61,23 @@ func (tcpinfo *TCPInfo) RTT() time.Duration {
 	return 0
 }
 
-func (ops ConnOps) GetTcpInfo() (*TCPInfo, error) {
+func (ops *ConnOps) GetTcpInfo() (*TCPInfo, error) {
 	return nil, errors.ErrUnsupported
 }
 
-func (ops ConnOps) GetOriginalDST() (addrport netip.AddrPort, err error) {
+func (ops *ConnOps) GetOriginalDST() (addrport netip.AddrPort, err error) {
 	return netip.AddrPort{}, errors.ErrUnsupported
 }
 
-func (ops ConnOps) SetTcpCongestion(name string, values ...any) error {
+func (ops *ConnOps) SetTcpCongestion(name string, values ...any) error {
 	return errors.ErrUnsupported
 }
 
-func (ops ConnOps) SetTcpNotsentLowat(n int) error {
+func (ops *ConnOps) SetTcpNotsentLowat(n int) error {
 	return errors.ErrUnsupported
 }
 
-func (ops ConnOps) SetTcpMaxPacingRate(rate int) error {
+func (ops *ConnOps) SetTcpMaxPacingRate(rate int) error {
 	return errors.ErrUnsupported
 }
 

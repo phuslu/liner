@@ -117,6 +117,7 @@ https:
       dialer: |
         {{if hasSuffix ".onion" .Request.Host}}torsocks{{end}}
       auth_table: authuser.csv
+      tcp_notsent_lowat: 131072 # negative disables
       speed_limit: 10000000
       io_copy_buffer: 65536
       idle_timeout: 600

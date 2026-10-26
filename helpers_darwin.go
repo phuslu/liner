@@ -171,8 +171,8 @@ func (tcpinfo *TCPInfo) RTT() time.Duration {
 	return 0
 }
 
-func (ops ConnOps) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
-	if ops.tc == nil {
+func (ops *ConnOps) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
+	if ops == nil || ops.tc == nil {
 		return
 	}
 	var c syscall.RawConn
@@ -192,7 +192,10 @@ func (ops ConnOps) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
 	return
 }
 
-func (ops ConnOps) GetOriginalDST() (addrport netip.AddrPort, err error) {
+func (ops *ConnOps) GetOriginalDST() (addrport netip.AddrPort, err error) {
+	if ops == nil {
+		return netip.AddrPort{}, errors.ErrUnsupported
+	}
 	return darwinGetOriginalDST(ops.tc)
 }
 
@@ -289,12 +292,12 @@ func darwinGetOriginalDST(conn *net.TCPConn) (addrport netip.AddrPort, err error
 	return
 }
 
-func (ops ConnOps) SetTcpCongestion(name string, values ...any) (err error) {
+func (ops *ConnOps) SetTcpCongestion(name string, values ...any) (err error) {
 	return errors.ErrUnsupported
 }
 
-func (ops ConnOps) SetTcpNotsentLowat(n int) (err error) {
-	if ops.tc == nil {
+func (ops *ConnOps) SetTcpNotsentLowat(n int) (err error) {
+	if ops == nil || ops.tc == nil {
 		err = errors.ErrUnsupported
 		return
 	}
@@ -312,7 +315,7 @@ func (ops ConnOps) SetTcpNotsentLowat(n int) (err error) {
 	return
 }
 
-func (ops ConnOps) SetTcpMaxPacingRate(rate int) error {
+func (ops *ConnOps) SetTcpMaxPacingRate(rate int) error {
 	return errors.ErrUnsupported
 }
 
