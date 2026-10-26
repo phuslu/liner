@@ -1177,17 +1177,6 @@ func (cc *ClientConn) GetQuicStats() (stats *quic.ConnectionStats, err error) {
 	return
 }
 
-func (cc *ClientConn) SetTcpNotsentLowatOnce(n int) (applied bool, err error) {
-	if cc == nil || cc.TCPConn == nil {
-		return false, errors.ErrUnsupported
-	}
-	cc.Once.TcpNotsentLowat.Do(func() {
-		err = cc.SetTcpNotsentLowat(n)
-		applied = true
-	})
-	return
-}
-
 var _ log.ObjectMarshaler = (HTTPHeaderMarshalLogObject)(nil)
 
 type HTTPHeaderMarshalLogObject http.Header
