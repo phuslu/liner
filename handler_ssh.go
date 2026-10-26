@@ -531,13 +531,13 @@ func (h *SshHandler) Serve(ctx context.Context, ln net.Listener) error {
 								gain = n
 							}
 						}
-						if err := (&ConnOps{v, nil}).SetTcpCongestion(name, uint64(rate), uint32(gain)); err != nil {
+						if err := (&ConnOps{tc: v}).SetTcpCongestion(name, uint64(rate), uint32(gain)); err != nil {
 							h.Logger.Error().Err(err).NetAddr("remote_ip", v.RemoteAddr()).Strs("ssh_tcp_congestion_options", options).Msg("set ssh_tcp_congestion error")
 						}
 						h.Logger.Debug().NetAddr("remote_ip", v.RemoteAddr()).Strs("ssh_tcp_congestion_options", options).Msg("set ssh_tcp_congestion ok")
 					}
 				default:
-					if err := (&ConnOps{v, nil}).SetTcpCongestion(name); err != nil {
+					if err := (&ConnOps{tc: v}).SetTcpCongestion(name); err != nil {
 						h.Logger.Error().Err(err).NetAddr("remote_ip", v.RemoteAddr()).Strs("ssh_tcp_congestion_options", options).Msg("set ssh_tcp_congestion error")
 					}
 				}
