@@ -1154,43 +1154,29 @@ func (c *ConnWithBuffers) Read(b []byte) (int, error) {
 }
 
 type ClientConn struct {
-	conn            net.Conn
-	tc              *net.TCPConn
-	qc              *quic.Conn
+	Conn            net.Conn
+	TCPConn         *net.TCPConn
+	QuicConn        *quic.Conn
 	tcpNotsentLowat sync.Once
 }
 
-func (cc *ClientConn) NetConn() net.Conn {
-	if cc == nil {
-		return nil
-	}
-	return cc.conn
-}
-
-func (cc *ClientConn) QuicConn() *quic.Conn {
-	if cc == nil {
-		return nil
-	}
-	return cc.qc
-}
-
 func (cc *ClientConn) SupportTCP() bool {
-	return cc != nil && cc.tc != nil
+	return cc != nil && cc.TCPConn != nil
 }
 
 func (cc *ClientConn) SupportQUIC() bool {
-	return cc != nil && cc.qc != nil
+	return cc != nil && cc.QuicConn != nil
 }
 
 func (cc *ClientConn) GetQuicStats() (stats *quic.ConnectionStats, err error) {
-	if cc != nil && cc.qc != nil {
-		stats = new(cc.qc.ConnectionStats())
+	if cc != nil && cc.QuicConn != nil {
+		stats = new(cc.QuicConn.ConnectionStats())
 	}
 	return
 }
 
 func (cc *ClientConn) SetTcpNotsentLowatOnce(n int) (applied bool, err error) {
-	if cc == nil || cc.tc == nil {
+	if cc == nil || cc.TCPConn == nil {
 		return false, errors.ErrUnsupported
 	}
 	cc.tcpNotsentLowat.Do(func() {

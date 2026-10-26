@@ -202,14 +202,14 @@ func (tcpinfo *TCPInfo) RTT() time.Duration {
 }
 
 func (cc *ClientConn) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
-	if cc == nil || cc.tc == nil || cc.tc.RemoteAddr() == nil {
+	if cc == nil || cc.TCPConn == nil || cc.TCPConn.RemoteAddr() == nil {
 		return
 	}
 
 	const SIO_TCP_INFO uint32 = windows.IOC_INOUT | windows.IOC_VENDOR | 39
 
 	var c syscall.RawConn
-	c, err = cc.tc.SyscallConn()
+	c, err = cc.TCPConn.SyscallConn()
 	if err != nil {
 		return
 	}
@@ -242,7 +242,7 @@ func (cc *ClientConn) GetOriginalDST() (addrport netip.AddrPort, err error) {
 }
 
 func (cc *ClientConn) SetTcpCongestion(name string, values ...any) (err error) {
-	if cc == nil || cc.tc == nil {
+	if cc == nil || cc.TCPConn == nil {
 		return errors.ErrUnsupported
 	}
 	name = strings.TrimSpace(name)
@@ -254,7 +254,7 @@ func (cc *ClientConn) SetTcpCongestion(name string, values ...any) (err error) {
 		return err
 	}
 	var c syscall.RawConn
-	c, err = cc.tc.SyscallConn()
+	c, err = cc.TCPConn.SyscallConn()
 	if err != nil {
 		return err
 	}

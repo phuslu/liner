@@ -170,11 +170,11 @@ func (tcpinfo *TCPInfo) RTT() time.Duration {
 }
 
 func (cc *ClientConn) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
-	if cc == nil || cc.tc == nil {
+	if cc == nil || cc.TCPConn == nil {
 		return
 	}
 	var c syscall.RawConn
-	c, err = cc.tc.SyscallConn()
+	c, err = cc.TCPConn.SyscallConn()
 	if err != nil {
 		return
 	}
@@ -203,7 +203,7 @@ func (cc *ClientConn) GetOriginalDST() (addrport netip.AddrPort, err error) {
 	if cc == nil {
 		return netip.AddrPort{}, errors.ErrUnsupported
 	}
-	return linuxGetOriginalDST(cc.tc)
+	return linuxGetOriginalDST(cc.TCPConn)
 }
 
 func linuxGetOriginalDST(conn *net.TCPConn) (addrport netip.AddrPort, err error) {
@@ -279,12 +279,12 @@ func intof(n any) int {
 }
 
 func (cc *ClientConn) SetTcpCongestion(name string, values ...any) (err error) {
-	if cc == nil || cc.tc == nil {
+	if cc == nil || cc.TCPConn == nil {
 		err = errors.ErrUnsupported
 		return
 	}
 	var c syscall.RawConn
-	c, err = cc.tc.SyscallConn()
+	c, err = cc.TCPConn.SyscallConn()
 	if err != nil {
 		return
 	}
@@ -313,12 +313,12 @@ func (cc *ClientConn) SetTcpCongestion(name string, values ...any) (err error) {
 }
 
 func (cc *ClientConn) SetTcpNotsentLowat(n int) (err error) {
-	if cc == nil || cc.tc == nil {
+	if cc == nil || cc.TCPConn == nil {
 		err = errors.ErrUnsupported
 		return
 	}
 	var c syscall.RawConn
-	c, err = cc.tc.SyscallConn()
+	c, err = cc.TCPConn.SyscallConn()
 	if err != nil {
 		return
 	}
@@ -332,13 +332,13 @@ func (cc *ClientConn) SetTcpNotsentLowat(n int) (err error) {
 }
 
 func (cc *ClientConn) SetTcpMaxPacingRate(rate int) (err error) {
-	if cc == nil || cc.tc == nil {
+	if cc == nil || cc.TCPConn == nil {
 		err = errors.ErrUnsupported
 		return
 	}
 	const SO_MAX_PACING_RATE = 47
 	var c syscall.RawConn
-	c, err = cc.tc.SyscallConn()
+	c, err = cc.TCPConn.SyscallConn()
 	if err != nil {
 		return
 	}

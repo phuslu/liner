@@ -54,10 +54,10 @@ func (info *TLSClientInfo) ConnectionState() (tls.ConnectionState, bool) {
 	if info == nil || info.ClientConn == nil {
 		return tls.ConnectionState{}, false
 	}
-	if qc := info.ClientConn.QuicConn(); qc != nil {
+	if qc := info.ClientConn.QuicConn; qc != nil {
 		return qc.ConnectionState().TLS, true
 	}
-	if conn, ok := info.ClientConn.NetConn().(interface {
+	if conn, ok := info.ClientConn.Conn.(interface {
 		ConnectionState() tls.ConnectionState
 	}); ok {
 		return conn.ConnectionState(), true
@@ -289,8 +289,8 @@ func TLSClientInfoFromContext(ctx context.Context) *TLSClientInfo {
 func (m *TLSInspector) HTTPConnContext(ctx context.Context, conn net.Conn) context.Context {
 	return context.WithValue(ctx, TLSClientHelloInfoContextKey, &TLSClientInfo{
 		ClientConn: &ClientConn{
-			conn: conn,
-			tc:   tlsClientTCPConn(conn),
+			Conn:    conn,
+			TCPConn: tlsClientTCPConn(conn),
 		},
 	})
 }
@@ -301,7 +301,7 @@ func (m *TLSInspector) HTTP3QUICConnContext(ctx context.Context, _ *quic.ClientI
 
 func (m *TLSInspector) HTTP3ConnContext(ctx context.Context, conn *quic.Conn) context.Context {
 	if info := TLSClientInfoFromContext(ctx); info != nil && info.ClientConn != nil {
-		info.ClientConn.qc = conn
+		info.ClientConn.QuicConn = conn
 	}
 	return ctx
 }
