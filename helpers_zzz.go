@@ -77,7 +77,7 @@ func (cc *ClientConn) setTcpNotsentLowat(n int) error {
 	return errors.ErrUnsupported
 }
 
-func (cc *ClientConn) SetTcpMaxPacingRate(rate int) error {
+func (cc *ClientConn) setTcpMaxPacingRate(rate int) error {
 	return errors.ErrUnsupported
 }
 

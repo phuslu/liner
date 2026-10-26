@@ -331,7 +331,7 @@ func (cc *ClientConn) setTcpNotsentLowat(n int) (err error) {
 	return
 }
 
-func (cc *ClientConn) SetTcpMaxPacingRate(rate int) (err error) {
+func (cc *ClientConn) setTcpMaxPacingRate(rate int) (err error) {
 	if cc == nil || cc.TCPConn == nil {
 		err = errors.ErrUnsupported
 		return
