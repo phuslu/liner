@@ -1157,7 +1157,7 @@ type ClientConn struct {
 	Conn     net.Conn
 	TCPConn  *net.TCPConn
 	QuicConn *quic.Conn
-	Values   struct {
+	sockopt  struct {
 		TcpNotsentLowat  atomic.Int64
 		TcpMaxPacingRate atomic.Int64
 	}
@@ -1167,13 +1167,13 @@ func (cc *ClientConn) SetTcpNotsentLowat(n int) error {
 	if cc == nil || cc.TCPConn == nil {
 		return errors.ErrUnsupported
 	}
-	if cc.Values.TcpNotsentLowat.Load() == int64(n) {
+	if cc.sockopt.TcpNotsentLowat.Load() == int64(n) {
 		return nil
 	}
 	if err := cc.setTcpNotsentLowat(n); err != nil {
 		return err
 	}
-	cc.Values.TcpNotsentLowat.Store(int64(n))
+	cc.sockopt.TcpNotsentLowat.Store(int64(n))
 	return nil
 }
 
@@ -1181,13 +1181,13 @@ func (cc *ClientConn) SetTcpMaxPacingRate(rate int) error {
 	if cc == nil || cc.TCPConn == nil {
 		return errors.ErrUnsupported
 	}
-	if cc.Values.TcpMaxPacingRate.Load() == int64(rate) {
+	if cc.sockopt.TcpMaxPacingRate.Load() == int64(rate) {
 		return nil
 	}
 	if err := cc.setTcpMaxPacingRate(rate); err != nil {
 		return err
 	}
-	cc.Values.TcpMaxPacingRate.Store(int64(rate))
+	cc.sockopt.TcpMaxPacingRate.Store(int64(rate))
 	return nil
 }
 
