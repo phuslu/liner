@@ -93,25 +93,22 @@ func (h *HTTPServerHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		ri.TLSVersion = 0
 	}
 
-	ri.Certificate, ri.ClientHelloInfo, ri.ClientHelloRaw, ri.JA4, ri.ConnOps = nil, nil, nil, "", nil
 	if v := TLSClientInfoFromContext(req.Context()); v != nil {
 		ri.Certificate = v.Certificate
 		ri.ClientHelloInfo = v.ClientHelloInfo
-		if v.ClientHelloInfo != nil && v.ClientHelloInfo.Conn != nil {
-			var conn net.Conn = v.ClientHelloInfo.Conn
-			if c, ok := conn.(*tls.Conn); ok && c != nil {
-				conn = c.NetConn()
-			}
-			if c, ok := conn.(*MirrorHeaderConn); ok {
-				if header := c.Header(); len(header) > 0 {
-					ri.ClientHelloRaw = header
-				}
-			}
-		}
+		ri.ClientHelloRaw = v.ClientHelloRaw
+		ri.ConnOps = v.ConnOps
 		if req.TLS != nil && v.JA4[0] != 0 {
 			ri.JA4 = b2s(v.JA4[:])
+		} else {
+			ri.JA4 = ""
 		}
-		ri.ConnOps = v.ConnOps
+	} else {
+		ri.Certificate = nil
+		ri.ClientHelloInfo = nil
+		ri.ClientHelloRaw = nil
+		ri.ConnOps = nil
+		ri.JA4 = ""
 	}
 
 	// fix empty sni for IP ceritifcate

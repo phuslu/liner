@@ -45,6 +45,7 @@ type TLSInspectorCacheValue struct {
 
 type TLSClientInfo struct {
 	ClientHelloInfo *tls.ClientHelloInfo
+	ClientHelloRaw  []byte
 	Certificate     *tls.Certificate
 	Conn            net.Conn
 	ConnOps         *ConnOps
@@ -172,6 +173,10 @@ func (m *TLSInspector) GetConfigForClient(hello *tls.ClientHelloInfo) (*tls.Conf
 	info := TLSClientInfoFromContext(hello.Context())
 	if info != nil {
 		info.ClientHelloInfo = hello
+		info.ClientHelloRaw = nil
+		if c, ok := hello.Conn.(*MirrorHeaderConn); ok {
+			info.ClientHelloRaw = c.Header()
+		}
 		AppendJA4Fingerprint(info.JA4[:0], info.ClientHelloInfo)
 	}
 
