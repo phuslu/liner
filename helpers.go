@@ -1158,6 +1158,7 @@ type ClientConn struct {
 	TCPConn  *net.TCPConn
 	QuicConn *quic.Conn
 	sockopt  struct {
+		sync.Mutex
 		TcpNotsentLowat  atomic.Int64
 		TcpMaxPacingRate atomic.Int64
 	}
@@ -1167,6 +1168,11 @@ func (cc *ClientConn) SetTcpNotsentLowat(n int) error {
 	if cc == nil || cc.TCPConn == nil {
 		return errors.ErrUnsupported
 	}
+	if cc.sockopt.TcpNotsentLowat.Load() == int64(n) {
+		return nil
+	}
+	cc.sockopt.Lock()
+	defer cc.sockopt.Unlock()
 	if cc.sockopt.TcpNotsentLowat.Load() == int64(n) {
 		return nil
 	}
@@ -1181,6 +1187,11 @@ func (cc *ClientConn) SetTcpMaxPacingRate(rate int) error {
 	if cc == nil || cc.TCPConn == nil {
 		return errors.ErrUnsupported
 	}
+	if cc.sockopt.TcpMaxPacingRate.Load() == int64(rate) {
+		return nil
+	}
+	cc.sockopt.Lock()
+	defer cc.sockopt.Unlock()
 	if cc.sockopt.TcpMaxPacingRate.Load() == int64(rate) {
 		return nil
 	}
