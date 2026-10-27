@@ -147,8 +147,8 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 				"UserAgent":       &ri.UserAgent,
 				"ClientHelloInfo": ri.ClientHelloInfo,
 				"JA4":             ri.JA4,
-				"TCPInfo":         ri.ConnInfo.GetTcpInfo,
-				"QuicStats":       ri.ConnInfo.GetQuicStats,
+				"TCPInfo":         ri.ConnOps.GetTcpInfo,
+				"QuicStats":       ri.ConnOps.GetQuicStats,
 				"FileInfo":        fi,
 			})
 		} else {
@@ -171,8 +171,8 @@ func (h *HTTPWebIndexHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 				UserAgent:       &ri.UserAgent,
 				ClientHelloInfo: ri.ClientHelloInfo,
 				JA4:             ri.JA4,
-				TCPInfo:         ri.ConnInfo.GetTcpInfo,
-				QuicStats:       ri.ConnInfo.GetQuicStats,
+				TCPInfo:         ri.ConnOps.GetTcpInfo,
+				QuicStats:       ri.ConnOps.GetQuicStats,
 				FileInfo:        fi,
 			})
 		}

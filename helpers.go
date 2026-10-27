@@ -1153,7 +1153,7 @@ func (c *ConnWithBuffers) Read(b []byte) (int, error) {
 	return total, nil
 }
 
-type ConnInfo struct {
+type ConnOps struct {
 	TCPConn  *net.TCPConn
 	QuicConn *quic.Conn
 	sockopt  struct {
@@ -1163,7 +1163,7 @@ type ConnInfo struct {
 	}
 }
 
-func (ci *ConnInfo) SetTcpNotsentLowat(n int) error {
+func (ci *ConnOps) SetTcpNotsentLowat(n int) error {
 	if ci == nil || ci.TCPConn == nil {
 		return errors.ErrUnsupported
 	}
@@ -1182,7 +1182,7 @@ func (ci *ConnInfo) SetTcpNotsentLowat(n int) error {
 	return nil
 }
 
-func (ci *ConnInfo) SetTcpMaxPacingRate(rate int) error {
+func (ci *ConnOps) SetTcpMaxPacingRate(rate int) error {
 	if ci == nil || ci.TCPConn == nil {
 		return errors.ErrUnsupported
 	}
@@ -1201,15 +1201,15 @@ func (ci *ConnInfo) SetTcpMaxPacingRate(rate int) error {
 	return nil
 }
 
-func (ci *ConnInfo) SupportTCP() bool {
+func (ci *ConnOps) SupportTCP() bool {
 	return ci != nil && ci.TCPConn != nil
 }
 
-func (ci *ConnInfo) SupportQUIC() bool {
+func (ci *ConnOps) SupportQUIC() bool {
 	return ci != nil && ci.QuicConn != nil
 }
 
-func (ci *ConnInfo) GetQuicStats() (stats *quic.ConnectionStats, err error) {
+func (ci *ConnOps) GetQuicStats() (stats *quic.ConnectionStats, err error) {
 	if ci != nil && ci.QuicConn != nil {
 		stats = new(ci.QuicConn.ConnectionStats())
 	}

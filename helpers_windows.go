@@ -201,7 +201,7 @@ func (tcpinfo *TCPInfo) RTT() time.Duration {
 	return time.Duration(tcpinfo.RttUs) * time.Microsecond
 }
 
-func (ci *ConnInfo) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
+func (ci *ConnOps) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
 	if ci == nil || ci.TCPConn == nil || ci.TCPConn.RemoteAddr() == nil {
 		return
 	}
@@ -237,11 +237,11 @@ func (ci *ConnInfo) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
 	return
 }
 
-func (ci *ConnInfo) GetOriginalDST() (addrport netip.AddrPort, err error) {
+func (ci *ConnOps) GetOriginalDST() (addrport netip.AddrPort, err error) {
 	return netip.AddrPort{}, errors.ErrUnsupported
 }
 
-func (ci *ConnInfo) SetTcpCongestion(name string, values ...any) (err error) {
+func (ci *ConnOps) SetTcpCongestion(name string, values ...any) (err error) {
 	if ci == nil || ci.TCPConn == nil {
 		return errors.ErrUnsupported
 	}
@@ -279,11 +279,11 @@ func (ci *ConnInfo) SetTcpCongestion(name string, values ...any) (err error) {
 	return
 }
 
-func (ci *ConnInfo) setTcpNotsentLowat(n int) error {
+func (ci *ConnOps) setTcpNotsentLowat(n int) error {
 	return errors.ErrUnsupported
 }
 
-func (ci *ConnInfo) setTcpMaxPacingRate(rate int) error {
+func (ci *ConnOps) setTcpMaxPacingRate(rate int) error {
 	return errors.ErrUnsupported
 }
 
