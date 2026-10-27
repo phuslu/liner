@@ -423,7 +423,7 @@ func (m *HTTPWebMiddlewareTcpCongestion) Load(ctx context.Context) error {
 
 func (m *HTTPWebMiddlewareTcpCongestion) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	ri := req.Context().Value(HTTPRequestInfoContextKey).(*HTTPRequestInfo)
-	if ri.ClientConn.SupportTCP() && strings.HasPrefix(req.RequestURI, m.prefix) && m.TcpCongestion != "" {
+	if ri.ConnInfo.SupportTCP() && strings.HasPrefix(req.RequestURI, m.prefix) && m.TcpCongestion != "" {
 		log.Debug().Context(ri.LogContext).Str("web_tcp_congestion", m.TcpCongestion).Msg("execute web_tcp_congestion middleware")
 		if options := strings.Fields(m.TcpCongestion); len(options) >= 1 {
 			switch name := options[0]; name {
@@ -440,7 +440,7 @@ func (m *HTTPWebMiddlewareTcpCongestion) ServeHTTP(rw http.ResponseWriter, req *
 							gain = n
 						}
 					}
-					if err := ri.ClientConn.SetTcpCongestion(name, uint64(rate), uint32(gain)); err != nil {
+					if err := ri.ConnInfo.SetTcpCongestion(name, uint64(rate), uint32(gain)); err != nil {
 						log.Error().Context(ri.LogContext).Strs("web_tcp_congestion_options", options).Msg("set web_tcp_congestion error")
 						http.Error(rw, err.Error(), http.StatusBadGateway)
 						return
@@ -448,7 +448,7 @@ func (m *HTTPWebMiddlewareTcpCongestion) ServeHTTP(rw http.ResponseWriter, req *
 					log.Debug().NetIPAddr("remote_ip", ri.RealIP).Strs("web_tcp_congestion_options", options).Msg("set web_tcp_congestion ok")
 				}
 			default:
-				if err := ri.ClientConn.SetTcpCongestion(name); err != nil {
+				if err := ri.ConnInfo.SetTcpCongestion(name); err != nil {
 					log.Error().Context(ri.LogContext).Strs("web_tcp_congestion_options", options).Msg("set web_tcp_congestion error")
 					http.Error(rw, err.Error(), http.StatusBadGateway)
 					return

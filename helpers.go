@@ -1153,7 +1153,7 @@ func (c *ConnWithBuffers) Read(b []byte) (int, error) {
 	return total, nil
 }
 
-type ClientConn struct {
+type ConnInfo struct {
 	Conn     net.Conn
 	TCPConn  *net.TCPConn
 	QuicConn *quic.Conn
@@ -1164,55 +1164,55 @@ type ClientConn struct {
 	}
 }
 
-func (cc *ClientConn) SetTcpNotsentLowat(n int) error {
-	if cc == nil || cc.TCPConn == nil {
+func (ci *ConnInfo) SetTcpNotsentLowat(n int) error {
+	if ci == nil || ci.TCPConn == nil {
 		return errors.ErrUnsupported
 	}
-	if cc.sockopt.TcpNotsentLowat.Load() == int64(n) {
+	if ci.sockopt.TcpNotsentLowat.Load() == int64(n) {
 		return nil
 	}
-	cc.sockopt.Lock()
-	defer cc.sockopt.Unlock()
-	if cc.sockopt.TcpNotsentLowat.Load() == int64(n) {
+	ci.sockopt.Lock()
+	defer ci.sockopt.Unlock()
+	if ci.sockopt.TcpNotsentLowat.Load() == int64(n) {
 		return nil
 	}
-	if err := cc.setTcpNotsentLowat(n); err != nil {
+	if err := ci.setTcpNotsentLowat(n); err != nil {
 		return err
 	}
-	cc.sockopt.TcpNotsentLowat.Store(int64(n))
+	ci.sockopt.TcpNotsentLowat.Store(int64(n))
 	return nil
 }
 
-func (cc *ClientConn) SetTcpMaxPacingRate(rate int) error {
-	if cc == nil || cc.TCPConn == nil {
+func (ci *ConnInfo) SetTcpMaxPacingRate(rate int) error {
+	if ci == nil || ci.TCPConn == nil {
 		return errors.ErrUnsupported
 	}
-	if cc.sockopt.TcpMaxPacingRate.Load() == int64(rate) {
+	if ci.sockopt.TcpMaxPacingRate.Load() == int64(rate) {
 		return nil
 	}
-	cc.sockopt.Lock()
-	defer cc.sockopt.Unlock()
-	if cc.sockopt.TcpMaxPacingRate.Load() == int64(rate) {
+	ci.sockopt.Lock()
+	defer ci.sockopt.Unlock()
+	if ci.sockopt.TcpMaxPacingRate.Load() == int64(rate) {
 		return nil
 	}
-	if err := cc.setTcpMaxPacingRate(rate); err != nil {
+	if err := ci.setTcpMaxPacingRate(rate); err != nil {
 		return err
 	}
-	cc.sockopt.TcpMaxPacingRate.Store(int64(rate))
+	ci.sockopt.TcpMaxPacingRate.Store(int64(rate))
 	return nil
 }
 
-func (cc *ClientConn) SupportTCP() bool {
-	return cc != nil && cc.TCPConn != nil
+func (ci *ConnInfo) SupportTCP() bool {
+	return ci != nil && ci.TCPConn != nil
 }
 
-func (cc *ClientConn) SupportQUIC() bool {
-	return cc != nil && cc.QuicConn != nil
+func (ci *ConnInfo) SupportQUIC() bool {
+	return ci != nil && ci.QuicConn != nil
 }
 
-func (cc *ClientConn) GetQuicStats() (stats *quic.ConnectionStats, err error) {
-	if cc != nil && cc.QuicConn != nil {
-		stats = new(cc.QuicConn.ConnectionStats())
+func (ci *ConnInfo) GetQuicStats() (stats *quic.ConnectionStats, err error) {
+	if ci != nil && ci.QuicConn != nil {
+		stats = new(ci.QuicConn.ConnectionStats())
 	}
 	return
 }

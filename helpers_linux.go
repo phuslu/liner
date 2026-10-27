@@ -169,12 +169,12 @@ func (tcpinfo *TCPInfo) RTT() time.Duration {
 	return time.Duration(tcpinfo.Rtt) * time.Microsecond
 }
 
-func (cc *ClientConn) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
-	if cc == nil || cc.TCPConn == nil {
+func (ci *ConnInfo) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
+	if ci == nil || ci.TCPConn == nil {
 		return
 	}
 	var c syscall.RawConn
-	c, err = cc.TCPConn.SyscallConn()
+	c, err = ci.TCPConn.SyscallConn()
 	if err != nil {
 		return
 	}
@@ -199,11 +199,11 @@ func (cc *ClientConn) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
 	return
 }
 
-func (cc *ClientConn) GetOriginalDST() (addrport netip.AddrPort, err error) {
-	if cc == nil {
+func (ci *ConnInfo) GetOriginalDST() (addrport netip.AddrPort, err error) {
+	if ci == nil {
 		return netip.AddrPort{}, errors.ErrUnsupported
 	}
-	return linuxGetOriginalDST(cc.TCPConn)
+	return linuxGetOriginalDST(ci.TCPConn)
 }
 
 func linuxGetOriginalDST(conn *net.TCPConn) (addrport netip.AddrPort, err error) {
@@ -278,13 +278,13 @@ func intof(n any) int {
 	return 0
 }
 
-func (cc *ClientConn) SetTcpCongestion(name string, values ...any) (err error) {
-	if cc == nil || cc.TCPConn == nil {
+func (ci *ConnInfo) SetTcpCongestion(name string, values ...any) (err error) {
+	if ci == nil || ci.TCPConn == nil {
 		err = errors.ErrUnsupported
 		return
 	}
 	var c syscall.RawConn
-	c, err = cc.TCPConn.SyscallConn()
+	c, err = ci.TCPConn.SyscallConn()
 	if err != nil {
 		return
 	}
@@ -312,13 +312,13 @@ func (cc *ClientConn) SetTcpCongestion(name string, values ...any) (err error) {
 	return
 }
 
-func (cc *ClientConn) setTcpNotsentLowat(n int) (err error) {
-	if cc == nil || cc.TCPConn == nil {
+func (ci *ConnInfo) setTcpNotsentLowat(n int) (err error) {
+	if ci == nil || ci.TCPConn == nil {
 		err = errors.ErrUnsupported
 		return
 	}
 	var c syscall.RawConn
-	c, err = cc.TCPConn.SyscallConn()
+	c, err = ci.TCPConn.SyscallConn()
 	if err != nil {
 		return
 	}
@@ -331,14 +331,14 @@ func (cc *ClientConn) setTcpNotsentLowat(n int) (err error) {
 	return
 }
 
-func (cc *ClientConn) setTcpMaxPacingRate(rate int) (err error) {
-	if cc == nil || cc.TCPConn == nil {
+func (ci *ConnInfo) setTcpMaxPacingRate(rate int) (err error) {
+	if ci == nil || ci.TCPConn == nil {
 		err = errors.ErrUnsupported
 		return
 	}
 	const SO_MAX_PACING_RATE = 47
 	var c syscall.RawConn
-	c, err = cc.TCPConn.SyscallConn()
+	c, err = ci.TCPConn.SyscallConn()
 	if err != nil {
 		return
 	}

@@ -171,12 +171,12 @@ func (tcpinfo *TCPInfo) RTT() time.Duration {
 	return 0
 }
 
-func (cc *ClientConn) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
-	if cc == nil || cc.TCPConn == nil {
+func (ci *ConnInfo) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
+	if ci == nil || ci.TCPConn == nil {
 		return
 	}
 	var c syscall.RawConn
-	c, err = cc.TCPConn.SyscallConn()
+	c, err = ci.TCPConn.SyscallConn()
 	if err != nil {
 		return
 	}
@@ -192,11 +192,11 @@ func (cc *ClientConn) GetTcpInfo() (tcpinfo *TCPInfo, err error) {
 	return
 }
 
-func (cc *ClientConn) GetOriginalDST() (addrport netip.AddrPort, err error) {
-	if cc == nil {
+func (ci *ConnInfo) GetOriginalDST() (addrport netip.AddrPort, err error) {
+	if ci == nil {
 		return netip.AddrPort{}, errors.ErrUnsupported
 	}
-	return darwinGetOriginalDST(cc.TCPConn)
+	return darwinGetOriginalDST(ci.TCPConn)
 }
 
 func darwinGetOriginalDST(conn *net.TCPConn) (addrport netip.AddrPort, err error) {
@@ -292,17 +292,17 @@ func darwinGetOriginalDST(conn *net.TCPConn) (addrport netip.AddrPort, err error
 	return
 }
 
-func (cc *ClientConn) SetTcpCongestion(name string, values ...any) (err error) {
+func (ci *ConnInfo) SetTcpCongestion(name string, values ...any) (err error) {
 	return errors.ErrUnsupported
 }
 
-func (cc *ClientConn) setTcpNotsentLowat(n int) (err error) {
-	if cc == nil || cc.TCPConn == nil {
+func (ci *ConnInfo) setTcpNotsentLowat(n int) (err error) {
+	if ci == nil || ci.TCPConn == nil {
 		err = errors.ErrUnsupported
 		return
 	}
 	var c syscall.RawConn
-	c, err = cc.TCPConn.SyscallConn()
+	c, err = ci.TCPConn.SyscallConn()
 	if err != nil {
 		return
 	}
@@ -315,7 +315,7 @@ func (cc *ClientConn) setTcpNotsentLowat(n int) (err error) {
 	return
 }
 
-func (cc *ClientConn) setTcpMaxPacingRate(rate int) error {
+func (ci *ConnInfo) setTcpMaxPacingRate(rate int) error {
 	return errors.ErrUnsupported
 }
 

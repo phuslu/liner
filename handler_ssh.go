@@ -186,7 +186,7 @@ func (h *SshHandler) Load(ctx context.Context) error {
 								return qc.QuicConn().ConnectionStats().SmoothedRTT, nil
 							}
 							if tc, ok := conn.(*net.TCPConn); ok {
-								if tcpinfo, err := (&ClientConn{TCPConn: tc}).GetTcpInfo(); err == nil && tcpinfo != nil {
+								if tcpinfo, err := (&ConnInfo{TCPConn: tc}).GetTcpInfo(); err == nil && tcpinfo != nil {
 									return tcpinfo.RTT(), nil
 								}
 							}
@@ -531,13 +531,13 @@ func (h *SshHandler) Serve(ctx context.Context, ln net.Listener) error {
 								gain = n
 							}
 						}
-						if err := (&ClientConn{TCPConn: v}).SetTcpCongestion(name, uint64(rate), uint32(gain)); err != nil {
+						if err := (&ConnInfo{TCPConn: v}).SetTcpCongestion(name, uint64(rate), uint32(gain)); err != nil {
 							h.Logger.Error().Err(err).NetAddr("remote_ip", v.RemoteAddr()).Strs("ssh_tcp_congestion_options", options).Msg("set ssh_tcp_congestion error")
 						}
 						h.Logger.Debug().NetAddr("remote_ip", v.RemoteAddr()).Strs("ssh_tcp_congestion_options", options).Msg("set ssh_tcp_congestion ok")
 					}
 				default:
-					if err := (&ClientConn{TCPConn: v}).SetTcpCongestion(name); err != nil {
+					if err := (&ConnInfo{TCPConn: v}).SetTcpCongestion(name); err != nil {
 						h.Logger.Error().Err(err).NetAddr("remote_ip", v.RemoteAddr()).Strs("ssh_tcp_congestion_options", options).Msg("set ssh_tcp_congestion error")
 					}
 				}
