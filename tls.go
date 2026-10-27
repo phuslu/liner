@@ -46,6 +46,7 @@ type TLSInspectorCacheValue struct {
 type TLSClientInfo struct {
 	ClientHelloInfo *tls.ClientHelloInfo
 	Certificate     *tls.Certificate
+	Conn            net.Conn
 	ConnInfo        *ConnInfo
 	JA4             [36]byte
 }
@@ -57,7 +58,7 @@ func (info *TLSClientInfo) ConnectionState() (tls.ConnectionState, bool) {
 	if qc := info.ConnInfo.QuicConn; qc != nil {
 		return qc.ConnectionState().TLS, true
 	}
-	if conn, ok := info.ConnInfo.Conn.(interface {
+	if conn, ok := info.Conn.(interface {
 		ConnectionState() tls.ConnectionState
 	}); ok {
 		return conn.ConnectionState(), true
@@ -288,10 +289,8 @@ func TLSClientInfoFromContext(ctx context.Context) *TLSClientInfo {
 
 func (m *TLSInspector) HTTPConnContext(ctx context.Context, conn net.Conn) context.Context {
 	return context.WithValue(ctx, TLSClientHelloInfoContextKey, &TLSClientInfo{
-		ConnInfo: &ConnInfo{
-			Conn:    conn,
-			TCPConn: tlsClientTCPConn(conn),
-		},
+		Conn:     conn,
+		ConnInfo: &ConnInfo{TCPConn: tlsClientTCPConn(conn)},
 	})
 }
 

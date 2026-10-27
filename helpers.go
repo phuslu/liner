@@ -1154,7 +1154,6 @@ func (c *ConnWithBuffers) Read(b []byte) (int, error) {
 }
 
 type ConnInfo struct {
-	Conn     net.Conn
 	TCPConn  *net.TCPConn
 	QuicConn *quic.Conn
 	sockopt  struct {
