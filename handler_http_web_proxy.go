@@ -20,6 +20,7 @@ import (
 
 	"github.com/mileusna/useragent"
 	"github.com/phuslu/log"
+	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/valyala/bytebufferpool"
 )
@@ -60,6 +61,9 @@ func (h *HTTPWebProxyHandler) Load(ctx context.Context) error {
 	h.transport3 = &http3.Transport{
 		DisableCompression: false,
 		EnableDatagrams:    true,
+		QUICConfig: &quic.Config{
+			BBROptions: quic.BBROptions{FlexibleAppLimited: true},
+		},
 	}
 
 	if strings.Contains(h.SetHeaders, "{{") {

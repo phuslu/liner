@@ -391,6 +391,7 @@ func (d *HTTP3Dialer) dialQUICConn(ctx context.Context) (*quic.Conn, error) {
 					MaxIncomingStreams:         200,
 					MaxStreamReceiveWindow:     12 * 1024 * 1024,
 					MaxConnectionReceiveWindow: 100 * 1024 * 1024,
+					BBROptions:                 quic.BBROptions{FlexibleAppLimited: true},
 				},
 			)
 			if err != nil {

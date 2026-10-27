@@ -150,6 +150,7 @@ func (pool *DnsResolverPool) Get(addr string, ttl time.Duration) (*DnsResolver, 
 						EnableDatagrams:         true,
 						MaxIncomingUniStreams:   200,
 						MaxIncomingStreams:      200,
+						BBROptions:              quic.BBROptions{FlexibleAppLimited: true},
 					},
 				},
 			}

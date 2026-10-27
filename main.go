@@ -38,6 +38,7 @@ import (
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
+	"github.com/quic-go/quic-go/qlog"
 	utls "github.com/refraction-networking/utls"
 	"github.com/robfig/cron/v3"
 	"github.com/smallnest/ringbuffer"
@@ -804,6 +805,8 @@ func main() {
 					MaxIncomingStreams:         16384, // for long running http3 dialers and tunnels
 					MaxStreamReceiveWindow:     12 * 1024 * 1024,
 					MaxConnectionReceiveWindow: 200 * 1024 * 1024,
+					Tracer:                     qlog.DefaultConnectionTracer,
+					BBROptions:                 quic.BBROptions{FlexibleAppLimited: true},
 				},
 				ConnContext: tlsConfigurator.HTTP3ConnContext,
 				Logger:      log.DefaultLogger.Slog().With("logger", "http3_server"),

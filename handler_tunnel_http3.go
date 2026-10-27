@@ -18,6 +18,7 @@ import (
 	"github.com/phuslu/log"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
+	"github.com/quic-go/quic-go/qlog"
 )
 
 func (h *TunnelHandler) h3tunnel(ctx context.Context, dialerName, dialerURL string) (net.Listener, error) {
@@ -193,6 +194,8 @@ func (h *TunnelHandler) h3dail(ctx context.Context, u *url.URL) (*quic.Conn, err
 					MaxStreamReceiveWindow:         12 * 1024 * 1024,
 					InitialConnectionReceiveWindow: 8 * 1024 * 1024,
 					MaxConnectionReceiveWindow:     256 * 1024 * 1024,
+					Tracer:                         qlog.DefaultConnectionTracer,
+					BBROptions:                     quic.BBROptions{FlexibleAppLimited: true},
 				},
 			)
 			if err != nil {

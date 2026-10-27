@@ -548,7 +548,12 @@ func (h *HTTPForwardHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request
 
 			rw.Header().Set(http3.CapsuleProtocolHeader, "?1")
 			rw.WriteHeader(http.StatusOK)
-			stream := streamer.HTTPStream()
+			stream, err := streamer.HTTPStream()
+			if err != nil {
+				_ = conn.Close()
+				log.Error().Err(err).Context(ri.LogContext).Msg("http3 stream is unavailable")
+				return
+			}
 
 			var receiveBytes, transmitBytes atomic.Int64
 			done := make(chan error, 2)
