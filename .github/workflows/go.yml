@@ -6,7 +6,7 @@ on:
 jobs:
   build:
     name: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     strategy:
       matrix:
         osarch:
@@ -24,17 +24,17 @@ jobs:
       - run: |
           export GOOSARCH=${{ matrix.osarch }}
           export GOOS="${GOOSARCH%_*}" GOARCH="${GOOSARCH#*_}"
-          sudo -E ./build.bash build
-      - run: sudo -E ./build.bash release
+          ./build.bash build
+      - run: ./build.bash release
         env:
-          GITHUB_TOKEN: ${{ secrets.GOTIP_TOKEN }}
+          GH_TOKEN: ${{ secrets.GOTIP_TOKEN }}
   build-macos:
     name: build-macos
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v1
       - run: sudo ./build.bash setup
-      - run: sudo -E ./build.bash build::macos
-      - run: sudo -E ./build.bash release
+      - run: ./build.bash build::macos
+      - run: ./build.bash release
         env:
-          GITHUB_TOKEN: ${{ secrets.GOTIP_TOKEN }}
+          GH_TOKEN: ${{ secrets.GOTIP_TOKEN }}

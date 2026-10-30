@@ -8,7 +8,7 @@ function liner::setup() {
 		linux )
 			export DEBIAN_FRONTEND=noninteractive
 			apt update -y
-			apt install -yq git curl jq unzip zip xz-utils gh build-essential parallel upx llvm
+			apt install -yq git curl jq unzip zip xz-utils gh build-essential parallel upx llvm libxml2-dev
 			# phuslu go
 			test -d /tmp/go || \
 				curl -L https://github.com/phuslu/go/releases/download/v0.0.0/go1.27.${goos}-${goarch}.tar.xz | \

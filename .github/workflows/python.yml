@@ -6,14 +6,14 @@ on:
 jobs:
   manylinux_x86_64:
     name: manylinux_x86_64
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v1
       - run: sudo ./build.bash setup
-      - run: sudo ./build.bash python
-      - run: sudo -E ./build.bash release
+      - run: ./build.bash python
+      - run: ./build.bash release
         env:
-          GITHUB_TOKEN: ${{ secrets.GOTIP_TOKEN }}
+          GH_TOKEN: ${{ secrets.GOTIP_TOKEN }}
           TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
           TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
   manylinux_aarch64:
@@ -22,15 +22,15 @@ jobs:
     steps:
       - uses: actions/checkout@v1
       - run: sudo ./build.bash setup
-      - run: sudo ./build.bash python
-      - run: sudo -E ./build.bash release
+      - run: ./build.bash python
+      - run: ./build.bash release
         env:
-          GITHUB_TOKEN: ${{ secrets.GOTIP_TOKEN }}
+          GH_TOKEN: ${{ secrets.GOTIP_TOKEN }}
           TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
           TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
   # musllinux_x86_64:
   #   name: musllinux_x86_64
-  #   runs-on: ubuntu-latest
+  #   runs-on: ubuntu-26.04
   #   container:
   #     image: phuslu/seashell:latest
   #   steps:
@@ -39,28 +39,28 @@ jobs:
   #     - run: bash ./build.bash python
   #     - run: bash ./build.bash release
   #       env:
-  #         GITHUB_TOKEN: ${{ secrets.GOTIP_TOKEN }}
+  #         GH_TOKEN: ${{ secrets.GOTIP_TOKEN }}
   win_amd64:
     name: win_amd64
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v1
       - run: sudo ./build.bash setup
-      - run: sudo ./build.bash python::windows
-      - run: sudo -E ./build.bash release
+      - run: ./build.bash python::windows
+      - run: ./build.bash release
         env:
-          GITHUB_TOKEN: ${{ secrets.GOTIP_TOKEN }}
+          GH_TOKEN: ${{ secrets.GOTIP_TOKEN }}
           TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
           TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
   win_arm64:
     name: win_arm64
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v1
       - run: sudo ./build.bash setup
       - run: sudo GOARCH=arm64 ./build.bash python::windows
-      - run: sudo -E ./build.bash release
+      - run: ./build.bash release
         env:
-          GITHUB_TOKEN: ${{ secrets.GOTIP_TOKEN }}
+          GH_TOKEN: ${{ secrets.GOTIP_TOKEN }}
           TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
           TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
