@@ -1961,6 +1961,9 @@ func ReadFile(s string) ([]byte, error) {
 			return nil, err
 		}
 		defer resp.Body.Close()
+		if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusBadRequest {
+			return nil, fmt.Errorf("unexpected http status: %s", resp.Status)
+		}
 		return io.ReadAll(resp.Body)
 	}
 
