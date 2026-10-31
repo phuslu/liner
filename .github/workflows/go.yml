@@ -6,7 +6,7 @@ on:
 jobs:
   build:
     name: build
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         osarch:
@@ -30,7 +30,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GOTIP_TOKEN }}
   build-macos:
     name: build-macos
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v1
       - run: sudo ./build.bash setup
