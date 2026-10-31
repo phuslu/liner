@@ -28,18 +28,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GOTIP_TOKEN }}
           TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
           TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
-  # musllinux_x86_64:
-  #   name: musllinux_x86_64
-  #   runs-on: ubuntu-26.04
-  #   container:
-  #     image: phuslu/seashell:latest
-  #   steps:
-  #     - uses: actions/checkout@v1
-  #     - run: bash ./build.bash setup
-  #     - run: bash ./build.bash python
-  #     - run: bash ./build.bash release
-  #       env:
-  #         GH_TOKEN: ${{ secrets.GOTIP_TOKEN }}
   win_amd64:
     name: win_amd64
     runs-on: ubuntu-26.04
