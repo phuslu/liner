@@ -67,19 +67,21 @@
     var labels = chinese ? {
         index: '返回目录',
         copy: '复制 Markdown 原文',
+        copyText: '复制',
         copied: 'Markdown 原文已复制',
-        copiedTip: '已复制',
         failed: '复制失败，请重试',
-        failedTip: '复制失败',
-        download: '下载 Markdown 原文'
+        download: '下载 Markdown 原文',
+        downloadText: '下载',
+        actions: 'Markdown 操作'
     } : {
         index: 'Index',
         copy: 'Copy Markdown',
+        copyText: 'Copy',
         copied: 'Markdown source copied',
-        copiedTip: 'Copied',
         failed: 'Copy failed. Try again.',
-        failedTip: 'Copy failed',
-        download: 'Download Markdown'
+        download: 'Download Markdown',
+        downloadText: 'Download',
+        actions: 'Markdown actions'
     }
     document.documentElement.lang = language
 
@@ -93,18 +95,18 @@
     pane = div.add('div').attr('class', 'document-pane')
     article = pane.add('main').attr('id', 'readme').attr('class', 'markdown-body')
     actions = pane.add('div').attr('class', 'document-actions')
-    download = actions.add('button').attr('type', 'button').attr('class', 'document-action download-markdown').attr('aria-label', labels.download).attr('data-tip', labels.download)
-    copy = actions.add('button').attr('type', 'button').attr('class', 'document-action copy-markdown').attr('aria-label', labels.copy).attr('data-tip', labels.copy)
+    copyButton = actions.add('button').attr('type', 'button').attr('class', 'document-action copy-markdown').attr('aria-label', labels.actions).attr('aria-haspopup', 'menu').attr('aria-expanded', 'false').attr('aria-controls', 'document-action-menu')
+    menu = actions.add('div').attr('class', 'document-menu').attr('id', 'document-action-menu').attr('role', 'menu').attr('aria-label', labels.actions)
+    copyItem = menu.add('button').attr('type', 'button').attr('class', 'document-menu-item copy-markdown').attr('role', 'menuitem').attr('aria-label', labels.copy).text(labels.copyText)
+    downloadItem = menu.add('button').attr('type', 'button').attr('class', 'document-menu-item download-markdown').attr('role', 'menuitem').attr('aria-label', labels.download).text(labels.downloadText)
 
     var copied = function(ok) {
-        copy.element.classList.toggle('is-copied', ok)
-        copy.element.classList.toggle('is-error', !ok)
-        copy.element.setAttribute('aria-label', ok ? labels.copied : labels.failed)
-        copy.element.setAttribute('data-tip', ok ? labels.copiedTip : labels.failedTip)
+        copyButton.element.classList.toggle('is-copied', ok)
+        copyButton.element.classList.toggle('is-error', !ok)
+        copyButton.element.setAttribute('aria-label', ok ? labels.copied : labels.failed)
         window.setTimeout(function() {
-            copy.element.classList.remove('is-copied', 'is-error')
-            copy.element.setAttribute('aria-label', labels.copy)
-            copy.element.setAttribute('data-tip', labels.copy)
+            copyButton.element.classList.remove('is-copied', 'is-error')
+            copyButton.element.setAttribute('aria-label', labels.actions)
         }, 1600)
     }
     var fallbackCopy = function() {
@@ -117,7 +119,7 @@
         textarea.remove()
         copied(ok)
     }
-    copy.element.onclick = function() {
+    var copyMarkdown = function() {
         if (navigator.clipboard && window.isSecureContext) {
             navigator.clipboard.writeText(bodytext).then(function() {
                 copied(true)
@@ -126,7 +128,7 @@
             fallbackCopy()
         }
     }
-    download.element.onclick = function() {
+    var downloadMarkdown = function() {
         var url = URL.createObjectURL(new Blob([bodytext], {type: 'text/markdown;charset=utf-8'}))
         var link = document.createElement('a')
         link.href = url
@@ -138,6 +140,65 @@
             URL.revokeObjectURL(url)
         }, 1000)
     }
+
+    var menuIsOpen = function() {
+        return actions.element.classList.contains('is-open')
+    }
+    var closeMenu = function(returnFocus) {
+        actions.element.classList.remove('is-open')
+        copyButton.element.setAttribute('aria-expanded', 'false')
+        if (returnFocus) copyButton.element.focus()
+    }
+    var openMenu = function(focusItem) {
+        actions.element.classList.add('is-open')
+        copyButton.element.setAttribute('aria-expanded', 'true')
+        if (focusItem) copyItem.element.focus()
+    }
+    copyButton.element.onclick = function() {
+        if (menuIsOpen()) closeMenu(false)
+        else openMenu(true)
+    }
+    copyItem.element.onclick = function() {
+        closeMenu(true)
+        copyMarkdown()
+    }
+    downloadItem.element.onclick = function() {
+        closeMenu(true)
+        downloadMarkdown()
+    }
+    actions.element.addEventListener('keydown', function(event) {
+        var items = [copyItem.element, downloadItem.element]
+        var index = items.indexOf(document.activeElement)
+        if (event.key === 'Escape' && menuIsOpen()) {
+            event.preventDefault()
+            closeMenu(true)
+        } else if (event.key === 'ArrowDown' && menuIsOpen()) {
+            event.preventDefault()
+            items[(index + 1) % items.length].focus()
+        } else if (event.key === 'ArrowUp' && menuIsOpen()) {
+            event.preventDefault()
+            items[index <= 0 ? items.length - 1 : index - 1].focus()
+        } else if (event.key === 'Home' && menuIsOpen()) {
+            event.preventDefault()
+            items[0].focus()
+        } else if (event.key === 'End' && menuIsOpen()) {
+            event.preventDefault()
+            items[items.length - 1].focus()
+        } else if (event.key === 'ArrowDown' && event.target === copyButton.element) {
+            event.preventDefault()
+            openMenu(true)
+        } else if (event.key === 'ArrowUp' && event.target === copyButton.element) {
+            event.preventDefault()
+            openMenu(false)
+            downloadItem.element.focus()
+        }
+    })
+    actions.element.addEventListener('focusout', function(event) {
+        if (menuIsOpen() && !actions.element.contains(event.relatedTarget)) closeMenu(false)
+    })
+    document.addEventListener('pointerdown', function(event) {
+        if (menuIsOpen() && !actions.element.contains(event.target)) closeMenu(false)
+    })
 
     var resources = Object.create(null)
     var loadScript = function(name, src, integrity) {
@@ -369,8 +430,6 @@ body {
     position: absolute;
     top: 14px;
     right: 14px;
-    display: flex;
-    gap: 6px;
     opacity: 0;
     pointer-events: none;
     transform: translateY(-4px);
@@ -414,6 +473,10 @@ body {
     background: currentColor;
     content: "";
 }
+.document-action[aria-expanded="true"] {
+    color: var(--page-fg);
+    background: var(--page-control-hover);
+}
 .copy-markdown::before {
     -webkit-mask: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Zm5-5C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z'/%3E%3C/svg%3E") center / contain no-repeat;
     mask: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Zm5-5C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z'/%3E%3C/svg%3E") center / contain no-repeat;
@@ -422,28 +485,65 @@ body {
     -webkit-mask: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Zm4.25-7.19V1.75a.75.75 0 0 1 1.5 0v5.06l1.72-1.72a.75.75 0 1 1 1.06 1.06l-3 3a.75.75 0 0 1-1.06 0l-3-3a.75.75 0 0 1 1.06-1.06Z'/%3E%3C/svg%3E") center / contain no-repeat;
     mask: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Zm4.25-7.19V1.75a.75.75 0 0 1 1.5 0v5.06l1.72-1.72a.75.75 0 1 1 1.06 1.06l-3 3a.75.75 0 0 1-1.06 0l-3-3a.75.75 0 0 1 1.06-1.06Z'/%3E%3C/svg%3E") center / contain no-repeat;
 }
-.document-action::after {
+.document-menu {
     position: absolute;
-    top: calc(100% + 8px);
+    top: 40px;
     right: 0;
-    padding: 5px 8px;
-    color: #fff;
-    background: #24292f;
-    border-radius: 6px;
-    box-shadow: 0 2px 8px var(--page-shadow);
-    content: attr(data-tip);
-    font-size: 12px;
-    line-height: 1.4;
-    white-space: nowrap;
+    z-index: 2;
+    min-width: 116px;
+    padding: 4px;
+    background: var(--page-control);
+    border: 1px solid var(--page-line);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px var(--page-shadow), 0 2px 6px var(--page-shadow);
     opacity: 0;
     pointer-events: none;
-    transform: translateY(-2px);
-    transition: opacity .12s ease, transform .12s ease;
+    transform: translateY(-4px) scale(.98);
+    transform-origin: top right;
+    visibility: hidden;
+    transition: opacity .14s ease, transform .14s ease, visibility 0s linear .14s;
 }
-.document-action:hover::after,
-.document-action:focus-visible::after {
+.document-actions.is-open .document-menu {
     opacity: 1;
+    pointer-events: auto;
     transform: none;
+    visibility: visible;
+    transition-delay: 0s;
+}
+.document-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 32px;
+    padding: 0 9px;
+    color: var(--page-muted);
+    background: transparent;
+    border: 0;
+    border-radius: 5px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.2;
+    text-align: left;
+    white-space: nowrap;
+    cursor: pointer;
+}
+.document-menu-item::before {
+    width: 14px;
+    height: 14px;
+    flex: none;
+    background: currentColor;
+    content: "";
+}
+.document-menu-item:hover,
+.document-menu-item:focus-visible {
+    color: var(--page-fg);
+    background: var(--page-control-hover);
+}
+.document-menu-item:focus-visible {
+    outline: 2px solid var(--page-link);
+    outline-offset: -2px;
 }
 .copy-markdown.is-copied {
     color: #1a7f37;
@@ -505,7 +605,7 @@ body {
 @media (prefers-reduced-motion: reduce) {
     .document-actions,
     .document-action,
-    .document-action::after {
+    .document-menu {
         transition: none;
     }
 }
