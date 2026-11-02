@@ -1,4 +1,5 @@
 
+
 <!-- markdown for nginx, see https://phus.lu -->
 <script>
 !function(){
@@ -65,7 +66,6 @@
 	var language = navigator.languages && navigator.languages[0] || navigator.language || ''
 	var chinese = /^zh(?:-|$)/i.test(language)
 	var labels = chinese ? {
-		index: '返回目录',
 		copy: '复制 Markdown 原文',
 		copyText: '复制',
 		copied: 'Markdown 原文已复制',
@@ -74,7 +74,6 @@
 		downloadText: '下载',
 		actions: 'Markdown 操作'
 	} : {
-		index: 'Index',
 		copy: 'Copy Markdown',
 		copyText: 'Copy',
 		copied: 'Markdown source copied',
@@ -91,7 +90,6 @@
 	div = dom.get('div').attr('class', 'container')
 	header = div.add('header').attr('class', 'page-header')
 	header.add('h1').attr('class', 'page-title octicon-book').text(title.replace(/\.md$/i, ''))
-	header.add('a').attr('class', 'page-index').attr('href', './').text(labels.index)
 	pane = div.add('div').attr('class', 'document-pane')
 	article = pane.add('main').attr('id', 'readme').attr('class', 'markdown-body')
 	actions = pane.add('div').attr('class', 'document-actions')
@@ -384,8 +382,6 @@ body {
 .page-header {
 	display: flex;
 	align-items: center;
-	justify-content: space-between;
-	gap: 16px;
 	padding: 28px clamp(20px, 6vw, 56px) 16px;
 }
 .page-title {
@@ -408,20 +404,8 @@ body {
 	flex: none;
 	background: currentColor;
 	content: "";
-	-webkit-mask: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 5h4v1H3V5Zm0 3h4V7H3v1Zm0 2h4V9H3v1Zm10-5H9v1h4V5Zm0 3H9v1h4V8Zm0 2H9v1h4v-1Zm2-7v9a1 1 0 0 1-1 1H9.5l-1 1-1-1H2a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h4.5l1 1 1-1H15a1 1 0 0 1 1 1ZM8 4.5 7.5 4H2v9h6V4.5Zm7 0L14.5 4H9l-.5.5V13h6V4.5Z'/%3E%3C/svg%3E") center / contain no-repeat;
-	mask: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 5h4v1H3V5Zm0 3h4V7H3v1Zm0 2h4V9H3v1Zm10-5H9v1h4V5Zm0 3H9v1h4V8Zm0 2H9v1h4v-1Zm2-7v9a1 1 0 0 1-1 1H9.5l-1 1-1-1H2a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h4.5l1 1 1-1H15a1 1 0 0 1 1 1ZM8 4.5 7.5 4H2v9h6V4.5Zm7 0L14.5 4H9l-.5.5V13h6V4.5Z'/%3E%3C/svg%3E") center / contain no-repeat;
-}
-.page-index {
-	flex: none;
-	color: var(--page-muted);
-	font-size: 13px;
-	text-decoration: none;
-}
-.page-index:hover,
-.page-index:focus-visible {
-	color: var(--page-link);
-	text-decoration: underline;
-	text-underline-offset: 3px;
+	-webkit-mask: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M0 1.75A.75.75 0 0 1 .75 1h4.253c1.227 0 2.317.59 3 1.501A3.743 3.743 0 0 1 11.006 1h4.245a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75h-4.507a2.25 2.25 0 0 0-1.591.659l-.622.621a.75.75 0 0 1-1.06 0l-.622-.621A2.25 2.25 0 0 0 5.258 13H.75a.75.75 0 0 1-.75-.75Zm7.251 10.324.004-5.073-.002-2.253A2.25 2.25 0 0 0 5.003 2.5H1.5v9h3.757a3.75 3.75 0 0 1 1.994.574ZM8.755 4.75l-.004 7.322a3.752 3.752 0 0 1 1.992-.572H14.5v-9h-3.495a2.25 2.25 0 0 0-2.25 2.25Z'/%3E%3C/svg%3E") center / contain no-repeat;
+	mask: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M0 1.75A.75.75 0 0 1 .75 1h4.253c1.227 0 2.317.59 3 1.501A3.743 3.743 0 0 1 11.006 1h4.245a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75h-4.507a2.25 2.25 0 0 0-1.591.659l-.622.621a.75.75 0 0 1-1.06 0l-.622-.621A2.25 2.25 0 0 0 5.258 13H.75a.75.75 0 0 1-.75-.75Zm7.251 10.324.004-5.073-.002-2.253A2.25 2.25 0 0 0 5.003 2.5H1.5v9h3.757a3.75 3.75 0 0 1 1.994.574ZM8.755 4.75l-.004 7.322a3.752 3.752 0 0 1 1.992-.572H14.5v-9h-3.495a2.25 2.25 0 0 0-2.25 2.25Z'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 .document-pane {
 	position: relative;
