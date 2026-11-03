@@ -136,7 +136,8 @@ EOF
 		windows_amd64 | windows_arm64 )
 			go build -v -trimpath -ldflags="-s -w -X main.version=1.0.${REVSION}" -o build/liner.exe
 			unzip wintun-0.14.1.zip
-			cp china.pac proxy.yaml liner.cmd wintun/bin/${GOARCH}/wintun.dll build/
+			unzip nssm-2.24.zip
+			cp china.pac proxy.yaml liner.cmd wintun/bin/${GOARCH}/wintun.dll nssm-2.24/win64/nssm.exe build/
 			cd build
 			tar cv * | gzip -9 >../liner_${GOOS}_${GOARCH}-${REVSION}.tar.gz
 			;;
