@@ -9,7 +9,7 @@ require (
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
 	github.com/libp2p/go-yamux/v5 v5.1.0
 	github.com/mileusna/useragent v1.3.5
-	github.com/oschwald/maxminddb-golang/v2 v2.8.0
+	github.com/oschwald/maxminddb-golang/v2 v2.9.0
 	github.com/phuslu/fastdns v0.17.2
 	github.com/phuslu/geosite v1.0.20250901
 	github.com/phuslu/gosh v0.0.0-20261025190730-85b053fefe19
@@ -20,17 +20,17 @@ require (
 	github.com/phuslu/tcp-brutal v1.0.1
 	github.com/pkg/sftp v1.13.12
 	github.com/puzpuzpuz/xsync/v4 v4.5.0
-	github.com/quic-go/quic-go v0.64.1
+	github.com/quic-go/quic-go v0.65.0
 	github.com/refraction-networking/utls v1.8.2
 	github.com/robfig/cron/v3 v3.0.1
-	github.com/smallnest/ringbuffer v0.2.0
+	github.com/smallnest/ringbuffer v0.2.1
 	github.com/valyala/bytebufferpool v1.0.0
 	go4.org/netipx v0.0.0-20260823151212-3075585bcbeb
 	golang.org/x/crypto v0.58.0
-	golang.org/x/net v0.61.0
+	golang.org/x/net v0.62.0
 	golang.org/x/sys v0.49.0
 	golang.zx2c4.com/wireguard v0.0.0-20261024220952-b3bc704ef0ee
-	gvisor.dev/gvisor v0.0.0-20261026101154-90a2f3f7b8d1
+	gvisor.dev/gvisor v0.0.0-20261103030936-1899f71d79be
 )
 
 require (
@@ -50,4 +50,4 @@ require (
 	mvdan.cc/sh/v3 v3.14.1 // indirect
 )
 
-replace github.com/quic-go/quic-go => github.com/phuslu/quic-go v0.0.0-20261030160737-a720a62fae53
+replace github.com/quic-go/quic-go => github.com/phuslu/quic-go v0.0.0-20261103072006-92fb5caa599d
