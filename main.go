@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"os/user"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -80,6 +81,12 @@ func main() {
 
 	if g, p, m := runtime.Version(), os.Getenv("GOMAXPROCS"), GetMaxProcsFromCgroupV2(); g < "go1.25" && p == "" && m > 0 {
 		runtime.GOMAXPROCS(m)
+	}
+
+	if os.Getenv("HOME") == "" {
+		if u, err := user.Current(); err == nil {
+			os.Setenv("HOME", u.HomeDir)
+		}
 	}
 
 	RegisterMimeTypes()
