@@ -507,8 +507,12 @@ func (h *SshHandler) Serve(ctx context.Context, ln net.Listener) error {
 		}
 		switch v := conn.(type) {
 		case *net.TCPConn:
-			v.SetReadBuffer(cmp.Or(h.Config.TcpReadBuffer, 128*1024))
-			v.SetWriteBuffer(cmp.Or(h.Config.TcpWriteBuffer, 128*1024))
+			if h.Config.TcpReadBuffer > 0 {
+				v.SetReadBuffer(h.Config.TcpReadBuffer)
+			}
+			if h.Config.TcpWriteBuffer > 0 {
+				v.SetWriteBuffer(h.Config.TcpWriteBuffer)
+			}
 			if !h.Config.DisableKeepalive {
 				v.SetKeepAliveConfig(net.KeepAliveConfig{
 					Enable:   true,
