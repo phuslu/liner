@@ -28,21 +28,21 @@ require (
 	go4.org/netipx v0.0.0-20260823151212-3075585bcbeb
 	golang.org/x/crypto v0.58.0
 	golang.org/x/net v0.62.0
-	golang.org/x/sys v0.49.0
+	golang.org/x/sys v0.50.0
 	golang.zx2c4.com/wireguard v0.0.0-20261024220952-b3bc704ef0ee
-	gvisor.dev/gvisor v0.0.0-20261103030936-1899f71d79be
+	gvisor.dev/gvisor v0.0.0-20261108132503-849c51487627
 )
 
 require (
-	github.com/andybalholm/brotli v1.2.7 // indirect
-	github.com/ebitengine/purego v0.11.2 // indirect
+	github.com/andybalholm/brotli v1.2.8 // indirect
+	github.com/ebitengine/purego v0.11.3 // indirect
 	github.com/google/btree v1.1.3 // indirect
-	github.com/klauspost/compress v1.20.3 // indirect
+	github.com/klauspost/compress v1.20.4 // indirect
 	github.com/kr/fs v0.1.0 // indirect
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
 	go.uber.org/mock v0.6.0 // indirect
-	golang.org/x/exp v0.0.0-20261014143641-f0251eb4aa3e // indirect
+	golang.org/x/exp v0.0.0-20261106192419-47ce03d25ef0 // indirect
 	golang.org/x/term v0.47.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/time v0.16.0 // indirect
