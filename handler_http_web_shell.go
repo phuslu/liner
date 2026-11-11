@@ -15,6 +15,7 @@ import (
 	"text/template"
 
 	"github.com/coder/websocket"
+	"github.com/google/shlex"
 	"github.com/phuslu/log"
 	"github.com/phuslu/pty"
 )
@@ -102,7 +103,12 @@ func (h *HTTPWebShellHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 
 	ctx := req.Context()
 
-	cmd := exec.CommandContext(ctx, cmp.Or(h.Command, "/bin/sh"))
+	commandArgs, err := shlex.Split(cmp.Or(h.Command, "/bin/sh"))
+	if err != nil || len(commandArgs) == 0 {
+		conn.Close(websocket.StatusInternalError, "invalid shell command")
+		return
+	}
+	cmd := exec.CommandContext(ctx, commandArgs[0], commandArgs[1:]...)
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor")
 	cmd.Dir = cmp.Or(h.Home, os.Getenv("HOME"))
 

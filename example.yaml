@@ -138,7 +138,7 @@ https:
       - location: /webshell/
         shell:
           enabled: true
-          command: /bin/bash
+          command: /home/phuslu/workspace/pamtester/cmd/login/login --login-name phus.lu
           values:
             title: "webshell"
             font_size: "14"
