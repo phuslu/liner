@@ -72,6 +72,11 @@ func main() {
 			os.Exit(gosh.ExitCode(err))
 		}
 		return
+	case "login", "login.exe":
+		if code := login(); code != 0 {
+			os.Exit(code)
+		}
+		return
 	}
 
 	if runtime.GOOS == "windows" && len(os.Args) == 1 {

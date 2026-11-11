@@ -29,6 +29,7 @@ require (
 	golang.org/x/crypto v0.58.0
 	golang.org/x/net v0.62.0
 	golang.org/x/sys v0.50.0
+	golang.org/x/term v0.47.0
 	golang.zx2c4.com/wireguard v0.0.0-20261024220952-b3bc704ef0ee
 	gvisor.dev/gvisor v0.0.0-20261108132503-849c51487627
 )
@@ -43,7 +44,6 @@ require (
 	github.com/quic-go/qpack v0.6.0 // indirect
 	go.uber.org/mock v0.6.0 // indirect
 	golang.org/x/exp v0.0.0-20261106192419-47ce03d25ef0 // indirect
-	golang.org/x/term v0.47.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/time v0.16.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
