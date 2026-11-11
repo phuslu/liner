@@ -56,7 +56,8 @@ var (
 )
 
 func main() {
-	if s := filepath.Base(os.Args[0]); s == "linex" || s == "linex.exe" || s == "gosh" || s == "gosh.exe" || os.Getenv("GOSH") == "1" {
+	switch filepath.Base(os.Args[0]) {
+	case "linex", "linex.exe", "gosh", "gosh.exe":
 		err := gosh.Run(gosh.Config{
 			Version:       version,
 			Args:          os.Args,
