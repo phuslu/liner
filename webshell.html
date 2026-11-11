@@ -27,9 +27,6 @@
             height: 100%;
         }
         #terminal.wterm {
-            --term-bg: #101010;
-            --term-fg: #d4d4d4;
-            --term-cursor: #ffffff;
             --term-font-family: Menlo, Monaco, "Courier New", monospace;
             padding: 0;
             border-radius: 0;
@@ -73,21 +70,13 @@
             var baseTitle = {{ index .Values `title` | toJson }} || 'liner webshell';
             var windowsMode = {{ .Request.URL.Query.Get `windows_mode` | default (index .Values `windows_mode`) | toJson }} === 'true';
             var fontSize = parseInt({{ .Request.URL.Query.Get `font_size` | default (index .Values `font_size`) | toJson }}) || 14;
-            var foreground = {{ index .Values `foreground` | default "#d4d4d4" | toJson }};
-            var xtermPalette = [
-                0x2e3436, 0xcc0000, 0x4e9a06, 0xc4a000,
-                0x3465a4, 0x75507b, 0x06989a, 0xd3d7cf,
-                0x555753, 0xef2929, 0x8ae234, 0xfce94f,
-                0x729fcf, 0xad7fa8, 0x34e2e2, 0xeeeeec
-            ];
-
-            if (!/^#[0-9a-fA-F]{6}$/.test(foreground)) {
-                foreground = '#d4d4d4';
-            }
+            var foreground = {{ index .Values `foreground` | toJson }};
 
             document.title = baseTitle;
-            terminalElement.style.setProperty('--term-fg', foreground);
             terminalElement.style.setProperty('--term-font-size', fontSize + 'px');
+            if (/^#[0-9a-fA-F]{6}$/.test(foreground)) {
+                terminalElement.style.setProperty('--term-fg', foreground);
+            }
 
             var reconnectMode = false;
             var term = null;
@@ -158,8 +147,6 @@
             function initTerminal() {
                 return api.GhosttyCore.load({
                     wasmPath: 'https://cdn.jsdelivr.net/npm/@wterm/ghostty@0.5.10/wasm/ghostty-vt.wasm',
-                    foregroundColor: foreground,
-                    backgroundColor: '#101010',
                     scrollbackLimit: 100000
                 }).then(function (core) {
                     term = new api.WTerm(terminalElement, {
@@ -183,14 +170,7 @@
                             document.title = title || baseTitle;
                         }
                     });
-                    return term.init().then(function () {
-                        term.setThemeColors({
-                            foreground: parseInt(foreground.slice(1), 16),
-                            background: 0x101010,
-                            cursor: 0xffffff,
-                            palette: xtermPalette
-                        });
-                    });
+                    return term.init();
                 }).then(function () {
                     var websocketURL =
                         location.protocol.replace('http', 'ws') + '//' +
