@@ -15,7 +15,6 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/phuslu/gosh"
 	"github.com/phuslu/pamtester"
 	"golang.org/x/term"
 )
@@ -329,16 +328,25 @@ func startLoginShell(target *user.User, preserveEnv bool) error {
 	} else if name := os.Getenv("TERM"); name != "" {
 		env = append(env, "TERM="+name)
 	}
-	for key, value := range map[string]string{
+	values := map[string]string{
 		"HOME":    target.HomeDir,
 		"LOGNAME": target.Username,
 		"MAIL":    filepath.Join("/var/mail", target.Username),
 		"PATH":    "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 		"SHELL":   shell,
 		"USER":    target.Username,
-	} {
-		env = gosh.SetEnv(env, key, value)
 	}
+	filtered := env[:0]
+	for _, entry := range env {
+		key, _, _ := strings.Cut(entry, "=")
+		if _, ok := values[key]; !ok {
+			filtered = append(filtered, entry)
+		}
+	}
+	for key, value := range values {
+		filtered = append(filtered, key+"="+value)
+	}
+	env = filtered
 
 	argv0 := "-" + filepath.Base(shell)
 	if err := syscall.Exec(shell, []string{argv0}, env); err != nil {
