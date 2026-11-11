@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title></title>
     <meta name="description" content="Liner WebShell" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@wterm/dom@0.5.7/src/terminal.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@wterm/dom@0.5.10/src/terminal.css" />
     <style>
         body {
             margin: 0;
@@ -60,8 +60,8 @@
         <div id="reconnect-overlay"><div id="reconnect-box">Press ⏎ to Reconnect</div></div>
     </div>
 
-    <!-- @wterm/dom + @wterm/ghostty 0.5.7; assets live in cdnjs.zip. -->
-    <script src="https://cdn.jsdelivr.net/npm/@wterm/dom@0.5.7/dist/wterm.bundle.js"></script>
+    <!-- @wterm/dom + @wterm/ghostty 0.5.10; assets live in cdnjs.zip. -->
+    <script src="https://cdn.jsdelivr.net/npm/@wterm/dom@0.5.10/dist/wterm.bundle.js"></script>
     <script>
         (function () {
             'use strict';
@@ -157,7 +157,7 @@
 
             function initTerminal() {
                 return api.GhosttyCore.load({
-                    wasmPath: 'https://cdn.jsdelivr.net/npm/@wterm/ghostty@0.5.7/wasm/ghostty-vt.wasm',
+                    wasmPath: 'https://cdn.jsdelivr.net/npm/@wterm/ghostty@0.5.10/wasm/ghostty-vt.wasm',
                     foregroundColor: foreground,
                     backgroundColor: '#101010',
                     scrollbackLimit: 100000
