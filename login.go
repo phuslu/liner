@@ -27,7 +27,7 @@ func login() int {
 		fmt.Fprintln(os.Stderr, "  -h host")
 		fmt.Fprintln(os.Stderr, "    \tremote host for PAM_RHOST")
 		fmt.Fprintln(os.Stderr, "  -login-name name")
-		fmt.Fprintln(os.Stderr, "    \tnon-root login name (defaults to LOGIN_NAME)")
+		fmt.Fprintln(os.Stderr, "    \tlogin name (defaults to LOGIN_NAME)")
 		fmt.Fprintln(os.Stderr, "  -p")
 		fmt.Fprintln(os.Stderr, "    \tdo not clear the environment")
 	}
@@ -104,9 +104,10 @@ func login() int {
 	if err != nil {
 		return fail(fmt.Errorf("look up current user: %w", err))
 	}
-	if realUID != 0 && loginName == "" {
+	if loginName == "" {
 		loginName = os.Getenv("LOGIN_NAME")
 	}
+	useCurrentUser := realUID != 0 || loginName != ""
 
 	tty := ""
 	for _, fd := range []uintptr{os.Stdin.Fd(), os.Stderr.Fd()} {
@@ -202,7 +203,7 @@ func login() int {
 
 		var target *user.User
 		loginNameMatches := true
-		if realUID != 0 {
+		if useCurrentUser {
 			expectedName := cmp.Or(loginName, current.Username)
 			// Authenticate before rejecting a mismatched name so response
 			// timing cannot be used to enumerate login names.
@@ -235,7 +236,7 @@ func login() int {
 		if err != nil {
 			return fail(fmt.Errorf("look up PAM user %q: %w", pamUser, err))
 		}
-		if realUID != 0 {
+		if useCurrentUser {
 			if pamTarget.Uid != current.Uid || !loginNameMatches {
 				fmt.Fprintln(os.Stderr, "Login incorrect")
 				continue
